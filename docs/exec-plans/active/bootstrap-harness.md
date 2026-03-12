@@ -1,0 +1,53 @@
+# ExecPlan: Okno Harness Bootstrap
+
+## Контекст
+
+Репозиторий пока содержит только product-spec и roadmap. Цель bootstrap — превратить его в legible, controllable, testable Windows-native `.NET` MCP runtime с reproducible scripts, docs и observability baseline.
+
+## Границы
+
+- Входит: repo-memory, solution scaffold, minimal MCP runtime, safe window/session vertical slice, observability artifacts, scripts, verification.
+- Не входит: полноценные UIA/capture/input/clipboard реализации, OCR, HTTP transport, browser-specific layer beyond docs/planning.
+
+## Milestones
+
+1. Завести durable memory и централизованный build baseline.
+2. Поднять `net8.0-windows` solution с runtime/server/tests.
+3. Реализовать MCP skeleton и безопасный `observe -> attach` loop.
+4. Добавить audit/summary artifacts и investigation workflow.
+5. Нормализовать scripts и local CI equivalent.
+6. Обновить generated docs по фактическим результатам команд.
+
+## Acceptance criteria
+
+- `dotnet restore`, `build`, `test` и smoke выполняются через documented entry points.
+- MCP server стартует по `STDIO`, объявляет tool contract и проходит smoke-call минимум для `okno.health` и `windows.list_windows`.
+- Есть структурированный audit artifact со стабильной schema version.
+- Есть human-readable investigation path без чтения сырых stdout/stderr дампов.
+
+## Validation commands
+
+- `powershell -File scripts/bootstrap.ps1`
+- `powershell -File scripts/build.ps1`
+- `powershell -File scripts/test.ps1`
+- `powershell -File scripts/smoke.ps1`
+- `powershell -File scripts/ci.ps1`
+
+## Recovery / rollback
+
+- Если MCP SDK окажется несовместимым с текущим skeleton, fallback — вручную зарегистрированный tool handler без смены solution/layout.
+- Если конкретный Windows API требует additional SDK/workload, фиксируем это в tracker и оставляем contract stub.
+
+## Decisions log
+
+- 2026-03-12: выбран `net8.0-windows10.0.19041.0` и `global.json` на SDK `8.0.401`.
+- 2026-03-12: control plane строится через PowerShell wrappers, без `make/just`, так как проект Windows-only.
+- 2026-03-12: observability baseline — file-based structured audit + summary, без обязательного внешнего telemetry backend.
+- 2026-03-12: product-ready transport scope ограничен `STDIO` local process; HTTP transport отложен до post-STDIO stage.
+
+## Progress
+
+- `done`: инвентаризация репозитория и stack decision.
+- `done`: bootstrap scaffold, runtime skeleton, observability vertical slice.
+- `done`: control plane scripts и local CI equivalent.
+- `done`: generated docs по фактическим проверкам.

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Contracts\WinBridge.Runtime.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Diagnostics\WinBridge.Runtime.Diagnostics.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Session\WinBridge.Runtime.Session.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Tooling\WinBridge.Runtime.Tooling.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
+  </ItemGroup>
+
+</Project>

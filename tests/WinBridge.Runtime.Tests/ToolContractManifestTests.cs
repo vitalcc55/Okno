@@ -1,0 +1,51 @@
+using WinBridge.Runtime.Tooling;
+
+namespace WinBridge.Runtime.Tests;
+
+public sealed class ToolContractManifestTests
+{
+    [Fact]
+    public void AllToolNamesAreUnique()
+    {
+        string[] names = ToolContractManifest.All.Select(descriptor => descriptor.Name).ToArray();
+
+        Assert.Equal(names.Length, names.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void ImplementedDescriptorsContainRequiredMetadata()
+    {
+        Assert.All(
+            ToolContractManifest.Implemented,
+            descriptor =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(descriptor.Summary));
+                Assert.False(string.IsNullOrWhiteSpace(descriptor.Capability));
+                Assert.True(
+                    Enum.IsDefined(typeof(ToolSafetyClass), descriptor.SafetyClass),
+                    $"Unexpected safety class '{descriptor.SafetyClass}'.");
+            });
+    }
+
+    [Fact]
+    public void DeferredDescriptorsContainPhaseAndAlternative()
+    {
+        Assert.All(
+            ToolContractManifest.Deferred,
+            descriptor =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(descriptor.PlannedPhase));
+                Assert.False(string.IsNullOrWhiteSpace(descriptor.SuggestedAlternative));
+            });
+    }
+
+    [Fact]
+    public void SmokeRequiredNamesAreSubsetOfImplementedTools()
+    {
+        HashSet<string> implemented = ToolContractManifest.ImplementedNames.ToHashSet(StringComparer.Ordinal);
+
+        Assert.All(
+            ToolContractManifest.SmokeRequiredToolNames,
+            toolName => Assert.Contains(toolName, implemented));
+    }
+}
