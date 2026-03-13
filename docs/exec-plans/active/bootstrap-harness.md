@@ -6,8 +6,8 @@
 
 ## Границы
 
-- Входит: repo-memory, solution scaffold, minimal MCP runtime, safe window/session vertical slice, observability artifacts, scripts, verification.
-- Не входит: полноценные UIA/capture/input/clipboard реализации, OCR, HTTP transport, browser-specific layer beyond docs/planning.
+- Входит: repo-memory, solution scaffold, minimal MCP runtime, safe window/session vertical slice, first observe/capture slice, observability artifacts, scripts, verification.
+- Не входит: полноценные UIA/input/clipboard реализации, OCR, HTTP transport, browser-specific layer beyond docs/planning.
 
 ## Milestones
 
@@ -44,10 +44,13 @@
 - 2026-03-12: control plane строится через PowerShell wrappers, без `make/just`, так как проект Windows-only.
 - 2026-03-12: observability baseline — file-based structured audit + summary, без обязательного внешнего telemetry backend.
 - 2026-03-12: product-ready transport scope ограничен `STDIO` local process; HTTP transport отложен до post-STDIO stage.
+- 2026-03-13: для новых capability slices вводится отдельная design/verification policy по identity, fallback, false-success и scenario matrix; source of truth — `docs/architecture/capability-design-policy.md`.
 
 ## Progress
 
 - `done`: инвентаризация репозитория и stack decision.
 - `done`: bootstrap scaffold, runtime skeleton, observability vertical slice.
 - `done`: control plane scripts и local CI equivalent.
+- `done`: `windows.capture` с window/desktop monitor observe loop, PNG artifact и MCP image result.
 - `done`: generated docs по фактическим проверкам.
+- `done`: universal capability design policy для следующих feature slices.

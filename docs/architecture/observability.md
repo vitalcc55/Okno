@@ -6,6 +6,7 @@
 
 - `artifacts/diagnostics/<run_id>/events.jsonl` — канонический machine-readable event stream.
 - `artifacts/diagnostics/<run_id>/summary.md` — human-readable journal того же запуска.
+- `artifacts/diagnostics/<run_id>/captures/<capture_id>.png` — фактические PNG-доказательства для `windows.capture`.
 
 Поверх этого `scripts/smoke.ps1` создаёт отдельный smoke-report в `artifacts/smoke/<run_id>/report.json` и `summary.md`.
 
@@ -38,6 +39,7 @@
 | --- | --- | --- | --- |
 | `tool.invocation.started/completed` | Да | Старт/завершение каждого MCP tool call | Не пишем внутренние step-by-step сообщения по `list_windows`/`attach` |
 | `session.attached` | Да | Только state transition session -> window | Повторное attach к тому же окну не логируется вторично |
+| `capture artifacts` | Для `windows.capture` | PNG в diagnostics run directory + metadata в `tool.invocation.completed` | Храним один PNG на один успешный capture call, без отдельного verbose event stream |
 | `smoke report` | По запросу через `scripts/smoke.ps1` | Init/list/call raw MCP payloads + сводка | Один report на один run, без verbose console flood |
 
 ## Trace strategy
@@ -48,11 +50,11 @@
 
 1. Прогнать `powershell -File scripts/smoke.ps1`.
 2. Открыть `artifacts/smoke/<run_id>/summary.md`.
-3. При необходимости посмотреть соседний `report.json` и `artifacts/diagnostics/<run_id>/summary.md`.
+3. При необходимости посмотреть соседний `report.json`, `artifacts/diagnostics/<run_id>/summary.md` и `artifacts/diagnostics/<run_id>/captures/`.
 4. Для быстрого доступа к последним артефактам использовать `powershell -File scripts/investigate.ps1`.
 
 ## Осознанно отложено
 
 - Внешний OTel exporter.
 - Metrics backend.
-- Targeted capture для UIA/capture/input слоёв, которых пока нет в bootstrap slice.
+- Более глубокие targeted capture hooks для UIA/input/wait слоёв сверх текущего observe slice.

@@ -48,4 +48,19 @@ public sealed class ToolContractManifestTests
             ToolContractManifest.SmokeRequiredToolNames,
             toolName => Assert.Contains(toolName, implemented));
     }
+
+    [Fact]
+    public void WindowsCaptureIsImplementedAndSmokeRequired()
+    {
+        ToolDescriptor descriptor = Assert.Single(
+            ToolContractManifest.Implemented,
+            item => item.Name == ToolNames.WindowsCapture);
+
+        Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
+        Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
+        Assert.Contains(ToolNames.WindowsCapture, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.DoesNotContain(
+            ToolContractManifest.Deferred,
+            item => item.Name == ToolNames.WindowsCapture);
+    }
 }

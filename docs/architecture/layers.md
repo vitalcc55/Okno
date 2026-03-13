@@ -9,12 +9,13 @@
 | `src/WinBridge.Runtime.Diagnostics` | audit, evidence, tool boundary execution | Реализуется в bootstrap | Не знает MCP transport |
 | `src/WinBridge.Runtime.Session` | session state и attach semantics | Реализуется в bootstrap | Не тянет diagnostics config внутрь domain logic |
 | `src/WinBridge.Runtime.Windows.Shell` | Enum/find/focus top-level windows | Реализуется в bootstrap | Не включает UIA/capture/input/clipboard/wait |
-| future capability projects | `UIA` / `Capture` / `Input` / `Clipboard` / `Waiting` interfaces | Подготовлены как seams | Без fake implementations до реальной потребности |
+| `src/WinBridge.Runtime.Windows.Capture` | window/desktop monitor capture, PNG encoding, capture artifacts | Реализован первый observe slice | `WGC` как основной path, native fallback без смены MCP contract |
+| future capability projects | `UIA` / `Input` / `Clipboard` / `Waiting` interfaces | Подготовлены как seams | Без fake implementations до реальной потребности |
 | `Diagnostics artifacts` | JSONL audit, summary, smoke evidence | Реализуется в bootstrap | Артефакты воспроизводимы через scripts |
 
 ## Инварианты bootstrap
 
-- `observe -> attach -> verify contract` должен быть доступен без UIA и capture.
+- `observe -> attach -> verify contract` должен быть доступен без UIA.
 - `IWindowManager` остаётся только shell-window interface и не раздувается новыми capability-методами.
 - Все side effects на ОС должны быть явными и отличимыми от read-only tools.
 - Stub-tools допустимы только если честно возвращают `unsupported`/`deferred`, а не имитируют успех.

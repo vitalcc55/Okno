@@ -8,6 +8,7 @@ Okno — это Windows-native MCP runtime для локальной desktop aut
 
 - перечисляет и выбирает окна Windows;
 - поддерживает привязку текущей сессии к окну;
+- возвращает window/desktop capture с metadata и PNG artifact;
 - даёт MCP tool contract для агентного вызова;
 - сохраняет структурированные диагностические артефакты;
 - предоставляет локальный control plane для build/test/smoke/investigation.
@@ -20,6 +21,19 @@ Okno — это Windows-native MCP runtime для локальной desktop aut
 4. `windows.list_windows`
 5. `windows.attach_window`
 6. `okno.session_state`
+7. `windows.capture`
+
+## Реализованные фичи
+
+| Фича | Что даёт агенту | Как агент вызывает |
+| --- | --- | --- |
+| Runtime health | Понять, что `Okno` поднят, какой transport/contract сейчас активен и где лежат diagnostics artifacts. | `okno.health` |
+| Список окон | Увидеть top-level окна, выбрать `hwnd`, понять заголовок, процесс и bounds. | `windows.list_windows(includeInvisible=false)` |
+| Attach к окну | Зафиксировать текущее рабочее окно как session target для следующих шагов. | `windows.attach_window(hwnd=<target_hwnd>)` |
+| Session state | Проверить, к какому окну сейчас прикреплена сессия. | `okno.session_state()` |
+| Observe current window | Получить новый visual state выбранного окна: `structuredContent`, `image/png` и локальный PNG artifact. | `windows.list_windows(...)` -> `windows.attach_window(hwnd=<target_hwnd>)` -> `windows.capture(scope="window")` |
+| Observe explicit window | Снять окно напрямую по `hwnd`, не меняя attach-контекст. | `windows.capture(scope="window", hwnd=<target_hwnd>)` |
+| Observe desktop monitor | Получить monitor-level capture для общего обзора или межоконного перехода. | `windows.capture(scope="desktop")` |
 
 ## Стек
 

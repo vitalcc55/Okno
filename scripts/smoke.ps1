@@ -83,6 +83,21 @@ function Get-ToolPayload {
     return $text | ConvertFrom-Json
 }
 
+function Get-ImageBlock {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ToolResponse
+    )
+
+    foreach ($content in @($ToolResponse.result.content)) {
+        if ($content.type -eq 'image') {
+            return $content
+        }
+    }
+
+    throw 'В ответе tool call отсутствует image content block.'
+}
+
 function Get-RequiredToolNames {
     param(
         [Parameter(Mandatory)]
@@ -176,38 +191,74 @@ try {
 
     $attachedWindow = $null
     $sessionPayload = $null
+    $capturePayload = $null
+    $captureImage = $null
+    $requestId = 5
     if ($windowsPayload.count -gt 0) {
-        $firstWindow = $windowsPayload.windows[0]
-        $rawAttachRequest = Send-Json -Process $process -Payload @{
-            jsonrpc = '2.0'
-            id = 5
-            method = 'tools/call'
-            params = @{
-                name = 'windows.attach_window'
-                arguments = @{
-                    hwnd = [long]$firstWindow.hwnd
+        foreach ($candidateWindow in @($windowsPayload.windows)) {
+            $rawAttachRequest = Send-Json -Process $process -Payload @{
+                jsonrpc = '2.0'
+                id = $requestId
+                method = 'tools/call'
+                params = @{
+                    name = 'windows.attach_window'
+                    arguments = @{
+                        hwnd = [long]$candidateWindow.hwnd
+                    }
                 }
             }
-        }
-        $attachResponse = Read-Response -Process $process -RequestName 'windows.attach_window'
-        $attachedWindow = Get-ToolPayload -ToolResponse $attachResponse.Json
-        $attachStatus = [string]$attachedWindow.status
-        Assert-Condition -Condition (@('done', 'already_attached') -contains $attachStatus) -Message "Attach returned unexpected status '$attachStatus'."
-        Assert-Condition -Condition ([long]$attachedWindow.attachedWindow.window.hwnd -eq [long]$firstWindow.hwnd) -Message 'Attach payload does not point to the requested hwnd.'
-
-        $rawSessionRequest = Send-Json -Process $process -Payload @{
-            jsonrpc = '2.0'
-            id = 6
-            method = 'tools/call'
-            params = @{
-                name = 'okno.session_state'
-                arguments = @{}
+            $requestId++
+            $attachResponse = Read-Response -Process $process -RequestName 'windows.attach_window'
+            $attachedWindow = Get-ToolPayload -ToolResponse $attachResponse.Json
+            $attachStatus = [string]$attachedWindow.status
+            if (@('done', 'already_attached') -notcontains $attachStatus) {
+                continue
             }
+
+            $rawSessionRequest = Send-Json -Process $process -Payload @{
+                jsonrpc = '2.0'
+                id = $requestId
+                method = 'tools/call'
+                params = @{
+                    name = 'okno.session_state'
+                    arguments = @{}
+                }
+            }
+            $requestId++
+            $sessionResponse = Read-Response -Process $process -RequestName 'okno.session_state'
+            $sessionPayload = Get-ToolPayload -ToolResponse $sessionResponse.Json
+            Assert-Condition -Condition ($sessionPayload.mode -eq 'window') -Message "Session snapshot mode is '$($sessionPayload.mode)', expected 'window'."
+            Assert-Condition -Condition ([long]$sessionPayload.attachedWindow.window.hwnd -eq [long]$candidateWindow.hwnd) -Message 'Session snapshot does not point to the attached hwnd.'
+
+            $rawCaptureRequest = Send-Json -Process $process -Payload @{
+                jsonrpc = '2.0'
+                id = $requestId
+                method = 'tools/call'
+                params = @{
+                    name = 'windows.capture'
+                    arguments = @{
+                        scope = 'window'
+                    }
+                }
+            }
+            $requestId++
+            $captureResponse = Read-Response -Process $process -RequestName 'windows.capture'
+            if ([bool]$captureResponse.Json.result.isError) {
+                continue
+            }
+
+            $capturePayload = $captureResponse.Json.result.structuredContent
+            $captureImage = Get-ImageBlock -ToolResponse $captureResponse.Json
+            Assert-Condition -Condition ($capturePayload.scope -eq 'window') -Message "Capture scope is '$($capturePayload.scope)', expected 'window'."
+            Assert-Condition -Condition ([long]$capturePayload.hwnd -eq [long]$candidateWindow.hwnd) -Message 'Capture metadata hwnd does not match attached window.'
+            Assert-Condition -Condition ([int]$capturePayload.pixelWidth -gt 0) -Message 'Capture metadata width must be positive.'
+            Assert-Condition -Condition ([int]$capturePayload.pixelHeight -gt 0) -Message 'Capture metadata height must be positive.'
+            Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($captureImage.data)) -Message 'Capture image block does not contain PNG data.'
+            Assert-Condition -Condition (Test-Path $capturePayload.artifactPath) -Message "Capture artifact '$($capturePayload.artifactPath)' was not created."
+            break
         }
-        $sessionResponse = Read-Response -Process $process -RequestName 'okno.session_state'
-        $sessionPayload = Get-ToolPayload -ToolResponse $sessionResponse.Json
-        Assert-Condition -Condition ($sessionPayload.mode -eq 'window') -Message "Session snapshot mode is '$($sessionPayload.mode)', expected 'window'."
-        Assert-Condition -Condition ([long]$sessionPayload.attachedWindow.window.hwnd -eq [long]$firstWindow.hwnd) -Message 'Session snapshot does not point to the attached hwnd.'
+
+        Assert-Condition -Condition ($null -ne $capturePayload) -Message 'Smoke не нашёл окно, которое runtime смог успешно attach и capture-ить.'
     }
 
     $attachedHwnd = $null
@@ -233,6 +284,7 @@ try {
         windows = $windowsPayload
         attached_window = $attachedWindow
         session = $sessionPayload
+        capture = $capturePayload
         raw_requests = [ordered]@{
             initialize = $rawInitializeRequest
             list_tools = $rawListRequest
@@ -251,8 +303,10 @@ try {
     if ($null -ne $attachedWindow) {
         $report.raw_requests.attach_window = $rawAttachRequest
         $report.raw_requests.session_state = $rawSessionRequest
+        $report.raw_requests.capture = $rawCaptureRequest
         $report.raw_responses.attach_window = $attachResponse.Raw
         $report.raw_responses.session_state = $sessionResponse.Raw
+        $report.raw_responses.capture = $captureResponse.Raw
     }
 
     $reportPath = Join-Path $artifactRoot 'report.json'
@@ -269,6 +323,7 @@ try {
         "- declared_tools: $(@($listResponse.Json.result.tools).Count)",
         "- visible_windows: $($windowsPayload.count)",
         "- attached_hwnd: $attachedHwnd",
+        "- capture_artifact: $($capturePayload.artifactPath)",
         "- audit_dir: $($healthPayload.artifactsDirectory)",
         "- report: $reportPath"
     ) -join [Environment]::NewLine

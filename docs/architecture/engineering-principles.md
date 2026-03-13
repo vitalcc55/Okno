@@ -72,3 +72,17 @@ Okno строится как Windows-native MCP runtime с явными гран
 - добавляет или сохраняет механическую проверяемость;
 - обновляет docs, если меняет contract или workflow;
 - оставляет доказуемый след в scripts, tests или artifacts.
+
+## Policy для новых capability
+
+Новые capability slices нельзя проектировать только от happy-path и первого найденного бага. Для `observe`, `act`, `wait`, `clipboard`, `input` и `uia` feature обязательна отдельная design/verification policy:
+
+- явное разделение `identity` и `display metadata`;
+- явная fallback policy;
+- явная false-success policy;
+- матрица сценариев на `stale`, `mutation`, `reuse`, `missing target`, `timeout`, `unsupported`;
+- синхронное обновление contract/docs/tests/evidence.
+
+Канонический документ для этого workflow:
+
+- [capability-design-policy.md](capability-design-policy.md)

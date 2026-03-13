@@ -12,12 +12,14 @@ Product-ready delivery target на текущем этапе только оди
 - `Runtime composition root`: тонкий `WinBridge.Runtime`, который собирает DI и не держит service implementation внутри себя.
 - `Tooling`: `ToolNames` + `ToolContractManifest` + exporter как единый source of truth для tool contract.
 - `Runtime services`: session, diagnostics и shell-window logic в отдельных проектах.
-- `Windows integration`: `Windows.Shell` реализован сейчас; `UIA`/`Capture`/`Input`/`Clipboard`/`Waiting` зафиксированы отдельными seams на будущее.
+- `Windows integration`: `Windows.Shell` и первый `Windows.Capture` slice реализованы сейчас; `UIA`/`Input`/`Clipboard`/`Waiting` остаются следующими seams.
 - `Diagnostics`: structured audit artifacts, human-readable summary, smoke harness, runbooks.
 
 ## Где смотреть дальше
 
+- [capability-design-policy.md](capability-design-policy.md)
 - [layers.md](layers.md)
+- [observe-capture.md](observe-capture.md)
 - [observability.md](observability.md)
 - [engineering-principles.md](engineering-principles.md)
 - [adr-0001-stack-choice.md](adr-0001-stack-choice.md)

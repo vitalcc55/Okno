@@ -203,7 +203,9 @@ Python можно использовать:
 ### Технический ориентир
 
 - `Windows.Graphics.Capture` как приоритетный путь для capture окна.
-- Desktop-level capture как отдельный режим обзора.
+- Первая реализация `window` и `desktop monitor` capture может идти через единый `Windows.Graphics.Capture` backend.
+- Если `desktop monitor` target не выдаёт стабильный frame вовремя или `Windows.Graphics.Capture` недоступен в текущей сессии, допустим native fallback на screen copy без смены MCP-контракта.
+- Для `window capture` неверный или minimизированный target должен давать явный tool-level error, а не screen-copy успех с чужими пикселями.
 
 ### Требования к результату capture
 
@@ -311,13 +313,14 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 ### `windows.capture`
 Аргументы:
 - `scope`: `desktop | window`
-- `target`: attached/current (для window)
-- `include_uia_summary`: bool
+- `hwnd`: optional явная цель для `window` capture
+- для `window` без `hwnd` используется attached window
+- для `desktop` без `hwnd` используется monitor attached window или primary monitor
 
 Возвращает:
 - image;
 - metadata;
-- optional summary.
+- local artifact path.
 
 ### `windows.uia_snapshot`
 Аргументы:

@@ -35,6 +35,17 @@ public sealed class ToolContractExporterTests
         Assert.Contains("### Deferred but declared", markdown, StringComparison.Ordinal);
         Assert.Contains(ToolNames.OknoHealth, markdown, StringComparison.Ordinal);
         Assert.Contains(ToolNames.WindowsCapture, markdown, StringComparison.Ordinal);
+        Assert.Contains("artifacts/diagnostics/<run_id>/captures/<capture_id>.png", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExportJsonIncludesCaptureArtifactPath()
+    {
+        ToolContractExportDocument document = ToolContractExporter.CreateDocument();
+
+        Assert.Contains(
+            "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",
+            document.Artifacts);
     }
 
     private static string CreateTempDirectory()

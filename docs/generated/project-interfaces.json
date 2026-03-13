@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-03-12T16:49:34.9883101\u002B00:00",
+  "generated_at_utc": "2026-03-13T12:13:48.8467056\u002B00:00",
   "transport": {
     "kind": "stdio",
     "protocol_version": "2025-06-18",
@@ -74,19 +74,19 @@
         "planned_phase": null,
         "suggested_alternative": null,
         "smoke_required": false
-      }
-    ],
-    "deferred": [
+      },
       {
         "name": "windows.capture",
         "capability": "windows.capture",
-        "lifecycle": "deferred",
-        "safety_class": "read_only",
-        "summary": "\u0421\u043D\u0438\u043C\u0430\u0435\u0442 desktop \u0438\u043B\u0438 window capture.",
-        "planned_phase": "roadmap stage 3",
-        "suggested_alternative": "\u0412 bootstrap \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 list/attach/focus \u0432\u043C\u0435\u0441\u0442\u043E capture.",
-        "smoke_required": false
-      },
+        "lifecycle": "implemented",
+        "safety_class": "os_side_effect",
+        "summary": "\u0421\u043D\u0438\u043C\u0430\u0435\u0442 window \u0438\u043B\u0438 desktop monitor capture \u0438 \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 PNG \u002B metadata.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true
+      }
+    ],
+    "deferred": [
       {
         "name": "windows.clipboard_get",
         "capability": "windows.clipboard",
@@ -154,16 +154,17 @@
       "okno.session_state",
       "windows.list_windows",
       "windows.attach_window",
-      "windows.focus_window"
+      "windows.focus_window",
+      "windows.capture"
     ],
     "smoke_required_names": [
       "okno.health",
       "okno.session_state",
       "windows.list_windows",
-      "windows.attach_window"
+      "windows.attach_window",
+      "windows.capture"
     ],
     "deferred_phase_map": {
-      "windows.capture": "roadmap stage 3",
       "windows.clipboard_get": "roadmap stage 4",
       "windows.clipboard_set": "roadmap stage 4",
       "windows.input": "roadmap stage 5",
@@ -186,6 +187,7 @@
   "artifacts": [
     "artifacts/diagnostics/\u003Crun_id\u003E/events.jsonl",
     "artifacts/diagnostics/\u003Crun_id\u003E/summary.md",
+    "artifacts/diagnostics/\u003Crun_id\u003E/captures/\u003Ccapture_id\u003E.png",
     "artifacts/smoke/\u003Crun_id\u003E/report.json",
     "artifacts/smoke/\u003Crun_id\u003E/summary.md"
   ]

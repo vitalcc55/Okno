@@ -53,6 +53,9 @@ public sealed class AuditLogTests
             Hwnd: 42,
             Title: "Calculator",
             ProcessName: "CalculatorApp",
+            ProcessId: 42,
+            ThreadId: 84,
+            ClassName: "CalcWindow",
             Bounds: new Bounds(0, 0, 800, 600),
             IsForeground: true,
             IsVisible: true);

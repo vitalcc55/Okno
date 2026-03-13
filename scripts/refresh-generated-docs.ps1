@@ -68,8 +68,8 @@ function New-CommandsMarkdown {
         '## Latest Verified Validation',
         '',
         '- `dotnet build WinBridge.sln --no-restore` -> success, 0 warnings, 0 errors.',
-        '- `dotnet test WinBridge.sln` -> success, 12/12 tests passed.',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` -> success; verified init, tools/list, `okno.health`, `windows.list_windows`, `windows.attach_window`, `okno.session_state`.',
+        '- `dotnet test WinBridge.sln` -> success; all unit + integration tests passed.',
+        '- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` -> success; verified init, tools/list, `okno.health`, `windows.list_windows`, `windows.attach_window`, `okno.session_state`, `windows.capture`.',
         '- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` -> success; regenerated `project-interfaces.*`, `commands.md`, `bootstrap-status.json`.',
         '- `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` -> success.',
         '',
@@ -77,6 +77,7 @@ function New-CommandsMarkdown {
         '',
         ('- smoke run id: ' + $SmokeRunId),
         ('- audit directory: ' + $AuditDirectory),
+        ('- capture artifact: ' + (Convert-ToRepoRelative -Path $SmokeReport.capture.artifactPath)),
         ('- smoke report: ' + $SmokeReportPath)
     )
 
@@ -131,13 +132,13 @@ function New-BootstrapStatusObject {
             declared_tools = @($SmokeReport.declared_tools).Count
             visible_windows = $SmokeReport.windows.count
             attached_hwnd = $SmokeReport.attached_window.attachedWindow.window.hwnd
+            capture_artifact = (Convert-ToRepoRelative -Path $SmokeReport.capture.artifactPath)
             audit_directory = $AuditDirectory
             smoke_report = $SmokeReportPath
             audit_summary = $LatestAuditSummaryPath
         }
         deferred_scope = @(
             'UIA',
-            'Capture',
             'Input',
             'Clipboard',
             'Waiting',

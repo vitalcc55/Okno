@@ -43,6 +43,7 @@ public static class ToolContractExporter
             [
                 "artifacts/diagnostics/<run_id>/events.jsonl",
                 "artifacts/diagnostics/<run_id>/summary.md",
+                "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",
                 "artifacts/smoke/<run_id>/report.json",
                 "artifacts/smoke/<run_id>/summary.md",
             ]);

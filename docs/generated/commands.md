@@ -1,4 +1,4 @@
-﻿# Commands Inventory
+# Commands Inventory
 
 > Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.
 
@@ -20,13 +20,14 @@
 ## Latest Verified Validation
 
 - `dotnet build WinBridge.sln --no-restore` -> success, 0 warnings, 0 errors.
-- `dotnet test WinBridge.sln` -> success, 12/12 tests passed.
-- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` -> success; verified init, tools/list, `okno.health`, `windows.list_windows`, `windows.attach_window`, `okno.session_state`.
+- `dotnet test WinBridge.sln` -> success; all unit + integration tests passed.
+- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` -> success; verified init, tools/list, `okno.health`, `windows.list_windows`, `windows.attach_window`, `okno.session_state`, `windows.capture`.
 - `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` -> success; regenerated `project-interfaces.*`, `commands.md`, `bootstrap-status.json`.
 - `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` -> success.
 
 ## Latest Smoke Evidence
 
-- smoke run id: 20260312T194932621
-- audit directory: artifacts/diagnostics/20260312T164933088-df26e
-- smoke report: artifacts/smoke/20260312T194932621/report.json
+- smoke run id: 20260313T151344552
+- audit directory: artifacts/diagnostics/20260313T121345549-e4cf4
+- capture artifact: artifacts/diagnostics/20260313T121345549-e4cf4/captures/window-window-197802-20260313T121346148-48f22dc194314e48b77e5cad6fbc7e86.png
+- smoke report: artifacts/smoke/20260313T151344552/report.json

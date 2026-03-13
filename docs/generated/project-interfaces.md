@@ -31,12 +31,12 @@
 | `windows.list_windows` | `ReadOnly` | Перечисляет top-level окна Windows. |
 | `windows.attach_window` | `SessionMutation` | Прикрепляет текущую сессию к выбранному окну. |
 | `windows.focus_window` | `OsSideEffect` | Пытается перевести окно в foreground. |
+| `windows.capture` | `OsSideEffect` | Снимает window или desktop monitor capture и возвращает PNG + metadata. |
 
 ### Deferred but declared
 
 | Tool | Current outcome | Planned phase |
 | --- | --- | --- |
-| `windows.capture` | `unsupported` | roadmap stage 3 |
 | `windows.clipboard_get` | `unsupported` | roadmap stage 4 |
 | `windows.clipboard_set` | `unsupported` | roadmap stage 4 |
 | `windows.input` | `unsupported` | roadmap stage 5 |
@@ -60,5 +60,6 @@
 
 - `artifacts/diagnostics/<run_id>/events.jsonl`
 - `artifacts/diagnostics/<run_id>/summary.md`
+- `artifacts/diagnostics/<run_id>/captures/<capture_id>.png`
 - `artifacts/smoke/<run_id>/report.json`
 - `artifacts/smoke/<run_id>/summary.md`

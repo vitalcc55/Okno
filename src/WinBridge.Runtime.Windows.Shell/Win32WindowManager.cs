@@ -37,6 +37,9 @@ public sealed class Win32WindowManager : IWindowManager
                         Hwnd: hWnd.ToInt64(),
                         Title: title,
                         ProcessName: threadId == 0 ? null : TryGetProcessName(processId),
+                        ProcessId: threadId == 0 ? null : checked((int)processId),
+                        ThreadId: threadId == 0 ? null : checked((int)threadId),
+                        ClassName: TryGetWindowClassName(hWnd),
                         Bounds: new Bounds(rect.Left, rect.Top, rect.Right, rect.Bottom),
                         IsForeground: hWnd == foregroundWindow,
                         IsVisible: isVisible));
@@ -125,6 +128,13 @@ public sealed class Win32WindowManager : IWindowManager
         }
     }
 
+    private static string? TryGetWindowClassName(IntPtr hWnd)
+    {
+        char[] buffer = new char[256];
+        int length = GetClassName(hWnd, buffer, buffer.Length);
+        return length > 0 ? new string(buffer, 0, length) : null;
+    }
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -147,6 +157,9 @@ public sealed class Win32WindowManager : IWindowManager
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetClassName(IntPtr hWnd, [Out] char[] lpClassName, int nMaxCount);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);

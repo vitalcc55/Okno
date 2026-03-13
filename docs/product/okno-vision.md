@@ -138,8 +138,9 @@ Okno должен уметь два режима:
 
 ### Ориентиры
 
-- `Windows.Graphics.Capture` — режим окна;
-- `Desktop Duplication API` — desktop-level режим.
+- `Windows.Graphics.Capture` — основной путь для `window capture` и первого `desktop monitor capture`;
+- native screen copy (`GDI`) — допустимый desktop-only backup path, если `Windows.Graphics.Capture` недоступен или не даёт своевременный frame для конкретного target;
+- `Desktop Duplication API` — возможная следующая оптимизация, если позже понадобится более тяжёлый desktop-only pipeline.
 
 ### Важный принцип
 

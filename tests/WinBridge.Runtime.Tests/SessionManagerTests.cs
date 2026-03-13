@@ -17,6 +17,9 @@ public sealed class SessionManagerTests
             Hwnd: 100,
             Title: "First",
             ProcessName: "proc",
+            ProcessId: 1000,
+            ThreadId: 2000,
+            ClassName: "TestWindow",
             Bounds: new Bounds(0, 0, 640, 480),
             IsForeground: true,
             IsVisible: true);

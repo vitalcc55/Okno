@@ -3,7 +3,7 @@ namespace WinBridge.Runtime.Tooling;
 public static class ToolContractManifest
 {
     public static string ContractNotes { get; } =
-        "Okno bootstrap runtime экспортирует безопасный window/session slice и честные deferred tools.";
+        "Okno bootstrap runtime экспортирует безопасный observe/window slice и честные deferred tools.";
 
     public static IReadOnlyList<ToolDescriptor> All { get; } =
         new[]
@@ -14,7 +14,7 @@ public static class ToolContractManifest
             new ToolDescriptor(ToolNames.WindowsListWindows, "windows.shell", ToolLifecycle.Implemented, ToolSafetyClass.ReadOnly, "Перечисляет top-level окна Windows.", null, null, true),
             new ToolDescriptor(ToolNames.WindowsAttachWindow, "windows.shell", ToolLifecycle.Implemented, ToolSafetyClass.SessionMutation, "Прикрепляет текущую сессию к выбранному окну.", null, null, true),
             new ToolDescriptor(ToolNames.WindowsFocusWindow, "windows.shell", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, "Пытается перевести окно в foreground.", null, null, false),
-            new ToolDescriptor(ToolNames.WindowsCapture, "windows.capture", ToolLifecycle.Deferred, ToolSafetyClass.ReadOnly, "Снимает desktop или window capture.", "roadmap stage 3", "В bootstrap используй list/attach/focus вместо capture.", false),
+            new ToolDescriptor(ToolNames.WindowsCapture, "windows.capture", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, "Снимает window или desktop monitor capture и возвращает PNG + metadata.", null, null, true),
             new ToolDescriptor(ToolNames.WindowsClipboardGet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.ReadOnly, "Читает текущее содержимое clipboard.", "roadmap stage 4", "Clipboard path будет добавлен после skeleton runtime.", false),
             new ToolDescriptor(ToolNames.WindowsClipboardSet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Записывает новое содержимое в clipboard.", "roadmap stage 4", "До clipboard-сервиса используй безопасные stub calls.", false),
             new ToolDescriptor(ToolNames.WindowsInput, "windows.input", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Выполняет низкоуровневую последовательность input-действий.", "roadmap stage 5", "Low-level input вводится только после capture/text path.", false),

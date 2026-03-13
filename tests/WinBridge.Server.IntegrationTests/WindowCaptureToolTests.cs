@@ -1,0 +1,307 @@
+using System.Text;
+using System.Text.Json;
+using ModelContextProtocol.Protocol;
+using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Session;
+using WinBridge.Runtime.Windows.Capture;
+using WinBridge.Runtime.Windows.Shell;
+using WinBridge.Server.Tools;
+
+namespace WinBridge.Server.IntegrationTests;
+
+public sealed class WindowCaptureToolTests
+{
+    [Fact]
+    public async Task CapturePrefersExplicitHwndOverAttachedWindow()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached");
+        WindowDescriptor explicitWindow = CreateWindow(hwnd: 202, title: "Explicit");
+        FakeCaptureService captureService = new(CreateCaptureResult(explicitWindow, "window"));
+        WindowTools tools = CreateTools(
+            windows: [attachedWindow, explicitWindow],
+            captureService: captureService,
+            attachedWindow: attachedWindow);
+
+        CallToolResult result = await tools.Capture(hwnd: explicitWindow.Hwnd);
+
+        Assert.False(result.IsError);
+        Assert.Equal(explicitWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("window", payload.GetProperty("scope").GetString());
+        Assert.Equal(explicitWindow.Hwnd, payload.GetProperty("hwnd").GetInt64());
+    }
+
+    [Fact]
+    public async Task CaptureUsesAttachedWindowWhenHwndIsMissing()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 303, title: "Attached");
+        FakeCaptureService captureService = new(CreateCaptureResult(attachedWindow, "window"));
+        WindowTools tools = CreateTools(
+            windows: [attachedWindow],
+            captureService: captureService,
+            attachedWindow: attachedWindow);
+
+        CallToolResult result = await tools.Capture();
+
+        Assert.False(result.IsError);
+        Assert.Equal(attachedWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
+        Assert.Equal(CaptureScope.Window, captureService.LastTarget?.Scope);
+    }
+
+    [Fact]
+    public async Task CaptureUsesAttachedWindowMonitorForDesktopScope()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 404, title: "Attached");
+        FakeCaptureService captureService = new(CreateCaptureResult(attachedWindow, "desktop", "monitor"));
+        WindowTools tools = CreateTools(
+            windows: [attachedWindow],
+            captureService: captureService,
+            attachedWindow: attachedWindow);
+
+        CallToolResult result = await tools.Capture(scope: "desktop");
+
+        Assert.False(result.IsError);
+        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
+        Assert.Equal(attachedWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
+        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+    }
+
+    [Fact]
+    public async Task CaptureFallsBackToPrimaryMonitorWhenAttachedDesktopWindowIsStale()
+    {
+        WindowDescriptor staleAttachedWindow = CreateWindow(hwnd: 405, title: "Stale");
+        FakeCaptureService captureService = new(CreateCaptureResult(window: null, scope: "desktop", targetKind: "monitor"));
+        WindowTools tools = CreateTools(
+            windows: [],
+            captureService: captureService,
+            attachedWindow: staleAttachedWindow);
+
+        CallToolResult result = await tools.Capture(scope: "desktop");
+
+        Assert.False(result.IsError);
+        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
+        Assert.Null(captureService.LastTarget?.Window);
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
+        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+        Assert.False(payload.TryGetProperty("hwnd", out _));
+    }
+
+    [Fact]
+    public async Task CaptureFallsBackToPrimaryMonitorWhenAttachedDesktopHwndIsReusedInsideSameProcess()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 406, title: "Original", processId: 123, threadId: 900, className: "MainWindow");
+        WindowDescriptor reusedLiveWindow = CreateWindow(hwnd: 406, title: "Different", processId: 123, threadId: 901, className: "MainWindow");
+        FakeCaptureService captureService = new(CreateCaptureResult(window: null, scope: "desktop", targetKind: "monitor"));
+        WindowTools tools = CreateTools(
+            windows: [reusedLiveWindow],
+            captureService: captureService,
+            attachedWindow: attachedWindow);
+
+        CallToolResult result = await tools.Capture(scope: "desktop");
+
+        Assert.False(result.IsError);
+        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
+        Assert.Null(captureService.LastTarget?.Window);
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
+        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+        Assert.False(payload.TryGetProperty("hwnd", out _));
+    }
+
+    [Fact]
+    public async Task CaptureKeepsAttachedWindowWhenOnlyTitleChanges()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 407, title: "Original");
+        WindowDescriptor renamedLiveWindow = attachedWindow with { Title = "Renamed" };
+        FakeCaptureService captureService = new(CreateCaptureResult(renamedLiveWindow, "window"));
+        WindowTools tools = CreateTools(
+            windows: [renamedLiveWindow],
+            captureService: captureService,
+            attachedWindow: attachedWindow);
+
+        CallToolResult result = await tools.Capture(scope: "window");
+
+        Assert.False(result.IsError);
+        Assert.Equal(CaptureScope.Window, captureService.LastTarget?.Scope);
+        Assert.Equal(attachedWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
+    }
+
+    [Fact]
+    public async Task CaptureKeepsAttachedDesktopWindowWhenOnlyTitleChanges()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 408, title: "Original");
+        WindowDescriptor renamedLiveWindow = attachedWindow with { Title = "Renamed" };
+        FakeCaptureService captureService = new(CreateCaptureResult(renamedLiveWindow, "desktop", "monitor"));
+        WindowTools tools = CreateTools(
+            windows: [renamedLiveWindow],
+            captureService: captureService,
+            attachedWindow: attachedWindow);
+
+        CallToolResult result = await tools.Capture(scope: "desktop");
+
+        Assert.False(result.IsError);
+        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
+        Assert.Equal(attachedWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
+        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+        Assert.Equal(attachedWindow.Hwnd, payload.GetProperty("hwnd").GetInt64());
+    }
+
+    [Fact]
+    public async Task CaptureReturnsToolErrorWhenWindowTargetIsMissing()
+    {
+        FakeCaptureService captureService = new(CreateCaptureResult(CreateWindow(), "window"));
+        WindowTools tools = CreateTools(
+            windows: [],
+            captureService: captureService,
+            attachedWindow: null);
+
+        CallToolResult result = await tools.Capture();
+
+        Assert.True(result.IsError);
+        Assert.Null(captureService.LastTarget);
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("failed", payload.GetProperty("status").GetString());
+        Assert.Contains("сначала прикрепить окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CaptureReturnsStructuredJsonTextAndImageBlocksOnSuccess()
+    {
+        WindowDescriptor window = CreateWindow(hwnd: 505, title: "Captured");
+        byte[] pngBytes = [0, 1, 2, 255];
+        FakeCaptureService captureService = new(CreateCaptureResult(window, "window", pngBytes: pngBytes));
+        WindowTools tools = CreateTools(
+            windows: [window],
+            captureService: captureService,
+            attachedWindow: window);
+
+        CallToolResult result = await tools.Capture();
+
+        Assert.False(result.IsError);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(2, result.Content.Count);
+
+        TextContentBlock textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        ImageContentBlock imageBlock = Assert.IsType<ImageContentBlock>(result.Content[1]);
+
+        Assert.Contains("\"scope\":\"window\"", textBlock.Text, StringComparison.Ordinal);
+        Assert.Equal("image/png", imageBlock.MimeType);
+        Assert.Equal(Convert.ToBase64String(pngBytes), Encoding.ASCII.GetString(imageBlock.Data.Span));
+    }
+
+    private static JsonElement AssertStructuredPayload(CallToolResult result)
+    {
+        Assert.NotNull(result.StructuredContent);
+        return result.StructuredContent!.Value;
+    }
+
+    private static WindowTools CreateTools(
+        IReadOnlyList<WindowDescriptor> windows,
+        ICaptureService captureService,
+        WindowDescriptor? attachedWindow)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "capture-tests",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "capture-tests"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "capture-tests", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "capture-tests", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("capture-tests"));
+
+        if (attachedWindow is not null)
+        {
+            sessionManager.Attach(attachedWindow, "hwnd");
+        }
+
+        return new WindowTools(
+            auditLog,
+            sessionManager,
+            new FakeWindowManager(windows),
+            captureService);
+    }
+
+    private static WindowDescriptor CreateWindow(
+        long hwnd = 42,
+        string title = "Window",
+        string processName = "okno-tests",
+        int processId = 123,
+        int threadId = 456,
+        string className = "OknoWindow") =>
+        new(
+            Hwnd: hwnd,
+            Title: title,
+            ProcessName: processName,
+            ProcessId: processId,
+            ThreadId: threadId,
+            ClassName: className,
+            Bounds: new Bounds(10, 20, 210, 220),
+            IsForeground: true,
+            IsVisible: true);
+
+    private static CaptureResult CreateCaptureResult(
+        WindowDescriptor? window,
+        string scope,
+        string targetKind = "window",
+        byte[]? pngBytes = null)
+    {
+        CaptureMetadata metadata = new(
+            Scope: scope,
+            TargetKind: targetKind,
+            Hwnd: window?.Hwnd,
+            Title: window?.Title,
+            ProcessName: window?.ProcessName,
+            Bounds: window?.Bounds ?? new Bounds(0, 0, 1920, 1080),
+            DpiScale: 1.0,
+            PixelWidth: 200,
+            PixelHeight: 200,
+            CapturedAtUtc: DateTimeOffset.UtcNow,
+            ArtifactPath: @"C:\artifacts\capture.png",
+            MimeType: "image/png",
+            ByteSize: (pngBytes ?? [1, 2, 3]).Length,
+            SessionRunId: "capture-tests");
+
+        return new CaptureResult(metadata, pngBytes ?? [1, 2, 3]);
+    }
+
+    private sealed class FakeCaptureService(CaptureResult result) : ICaptureService
+    {
+        public CaptureTarget? LastTarget { get; private set; }
+
+        public Task<CaptureResult> CaptureAsync(CaptureTarget target, CancellationToken cancellationToken)
+        {
+            LastTarget = target;
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class FakeWindowManager(IReadOnlyList<WindowDescriptor> windows) : IWindowManager
+    {
+        public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible = false) => windows;
+
+        public WindowDescriptor? FindWindow(WindowSelector selector)
+        {
+            selector.Validate();
+            return windows.FirstOrDefault(window => selector.Hwnd == window.Hwnd);
+        }
+
+        public bool TryFocus(long hwnd) => windows.Any(window => window.Hwnd == hwnd);
+    }
+}

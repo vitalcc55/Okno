@@ -15,7 +15,8 @@
 - `src/WinBridge.Runtime.Diagnostics` — audit, evidence, tool execution boundary.
 - `src/WinBridge.Runtime.Session` — session state и attach semantics.
 - `src/WinBridge.Runtime.Windows.Shell` — top-level shell/window capability (`list/find/focus`).
-- `src/WinBridge.Runtime.Windows.UIA` / `Capture` / `Input` / `Clipboard` / `Waiting` — будущие capability seams без implementation.
+- `src/WinBridge.Runtime.Windows.Capture` — первый реализованный observe/capture slice (`window` / `desktop` monitor capture), PNG artifacts, `Windows.Graphics.Capture` как основной путь с native fallback.
+- `src/WinBridge.Runtime.Windows.UIA` / `Input` / `Clipboard` / `Waiting` — следующие capability seams; пока без production implementation.
 - `src/WinBridge.Server` — MCP host, tool registration, transport boundary.
 - `tests/WinBridge.Runtime.Tests` — unit и structural checks.
 - `tests/WinBridge.Server.IntegrationTests` — stdio/MCP smoke и integration checks.
@@ -24,14 +25,16 @@
 - `docs/architecture` — фактическая архитектура и observability-модель.
 - `docs/generated` — инвентаризации стека, команд, интерфейсов и test matrix.
 - `docs/bootstrap/bootstrap-status.json` — generated bootstrap status; не редактировать вручную.
-- `artifacts/diagnostics` и `artifacts/smoke` — локальные evidence packs; не коммитятся, но считаются каноническим investigation path.
+- `artifacts/diagnostics` (включая `captures/`) и `artifacts/smoke` — локальные evidence packs; не коммитятся, но считаются каноническим investigation path.
 
 ## Guardrails
 
 - `STDOUT` зарезервирован под MCP transport; любые diagnostics и human logs должны идти в файлы артефактов или в `stderr`.
 - Новые MCP tools нельзя добавлять вручную в нескольких местах: сначала `ToolNames`, затем `ToolContractManifest`, затем export/docs/smoke/tests.
+- `windows.capture` уже считается реализованным observe tool: при изменениях сохраняй MCP contract `structuredContent + image/png + local capture artifact` и синхронизируй smoke/tests/docs в том же цикле.
+- Для новых capability slices (`focus`, `clipboard`, `input`, `wait`, `uia`, будущие observe/action tools) сначала применяй universal policy из [docs/architecture/capability-design-policy.md](docs/architecture/capability-design-policy.md): identity, fallback, false-success, scenario matrix и verification ladder должны быть определены до реализации.
 - `docs/generated/*` и `docs/bootstrap/bootstrap-status.json` могут обновляться автоматически после `refresh-generated-docs.ps1` и `ci.ps1`. Если они изменились без ручной правки, это ожидаемое generated behavior, а не неожиданный user diff.
 - Для V1 не подменять GUI-слой shell-автоматизацией; shell допустим только для repo operations, test harness и локальных dev-команд.
 - Любая новая нетривиальная задача должна обновлять ExecPlan и соответствующие generated docs по факту проверок, а не по догадке.
 - Если меняется tool contract или observability schema, синхронизируй [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md) и [docs/architecture/observability.md](docs/architecture/observability.md) в том же цикле.
-- Verification-first loop уже нормализован: `scripts/bootstrap.ps1` -> `scripts/build.ps1` -> `scripts/test.ps1` -> `scripts/refresh-generated-docs.ps1` -> `scripts/smoke.ps1`; для полного локального контура используй `scripts/ci.ps1`.
+- Verification-first loop уже нормализован: `scripts/bootstrap.ps1` -> `scripts/build.ps1` -> `scripts/test.ps1` -> `scripts/smoke.ps1` -> `scripts/refresh-generated-docs.ps1`; для полного локального контура используй `scripts/ci.ps1`.
