@@ -9,4 +9,7 @@ public sealed record WindowDescriptor(
     string? ClassName,
     Bounds Bounds,
     bool IsForeground,
-    bool IsVisible);
+    bool IsVisible,
+    string WindowState = WindowStateValues.Unknown,
+    string? MonitorId = null,
+    string? MonitorFriendlyName = null);

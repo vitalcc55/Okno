@@ -45,6 +45,7 @@
 - 2026-03-12: observability baseline — file-based structured audit + summary, без обязательного внешнего telemetry backend.
 - 2026-03-12: product-ready transport scope ограничен `STDIO` local process; HTTP transport отложен до post-STDIO stage.
 - 2026-03-13: для новых capability slices вводится отдельная design/verification policy по identity, fallback, false-success и scenario matrix; source of truth — `docs/architecture/capability-design-policy.md`.
+- 2026-03-15: display/activation slice реализуется через отдельный `Windows.Display` seam, а `windows.capture(window)` не получает hidden restore semantics; restore/focus проверяется отдельным `windows.activate_window`.
 
 ## Progress
 
@@ -52,5 +53,6 @@
 - `done`: bootstrap scaffold, runtime skeleton, observability vertical slice.
 - `done`: control plane scripts и local CI equivalent.
 - `done`: `windows.capture` с window/desktop monitor observe loop, PNG artifact и MCP image result.
+- `done`: display/activation hardening: `windows.list_monitors`, `windows.activate_window`, monitor-aware `windows.list_windows` и explicit desktop capture по `monitorId`.
 - `done`: generated docs по фактическим проверкам.
 - `done`: universal capability design policy для следующих feature slices.

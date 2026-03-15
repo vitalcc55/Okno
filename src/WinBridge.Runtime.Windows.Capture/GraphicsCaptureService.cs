@@ -14,10 +14,13 @@ using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Windows.Display;
 
 namespace WinBridge.Runtime.Windows.Capture;
 
-public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : ICaptureService
+public sealed class GraphicsCaptureService(
+    AuditLogOptions auditLogOptions,
+    IMonitorManager monitorManager) : ICaptureService
 {
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
     private const uint D3D11SdkVersion = 7;
@@ -58,7 +61,10 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
                 ArtifactPath: artifactPath,
                 MimeType: "image/png",
                 ByteSize: capture.PngBytes.Length,
-                SessionRunId: auditLogOptions.RunId);
+                SessionRunId: auditLogOptions.RunId,
+                MonitorId: resolvedTarget.Monitor?.Descriptor.MonitorId,
+                MonitorFriendlyName: resolvedTarget.Monitor?.Descriptor.FriendlyName,
+                MonitorGdiDeviceName: resolvedTarget.Monitor?.Descriptor.GdiDeviceName);
 
             return new CaptureResult(metadata, capture.PngBytes);
         }
@@ -139,7 +145,7 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
     {
         GraphicsCaptureItem item = resolvedTarget.Scope == CaptureScope.Window
             ? CreateItemForWindow(new IntPtr(resolvedTarget.Window!.Hwnd))
-            : CreateItemForMonitor(new IntPtr(resolvedTarget.MonitorHandle!.Value));
+            : CreateItemForMonitor(new IntPtr(resolvedTarget.Monitor!.Handle));
         SizeInt32 size = item.Size;
         if (size.Width <= 0 || size.Height <= 0)
         {
@@ -273,7 +279,9 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
             string capturesDirectory = Path.Combine(auditLogOptions.RunDirectory, "captures");
             Directory.CreateDirectory(capturesDirectory);
 
-            string handle = target.Window?.Hwnd.ToString(CultureInfo.InvariantCulture) ?? "primary";
+            string handle = target.Window?.Hwnd.ToString(CultureInfo.InvariantCulture)
+                ?? target.Monitor?.Handle.ToString(CultureInfo.InvariantCulture)
+                ?? "primary";
             string fileName = CaptureArtifactNameBuilder.Create(
                 target.Scope.ToContractValue(),
                 target.TargetKind,
@@ -293,15 +301,15 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
         }
     }
 
-    private static ResolvedCaptureTarget ResolveTarget(CaptureTarget target) =>
+    private ResolvedCaptureTarget ResolveTarget(CaptureTarget target) =>
         target.Scope switch
         {
             CaptureScope.Window => ResolveWindowTarget(target.Window),
-            CaptureScope.Desktop => ResolveDesktopTarget(target.Window),
+            CaptureScope.Desktop => ResolveDesktopTarget(target.Window, target.MonitorId),
             _ => throw new ArgumentOutOfRangeException(nameof(target), target.Scope, null),
         };
 
-    private static ResolvedCaptureTarget ResolveWindowTarget(WindowDescriptor? window)
+    private ResolvedCaptureTarget ResolveWindowTarget(WindowDescriptor? window)
     {
         if (window is null)
         {
@@ -312,51 +320,37 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
         Bounds bounds = TryGetWindowBounds(hwnd, out Bounds currentBounds) ? currentBounds : window.Bounds;
         ValidateWindowCaptureTarget(hwnd, bounds);
         double dpiScale = GetWindowDpiScale(hwnd);
-        return new ResolvedCaptureTarget(CaptureScope.Window, "window", window, bounds, dpiScale, null);
-    }
-
-    private static ResolvedCaptureTarget ResolveDesktopTarget(WindowDescriptor? window)
-    {
-        IntPtr monitor = window is null
-            ? ResolvePrimaryMonitor()
-            : MonitorFromWindow(new IntPtr(window.Hwnd), MonitorDefaultToNearest);
-
-        if (monitor == IntPtr.Zero)
+        MonitorInfo? monitor = monitorManager.FindMonitorForWindow(window.Hwnd);
+        if (monitor is null)
         {
-            throw new CaptureOperationException("Не удалось определить monitor для desktop capture.");
+            throw new CaptureOperationException("Не удалось определить monitor для window capture.");
         }
 
-        Bounds bounds = GetMonitorBounds(monitor);
-        double dpiScale = GetMonitorDpiScale(monitor);
-        return new ResolvedCaptureTarget(CaptureScope.Desktop, "monitor", window, bounds, dpiScale, monitor.ToInt64());
+        return new ResolvedCaptureTarget(CaptureScope.Window, "window", window, bounds, dpiScale, monitor);
     }
 
-    private static IntPtr ResolvePrimaryMonitor()
+    private ResolvedCaptureTarget ResolveDesktopTarget(WindowDescriptor? window, string? explicitMonitorId)
     {
-        IntPtr primaryMonitor = IntPtr.Zero;
+        MonitorInfo? monitor = !string.IsNullOrWhiteSpace(explicitMonitorId)
+            ? monitorManager.FindMonitorById(explicitMonitorId)
+            : window is null
+                ? monitorManager.GetPrimaryMonitor()
+                : monitorManager.FindMonitorForWindow(window.Hwnd);
+        if (monitor is null)
+        {
+            throw new CaptureOperationException(
+                !string.IsNullOrWhiteSpace(explicitMonitorId)
+                    ? "Выбранный monitorId не найден среди активных мониторов."
+                    : "Не удалось определить monitor для desktop capture.");
+        }
 
-        _ = EnumDisplayMonitors(
-            IntPtr.Zero,
-            IntPtr.Zero,
-            (monitor, _, _, _) =>
-            {
-                MONITORINFOEX info = new() { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
-                if (!GetMonitorInfo(monitor, ref info))
-                {
-                    return true;
-                }
-
-                if ((info.dwFlags & MonitorInfoPrimary) != 0)
-                {
-                    primaryMonitor = monitor;
-                    return false;
-                }
-
-                return true;
-            },
-            IntPtr.Zero);
-
-        return primaryMonitor;
+        return new ResolvedCaptureTarget(
+            CaptureScope.Desktop,
+            "monitor",
+            window,
+            monitor.Descriptor.Bounds,
+            monitor.Descriptor.DpiScale,
+            monitor);
     }
 
     private static GraphicsCaptureItem CreateItemForWindow(IntPtr hwnd)
@@ -542,32 +536,10 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
         }
     }
 
-    private static Bounds GetMonitorBounds(IntPtr monitor)
-    {
-        MONITORINFOEX info = new() { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
-        if (!GetMonitorInfo(monitor, ref info))
-        {
-            throw new CaptureOperationException("Не удалось получить bounds выбранного monitor.");
-        }
-
-        return new Bounds(info.rcMonitor.Left, info.rcMonitor.Top, info.rcMonitor.Right, info.rcMonitor.Bottom);
-    }
-
     private static double GetWindowDpiScale(IntPtr hwnd)
     {
         uint dpi = GetDpiForWindow(hwnd);
         return dpi == 0 ? 1.0 : dpi / 96.0;
-    }
-
-    private static double GetMonitorDpiScale(IntPtr monitor)
-    {
-        int hr = GetDpiForMonitor(monitor, MonitorDpiType.Effective, out uint dpiX, out _);
-        if (hr < 0 || dpiX == 0)
-        {
-            return 1.0;
-        }
-
-        return dpiX / 96.0;
     }
 
     [DllImport("combase.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
@@ -605,34 +577,7 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
     private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
 
     [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromPoint(POINT point, int flags);
-
-    [DllImport("user32.dll")]
-    private static extern bool EnumDisplayMonitors(
-        IntPtr hdc,
-        IntPtr lprcClip,
-        MonitorEnumProc callback,
-        IntPtr data);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFOEX monitorInfo);
-
-    [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
-
-    [DllImport("Shcore.dll")]
-    private static extern int GetDpiForMonitor(IntPtr monitor, MonitorDpiType dpiType, out uint dpiX, out uint dpiY);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT(int x, int y)
-    {
-        public int X = x;
-
-        public int Y = y;
-    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -643,18 +588,6 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
         public int Bottom;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct MONITORINFOEX
-    {
-        public int cbSize;
-        public RECT rcMonitor;
-        public RECT rcWork;
-        public uint dwFlags;
-
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
-        public string szDevice;
-    }
-
     private enum D3DDriverType : uint
     {
         Hardware = 1,
@@ -663,11 +596,6 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
 
     private enum D3DFeatureLevel : uint
     {
-    }
-
-    private enum MonitorDpiType
-    {
-        Effective = 0,
     }
 
     [ComImport]
@@ -689,19 +617,13 @@ public sealed class GraphicsCaptureService(AuditLogOptions auditLogOptions) : IC
     {
     }
 
-    private delegate bool MonitorEnumProc(
-        IntPtr monitor,
-        IntPtr hdcMonitor,
-        IntPtr lprcMonitor,
-        IntPtr data);
-
     private sealed record ResolvedCaptureTarget(
         CaptureScope Scope,
         string TargetKind,
         WindowDescriptor? Window,
         Bounds Bounds,
         double DpiScale,
-        long? MonitorHandle);
+        MonitorInfo? Monitor);
 
     private sealed record RasterizedCapture(
         byte[] PngBytes,

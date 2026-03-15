@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Session\WinBridge.Runtime.Session.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Tooling\WinBridge.Runtime.Tooling.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Capture\WinBridge.Runtime.Windows.Capture.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Display\WinBridge.Runtime.Windows.Display.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
   </ItemGroup>
 

@@ -284,12 +284,25 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 
 ## 4.1. Window/session primitives
 
+### `windows.list_monitors`
+Возвращает:
+- count;
+- monitor id;
+- friendly name;
+- gdi device name;
+- bounds / work area;
+- dpi scale;
+- isPrimary.
+
 ### `windows.list_windows`
 Возвращает:
 - hwnd/id;
 - title;
 - process name (если доступно);
 - bounds;
+- windowState;
+- monitorId;
+- monitorFriendlyName;
 - isForeground;
 - isVisible.
 
@@ -306,6 +319,12 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 ### `windows.focus_window`
 Явно поднимает окно в foreground.
 
+### `windows.activate_window`
+Явно делает окно usable target:
+- для minimизированного окна сначала делает restore;
+- затем пытается подтвердить foreground focus;
+- используется как основной путь перед `window capture`, `input` и `wait`.
+
 ---
 
 ## 4.2. Observation primitives
@@ -314,13 +333,16 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 Аргументы:
 - `scope`: `desktop | window`
 - `hwnd`: optional явная цель для `window` capture
+- `monitorId`: optional явная цель для `desktop` capture
 - для `window` без `hwnd` используется attached window
-- для `desktop` без `hwnd` используется monitor attached window или primary monitor
+- для `desktop` с `monitorId` используется именно выбранный monitor без silent fallback
+- для `desktop` без `monitorId` и без `hwnd` используется monitor attached window или primary monitor
 
 Возвращает:
 - image;
 - metadata;
 - local artifact path.
+- monitor metadata.
 
 ### `windows.uia_snapshot`
 Аргументы:

@@ -35,6 +35,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.Runtime.Windows.C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.Runtime.Waiting", "src\WinBridge.Runtime.Waiting\WinBridge.Runtime.Waiting.csproj", "{56E14915-EF8D-40D7-8722-0096A55DB25B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.SmokeWindowHost", "tests\WinBridge.SmokeWindowHost\WinBridge.SmokeWindowHost.csproj", "{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -213,6 +215,18 @@ Global
 		{56E14915-EF8D-40D7-8722-0096A55DB25B}.Release|x64.Build.0 = Release|Any CPU
 		{56E14915-EF8D-40D7-8722-0096A55DB25B}.Release|x86.ActiveCfg = Release|Any CPU
 		{56E14915-EF8D-40D7-8722-0096A55DB25B}.Release|x86.Build.0 = Release|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Debug|x64.Build.0 = Debug|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Debug|x86.Build.0 = Debug|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Release|x64.ActiveCfg = Release|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Release|x64.Build.0 = Release|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Release|x86.ActiveCfg = Release|Any CPU
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -232,5 +246,6 @@ Global
 		{BE321179-987F-48D1-BD72-EE00D45B1EBE} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{248E9253-F4D6-4666-ADB0-044A6ABE1E99} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{56E14915-EF8D-40D7-8722-0096A55DB25B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{09DC770F-A8A3-44BD-A674-7BD766E2FE7F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

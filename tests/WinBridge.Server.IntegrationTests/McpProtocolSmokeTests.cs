@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using WinBridge.Runtime.Tooling;
@@ -10,11 +11,14 @@ public sealed class McpProtocolSmokeTests
     private static readonly string[] AttachSuccessStates = { "done", "already_attached" };
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan ProcessExitTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan HelperWindowTimeout = TimeSpan.FromSeconds(10);
+    private const int SwMinimize = 6;
 
     [Fact]
     public async Task InitializeAndValidateCoreOknoToolsThroughStdio()
     {
         using Process process = StartServer();
+        using Process helperProcess = StartHelperWindow();
 
         await using StreamWriter writer = process.StandardInput;
         using StreamReader reader = process.StandardOutput;
@@ -90,37 +94,61 @@ public sealed class McpProtocolSmokeTests
             Assert.True(captureAnnotations.GetProperty("openWorldHint").GetBoolean());
 
             using JsonDocument healthResponse = await CallToolAsync(reader, writer, 3, ToolNames.OknoHealth, new { });
-            string healthText = healthResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("content")[0]
-                .GetProperty("text")
-                .GetString()!;
+            string healthText = GetToolTextPayload(healthResponse);
             Assert.Contains("\"service\":\"Okno\"", healthText, StringComparison.Ordinal);
 
-            using JsonDocument windowsResponse = await CallToolAsync(reader, writer, 4, ToolNames.WindowsListWindows, new { includeInvisible = false });
-            string windowsText = windowsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("content")[0]
-                .GetProperty("text")
-                .GetString()!;
-            using JsonDocument windowsPayload = JsonDocument.Parse(windowsText);
+            using JsonDocument monitorsResponse = await CallToolAsync(reader, writer, 4, ToolNames.WindowsListMonitors, new { });
+            using JsonDocument monitorsPayload = JsonDocument.Parse(GetToolTextPayload(monitorsResponse));
+            JsonElement monitorsRoot = monitorsPayload.RootElement;
+            int monitorCount = monitorsRoot.GetProperty("count").GetInt32();
+            Assert.True(monitorCount > 0, "Smoke contract requires at least one active monitor.");
+            string primaryMonitorId = monitorsRoot.GetProperty("monitors")[0].GetProperty("monitorId").GetString()!;
+            long helperHwnd = await WaitForMainWindowAsync(helperProcess);
+
+            using JsonDocument windowsResponse = await CallToolAsync(reader, writer, 5, ToolNames.WindowsListWindows, new { includeInvisible = false });
+            using JsonDocument windowsPayload = JsonDocument.Parse(GetToolTextPayload(windowsResponse));
             JsonElement windowsRoot = windowsPayload.RootElement;
             int count = windowsRoot.GetProperty("count").GetInt32();
             Assert.True(count > 0, "Smoke contract requires at least one visible window.");
+            Assert.Contains(
+                windowsRoot.GetProperty("windows").EnumerateArray().Select(window => window.GetProperty("hwnd").GetInt64()),
+                hwnd => hwnd == helperHwnd);
 
-            CaptureSmokeAttempt captureAttempt = await FindWorkingCaptureAttemptAsync(reader, writer, windowsRoot.GetProperty("windows"));
-            long hwnd = captureAttempt.Hwnd;
+            using JsonDocument desktopCaptureResponse = await CallToolAsync(
+                reader,
+                writer,
+                6,
+                ToolNames.WindowsCapture,
+                new
+                {
+                    scope = "desktop",
+                    monitorId = primaryMonitorId,
+                });
+            JsonElement desktopCaptureResult = desktopCaptureResponse.RootElement.GetProperty("result");
+            Assert.False(desktopCaptureResult.GetProperty("isError").GetBoolean());
+            JsonElement desktopStructuredContent = desktopCaptureResult.GetProperty("structuredContent");
+            Assert.Equal("desktop", desktopStructuredContent.GetProperty("scope").GetString());
+            Assert.Equal(primaryMonitorId, desktopStructuredContent.GetProperty("monitorId").GetString());
 
-            Assert.Contains(captureAttempt.AttachStatus, AttachSuccessStates);
-            Assert.Equal("window", captureAttempt.SessionRoot.GetProperty("mode").GetString());
-            Assert.Equal(hwnd, captureAttempt.SessionRoot.GetProperty("attachedWindow").GetProperty("window").GetProperty("hwnd").GetInt64());
+            using JsonDocument attachResponse = await CallToolAsync(reader, writer, 7, ToolNames.WindowsAttachWindow, new { hwnd = helperHwnd });
+            using JsonDocument attachPayload = JsonDocument.Parse(GetToolTextPayload(attachResponse));
+            JsonElement attachRoot = attachPayload.RootElement;
+            string attachStatus = attachRoot.GetProperty("status").GetString()!;
+            Assert.Contains(attachStatus, AttachSuccessStates);
 
-            JsonElement captureResult = captureAttempt.CaptureResponse.RootElement.GetProperty("result");
+            using JsonDocument sessionResponse = await CallToolAsync(reader, writer, 8, ToolNames.OknoSessionState, new { });
+            using JsonDocument sessionPayload = JsonDocument.Parse(GetToolTextPayload(sessionResponse));
+            JsonElement sessionRoot = sessionPayload.RootElement;
+            Assert.Equal("window", sessionRoot.GetProperty("mode").GetString());
+            Assert.Equal(helperHwnd, sessionRoot.GetProperty("attachedWindow").GetProperty("window").GetProperty("hwnd").GetInt64());
+
+            using JsonDocument captureResponse = await CallToolAsync(reader, writer, 9, ToolNames.WindowsCapture, new { scope = "window" });
+            JsonElement captureResult = captureResponse.RootElement.GetProperty("result");
             Assert.False(captureResult.GetProperty("isError").GetBoolean());
 
             JsonElement structuredContent = captureResult.GetProperty("structuredContent");
             Assert.Equal("window", structuredContent.GetProperty("scope").GetString());
-            Assert.Equal(hwnd, structuredContent.GetProperty("hwnd").GetInt64());
+            Assert.Equal(helperHwnd, structuredContent.GetProperty("hwnd").GetInt64());
             Assert.True(structuredContent.GetProperty("pixelWidth").GetInt32() > 0);
             Assert.True(structuredContent.GetProperty("pixelHeight").GetInt32() > 0);
 
@@ -129,18 +157,49 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal("text", content[0].GetProperty("type").GetString());
             Assert.Equal("image", content[1].GetProperty("type").GetString());
             Assert.Equal("image/png", content[1].GetProperty("mimeType").GetString());
-
-            string imageData = content[1].GetProperty("data").GetString()!;
-            Assert.False(string.IsNullOrWhiteSpace(imageData));
+            Assert.False(string.IsNullOrWhiteSpace(content[1].GetProperty("data").GetString()));
 
             string artifactPath = structuredContent.GetProperty("artifactPath").GetString()!;
             Assert.True(File.Exists(artifactPath), $"Capture artifact '{artifactPath}' was not created.");
+
+            Assert.True(MinimizeWindow(helperHwnd), "Smoke helper window did not accept minimize request.");
+            Assert.True(await WaitUntilAsync(() => IsIconic(new IntPtr(helperHwnd))), "Smoke helper window did not become minimized in time.");
+
+            using JsonDocument activateResponse = await CallToolAsync(reader, writer, 20, ToolNames.WindowsActivateWindow, new { hwnd = helperHwnd });
+            JsonElement activateRoot = activateResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("structuredContent");
+            Assert.Equal("done", activateRoot.GetProperty("status").GetString());
+            Assert.True(activateRoot.GetProperty("wasMinimized").GetBoolean());
+            Assert.True(activateRoot.GetProperty("isForeground").GetBoolean());
+            Assert.Equal(helperHwnd, activateRoot.GetProperty("window").GetProperty("hwnd").GetInt64());
+
+            using JsonDocument helperCaptureResponse = await CallToolAsync(
+                reader,
+                writer,
+                21,
+                ToolNames.WindowsCapture,
+                new
+                {
+                    scope = "window",
+                    hwnd = helperHwnd,
+                });
+            JsonElement helperCaptureResult = helperCaptureResponse.RootElement.GetProperty("result");
+            Assert.False(helperCaptureResult.GetProperty("isError").GetBoolean());
+            JsonElement helperStructured = helperCaptureResult.GetProperty("structuredContent");
+            Assert.Equal(helperHwnd, helperStructured.GetProperty("hwnd").GetInt64());
 
             process.StandardInput.Close();
             await WaitForExitAsync(process);
         }
         finally
         {
+            if (!helperProcess.HasExited)
+            {
+                helperProcess.Kill(entireProcessTree: true);
+                await helperProcess.WaitForExitAsync().WaitAsync(ProcessExitTimeout);
+            }
+
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
@@ -179,6 +238,13 @@ public sealed class McpProtocolSmokeTests
 
         return await ReadResponseAsync(reader, toolName);
     }
+
+    private static string GetToolTextPayload(JsonDocument response) =>
+        response.RootElement
+            .GetProperty("result")
+            .GetProperty("content")[0]
+            .GetProperty("text")
+            .GetString()!;
 
     private static async Task<JsonDocument> ReadResponseAsync(StreamReader reader, string requestName)
     {
@@ -248,60 +314,64 @@ public sealed class McpProtocolSmokeTests
         return process;
     }
 
-    private static async Task<CaptureSmokeAttempt> FindWorkingCaptureAttemptAsync(
-        StreamReader reader,
-        StreamWriter writer,
-        JsonElement windows)
+    private static Process StartHelperWindow()
     {
-        foreach (JsonElement window in windows.EnumerateArray())
+        ProcessStartInfo startInfo = new()
         {
-            long hwnd = window.GetProperty("hwnd").GetInt64();
+            FileName = GetHelperWindowExePath(),
+            Arguments = "--title \"Okno Smoke Helper\"",
+            WorkingDirectory = GetRepositoryRoot(),
+            UseShellExecute = false,
+        };
 
-            using JsonDocument attachResponse = await CallToolAsync(reader, writer, 5, ToolNames.WindowsAttachWindow, new { hwnd });
-            string attachText = attachResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("content")[0]
-                .GetProperty("text")
-                .GetString()!;
-            using JsonDocument attachPayload = JsonDocument.Parse(attachText);
-            JsonElement attachRoot = attachPayload.RootElement;
-            string attachStatus = attachRoot.GetProperty("status").GetString()!;
-            if (!AttachSuccessStates.Contains(attachStatus, StringComparer.Ordinal))
-            {
-                continue;
-            }
-
-            using JsonDocument sessionResponse = await CallToolAsync(reader, writer, 6, ToolNames.OknoSessionState, new { });
-            string sessionText = sessionResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("content")[0]
-                .GetProperty("text")
-                .GetString()!;
-            using JsonDocument sessionPayload = JsonDocument.Parse(sessionText);
-            JsonElement sessionRoot = sessionPayload.RootElement.Clone();
-
-            using JsonDocument captureResponse = await CallToolAsync(reader, writer, 7, ToolNames.WindowsCapture, new { scope = "window" });
-            JsonElement captureResult = captureResponse.RootElement.GetProperty("result");
-            if (captureResult.GetProperty("isError").GetBoolean())
-            {
-                continue;
-            }
-
-            return new CaptureSmokeAttempt(
-                Hwnd: hwnd,
-                AttachStatus: attachStatus,
-                SessionRoot: sessionRoot,
-                CaptureResponse: JsonDocument.Parse(captureResponse.RootElement.GetRawText()));
-        }
-
-        throw new InvalidOperationException("Smoke не нашёл окно, которое runtime смог успешно attach и capture-ить.");
+        Process process = new() { StartInfo = startInfo };
+        process.Start();
+        return process;
     }
 
-    private sealed record CaptureSmokeAttempt(
-        long Hwnd,
-        string AttachStatus,
-        JsonElement SessionRoot,
-        JsonDocument CaptureResponse);
+    private static async Task<long> WaitForMainWindowAsync(Process process)
+    {
+        try
+        {
+            _ = process.WaitForInputIdle((int)HelperWindowTimeout.TotalMilliseconds);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        DateTime deadlineUtc = DateTime.UtcNow + HelperWindowTimeout;
+        while (DateTime.UtcNow < deadlineUtc)
+        {
+            process.Refresh();
+            if (process.MainWindowHandle != IntPtr.Zero)
+            {
+                return process.MainWindowHandle.ToInt64();
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException("Smoke helper window did not expose a main window handle in time.");
+    }
+
+    private static async Task<bool> WaitUntilAsync(Func<bool> predicate)
+    {
+        DateTime deadlineUtc = DateTime.UtcNow + HelperWindowTimeout;
+        while (DateTime.UtcNow < deadlineUtc)
+        {
+            if (predicate())
+            {
+                return true;
+            }
+
+            await Task.Delay(100);
+        }
+
+        return predicate();
+    }
+
+    private static bool MinimizeWindow(long hwnd) =>
+        ShowWindowAsync(new IntPtr(hwnd), SwMinimize);
 
     private static string GetServerDllPath() =>
         Path.Combine(
@@ -312,6 +382,16 @@ public sealed class McpProtocolSmokeTests
             "Debug",
             "net8.0-windows10.0.19041.0",
             "Okno.Server.dll");
+
+    private static string GetHelperWindowExePath() =>
+        Path.Combine(
+            GetRepositoryRoot(),
+            "tests",
+            "WinBridge.SmokeWindowHost",
+            "bin",
+            "Debug",
+            "net8.0-windows10.0.19041.0",
+            "WinBridge.SmokeWindowHost.exe");
 
     private static string GetRepositoryRoot()
     {
@@ -330,4 +410,10 @@ public sealed class McpProtocolSmokeTests
 
         return current;
     }
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindowAsync(IntPtr hwnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hwnd);
 }

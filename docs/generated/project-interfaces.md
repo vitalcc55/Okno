@@ -28,8 +28,10 @@
 | `okno.health` | `ReadOnly` | Возвращает сводку состояния runtime и артефактов. |
 | `okno.contract` | `ReadOnly` | Возвращает текущий tool contract runtime. |
 | `okno.session_state` | `ReadOnly` | Возвращает текущий session snapshot. |
+| `windows.list_monitors` | `ReadOnly` | Перечисляет активные monitor targets текущей desktop session. |
 | `windows.list_windows` | `ReadOnly` | Перечисляет top-level окна Windows. |
 | `windows.attach_window` | `SessionMutation` | Прикрепляет текущую сессию к выбранному окну. |
+| `windows.activate_window` | `OsSideEffect` | Восстанавливает окно при необходимости и пытается подтвердить foreground focus. |
 | `windows.focus_window` | `OsSideEffect` | Пытается перевести окно в foreground. |
 | `windows.capture` | `OsSideEffect` | Снимает window или desktop monitor capture и возвращает PNG + metadata. |
 

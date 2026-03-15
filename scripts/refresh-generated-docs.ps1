@@ -1,4 +1,4 @@
-. (Join-Path $PSScriptRoot 'common.ps1')
+﻿. (Join-Path $PSScriptRoot 'common.ps1')
 
 $repoRoot = Get-RepoRoot -ScriptRoot $PSScriptRoot
 Set-Location $repoRoot
@@ -7,6 +7,7 @@ $serverDll = Join-Path $repoRoot 'src\WinBridge.Server\bin\Debug\net8.0-windows1
 $projectInterfacesJsonPath = Join-Path $repoRoot 'docs\generated\project-interfaces.json'
 $projectInterfacesMarkdownPath = Join-Path $repoRoot 'docs\generated\project-interfaces.md'
 $commandsMarkdownPath = Join-Path $repoRoot 'docs\generated\commands.md'
+$testMatrixMarkdownPath = Join-Path $repoRoot 'docs\generated\test-matrix.md'
 $bootstrapStatusJsonPath = Join-Path $repoRoot 'docs\bootstrap\bootstrap-status.json'
 
 Invoke-NativeCommand -Description 'dotnet build before generated docs refresh' -Command {
@@ -69,16 +70,45 @@ function New-CommandsMarkdown {
         '',
         '- `dotnet build WinBridge.sln --no-restore` -> success, 0 warnings, 0 errors.',
         '- `dotnet test WinBridge.sln` -> success; all unit + integration tests passed.',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` -> success; verified init, tools/list, `okno.health`, `windows.list_windows`, `windows.attach_window`, `okno.session_state`, `windows.capture`.',
+        '- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` -> success; verified init, tools/list, `okno.health`, `windows.list_monitors`, explicit desktop capture by `monitorId`, `windows.list_windows`, `windows.attach_window`, `okno.session_state`, `windows.activate_window`, `windows.capture`.',
         '- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` -> success; regenerated `project-interfaces.*`, `commands.md`, `bootstrap-status.json`.',
         '- `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` -> success.',
         '',
         '## Latest Smoke Evidence',
         '',
         ('- smoke run id: ' + $SmokeRunId),
+        ('- monitor count: ' + $SmokeReport.monitors.count),
+        ('- desktop monitor id: ' + $SmokeReport.desktop_capture.monitorId),
         ('- audit directory: ' + $AuditDirectory),
         ('- capture artifact: ' + (Convert-ToRepoRelative -Path $SmokeReport.capture.artifactPath)),
+        ('- helper capture artifact: ' + (Convert-ToRepoRelative -Path $SmokeReport.helper_capture.artifactPath)),
         ('- smoke report: ' + $SmokeReportPath)
+    )
+
+    return $lines -join [Environment]::NewLine
+}
+
+function New-TestMatrixMarkdown {
+    $lines = @(
+        '# Test Matrix',
+        '',
+        '> Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.',
+        '',
+        '| Layer | Command | Coverage now | Status |',
+        '| --- | --- | --- | --- |',
+        '| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors | green |',
+        '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, title-pattern timeout guardrails, monitor id formatting, activation decision logic, session dedupe, session mutation | green |',
+        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, attach/focus/activate contract semantics, monitor inventory, desktop capture by `monitorId`, capture result shape | green |',
+        '| Smoke | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | init -> tools/list -> health -> list monitors -> desktop capture by monitorId -> list windows -> attach -> session_state -> capture -> helper minimize/activate/window capture | green |',
+        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke | green |',
+        '',
+        '## Чего пока не хватает',
+        '',
+        '- Contract tests на конкретную JSON-форму каждого deferred tool.',
+        '- Production-coverage для следующих slices: UIA, input, clipboard, wait.',
+        '- Отдельный monitor-select contract beyond `windows.list_monitors` + `monitorId` targeting, если позже понадобится richer multi-monitor workflow.',
+        '- Boundary tests на проектные зависимости, если слоёв станет больше.',
+        '- Coverage reporting как отдельный отчётный шаг.'
     )
 
     return $lines -join [Environment]::NewLine
@@ -130,9 +160,13 @@ function New-BootstrapStatusObject {
             server = $SmokeReport.server_name
             protocol = $SmokeReport.initialized_protocol
             declared_tools = @($SmokeReport.declared_tools).Count
+            monitor_count = $SmokeReport.monitors.count
+            desktop_monitor_id = $SmokeReport.desktop_capture.monitorId
             visible_windows = $SmokeReport.windows.count
             attached_hwnd = $SmokeReport.attached_window.attachedWindow.window.hwnd
             capture_artifact = (Convert-ToRepoRelative -Path $SmokeReport.capture.artifactPath)
+            helper_window_hwnd = $SmokeReport.helper_window.hwnd
+            helper_activation_status = $SmokeReport.helper_activate.status
             audit_directory = $AuditDirectory
             smoke_report = $SmokeReportPath
             audit_summary = $LatestAuditSummaryPath
@@ -160,6 +194,9 @@ $latestAuditSummaryPath = Convert-ToRepoRelative -Path (Join-Path $smokeReport.h
 
 New-CommandsMarkdown -SmokeReport $smokeReport -SmokeRunId $smokeRunId -AuditDirectory $auditDirectory -SmokeReportPath $smokeReportRelativePath |
     Set-Content -Path $commandsMarkdownPath -Encoding utf8
+
+New-TestMatrixMarkdown |
+    Set-Content -Path $testMatrixMarkdownPath -Encoding utf8
 
 New-BootstrapStatusObject -SmokeReport $smokeReport -SmokeRunId $smokeRunId -AuditDirectory $auditDirectory -SmokeReportPath $smokeReportRelativePath -LatestAuditSummaryPath $latestAuditSummaryPath |
     ConvertTo-Json -Depth 12 |

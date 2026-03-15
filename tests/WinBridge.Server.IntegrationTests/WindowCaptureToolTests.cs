@@ -5,6 +5,7 @@ using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Windows.Capture;
+using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Server.Tools;
 
@@ -69,6 +70,68 @@ public sealed class WindowCaptureToolTests
         JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal("desktop", payload.GetProperty("scope").GetString());
         Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+    }
+
+    [Fact]
+    public async Task CaptureUsesExplicitMonitorIdForDesktopScope()
+    {
+        FakeCaptureService captureService = new(
+            CreateCaptureResult(
+                window: null,
+                scope: "desktop",
+                targetKind: "monitor",
+                monitorId: "displayconfig:0000000100000000:2",
+                monitorFriendlyName: "Secondary monitor"));
+        WindowTools tools = CreateTools(
+            windows: [],
+            captureService: captureService,
+            attachedWindow: null);
+
+        CallToolResult result = await tools.Capture(scope: "desktop", monitorId: "displayconfig:0000000100000000:2");
+
+        Assert.False(result.IsError);
+        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
+        Assert.Equal("displayconfig:0000000100000000:2", captureService.LastTarget?.MonitorId);
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("displayconfig:0000000100000000:2", payload.GetProperty("monitorId").GetString());
+        Assert.Equal("Secondary monitor", payload.GetProperty("monitorFriendlyName").GetString());
+    }
+
+    [Fact]
+    public async Task CaptureRejectsMonitorIdForWindowScope()
+    {
+        WindowTools tools = CreateTools(
+            windows: [CreateWindow()],
+            captureService: new FakeCaptureService(CreateCaptureResult(CreateWindow(), "window")),
+            attachedWindow: null);
+
+        CallToolResult result = await tools.Capture(scope: "window", monitorId: "displayconfig:0000000100000000:1");
+
+        Assert.True(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("failed", payload.GetProperty("status").GetString());
+        Assert.Contains("только для desktop capture", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CaptureRejectsConflictingDesktopTargets()
+    {
+        WindowDescriptor window = CreateWindow(hwnd: 409, title: "Conflict");
+        WindowTools tools = CreateTools(
+            windows: [window],
+            captureService: new FakeCaptureService(CreateCaptureResult(window: null, scope: "desktop", targetKind: "monitor")),
+            attachedWindow: null);
+
+        CallToolResult result = await tools.Capture(
+            scope: "desktop",
+            hwnd: window.Hwnd,
+            monitorId: "displayconfig:0000000100000000:1");
+
+        Assert.True(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("failed", payload.GetProperty("status").GetString());
+        Assert.Contains("одновременно передавать hwnd и monitorId", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -235,7 +298,9 @@ public sealed class WindowCaptureToolTests
             auditLog,
             sessionManager,
             new FakeWindowManager(windows),
-            captureService);
+            captureService,
+            new FakeMonitorManager(),
+            new FakeWindowActivationService());
     }
 
     private static WindowDescriptor CreateWindow(
@@ -260,7 +325,10 @@ public sealed class WindowCaptureToolTests
         WindowDescriptor? window,
         string scope,
         string targetKind = "window",
-        byte[]? pngBytes = null)
+        byte[]? pngBytes = null,
+        string? monitorId = "displayconfig:0000000100000000:1",
+        string? monitorFriendlyName = "Primary monitor",
+        string? monitorGdiDeviceName = @"\\.\DISPLAY1")
     {
         CaptureMetadata metadata = new(
             Scope: scope,
@@ -276,7 +344,10 @@ public sealed class WindowCaptureToolTests
             ArtifactPath: @"C:\artifacts\capture.png",
             MimeType: "image/png",
             ByteSize: (pngBytes ?? [1, 2, 3]).Length,
-            SessionRunId: "capture-tests");
+            SessionRunId: "capture-tests",
+            MonitorId: monitorId,
+            MonitorFriendlyName: monitorFriendlyName,
+            MonitorGdiDeviceName: monitorGdiDeviceName);
 
         return new CaptureResult(metadata, pngBytes ?? [1, 2, 3]);
     }

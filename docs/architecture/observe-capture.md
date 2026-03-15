@@ -6,6 +6,11 @@
 
 `windows.list_windows -> windows.attach_window -> windows.capture`
 
+Начиная с display/activation hardening этот observe-loop дополняется двумя важными правилами:
+
+- explicit desktop target выбирается через `windows.list_monitors` + `monitorId`;
+- minimизированное окно сначала проходит через `windows.activate_window`, а не через hidden restore внутри `windows.capture`.
+
 Его цель проста: агент должен надёжно увидеть нужное окно, получить новый визуальный контекст и только потом переходить к более хрупким шагам вроде `click`, `type` или `wait`.
 
 Документ описывает:
@@ -17,8 +22,9 @@
 
 ## Что реализовано
 
-На текущем этапе `observe/capture` slice состоит из трёх публичных tool:
+На текущем этапе `observe/capture` slice опирается на четыре публичных capability:
 
+- `windows.list_monitors` — перечисляет активные monitor targets и их stable identity;
 - `windows.list_windows` — перечисляет видимые top-level окна и их базовые metadata;
 - `windows.attach_window` — делает выбранное окно текущим session target;
 - `windows.capture` — возвращает снимок окна или monitor в виде MCP tool result с image block, structured metadata и локальным PNG artifact.
@@ -44,9 +50,10 @@
 
 Для `scope="desktop"` порядок сейчас такой:
 
-1. если есть explicit или attached window, выбирается monitor этого окна;
-2. если target window нет, берётся именно primary monitor через Win32 monitor enumeration, а не через virtual-screen origin heuristic;
-3. если attached window устарело или live окно с тем же `HWND` больше не совпадает с attached snapshot по ключевым metadata, runtime нормализует его в `no target` и тоже уходит в primary monitor, а не в tool error.
+1. если передан `monitorId`, выбирается именно он;
+2. иначе если есть explicit или attached window, выбирается monitor этого окна;
+3. если target window нет, берётся именно primary monitor через monitor inventory;
+4. если attached window устарело или live окно с тем же `HWND` больше не совпадает с attached snapshot по ключевым metadata, runtime нормализует его в `no target` и тоже уходит в primary monitor, а не в tool error.
 
 При этом attached identity теперь читается так:
 
@@ -69,6 +76,9 @@
 - `scope`
 - `targetKind`
 - `hwnd`
+- `monitorId`
+- `monitorFriendlyName`
+- `monitorGdiDeviceName`
 - `title`
 - `processName`
 - `bounds`
@@ -125,7 +135,7 @@
 
 - для `scope="desktop"` `GDI` screen copy через `Graphics.CopyFromScreen` допустим и как fallback после timeout/native ошибки, и как прямой backend, если `Windows.Graphics.Capture` недоступен в текущей сессии;
 - для `scope="window"` screen-copy fallback больше не используется, потому что он может вернуть чужие экранные пиксели и нарушить semantics конкретного `HWND`;
-- для minimизированного окна runtime возвращает tool-level error и просит сначала восстановить окно.
+- для minimизированного окна runtime возвращает tool-level error и просит сначала вызвать `windows.activate_window`.
 
 Важно:
 
@@ -180,7 +190,7 @@
 - region capture;
 - multi-monitor stitched desktop capture;
 - capture diff / visual compare;
-- отдельный monitor enumeration/select contract.
+- richer monitor selection contract beyond `windows.list_monitors` + `monitorId`.
 - offscreen window-specific fallback beyond `Windows.Graphics.Capture`.
 
 То есть это не полный visual subsystem, а первый рабочий observe foundation.

@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-03-13T12:13:48.8467056\u002B00:00",
+  "generated_at_utc": "2026-03-15T12:43:19.9173810\u002B00:00",
   "transport": {
     "kind": "stdio",
     "protocol_version": "2025-06-18",
@@ -46,6 +46,16 @@
         "smoke_required": true
       },
       {
+        "name": "windows.list_monitors",
+        "capability": "windows.display",
+        "lifecycle": "implemented",
+        "safety_class": "read_only",
+        "summary": "\u041F\u0435\u0440\u0435\u0447\u0438\u0441\u043B\u044F\u0435\u0442 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0435 monitor targets \u0442\u0435\u043A\u0443\u0449\u0435\u0439 desktop session.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true
+      },
+      {
         "name": "windows.list_windows",
         "capability": "windows.shell",
         "lifecycle": "implemented",
@@ -61,6 +71,16 @@
         "lifecycle": "implemented",
         "safety_class": "session_mutation",
         "summary": "\u041F\u0440\u0438\u043A\u0440\u0435\u043F\u043B\u044F\u0435\u0442 \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0441\u0435\u0441\u0441\u0438\u044E \u043A \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u043C\u0443 \u043E\u043A\u043D\u0443.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true
+      },
+      {
+        "name": "windows.activate_window",
+        "capability": "windows.shell",
+        "lifecycle": "implemented",
+        "safety_class": "os_side_effect",
+        "summary": "\u0412\u043E\u0441\u0441\u0442\u0430\u043D\u0430\u0432\u043B\u0438\u0432\u0430\u0435\u0442 \u043E\u043A\u043D\u043E \u043F\u0440\u0438 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438 \u0438 \u043F\u044B\u0442\u0430\u0435\u0442\u0441\u044F \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C foreground focus.",
         "planned_phase": null,
         "suggested_alternative": null,
         "smoke_required": true
@@ -152,16 +172,20 @@
       "okno.health",
       "okno.contract",
       "okno.session_state",
+      "windows.list_monitors",
       "windows.list_windows",
       "windows.attach_window",
+      "windows.activate_window",
       "windows.focus_window",
       "windows.capture"
     ],
     "smoke_required_names": [
       "okno.health",
       "okno.session_state",
+      "windows.list_monitors",
       "windows.list_windows",
       "windows.attach_window",
+      "windows.activate_window",
       "windows.capture"
     ],
     "deferred_phase_map": {

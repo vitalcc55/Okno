@@ -8,8 +8,9 @@
 | `src/WinBridge.Runtime.Tooling` | tool names, manifest, exporter | Реализуется в bootstrap | Один source of truth для tool contract |
 | `src/WinBridge.Runtime.Diagnostics` | audit, evidence, tool boundary execution | Реализуется в bootstrap | Не знает MCP transport |
 | `src/WinBridge.Runtime.Session` | session state и attach semantics | Реализуется в bootstrap | Не тянет diagnostics config внутрь domain logic |
-| `src/WinBridge.Runtime.Windows.Shell` | Enum/find/focus top-level windows | Реализуется в bootstrap | Не включает UIA/capture/input/clipboard/wait |
-| `src/WinBridge.Runtime.Windows.Capture` | window/desktop monitor capture, PNG encoding, capture artifacts | Реализован первый observe slice | `WGC` как основной path, native fallback без смены MCP contract |
+| `src/WinBridge.Runtime.Windows.Display` | monitor inventory, monitor identity, monitor lookup | Реализуется в display/activation slice | Не знает MCP transport и не управляет окнами |
+| `src/WinBridge.Runtime.Windows.Shell` | Enum/find/focus/activate top-level windows | Реализуется в bootstrap | Не владеет monitor inventory и не включает UIA/capture/input/clipboard/wait |
+| `src/WinBridge.Runtime.Windows.Capture` | window/desktop monitor capture, PNG encoding, capture artifacts | Реализован первый observe slice | `WGC` как основной path, native fallback без смены MCP contract и без hidden restore |
 | future capability projects | `UIA` / `Input` / `Clipboard` / `Waiting` interfaces | Подготовлены как seams | Без fake implementations до реальной потребности |
 | `Diagnostics artifacts` | JSONL audit, summary, smoke evidence | Реализуется в bootstrap | Артефакты воспроизводимы через scripts |
 
@@ -17,5 +18,6 @@
 
 - `observe -> attach -> verify contract` должен быть доступен без UIA.
 - `IWindowManager` остаётся только shell-window interface и не раздувается новыми capability-методами.
+- `IMonitorManager` остаётся единственным source of truth для monitor inventory и public `monitorId`.
 - Все side effects на ОС должны быть явными и отличимыми от read-only tools.
 - Stub-tools допустимы только если честно возвращают `unsupported`/`deferred`, а не имитируют успех.

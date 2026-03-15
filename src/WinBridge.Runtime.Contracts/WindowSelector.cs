@@ -8,7 +8,7 @@ public sealed record WindowSelector(long? Hwnd, string? TitlePattern, string? Pr
             && string.IsNullOrWhiteSpace(TitlePattern)
             && string.IsNullOrWhiteSpace(ProcessName))
         {
-            throw new InvalidOperationException(
+            throw new ArgumentException(
                 "Нужно указать хотя бы один селектор: hwnd, titlePattern или processName.");
         }
     }

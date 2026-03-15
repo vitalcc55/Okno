@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using WinBridge.Runtime;
@@ -11,6 +11,7 @@ using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Capture;
+using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
 using RuntimeToolExecution = WinBridge.Runtime.Diagnostics.ToolExecution;
 
@@ -27,20 +28,51 @@ public sealed class WindowTools
 
     private readonly AuditLog _auditLog;
     private readonly ICaptureService _captureService;
+    private readonly IMonitorManager _monitorManager;
     private readonly ISessionManager _sessionManager;
+    private readonly IWindowActivationService _windowActivationService;
     private readonly IWindowManager _windowManager;
 
     public WindowTools(
         AuditLog auditLog,
         ISessionManager sessionManager,
         IWindowManager windowManager,
-        ICaptureService captureService)
+        ICaptureService captureService,
+        IMonitorManager monitorManager,
+        IWindowActivationService windowActivationService)
     {
         _auditLog = auditLog;
         _captureService = captureService;
+        _monitorManager = monitorManager;
         _sessionManager = sessionManager;
+        _windowActivationService = windowActivationService;
         _windowManager = windowManager;
     }
+
+    [McpServerTool(Name = ToolNames.WindowsListMonitors)]
+    public ListMonitorsResult ListMonitors()
+        => RuntimeToolExecution.Run(
+            _auditLog,
+            _sessionManager.GetSnapshot(),
+            ToolNames.WindowsListMonitors,
+            new { },
+            invocation =>
+            {
+                MonitorDescriptor[] monitors = _monitorManager.ListMonitors()
+                    .Select(item => item.Descriptor)
+                    .ToArray();
+                ListMonitorsResult result = new(monitors, monitors.Length, _sessionManager.GetSnapshot());
+
+                invocation.Complete(
+                    "done",
+                    $"Найдено {monitors.Length} активных monitor targets.",
+                    data: new Dictionary<string, string?>
+                    {
+                        ["count"] = monitors.Length.ToString(CultureInfo.InvariantCulture),
+                    });
+
+                return result;
+            });
 
     [McpServerTool(Name = ToolNames.WindowsListWindows)]
     public ListWindowsResult ListWindows(bool includeInvisible = false)
@@ -119,6 +151,17 @@ public sealed class WindowTools
                     invocation.Complete("failed", timedOut.Reason!);
                     return timedOut;
                 }
+                catch (ArgumentException exception)
+                {
+                    AttachWindowResult invalidSelector = new(
+                        Status: "failed",
+                        Reason: exception.Message,
+                        AttachedWindow: null,
+                        Session: _sessionManager.GetSnapshot());
+
+                    invocation.Complete("failed", exception.Message);
+                    return invalidSelector;
+                }
                 catch (InvalidOperationException exception)
                 {
                     AttachWindowResult ambiguous = new(
@@ -130,6 +173,60 @@ public sealed class WindowTools
                     invocation.Complete("ambiguous", exception.Message);
                     return ambiguous;
                 }
+            });
+
+    [McpServerTool(Name = ToolNames.WindowsActivateWindow, UseStructuredContent = true)]
+    public Task<CallToolResult> ActivateWindow(long? hwnd = null, CancellationToken cancellationToken = default) =>
+        RuntimeToolExecution.RunAsync(
+            _auditLog,
+            _sessionManager.GetSnapshot(),
+            ToolNames.WindowsActivateWindow,
+            new { hwnd },
+            async invocation =>
+            {
+                long? targetHwnd = hwnd ?? _sessionManager.GetAttachedWindow()?.Window.Hwnd;
+                if (targetHwnd is null)
+                {
+                    ActivateWindowResult missingTarget = new(
+                        Status: "failed",
+                        Reason: "Для активации нужно передать hwnd или сначала прикрепить окно.",
+                        Window: null,
+                        WasMinimized: false,
+                        IsForeground: false);
+
+                    invocation.Complete("failed", missingTarget.Reason!);
+                    return CreateToolResult(missingTarget, isError: true);
+                }
+
+                IReadOnlyList<WindowDescriptor> windows = _windowManager.ListWindows(includeInvisible: true);
+                if (windows.All(candidate => candidate.Hwnd != targetHwnd.Value))
+                {
+                    ActivateWindowResult missingWindow = new(
+                        Status: "failed",
+                        Reason: "Окно для активации больше не найдено.",
+                        Window: null,
+                        WasMinimized: false,
+                        IsForeground: false);
+
+                    invocation.Complete("failed", missingWindow.Reason!, targetHwnd.Value);
+                    return CreateToolResult(missingWindow, isError: true);
+                }
+
+                ActivateWindowResult result = await _windowActivationService
+                    .ActivateAsync(targetHwnd.Value, cancellationToken)
+                    .ConfigureAwait(false);
+
+                invocation.Complete(
+                    result.Status,
+                    result.Status == "done" ? "Окно активировано и готово к работе." : result.Reason!,
+                    targetHwnd.Value,
+                    new Dictionary<string, string?>
+                    {
+                        ["was_minimized"] = result.WasMinimized.ToString(CultureInfo.InvariantCulture),
+                        ["is_foreground"] = result.IsForeground.ToString(CultureInfo.InvariantCulture),
+                    });
+
+                return CreateToolResult(result, isError: ActivateStatusIsToolError(result.Status));
             });
 
     [McpServerTool(Name = ToolNames.WindowsFocusWindow)]
@@ -187,37 +284,55 @@ public sealed class WindowTools
         Idempotent = false,
         OpenWorld = true,
         UseStructuredContent = true)]
-    public Task<CallToolResult> Capture(string scope = "window", long? hwnd = null, CancellationToken cancellationToken = default) =>
+    public Task<CallToolResult> Capture(
+        string scope = "window",
+        long? hwnd = null,
+        string? monitorId = null,
+        CancellationToken cancellationToken = default) =>
         RuntimeToolExecution.RunAsync(
             _auditLog,
             _sessionManager.GetSnapshot(),
             ToolNames.WindowsCapture,
-            new { scope, hwnd },
+            new { scope, hwnd, monitorId },
             async invocation =>
             {
                 if (!CaptureScopeExtensions.TryParse(scope, out CaptureScope captureScope))
                 {
                     string reason = $"Unsupported capture scope '{scope}'. Допустимые значения: window, desktop.";
                     invocation.Complete("failed", reason);
-                    return CreateErrorResult(reason, scope, hwnd);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
                 }
 
-                WindowDescriptor? window = ResolveCaptureWindow(captureScope, hwnd);
+                if (captureScope == CaptureScope.Window && !string.IsNullOrWhiteSpace(monitorId))
+                {
+                    string reason = "Аргумент monitorId поддерживается только для desktop capture.";
+                    invocation.Complete("failed", reason);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
+                }
+
+                if (captureScope == CaptureScope.Desktop && hwnd is not null && !string.IsNullOrWhiteSpace(monitorId))
+                {
+                    string reason = "Для desktop capture нельзя одновременно передавать hwnd и monitorId.";
+                    invocation.Complete("failed", reason);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
+                }
+
+                WindowDescriptor? window = ResolveCaptureWindow(captureScope, hwnd, monitorId);
                 if (hwnd is not null && window is null)
                 {
                     string reason = "Окно для capture по указанному hwnd больше не найдено.";
                     invocation.Complete("failed", reason, hwnd);
-                    return CreateErrorResult(reason, scope, hwnd);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
                 }
 
                 if (captureScope == CaptureScope.Window && window is null)
                 {
                     string reason = "Для window capture нужно передать hwnd или сначала прикрепить окно.";
                     invocation.Complete("failed", reason);
-                    return CreateErrorResult(reason, scope, hwnd);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
                 }
 
-                CaptureTarget target = new(captureScope, window);
+                CaptureTarget target = new(captureScope, window, monitorId);
 
                 try
                 {
@@ -232,6 +347,7 @@ public sealed class WindowTools
                         {
                             ["scope"] = metadata.Scope,
                             ["target_kind"] = metadata.TargetKind,
+                            ["monitor_id"] = metadata.MonitorId,
                             ["artifact_path"] = metadata.ArtifactPath,
                             ["mime_type"] = metadata.MimeType,
                             ["pixel_width"] = metadata.PixelWidth.ToString(CultureInfo.InvariantCulture),
@@ -244,7 +360,7 @@ public sealed class WindowTools
                 catch (CaptureOperationException exception)
                 {
                     invocation.Complete("failed", exception.Message, window?.Hwnd);
-                    return CreateErrorResult(exception.Message, scope, hwnd ?? window?.Hwnd);
+                    return CreateErrorResult(exception.Message, scope, hwnd ?? window?.Hwnd, monitorId);
                 }
             });
 
@@ -292,8 +408,13 @@ public sealed class WindowTools
                 return result;
             });
 
-    private WindowDescriptor? ResolveCaptureWindow(CaptureScope scope, long? hwnd)
+    private WindowDescriptor? ResolveCaptureWindow(CaptureScope scope, long? hwnd, string? monitorId)
     {
+        if (scope == CaptureScope.Desktop && !string.IsNullOrWhiteSpace(monitorId))
+        {
+            return null;
+        }
+
         if (hwnd is long explicitHwnd)
         {
             return _windowManager.ListWindows(includeInvisible: true)
@@ -364,7 +485,28 @@ public sealed class WindowTools
         };
     }
 
-    private static CallToolResult CreateErrorResult(string reason, string scope, long? hwnd)
+    private static CallToolResult CreateToolResult<T>(T payload, bool isError)
+    {
+        JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, PayloadJsonOptions);
+
+        return new CallToolResult
+        {
+            IsError = isError,
+            StructuredContent = structuredContent,
+            Content =
+            [
+                new TextContentBlock
+                {
+                    Text = JsonSerializer.Serialize(payload, PayloadJsonOptions),
+                },
+            ],
+        };
+    }
+
+    private static bool ActivateStatusIsToolError(string status) =>
+        status is "failed" or "ambiguous";
+
+    private static CallToolResult CreateErrorResult(string reason, string scope, long? hwnd, string? monitorId)
     {
         JsonElement payload = JsonSerializer.SerializeToElement(
             new
@@ -373,6 +515,7 @@ public sealed class WindowTools
                 reason,
                 scope,
                 hwnd,
+                monitorId,
             },
             PayloadJsonOptions);
 

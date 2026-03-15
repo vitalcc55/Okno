@@ -14,4 +14,7 @@ public sealed record CaptureMetadata(
     string ArtifactPath,
     string MimeType,
     int ByteSize,
-    string SessionRunId);
+    string SessionRunId,
+    string? MonitorId = null,
+    string? MonitorFriendlyName = null,
+    string? MonitorGdiDeviceName = null);
