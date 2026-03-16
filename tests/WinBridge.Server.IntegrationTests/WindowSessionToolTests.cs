@@ -99,23 +99,17 @@ public sealed class WindowSessionToolTests
     }
 
     [Fact]
-    public async Task ActivateWindowUsesExplicitHwndAndReturnsServiceOutcome()
+    public async Task ActivateWindowRejectsExplicitHwndWithoutAttachedIdentity()
     {
         WindowDescriptor targetWindow = CreateWindow(hwnd: 350, title: "Activatable");
-        FakeWindowActivationService activationService = new(
-            target => new ActivateWindowResult("done", null, target, WasMinimized: true, IsForeground: true));
-        WindowTools tools = CreateTools(
-            windows: [targetWindow],
-            activationService: activationService);
+        WindowTools tools = CreateTools(windows: [targetWindow]);
 
-        CallToolResult result = await tools.ActivateWindow(hwnd: targetWindow.Hwnd);
+        CallToolResult result = await tools.ActivateWindow();
 
-        Assert.False(result.IsError);
+        Assert.True(result.IsError);
         JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("done", payload.GetProperty("status").GetString());
-        Assert.True(payload.GetProperty("wasMinimized").GetBoolean());
-        Assert.True(payload.GetProperty("isForeground").GetBoolean());
-        Assert.Equal(targetWindow.Hwnd, activationService.LastHwnd);
+        Assert.Equal("failed", payload.GetProperty("status").GetString());
+        Assert.Contains("сначала прикрепи окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -150,9 +144,10 @@ public sealed class WindowSessionToolTests
                 IsForeground: false));
         WindowTools tools = CreateTools(
             windows: [targetWindow],
+            attachedWindow: targetWindow,
             activationService: activationService);
 
-        CallToolResult result = await tools.ActivateWindow(hwnd: targetWindow.Hwnd);
+        CallToolResult result = await tools.ActivateWindow();
 
         Assert.True(result.IsError);
         JsonElement payload = AssertStructuredPayload(result);
@@ -171,7 +166,7 @@ public sealed class WindowSessionToolTests
         Assert.True(result.IsError);
         JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("сначала прикрепить окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("сначала прикрепи окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
         Assert.False(payload.TryGetProperty("window", out _));
     }
 
@@ -193,6 +188,23 @@ public sealed class WindowSessionToolTests
         JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal("failed", payload.GetProperty("status").GetString());
         Assert.Contains("не совпадает с live target", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AttachWindowReturnsFailedWhenWindowIdentityIsIncomplete()
+    {
+        WindowDescriptor weakIdentityWindow = CreateWindow(hwnd: 304, title: "Weak identity") with
+        {
+            ProcessId = null,
+        };
+        WindowTools tools = CreateTools(windows: [weakIdentityWindow]);
+
+        AttachWindowResult result = tools.AttachWindow(hwnd: weakIdentityWindow.Hwnd);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Contains("отсутствует ProcessId", result.Reason, StringComparison.Ordinal);
+        Assert.Null(result.AttachedWindow);
+        Assert.Equal("desktop", result.Session.Mode);
     }
 
     [Fact]

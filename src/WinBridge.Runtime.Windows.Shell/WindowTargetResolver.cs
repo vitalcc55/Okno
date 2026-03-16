@@ -18,17 +18,27 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
             return null;
         }
 
+        if (!WindowIdentityValidator.TryValidateStableIdentity(attachedWindow, out _))
+        {
+            return null;
+        }
+
         WindowDescriptor? liveCandidate = liveWindows.FirstOrDefault(candidate => candidate.Hwnd == attachedWindow.Hwnd);
         if (liveCandidate is null)
         {
             return null;
         }
 
-        return MatchesAttachedWindowIdentity(liveCandidate, attachedWindow) ? liveCandidate : null;
+        return WindowIdentityValidator.MatchesStableIdentity(liveCandidate, attachedWindow) ? liveCandidate : null;
     }
 
     public WindowDescriptor? ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow)
     {
+        if (!WindowIdentityValidator.TryValidateStableIdentity(expectedWindow, out _))
+        {
+            return null;
+        }
+
         IReadOnlyList<WindowDescriptor> liveWindows = windowManager.ListWindows(includeInvisible: true);
         WindowDescriptor? liveCandidate = liveWindows.FirstOrDefault(candidate => candidate.Hwnd == expectedWindow.Hwnd);
         if (liveCandidate is null)
@@ -36,23 +46,6 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
             return null;
         }
 
-        return MatchesAttachedWindowIdentity(liveCandidate, expectedWindow) ? liveCandidate : null;
-    }
-
-    private static bool MatchesAttachedWindowIdentity(
-        WindowDescriptor liveCandidate,
-        WindowDescriptor attachedWindow)
-    {
-        bool processIdCompatible = liveCandidate.ProcessId is null
-            || attachedWindow.ProcessId is null
-            || liveCandidate.ProcessId == attachedWindow.ProcessId;
-        bool threadIdCompatible = liveCandidate.ThreadId is null
-            || attachedWindow.ThreadId is null
-            || liveCandidate.ThreadId == attachedWindow.ThreadId;
-        bool classNameCompatible = string.IsNullOrWhiteSpace(liveCandidate.ClassName)
-            || string.IsNullOrWhiteSpace(attachedWindow.ClassName)
-            || string.Equals(liveCandidate.ClassName, attachedWindow.ClassName, StringComparison.Ordinal);
-
-        return processIdCompatible && threadIdCompatible && classNameCompatible;
+        return WindowIdentityValidator.MatchesStableIdentity(liveCandidate, expectedWindow) ? liveCandidate : null;
     }
 }

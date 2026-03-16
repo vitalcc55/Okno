@@ -165,7 +165,7 @@ public sealed class McpProtocolSmokeTests
             Assert.True(MinimizeWindow(helperHwnd), "Smoke helper window did not accept minimize request.");
             Assert.True(await WaitUntilAsync(() => IsIconic(new IntPtr(helperHwnd))), "Smoke helper window did not become minimized in time.");
 
-            using JsonDocument activateResponse = await CallToolAsync(reader, writer, 20, ToolNames.WindowsActivateWindow, new { hwnd = helperHwnd });
+            using JsonDocument activateResponse = await CallToolAsync(reader, writer, 20, ToolNames.WindowsActivateWindow, new { });
             JsonElement activateResult = activateResponse.RootElement
                 .GetProperty("result");
             JsonElement activateRoot = activateResult

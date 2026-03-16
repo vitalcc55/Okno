@@ -401,9 +401,7 @@ try {
         method = 'tools/call'
         params = @{
             name = 'windows.activate_window'
-            arguments = @{
-                hwnd = $helperHwnd
-            }
+            arguments = @{}
         }
     }
     $activateResponse = Read-Response -Process $process -RequestName 'windows.activate_window'

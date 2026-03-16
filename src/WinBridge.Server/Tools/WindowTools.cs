@@ -126,6 +126,18 @@ public sealed class WindowTools
                         return notFound;
                     }
 
+                    if (!WindowIdentityValidator.TryValidateStableIdentity(window, out string? reason))
+                    {
+                        AttachWindowResult weakIdentity = new(
+                            Status: "failed",
+                            Reason: reason,
+                            AttachedWindow: null,
+                            Session: _sessionManager.GetSnapshot());
+
+                        invocation.Complete("failed", reason!, window.Hwnd);
+                        return weakIdentity;
+                    }
+
                     SessionMutation mutation = _sessionManager.Attach(window, selector.MatchStrategy);
                     _auditLog.RecordSessionAttached(mutation.Before, mutation.After);
 
@@ -179,20 +191,20 @@ public sealed class WindowTools
             });
 
     [McpServerTool(Name = ToolNames.WindowsActivateWindow, UseStructuredContent = true)]
-    public Task<CallToolResult> ActivateWindow(long? hwnd = null, CancellationToken cancellationToken = default) =>
+    public Task<CallToolResult> ActivateWindow(CancellationToken cancellationToken = default) =>
         RuntimeToolExecution.RunAsync(
             _auditLog,
             _sessionManager.GetSnapshot(),
             ToolNames.WindowsActivateWindow,
-            new { hwnd },
+            new { },
             async invocation =>
             {
                 WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
-                if (hwnd is null && attachedWindow is null)
+                if (attachedWindow is null)
                 {
                     ActivateWindowResult missingTarget = new(
                         Status: "failed",
-                        Reason: "Для активации нужно передать hwnd или сначала прикрепить окно.",
+                        Reason: "Для активации сначала прикрепи окно через windows.attach_window.",
                         Window: null,
                         WasMinimized: false,
                         IsForeground: false);
@@ -201,19 +213,17 @@ public sealed class WindowTools
                     return CreateToolResult(missingTarget, isError: true);
                 }
 
-                WindowDescriptor? targetWindow = _windowTargetResolver.ResolveExplicitOrAttachedWindow(hwnd, attachedWindow);
+                WindowDescriptor? targetWindow = _windowTargetResolver.ResolveExplicitOrAttachedWindow(null, attachedWindow);
                 if (targetWindow is null)
                 {
                     ActivateWindowResult missingWindow = new(
                         Status: "failed",
-                        Reason: hwnd is not null
-                            ? "Окно для активации больше не найдено."
-                            : "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
+                        Reason: "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
                         Window: null,
                         WasMinimized: false,
                         IsForeground: false);
 
-                    invocation.Complete("failed", missingWindow.Reason!, hwnd ?? attachedWindow?.Hwnd);
+                    invocation.Complete("failed", missingWindow.Reason!, attachedWindow?.Hwnd);
                     return CreateToolResult(missingWindow, isError: true);
                 }
 
