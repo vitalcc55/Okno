@@ -395,6 +395,22 @@ try {
     Assert-Condition -Condition (Minimize-Window -Hwnd $helperHwnd) -Message 'Smoke helper window did not accept minimize request.'
     Assert-Condition -Condition (Wait-Until -Predicate { Test-IsIconic -Hwnd $helperHwnd }) -Message 'Smoke helper window did not become minimized in time.'
 
+    $rawMinimizedCaptureRequest = Send-Json -Process $process -Payload @{
+        jsonrpc = '2.0'
+        id = 19
+        method = 'tools/call'
+        params = @{
+            name = 'windows.capture'
+            arguments = @{
+                scope = 'window'
+            }
+        }
+    }
+    $minimizedCaptureResponse = Read-Response -Process $process -RequestName 'windows.capture(minimized helper window)'
+    Assert-Condition -Condition ([bool]$minimizedCaptureResponse.Json.result.isError) -Message 'Minimized helper window capture must return isError=true before activation.'
+    $minimizedCapturePayload = $minimizedCaptureResponse.Json.result.structuredContent
+    Assert-Condition -Condition ([string]$minimizedCapturePayload.reason -like '*Свернутое окно*') -Message 'Minimized helper capture reason does not mention minimized-window policy.'
+
     $rawActivateRequest = Send-Json -Process $process -Payload @{
         jsonrpc = '2.0'
         id = 20
@@ -422,7 +438,6 @@ try {
             name = 'windows.capture'
             arguments = @{
                 scope = 'window'
-                hwnd = $helperHwnd
             }
         }
     }

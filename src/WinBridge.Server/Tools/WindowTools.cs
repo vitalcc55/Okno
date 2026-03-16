@@ -52,7 +52,12 @@ public sealed class WindowTools
         _windowTargetResolver = windowTargetResolver;
     }
 
-    [McpServerTool(Name = ToolNames.WindowsListMonitors)]
+    [McpServerTool(
+        Name = ToolNames.WindowsListMonitors,
+        ReadOnly = true,
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = true)]
     public ListMonitorsResult ListMonitors()
         => RuntimeToolExecution.Run(
             _auditLog,
@@ -190,7 +195,13 @@ public sealed class WindowTools
                 }
             });
 
-    [McpServerTool(Name = ToolNames.WindowsActivateWindow, UseStructuredContent = true)]
+    [McpServerTool(
+        Name = ToolNames.WindowsActivateWindow,
+        ReadOnly = false,
+        Destructive = false,
+        Idempotent = false,
+        OpenWorld = true,
+        UseStructuredContent = true)]
     public Task<CallToolResult> ActivateWindow(CancellationToken cancellationToken = default) =>
         RuntimeToolExecution.RunAsync(
             _auditLog,

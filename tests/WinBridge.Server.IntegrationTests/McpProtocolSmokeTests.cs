@@ -93,6 +93,18 @@ public sealed class McpProtocolSmokeTests
             Assert.False(captureAnnotations.GetProperty("destructiveHint").GetBoolean());
             Assert.True(captureAnnotations.GetProperty("openWorldHint").GetBoolean());
 
+            JsonElement listMonitorsDescriptor = tools.EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsListMonitors);
+            JsonElement listMonitorsAnnotations = listMonitorsDescriptor.GetProperty("annotations");
+            Assert.True(listMonitorsAnnotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(listMonitorsAnnotations.GetProperty("destructiveHint").GetBoolean());
+
+            JsonElement activateDescriptor = tools.EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsActivateWindow);
+            JsonElement activateAnnotations = activateDescriptor.GetProperty("annotations");
+            Assert.False(activateAnnotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(activateAnnotations.GetProperty("destructiveHint").GetBoolean());
+
             using JsonDocument healthResponse = await CallToolAsync(reader, writer, 3, ToolNames.OknoHealth, new { });
             string healthText = GetToolTextPayload(healthResponse);
             Assert.Contains("\"service\":\"Okno\"", healthText, StringComparison.Ordinal);
@@ -165,6 +177,12 @@ public sealed class McpProtocolSmokeTests
             Assert.True(MinimizeWindow(helperHwnd), "Smoke helper window did not accept minimize request.");
             Assert.True(await WaitUntilAsync(() => IsIconic(new IntPtr(helperHwnd))), "Smoke helper window did not become minimized in time.");
 
+            using JsonDocument minimizedCaptureResponse = await CallToolAsync(reader, writer, 19, ToolNames.WindowsCapture, new { scope = "window" });
+            JsonElement minimizedCaptureResult = minimizedCaptureResponse.RootElement.GetProperty("result");
+            Assert.True(minimizedCaptureResult.GetProperty("isError").GetBoolean());
+            JsonElement minimizedPayload = minimizedCaptureResult.GetProperty("structuredContent");
+            Assert.Contains("Свернутое окно", minimizedPayload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+
             using JsonDocument activateResponse = await CallToolAsync(reader, writer, 20, ToolNames.WindowsActivateWindow, new { });
             JsonElement activateResult = activateResponse.RootElement
                 .GetProperty("result");
@@ -182,11 +200,7 @@ public sealed class McpProtocolSmokeTests
                 writer,
                 21,
                 ToolNames.WindowsCapture,
-                new
-                {
-                    scope = "window",
-                    hwnd = helperHwnd,
-                });
+                new { scope = "window" });
             JsonElement helperCaptureResult = helperCaptureResponse.RootElement.GetProperty("result");
             Assert.False(helperCaptureResult.GetProperty("isError").GetBoolean());
             JsonElement helperStructured = helperCaptureResult.GetProperty("structuredContent");

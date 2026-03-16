@@ -156,6 +156,7 @@ public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindow
         {
             SwShowMaximized => WindowStateValues.Maximized,
             SwShowMinimized or SwMinimize or SwShowMinNoActive => WindowStateValues.Minimized,
+            _ when IsWindowArranged(hWnd) => WindowStateValues.Arranged,
             _ => WindowStateValues.Normal,
         };
     }
@@ -226,4 +227,7 @@ public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindow
 
     [DllImport("user32.dll")]
     private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowArranged(IntPtr hWnd);
 }
