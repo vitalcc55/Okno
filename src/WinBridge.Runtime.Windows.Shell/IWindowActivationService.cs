@@ -4,5 +4,5 @@ namespace WinBridge.Runtime.Windows.Shell;
 
 public interface IWindowActivationService
 {
-    Task<ActivateWindowResult> ActivateAsync(long hwnd, CancellationToken cancellationToken);
+    Task<ActivateWindowResult> ActivateAsync(WindowDescriptor targetWindow, CancellationToken cancellationToken);
 }

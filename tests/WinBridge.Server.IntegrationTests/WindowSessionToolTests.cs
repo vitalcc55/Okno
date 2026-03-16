@@ -103,7 +103,7 @@ public sealed class WindowSessionToolTests
     {
         WindowDescriptor targetWindow = CreateWindow(hwnd: 350, title: "Activatable");
         FakeWindowActivationService activationService = new(
-            hwnd => new ActivateWindowResult("done", null, targetWindow, WasMinimized: true, IsForeground: true));
+            target => new ActivateWindowResult("done", null, target, WasMinimized: true, IsForeground: true));
         WindowTools tools = CreateTools(
             windows: [targetWindow],
             activationService: activationService);
@@ -123,7 +123,7 @@ public sealed class WindowSessionToolTests
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 351, title: "Attached");
         FakeWindowActivationService activationService = new(
-            hwnd => new ActivateWindowResult("done", null, attachedWindow, WasMinimized: false, IsForeground: true));
+            target => new ActivateWindowResult("done", null, target, WasMinimized: false, IsForeground: true));
         WindowTools tools = CreateTools(
             windows: [attachedWindow],
             attachedWindow: attachedWindow,
@@ -142,10 +142,10 @@ public sealed class WindowSessionToolTests
     {
         WindowDescriptor targetWindow = CreateWindow(hwnd: 352, title: "Ambiguous");
         FakeWindowActivationService activationService = new(
-            hwnd => new ActivateWindowResult(
+            target => new ActivateWindowResult(
                 "ambiguous",
                 "Окно восстановлено, но foreground focus не удалось подтвердить.",
-                targetWindow,
+                target,
                 WasMinimized: true,
                 IsForeground: false));
         WindowTools tools = CreateTools(

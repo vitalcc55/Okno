@@ -77,18 +77,18 @@ internal sealed class FakeMonitorManager(
     }
 }
 
-internal sealed class FakeWindowActivationService(Func<long, ActivateWindowResult>? handler = null) : IWindowActivationService
+internal sealed class FakeWindowActivationService(Func<WindowDescriptor, ActivateWindowResult>? handler = null) : IWindowActivationService
 {
     public long? LastHwnd { get; private set; }
 
-    public Task<ActivateWindowResult> ActivateAsync(long hwnd, CancellationToken cancellationToken)
+    public Task<ActivateWindowResult> ActivateAsync(WindowDescriptor targetWindow, CancellationToken cancellationToken)
     {
-        LastHwnd = hwnd;
+        LastHwnd = targetWindow.Hwnd;
         if (handler is null)
         {
             throw new NotSupportedException("ActivateWindow не должен вызываться в этом тесте.");
         }
 
-        return Task.FromResult(handler(hwnd));
+        return Task.FromResult(handler(targetWindow));
     }
 }

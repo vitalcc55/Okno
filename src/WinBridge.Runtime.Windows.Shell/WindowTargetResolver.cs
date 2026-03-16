@@ -27,6 +27,18 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
         return MatchesAttachedWindowIdentity(liveCandidate, attachedWindow) ? liveCandidate : null;
     }
 
+    public WindowDescriptor? ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow)
+    {
+        IReadOnlyList<WindowDescriptor> liveWindows = windowManager.ListWindows(includeInvisible: true);
+        WindowDescriptor? liveCandidate = liveWindows.FirstOrDefault(candidate => candidate.Hwnd == expectedWindow.Hwnd);
+        if (liveCandidate is null)
+        {
+            return null;
+        }
+
+        return MatchesAttachedWindowIdentity(liveCandidate, expectedWindow) ? liveCandidate : null;
+    }
+
     private static bool MatchesAttachedWindowIdentity(
         WindowDescriptor liveCandidate,
         WindowDescriptor attachedWindow)

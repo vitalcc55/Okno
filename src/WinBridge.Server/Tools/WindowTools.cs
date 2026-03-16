@@ -218,7 +218,7 @@ public sealed class WindowTools
                 }
 
                 ActivateWindowResult result = await _windowActivationService
-                    .ActivateAsync(targetWindow.Hwnd, cancellationToken)
+                    .ActivateAsync(targetWindow, cancellationToken)
                     .ConfigureAwait(false);
 
                 invocation.Complete(

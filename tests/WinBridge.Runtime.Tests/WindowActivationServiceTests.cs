@@ -12,12 +12,14 @@ public sealed class WindowActivationServiceTests
         FakeWindowManager windowManager = new(
             windows: [CreateWindow(hwnd: 101)],
             onFocus: hwnd => platform.ForegroundWindow = hwnd);
+        WindowTargetResolver resolver = new(windowManager);
         WindowActivationService service = new(
             windowManager,
+            resolver,
             platform,
             new WindowActivationOptions(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero));
 
-        ActivateWindowResult result = await service.ActivateAsync(101, CancellationToken.None);
+        ActivateWindowResult result = await service.ActivateAsync(CreateWindow(hwnd: 101), CancellationToken.None);
 
         Assert.Equal("done", result.Status);
         Assert.True(result.WasMinimized);
@@ -32,12 +34,14 @@ public sealed class WindowActivationServiceTests
         FakeWindowManager windowManager = new(
             windows: [CreateWindow(hwnd: 202)],
             onFocus: _ => { });
+        WindowTargetResolver resolver = new(windowManager);
         WindowActivationService service = new(
             windowManager,
+            resolver,
             platform,
             new WindowActivationOptions(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero));
 
-        ActivateWindowResult result = await service.ActivateAsync(202, CancellationToken.None);
+        ActivateWindowResult result = await service.ActivateAsync(CreateWindow(hwnd: 202), CancellationToken.None);
 
         Assert.Equal("ambiguous", result.Status);
         Assert.True(result.WasMinimized);
@@ -49,12 +53,14 @@ public sealed class WindowActivationServiceTests
     {
         FakeWindowActivationPlatform platform = new(windowExists: false, iconic: false, foregroundWindow: 0);
         FakeWindowManager windowManager = new(windows: []);
+        WindowTargetResolver resolver = new(windowManager);
         WindowActivationService service = new(
             windowManager,
+            resolver,
             platform,
             new WindowActivationOptions(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero));
 
-        ActivateWindowResult result = await service.ActivateAsync(303, CancellationToken.None);
+        ActivateWindowResult result = await service.ActivateAsync(CreateWindow(hwnd: 303), CancellationToken.None);
 
         Assert.Equal("failed", result.Status);
         Assert.Contains("больше не найдено", result.Reason, StringComparison.Ordinal);

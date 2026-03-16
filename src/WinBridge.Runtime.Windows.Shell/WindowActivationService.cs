@@ -4,11 +4,13 @@ namespace WinBridge.Runtime.Windows.Shell;
 
 public sealed class WindowActivationService(
     IWindowManager windowManager,
+    IWindowTargetResolver windowTargetResolver,
     IWindowActivationPlatform platform,
     WindowActivationOptions options) : IWindowActivationService
 {
-    public async Task<ActivateWindowResult> ActivateAsync(long hwnd, CancellationToken cancellationToken)
+    public async Task<ActivateWindowResult> ActivateAsync(WindowDescriptor targetWindow, CancellationToken cancellationToken)
     {
+        long hwnd = targetWindow.Hwnd;
         if (!platform.IsWindow(hwnd))
         {
             return Failed("Окно для активации больше не найдено.", wasMinimized: false);
@@ -34,10 +36,10 @@ public sealed class WindowActivationService(
             options.FocusTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        WindowDescriptor? window = FindWindow(hwnd);
+        WindowDescriptor? window = windowTargetResolver.ResolveLiveWindowByIdentity(targetWindow);
         if (window is null)
         {
-            return Failed("Окно для активации больше не найдено.", wasMinimized);
+            return Failed("Окно для активации больше не найдено или больше не совпадает с исходной identity.", wasMinimized);
         }
 
         if (isForeground)
@@ -51,9 +53,6 @@ public sealed class WindowActivationService(
         string status = wasMinimized ? "ambiguous" : "failed";
         return new ActivateWindowResult(status, reason, window, wasMinimized, false);
     }
-
-    private WindowDescriptor? FindWindow(long hwnd) =>
-        windowManager.ListWindows(includeInvisible: true).FirstOrDefault(window => window.Hwnd == hwnd);
 
     private static ActivateWindowResult Failed(string reason, bool wasMinimized) =>
         new("failed", reason, null, wasMinimized, false);

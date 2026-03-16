@@ -321,10 +321,6 @@ public sealed class GraphicsCaptureService(
         ValidateWindowCaptureTarget(hwnd, bounds);
         double dpiScale = GetWindowDpiScale(hwnd);
         MonitorInfo? monitor = monitorManager.FindMonitorForWindow(window.Hwnd);
-        if (monitor is null)
-        {
-            throw new CaptureOperationException("Не удалось определить monitor для window capture.");
-        }
 
         return new ResolvedCaptureTarget(CaptureScope.Window, "window", window, bounds, dpiScale, monitor);
     }

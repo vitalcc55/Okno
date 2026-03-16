@@ -9,6 +9,9 @@ public sealed class Win32MonitorManager : IMonitorManager
     private const int ErrorInsufficientBuffer = 122;
     private const int ErrorSuccess = 0;
     private const int MonitorDefaultToNearest = 2;
+    private const int EnumCurrentSettings = -1;
+    private const uint DisplayDeviceAttachedToDesktop = 0x00000001;
+    private const uint DisplayDeviceMirroringDriver = 0x00000008;
     private const uint MonitorInfoPrimary = 1;
     private const uint QdcOnlyActivePaths = 0x00000002;
 
@@ -16,6 +19,7 @@ public sealed class Win32MonitorManager : IMonitorManager
     {
         Dictionary<string, DisplayConfigSourceIdentity> displayConfigMap = QueryDisplayConfigMap();
         bool hasDisplayConfig = displayConfigMap.Count > 0;
+        HashSet<string> desktopGdiDevices = ListDesktopGdiDevices();
         Dictionary<string, MonitorAccumulator> monitors = new(StringComparer.OrdinalIgnoreCase);
 
         _ = EnumDisplayMonitors(
@@ -31,17 +35,22 @@ public sealed class Win32MonitorManager : IMonitorManager
 
                 string gdiDeviceName = info.szDevice;
                 string normalizedGdiDeviceName = NormalizeGdiDeviceName(gdiDeviceName);
-                DisplayConfigSourceIdentity? displayIdentity = null;
-                if (hasDisplayConfig && !displayConfigMap.TryGetValue(normalizedGdiDeviceName, out displayIdentity))
+                if (desktopGdiDevices.Count > 0 && !desktopGdiDevices.Contains(normalizedGdiDeviceName))
                 {
                     return true;
                 }
 
-                string monitorId = hasDisplayConfig
+                DisplayConfigSourceIdentity? displayIdentity = null;
+                if (hasDisplayConfig)
+                {
+                    _ = displayConfigMap.TryGetValue(normalizedGdiDeviceName, out displayIdentity);
+                }
+
+                string monitorId = displayIdentity is not null
                     ? BuildDisplaySourceMonitorId(displayIdentity!)
                     : BuildFallbackMonitorId(gdiDeviceName);
 
-                string friendlyName = hasDisplayConfig
+                string friendlyName = displayIdentity is not null
                     ? displayIdentity!.GetPublicFriendlyName(gdiDeviceName)
                     : gdiDeviceName;
 
@@ -87,10 +96,7 @@ public sealed class Win32MonitorManager : IMonitorManager
         }
 
         return ListMonitors().FirstOrDefault(
-            monitor => string.Equals(
-                monitor.Descriptor.MonitorId,
-                monitorId,
-                StringComparison.OrdinalIgnoreCase));
+            monitor => MonitorAddressMatcher.Matches(monitorId, monitor.Descriptor));
     }
 
     public MonitorInfo? FindMonitorByHandle(long handle, IReadOnlyList<MonitorInfo>? monitors = null)
@@ -228,6 +234,38 @@ public sealed class Win32MonitorManager : IMonitorManager
     private static string NormalizeGdiDeviceName(string gdiDeviceName) =>
         (gdiDeviceName ?? string.Empty).Trim().ToUpperInvariant();
 
+    private static HashSet<string> ListDesktopGdiDevices()
+    {
+        HashSet<string> devices = new(StringComparer.OrdinalIgnoreCase);
+
+        for (uint index = 0; ; index++)
+        {
+            DISPLAY_DEVICE displayDevice = new() { cb = Marshal.SizeOf<DISPLAY_DEVICE>() };
+            if (!EnumDisplayDevices(null, index, ref displayDevice, 0))
+            {
+                break;
+            }
+
+            if ((displayDevice.StateFlags & DisplayDeviceAttachedToDesktop) == 0)
+            {
+                continue;
+            }
+
+            if ((displayDevice.StateFlags & DisplayDeviceMirroringDriver) != 0)
+            {
+                continue;
+            }
+
+            string normalized = NormalizeGdiDeviceName(displayDevice.DeviceName);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                devices.Add(normalized);
+            }
+        }
+
+        return devices;
+    }
+
     private delegate bool MonitorEnumProc(
         IntPtr monitor,
         IntPtr hdcMonitor,
@@ -260,6 +298,26 @@ public sealed class Win32MonitorManager : IMonitorManager
 
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
         public string szDevice;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DISPLAY_DEVICE
+    {
+        public int cb;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceString;
+
+        public uint StateFlags;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceID;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceKey;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -469,6 +527,13 @@ public sealed class Win32MonitorManager : IMonitorManager
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool EnumDisplayDevices(
+        string? lpDevice,
+        uint iDevNum,
+        ref DISPLAY_DEVICE lpDisplayDevice,
+        uint dwFlags);
 
     [DllImport("user32.dll")]
     private static extern int GetDisplayConfigBufferSizes(uint flags, out uint numPathArrayElements, out uint numModeInfoArrayElements);

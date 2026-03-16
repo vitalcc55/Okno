@@ -14,6 +14,10 @@ public static class MonitorIdFormatter
         return "gdi:" + token.ToLowerInvariant();
     }
 
+    public static bool IsGdiMonitorId(string monitorId) =>
+        !string.IsNullOrWhiteSpace(monitorId)
+        && monitorId.StartsWith("gdi:", StringComparison.OrdinalIgnoreCase);
+
     private static string NormalizeGdiDeviceName(string gdiDeviceName) =>
         (gdiDeviceName ?? string.Empty).Trim().ToUpperInvariant();
 }
