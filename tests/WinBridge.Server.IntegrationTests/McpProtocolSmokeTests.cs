@@ -22,54 +22,34 @@ public sealed class McpProtocolSmokeTests
 
         await using StreamWriter writer = process.StandardInput;
         using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
 
         try
         {
-            await SendAsync(
-                writer,
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
                 new
                 {
-                    jsonrpc = "2.0",
-                    id = 1,
-                    method = "initialize",
-                    @params = new
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
                     {
-                        protocolVersion = "2025-06-18",
-                        capabilities = new { },
-                        clientInfo = new
-                        {
-                            name = "Okno.IntegrationTests",
-                            version = "0.1.0",
-                        },
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
                     },
-                });
-
-            using JsonDocument initializeResponse = await ReadResponseAsync(reader, "initialize");
+                },
+                "initialize");
             JsonElement initializeRoot = initializeResponse.RootElement;
-            Assert.Equal(1, initializeRoot.GetProperty("id").GetInt32());
             Assert.True(initializeRoot.TryGetProperty("result", out JsonElement initializeResult));
             Assert.True(initializeResult.TryGetProperty("serverInfo", out JsonElement serverInfo));
             Assert.Equal("Okno.Server", serverInfo.GetProperty("name").GetString());
 
-            await SendAsync(
-                writer,
-                new
-                {
-                    jsonrpc = "2.0",
-                    method = "notifications/initialized",
-                });
+            await session.SendNotificationAsync("notifications/initialized");
 
-            await SendAsync(
-                writer,
-                new
-                {
-                    jsonrpc = "2.0",
-                    id = 2,
-                    method = "tools/list",
-                    @params = new { },
-                });
-
-            using JsonDocument toolsResponse = await ReadResponseAsync(reader, "tools/list");
+            using JsonDocument toolsResponse = await session.SendRequestAsync(
+                "tools/list",
+                new { },
+                "tools/list");
             JsonElement tools = toolsResponse.RootElement
                 .GetProperty("result")
                 .GetProperty("tools");
@@ -105,11 +85,11 @@ public sealed class McpProtocolSmokeTests
             Assert.False(activateAnnotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.False(activateAnnotations.GetProperty("destructiveHint").GetBoolean());
 
-            using JsonDocument healthResponse = await CallToolAsync(reader, writer, 3, ToolNames.OknoHealth, new { });
+            using JsonDocument healthResponse = await session.CallToolAsync(ToolNames.OknoHealth, new { });
             string healthText = GetToolTextPayload(healthResponse);
             Assert.Contains("\"service\":\"Okno\"", healthText, StringComparison.Ordinal);
 
-            using JsonDocument monitorsResponse = await CallToolAsync(reader, writer, 4, ToolNames.WindowsListMonitors, new { });
+            using JsonDocument monitorsResponse = await session.CallToolAsync(ToolNames.WindowsListMonitors, new { });
             using JsonDocument monitorsPayload = JsonDocument.Parse(GetToolTextPayload(monitorsResponse));
             JsonElement monitorsRoot = monitorsPayload.RootElement;
             int monitorCount = monitorsRoot.GetProperty("count").GetInt32();
@@ -117,8 +97,7 @@ public sealed class McpProtocolSmokeTests
             string primaryMonitorId = monitorsRoot.GetProperty("monitors")[0].GetProperty("monitorId").GetString()!;
             long helperHwnd = await WaitForMainWindowAsync(helperProcess);
 
-            using JsonDocument windowsResponse = await CallToolAsync(reader, writer, 5, ToolNames.WindowsListWindows, new { includeInvisible = false });
-            using JsonDocument windowsPayload = JsonDocument.Parse(GetToolTextPayload(windowsResponse));
+            using JsonDocument windowsPayload = await WaitForVisibleHelperWindowAsync(session, helperHwnd);
             JsonElement windowsRoot = windowsPayload.RootElement;
             int count = windowsRoot.GetProperty("count").GetInt32();
             Assert.True(count > 0, "Smoke contract requires at least one visible window.");
@@ -126,10 +105,7 @@ public sealed class McpProtocolSmokeTests
                 windowsRoot.GetProperty("windows").EnumerateArray().Select(window => window.GetProperty("hwnd").GetInt64()),
                 hwnd => hwnd == helperHwnd);
 
-            using JsonDocument desktopCaptureResponse = await CallToolAsync(
-                reader,
-                writer,
-                6,
+            using JsonDocument desktopCaptureResponse = await session.CallToolAsync(
                 ToolNames.WindowsCapture,
                 new
                 {
@@ -142,19 +118,19 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal("desktop", desktopStructuredContent.GetProperty("scope").GetString());
             Assert.Equal(primaryMonitorId, desktopStructuredContent.GetProperty("monitorId").GetString());
 
-            using JsonDocument attachResponse = await CallToolAsync(reader, writer, 7, ToolNames.WindowsAttachWindow, new { hwnd = helperHwnd });
+            using JsonDocument attachResponse = await session.CallToolAsync(ToolNames.WindowsAttachWindow, new { hwnd = helperHwnd });
             using JsonDocument attachPayload = JsonDocument.Parse(GetToolTextPayload(attachResponse));
             JsonElement attachRoot = attachPayload.RootElement;
             string attachStatus = attachRoot.GetProperty("status").GetString()!;
             Assert.Contains(attachStatus, AttachSuccessStates);
 
-            using JsonDocument sessionResponse = await CallToolAsync(reader, writer, 8, ToolNames.OknoSessionState, new { });
+            using JsonDocument sessionResponse = await session.CallToolAsync(ToolNames.OknoSessionState, new { });
             using JsonDocument sessionPayload = JsonDocument.Parse(GetToolTextPayload(sessionResponse));
             JsonElement sessionRoot = sessionPayload.RootElement;
             Assert.Equal("window", sessionRoot.GetProperty("mode").GetString());
             Assert.Equal(helperHwnd, sessionRoot.GetProperty("attachedWindow").GetProperty("window").GetProperty("hwnd").GetInt64());
 
-            using JsonDocument captureResponse = await CallToolAsync(reader, writer, 9, ToolNames.WindowsCapture, new { scope = "window" });
+            using JsonDocument captureResponse = await session.CallToolAsync(ToolNames.WindowsCapture, new { scope = "window" });
             JsonElement captureResult = captureResponse.RootElement.GetProperty("result");
             Assert.False(captureResult.GetProperty("isError").GetBoolean());
 
@@ -177,13 +153,13 @@ public sealed class McpProtocolSmokeTests
             Assert.True(MinimizeWindow(helperHwnd), "Smoke helper window did not accept minimize request.");
             Assert.True(await WaitUntilAsync(() => IsIconic(new IntPtr(helperHwnd))), "Smoke helper window did not become minimized in time.");
 
-            using JsonDocument minimizedCaptureResponse = await CallToolAsync(reader, writer, 19, ToolNames.WindowsCapture, new { scope = "window" });
+            using JsonDocument minimizedCaptureResponse = await session.CallToolAsync(ToolNames.WindowsCapture, new { scope = "window" });
             JsonElement minimizedCaptureResult = minimizedCaptureResponse.RootElement.GetProperty("result");
             Assert.True(minimizedCaptureResult.GetProperty("isError").GetBoolean());
             JsonElement minimizedPayload = minimizedCaptureResult.GetProperty("structuredContent");
             Assert.Contains("Свернутое окно", minimizedPayload.GetProperty("reason").GetString(), StringComparison.Ordinal);
 
-            using JsonDocument activateResponse = await CallToolAsync(reader, writer, 20, ToolNames.WindowsActivateWindow, new { });
+            using JsonDocument activateResponse = await session.CallToolAsync(ToolNames.WindowsActivateWindow, new { });
             JsonElement activateResult = activateResponse.RootElement
                 .GetProperty("result");
             JsonElement activateRoot = activateResult
@@ -195,12 +171,7 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal(helperHwnd, activateRoot.GetProperty("window").GetProperty("hwnd").GetInt64());
             Assert.Equal(activateStatus == "done", activateRoot.GetProperty("isForeground").GetBoolean());
 
-            using JsonDocument helperCaptureResponse = await CallToolAsync(
-                reader,
-                writer,
-                21,
-                ToolNames.WindowsCapture,
-                new { scope = "window" });
+            using JsonDocument helperCaptureResponse = await WaitForSuccessfulWindowCaptureAsync(session);
             JsonElement helperCaptureResult = helperCaptureResponse.RootElement.GetProperty("result");
             Assert.False(helperCaptureResult.GetProperty("isError").GetBoolean());
             JsonElement helperStructured = helperCaptureResult.GetProperty("structuredContent");
@@ -225,77 +196,12 @@ public sealed class McpProtocolSmokeTests
         }
     }
 
-    private static async Task SendAsync(StreamWriter writer, object message)
-    {
-        string json = JsonSerializer.Serialize(message);
-        await writer.WriteLineAsync(json);
-        await writer.FlushAsync();
-    }
-
-    private static async Task<JsonDocument> CallToolAsync(
-        StreamReader reader,
-        StreamWriter writer,
-        int id,
-        string toolName,
-        object arguments)
-    {
-        await SendAsync(
-            writer,
-            new
-            {
-                jsonrpc = "2.0",
-                id,
-                method = "tools/call",
-                @params = new
-                {
-                    name = toolName,
-                    arguments,
-                },
-            });
-
-        return await ReadResponseAsync(reader, toolName);
-    }
-
     private static string GetToolTextPayload(JsonDocument response) =>
         response.RootElement
             .GetProperty("result")
             .GetProperty("content")[0]
             .GetProperty("text")
             .GetString()!;
-
-    private static async Task<JsonDocument> ReadResponseAsync(StreamReader reader, string requestName)
-    {
-        while (true)
-        {
-            string? line;
-            try
-            {
-                line = await reader.ReadLineAsync().WaitAsync(ResponseTimeout);
-            }
-            catch (TimeoutException exception)
-            {
-                throw new TimeoutException(
-                    $"MCP integration smoke timed out while waiting for response to '{requestName}'.",
-                    exception);
-            }
-
-            Assert.False(line is null, "Сервер завершился до получения ответа.");
-
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                continue;
-            }
-
-            JsonDocument document = JsonDocument.Parse(line);
-            JsonElement root = document.RootElement;
-            if (root.TryGetProperty("id", out _))
-            {
-                return document;
-            }
-
-            document.Dispose();
-        }
-    }
 
     private static async Task WaitForExitAsync(Process process)
     {
@@ -308,6 +214,92 @@ public sealed class McpProtocolSmokeTests
             throw new TimeoutException(
                 $"MCP integration smoke timed out while waiting for server process {process.Id} to exit.",
                 exception);
+        }
+    }
+
+    private sealed class McpRequestSession(StreamReader reader, StreamWriter writer)
+    {
+        private int nextRequestId = 1;
+
+        public async Task SendNotificationAsync(string method)
+        {
+            string json = JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                method,
+            });
+
+            await writer.WriteLineAsync(json);
+            await writer.FlushAsync();
+        }
+
+        public Task<JsonDocument> CallToolAsync(string toolName, object arguments) =>
+            SendRequestAsync(
+                "tools/call",
+                new
+                {
+                    name = toolName,
+                    arguments,
+                },
+                toolName);
+
+        public async Task<JsonDocument> SendRequestAsync(string method, object parameters, string requestName)
+        {
+            int requestId = nextRequestId++;
+            string json = JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                id = requestId,
+                method,
+                @params = parameters,
+            });
+
+            await writer.WriteLineAsync(json);
+            await writer.FlushAsync();
+            return await ReadResponseAsync(requestName, requestId);
+        }
+
+        private async Task<JsonDocument> ReadResponseAsync(string requestName, int expectedId)
+        {
+            while (true)
+            {
+                string? line;
+                try
+                {
+                    line = await reader.ReadLineAsync().WaitAsync(ResponseTimeout);
+                }
+                catch (TimeoutException exception)
+                {
+                    throw new TimeoutException(
+                        $"MCP integration smoke timed out while waiting for response to '{requestName}'.",
+                        exception);
+                }
+
+                Assert.False(line is null, "Сервер завершился до получения ответа.");
+
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                JsonDocument document = JsonDocument.Parse(line);
+                JsonElement root = document.RootElement;
+                if (!root.TryGetProperty("id", out JsonElement idElement))
+                {
+                    document.Dispose();
+                    continue;
+                }
+
+                int actualId = idElement.GetInt32();
+                if (actualId != expectedId)
+                {
+                    document.Dispose();
+                    throw new InvalidDataException(
+                        $"MCP integration smoke received response id '{actualId}' while waiting for '{requestName}' response id '{expectedId}'.");
+                }
+
+                return document;
+            }
         }
     }
 
@@ -386,6 +378,71 @@ public sealed class McpProtocolSmokeTests
 
         return predicate();
     }
+
+    private static async Task<JsonDocument> WaitForVisibleHelperWindowAsync(
+        McpRequestSession session,
+        long helperHwnd)
+    {
+        DateTime deadlineUtc = DateTime.UtcNow + HelperWindowTimeout;
+        while (DateTime.UtcNow < deadlineUtc)
+        {
+            using JsonDocument windowsResponse = await CallToolAsync(
+                session,
+                ToolNames.WindowsListWindows,
+                new { includeInvisible = false });
+            using JsonDocument windowsPayload = JsonDocument.Parse(GetToolTextPayload(windowsResponse));
+            JsonElement root = windowsPayload.RootElement;
+            if (root.GetProperty("windows").EnumerateArray().Any(window => window.GetProperty("hwnd").GetInt64() == helperHwnd))
+            {
+                return JsonDocument.Parse(root.GetRawText());
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException("Smoke helper window did not appear in visible windows.list_windows inventory in time.");
+    }
+
+    private static async Task<JsonDocument> WaitForSuccessfulWindowCaptureAsync(
+        McpRequestSession session)
+    {
+        DateTime deadlineUtc = DateTime.UtcNow + HelperWindowTimeout;
+        string? lastReason = null;
+
+        while (DateTime.UtcNow < deadlineUtc)
+        {
+            using JsonDocument captureResponse = await CallToolAsync(
+                session,
+                ToolNames.WindowsCapture,
+                new { scope = "window" });
+            JsonElement result = captureResponse.RootElement.GetProperty("result");
+            if (!result.GetProperty("isError").GetBoolean())
+            {
+                return JsonDocument.Parse(captureResponse.RootElement.GetRawText());
+            }
+
+            if (result.TryGetProperty("structuredContent", out JsonElement structuredContent)
+                && structuredContent.TryGetProperty("reason", out JsonElement reasonElement))
+            {
+                lastReason = reasonElement.GetString();
+            }
+
+            await Task.Delay(100);
+        }
+
+        if (string.IsNullOrWhiteSpace(lastReason))
+        {
+            throw new TimeoutException("Helper window did not become capturable after activation in time.");
+        }
+
+        throw new TimeoutException($"Helper window did not become capturable after activation in time. Last capture reason: {lastReason}");
+    }
+
+    private static Task<JsonDocument> CallToolAsync(
+        McpRequestSession session,
+        string toolName,
+        object arguments) =>
+        session.CallToolAsync(toolName, arguments);
 
     private static bool MinimizeWindow(long hwnd) =>
         ShowWindowAsync(new IntPtr(hwnd), SwMinimize);

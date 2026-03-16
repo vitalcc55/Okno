@@ -14,6 +14,15 @@
 - `windows.activate_window` теперь возвращает `done` только когда финальный live snapshot подтверждает usable state: окно остаётся foreground и уже не находится в `minimized`.
 - `WinBridge.Runtime.Windows.Display` зарегистрирован как полноценный runtime slice в `WinBridge.sln`, а `scripts/refresh-generated-docs.ps1` больше собирает `runtime_projects` автоматически по `WinBridge.Runtime*` csproj, чтобы bootstrap inventory не дрейфовал от фактической архитектуры.
 
+## 2026-03-16 15:55
+
+- Helper-based smoke harness переведён на contract-true readiness: helper считается готовым только после появления в `windows.list_windows(includeInvisible=false)`, а не сразу после появления `MainWindowHandle`.
+- Post-activation helper capture в smoke и raw MCP integration smoke теперь ждёт фактическую capturable ready-state через `windows.capture(scope="window")`, вместо безусловочного принятия любого `ambiguous` как достаточного для следующего шага.
+
+## 2026-03-16 16:14
+
+- Smoke harness и raw MCP integration smoke переведены на session-scoped JSON-RPC request ids и строгий response matching по ожидаемому `id`, чтобы retry-циклы не могли переиспользовать корреляционные идентификаторы и ловить ответы не от своей фазы.
+
 ## 2026-03-15 12:36
 
 - `windows.attach_window` теперь разводит invalid selector и ambiguous match: отсутствие `hwnd`/`titlePattern`/`processName` возвращается как `failed`, а `ambiguous` остаётся только для реального multi-match path.

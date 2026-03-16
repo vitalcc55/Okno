@@ -1,5 +1,5 @@
 ﻿{
-    "generated_at_utc":  "2026-03-16T12:03:55.4674230Z",
+    "generated_at_utc":  "2026-03-16T13:17:58.5365580Z",
     "product_name":  "Okno",
     "transport":  {
                       "kind":  "stdio",
@@ -32,20 +32,20 @@
                               "ci":  "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"
                           },
     "latest_smoke":  {
-                         "run_id":  "20260316T150349469",
+                         "run_id":  "20260316T161753414",
                          "server":  "Okno.Server",
                          "protocol":  "2025-06-18",
                          "declared_tools":  15,
                          "monitor_count":  3,
                          "desktop_monitor_id":  "display-source:000000000001259e:2",
                          "visible_windows":  18,
-                         "attached_hwnd":  4786180,
-                         "capture_artifact":  "artifacts/diagnostics/20260316T120350737-e1ef7/captures/window-window-4786180-20260316T120351649-77a408ceb13d427caee6a05e9e1f8895.png",
-                         "helper_window_hwnd":  4786180,
+                         "attached_hwnd":  7280812,
+                         "capture_artifact":  "artifacts/diagnostics/20260316T131754576-0e6cb/captures/window-window-7280812-20260316T131755214-3c5fde8e6bc04c7da951925b70de53bf.png",
+                         "helper_window_hwnd":  7280812,
                          "helper_activation_status":  "done",
-                         "audit_directory":  "artifacts/diagnostics/20260316T120350737-e1ef7",
-                         "smoke_report":  "artifacts/smoke/20260316T150349469/report.json",
-                         "audit_summary":  "artifacts/diagnostics/20260316T120350737-e1ef7/summary.md"
+                         "audit_directory":  "artifacts/diagnostics/20260316T131754576-0e6cb",
+                         "smoke_report":  "artifacts/smoke/20260316T161753414/report.json",
+                         "audit_summary":  "artifacts/diagnostics/20260316T131754576-0e6cb/summary.md"
                      },
     "deferred_scope":  [
                            "UIA",

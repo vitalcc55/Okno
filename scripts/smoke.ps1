@@ -8,6 +8,7 @@ $artifactRoot = Join-Path $repoRoot "artifacts\\smoke\\$runId"
 $serverDll = Join-Path $repoRoot 'src\WinBridge.Server\bin\Debug\net8.0-windows10.0.19041.0\Okno.Server.dll'
 $helperExe = Join-Path $repoRoot 'tests\WinBridge.SmokeWindowHost\bin\Debug\net8.0-windows10.0.19041.0\WinBridge.SmokeWindowHost.exe'
 $contractPath = Join-Path $artifactRoot 'project-interfaces.json'
+$script:NextMcpRequestId = 1
 New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
 
 if (-not ([System.Management.Automation.PSTypeName]'WinBridgeSmoke.User32').Type) {
@@ -50,6 +51,8 @@ function Read-Response {
         [System.Diagnostics.Process] $Process,
         [Parameter(Mandatory)]
         [string] $RequestName,
+        [Parameter(Mandatory)]
+        [int] $ExpectedId,
         [int] $TimeoutSeconds = 15
     )
 
@@ -66,6 +69,10 @@ function Read-Response {
 
         $doc = $line | ConvertFrom-Json
         if ($null -ne $doc.id) {
+            if ([int]$doc.id -ne $ExpectedId) {
+                throw "Received MCP response id '$($doc.id)' while waiting for '$RequestName' response id '$ExpectedId'."
+            }
+
             return [PSCustomObject]@{
                 Raw = $line
                 Json = $doc
@@ -74,6 +81,12 @@ function Read-Response {
     }
 
     throw "Сервер завершился до получения ответа MCP."
+}
+
+function Get-NextMcpRequestId {
+    $id = $script:NextMcpRequestId
+    $script:NextMcpRequestId++
+    return $id
 }
 
 function Assert-Condition {
@@ -192,6 +205,129 @@ function Wait-ForMainWindowHandle {
     return [int64]$Process.MainWindowHandle
 }
 
+function Invoke-ToolCall {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [string] $Name,
+        [Parameter(Mandatory)]
+        [hashtable] $Arguments,
+        [Parameter(Mandatory)]
+        [string] $RequestName
+    )
+
+    $requestId = Get-NextMcpRequestId
+    $rawRequest = Send-Json -Process $Process -Payload @{
+        jsonrpc = '2.0'
+        id = $requestId
+        method = 'tools/call'
+        params = @{
+            name = $Name
+            arguments = $Arguments
+        }
+    }
+    $response = Read-Response -Process $Process -RequestName $RequestName -ExpectedId $requestId
+
+    return [PSCustomObject]@{
+        Id = $requestId
+        RawRequest = $rawRequest
+        RawResponse = $response.Raw
+        Json = $response.Json
+        Payload = Get-ToolPayload -ToolResponse $response.Json
+    }
+}
+
+function Invoke-McpRequest {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [string] $Method,
+        [Parameter(Mandatory)]
+        [hashtable] $Params,
+        [Parameter(Mandatory)]
+        [string] $RequestName
+    )
+
+    $requestId = Get-NextMcpRequestId
+    $rawRequest = Send-Json -Process $Process -Payload @{
+        jsonrpc = '2.0'
+        id = $requestId
+        method = $Method
+        params = $Params
+    }
+    $response = Read-Response -Process $Process -RequestName $RequestName -ExpectedId $requestId
+
+    return [PSCustomObject]@{
+        Id = $requestId
+        RawRequest = $rawRequest
+        RawResponse = $response.Raw
+        Json = $response.Json
+    }
+}
+
+function Wait-ForVisibleHelperWindow {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [int64] $HelperHwnd,
+        [int] $TimeoutMilliseconds = 10000,
+        [int] $PollMilliseconds = 100
+    )
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    do {
+        $result = Invoke-ToolCall -Process $Process -Name 'windows.list_windows' -Arguments @{ includeInvisible = $false } -RequestName 'windows.list_windows(visible helper readiness)'
+
+        if ($result.Payload.count -gt 0 -and (@($result.Payload.windows | ForEach-Object { [int64]$_.hwnd }) -contains $HelperHwnd)) {
+            return $result
+        }
+
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+    while ((Get-Date) -lt $deadline)
+
+    throw 'Smoke helper window did not appear in visible windows.list_windows inventory in time.'
+}
+
+function Wait-ForSuccessfulWindowCapture {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [int] $TimeoutMilliseconds = 10000,
+        [int] $PollMilliseconds = 100
+    )
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    $lastReason = $null
+    do {
+        $toolCall = Invoke-ToolCall -Process $Process -Name 'windows.capture' -Arguments @{ scope = 'window' } -RequestName 'windows.capture(helper readiness after activate)'
+        $result = $toolCall.Json.result
+        if (-not [bool]$result.isError) {
+            return [PSCustomObject]@{
+                Id = $toolCall.Id
+                RawRequest = $toolCall.RawRequest
+                RawResponse = $toolCall.RawResponse
+                Json = $toolCall.Json
+                Payload = $result.structuredContent
+                Image = Get-ImageBlock -ToolResponse $toolCall.Json
+            }
+        }
+
+        $lastReason = [string]$result.structuredContent.reason
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+    while ((Get-Date) -lt $deadline)
+
+    if ([string]::IsNullOrWhiteSpace($lastReason)) {
+        throw 'Helper window did not become capturable after activation in time.'
+    }
+
+    throw "Helper window did not become capturable after activation in time. Last capture reason: $lastReason"
+}
+
 function Minimize-Window {
     param(
         [Parameter(Mandatory)]
@@ -238,96 +374,76 @@ try {
     $helperProcess = Start-SmokeHelperWindow -ExecutablePath $helperExe -Title $helperTitle
     $helperHwnd = Wait-ForMainWindowHandle -Process $helperProcess
 
-    $rawInitializeRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 1
-        method = 'initialize'
-        params = @{
-            protocolVersion = '2025-06-18'
-            capabilities = @{}
-            clientInfo = @{
-                name = 'Okno.Smoke'
-                version = '0.1.0'
-            }
+    $initializeCall = Invoke-McpRequest -Process $process -Method 'initialize' -Params @{
+        protocolVersion = '2025-06-18'
+        capabilities = @{}
+        clientInfo = @{
+            name = 'Okno.Smoke'
+            version = '0.1.0'
         }
+    } -RequestName 'initialize'
+    $rawInitializeRequest = $initializeCall.RawRequest
+    $initializeResponse = [PSCustomObject]@{
+        Raw = $initializeCall.RawResponse
+        Json = $initializeCall.Json
     }
-    $initializeResponse = Read-Response -Process $process -RequestName 'initialize'
 
     [void](Send-Json -Process $process -Payload @{
         jsonrpc = '2.0'
         method = 'notifications/initialized'
     })
 
-    $rawListRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 2
-        method = 'tools/list'
-        params = @{}
+    $listCall = Invoke-McpRequest -Process $process -Method 'tools/list' -Params @{} -RequestName 'tools/list'
+    $rawListRequest = $listCall.RawRequest
+    $listResponse = [PSCustomObject]@{
+        Raw = $listCall.RawResponse
+        Json = $listCall.Json
     }
-    $listResponse = Read-Response -Process $process -RequestName 'tools/list'
     foreach ($requiredTool in $requiredTools) {
         Assert-Condition -Condition (@($listResponse.Json.result.tools | ForEach-Object { $_.name }) -contains $requiredTool) -Message "Required tool '$requiredTool' is missing from tools/list."
     }
 
-    $rawHealthRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 3
-        method = 'tools/call'
-        params = @{
-            name = 'okno.health'
-            arguments = @{}
-        }
+    $healthCall = Invoke-ToolCall -Process $process -Name 'okno.health' -Arguments @{} -RequestName 'okno.health'
+    $rawHealthRequest = $healthCall.RawRequest
+    $healthResponse = [PSCustomObject]@{
+        Raw = $healthCall.RawResponse
+        Json = $healthCall.Json
     }
-    $healthResponse = Read-Response -Process $process -RequestName 'okno.health'
-    $healthPayload = Get-ToolPayload -ToolResponse $healthResponse.Json
+    $healthPayload = $healthCall.Payload
     Assert-Condition -Condition ($healthPayload.service -eq 'Okno') -Message "Health payload returned unexpected service name '$($healthPayload.service)'."
 
-    $rawMonitorsRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 4
-        method = 'tools/call'
-        params = @{
-            name = 'windows.list_monitors'
-            arguments = @{}
-        }
+    $monitorsCall = Invoke-ToolCall -Process $process -Name 'windows.list_monitors' -Arguments @{} -RequestName 'windows.list_monitors'
+    $rawMonitorsRequest = $monitorsCall.RawRequest
+    $monitorsResponse = [PSCustomObject]@{
+        Raw = $monitorsCall.RawResponse
+        Json = $monitorsCall.Json
     }
-    $monitorsResponse = Read-Response -Process $process -RequestName 'windows.list_monitors'
-    $monitorsPayload = Get-ToolPayload -ToolResponse $monitorsResponse.Json
+    $monitorsPayload = $monitorsCall.Payload
     Assert-Condition -Condition ($monitorsPayload.count -gt 0) -Message 'Smoke requires at least one active monitor.'
     $primaryMonitorId = [string]$monitorsPayload.monitors[0].monitorId
 
-    $rawWindowsRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 5
-        method = 'tools/call'
-        params = @{
-            name = 'windows.list_windows'
-            arguments = @{
-                includeInvisible = $false
-            }
-        }
+    $visibleWindowResult = Wait-ForVisibleHelperWindow -Process $process -HelperHwnd $helperHwnd
+    $rawWindowsRequest = $visibleWindowResult.RawRequest
+    $windowsResponse = [PSCustomObject]@{
+        Raw = $visibleWindowResult.RawResponse
+        Json = $visibleWindowResult.Json
     }
-    $windowsResponse = Read-Response -Process $process -RequestName 'windows.list_windows'
-    $windowsPayload = Get-ToolPayload -ToolResponse $windowsResponse.Json
+    $windowsPayload = $visibleWindowResult.Payload
     Assert-Condition -Condition ($windowsPayload.count -gt 0) -Message 'Smoke requires at least one visible window to validate attach/session flow.'
     Assert-Condition -Condition (@($windowsPayload.windows | ForEach-Object { [int64]$_.hwnd }) -contains $helperHwnd) -Message 'Smoke helper window is missing from windows.list_windows payload.'
 
-    $rawDesktopCaptureRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 6
-        method = 'tools/call'
-        params = @{
-            name = 'windows.capture'
-            arguments = @{
-                scope = 'desktop'
-                monitorId = $primaryMonitorId
-            }
-        }
+    $desktopCaptureCall = Invoke-ToolCall -Process $process -Name 'windows.capture' -Arguments @{
+        scope = 'desktop'
+        monitorId = $primaryMonitorId
+    } -RequestName 'windows.capture(desktop monitorId)'
+    $rawDesktopCaptureRequest = $desktopCaptureCall.RawRequest
+    $desktopCaptureResponse = [PSCustomObject]@{
+        Raw = $desktopCaptureCall.RawResponse
+        Json = $desktopCaptureCall.Json
     }
-    $desktopCaptureResponse = Read-Response -Process $process -RequestName 'windows.capture(desktop monitorId)'
-    Assert-Condition -Condition (-not [bool]$desktopCaptureResponse.Json.result.isError) -Message 'Desktop capture by explicit monitorId returned isError=true.'
-    $desktopCapturePayload = $desktopCaptureResponse.Json.result.structuredContent
-    $desktopCaptureImage = Get-ImageBlock -ToolResponse $desktopCaptureResponse.Json
+    Assert-Condition -Condition (-not [bool]$desktopCaptureCall.Json.result.isError) -Message 'Desktop capture by explicit monitorId returned isError=true.'
+    $desktopCapturePayload = $desktopCaptureCall.Json.result.structuredContent
+    $desktopCaptureImage = Get-ImageBlock -ToolResponse $desktopCaptureCall.Json
     Assert-Condition -Condition ($desktopCapturePayload.scope -eq 'desktop') -Message "Desktop capture scope is '$($desktopCapturePayload.scope)', expected 'desktop'."
     Assert-Condition -Condition ($desktopCapturePayload.monitorId -eq $primaryMonitorId) -Message 'Desktop capture metadata does not preserve explicit monitorId.'
     Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($desktopCaptureImage.data)) -Message 'Desktop capture image block does not contain PNG data.'
@@ -340,51 +456,35 @@ try {
     $helperCapturePayload = $null
     $helperCaptureImage = $null
 
-    $rawAttachRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 7
-        method = 'tools/call'
-        params = @{
-            name = 'windows.attach_window'
-            arguments = @{
-                hwnd = $helperHwnd
-            }
-        }
+    $attachCall = Invoke-ToolCall -Process $process -Name 'windows.attach_window' -Arguments @{ hwnd = $helperHwnd } -RequestName 'windows.attach_window'
+    $rawAttachRequest = $attachCall.RawRequest
+    $attachResponse = [PSCustomObject]@{
+        Raw = $attachCall.RawResponse
+        Json = $attachCall.Json
     }
-    $attachResponse = Read-Response -Process $process -RequestName 'windows.attach_window'
-    $attachedWindow = Get-ToolPayload -ToolResponse $attachResponse.Json
+    $attachedWindow = $attachCall.Payload
     $attachStatus = [string]$attachedWindow.status
     Assert-Condition -Condition (@('done', 'already_attached') -contains $attachStatus) -Message "Attach helper window returned unexpected status '$attachStatus'."
 
-    $rawSessionRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 8
-        method = 'tools/call'
-        params = @{
-            name = 'okno.session_state'
-            arguments = @{}
-        }
+    $sessionCall = Invoke-ToolCall -Process $process -Name 'okno.session_state' -Arguments @{} -RequestName 'okno.session_state'
+    $rawSessionRequest = $sessionCall.RawRequest
+    $sessionResponse = [PSCustomObject]@{
+        Raw = $sessionCall.RawResponse
+        Json = $sessionCall.Json
     }
-    $sessionResponse = Read-Response -Process $process -RequestName 'okno.session_state'
-    $sessionPayload = Get-ToolPayload -ToolResponse $sessionResponse.Json
+    $sessionPayload = $sessionCall.Payload
     Assert-Condition -Condition ($sessionPayload.mode -eq 'window') -Message "Session snapshot mode is '$($sessionPayload.mode)', expected 'window'."
     Assert-Condition -Condition ([long]$sessionPayload.attachedWindow.window.hwnd -eq $helperHwnd) -Message 'Session snapshot does not point to the helper hwnd.'
 
-    $rawCaptureRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 9
-        method = 'tools/call'
-        params = @{
-            name = 'windows.capture'
-            arguments = @{
-                scope = 'window'
-            }
-        }
+    $captureCall = Invoke-ToolCall -Process $process -Name 'windows.capture' -Arguments @{ scope = 'window' } -RequestName 'windows.capture(window)'
+    $rawCaptureRequest = $captureCall.RawRequest
+    $captureResponse = [PSCustomObject]@{
+        Raw = $captureCall.RawResponse
+        Json = $captureCall.Json
     }
-    $captureResponse = Read-Response -Process $process -RequestName 'windows.capture(window)'
-    Assert-Condition -Condition (-not [bool]$captureResponse.Json.result.isError) -Message 'Helper window capture returned isError=true before minimize.'
-    $capturePayload = $captureResponse.Json.result.structuredContent
-    $captureImage = Get-ImageBlock -ToolResponse $captureResponse.Json
+    Assert-Condition -Condition (-not [bool]$captureCall.Json.result.isError) -Message 'Helper window capture returned isError=true before minimize.'
+    $capturePayload = $captureCall.Json.result.structuredContent
+    $captureImage = Get-ImageBlock -ToolResponse $captureCall.Json
     Assert-Condition -Condition ($capturePayload.scope -eq 'window') -Message "Capture scope is '$($capturePayload.scope)', expected 'window'."
     Assert-Condition -Condition ([long]$capturePayload.hwnd -eq $helperHwnd) -Message 'Capture metadata hwnd does not match helper window.'
     Assert-Condition -Condition ([int]$capturePayload.pixelWidth -gt 0) -Message 'Capture metadata width must be positive.'
@@ -395,33 +495,23 @@ try {
     Assert-Condition -Condition (Minimize-Window -Hwnd $helperHwnd) -Message 'Smoke helper window did not accept minimize request.'
     Assert-Condition -Condition (Wait-Until -Predicate { Test-IsIconic -Hwnd $helperHwnd }) -Message 'Smoke helper window did not become minimized in time.'
 
-    $rawMinimizedCaptureRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 19
-        method = 'tools/call'
-        params = @{
-            name = 'windows.capture'
-            arguments = @{
-                scope = 'window'
-            }
-        }
+    $minimizedCaptureCall = Invoke-ToolCall -Process $process -Name 'windows.capture' -Arguments @{ scope = 'window' } -RequestName 'windows.capture(minimized helper window)'
+    $rawMinimizedCaptureRequest = $minimizedCaptureCall.RawRequest
+    $minimizedCaptureResponse = [PSCustomObject]@{
+        Raw = $minimizedCaptureCall.RawResponse
+        Json = $minimizedCaptureCall.Json
     }
-    $minimizedCaptureResponse = Read-Response -Process $process -RequestName 'windows.capture(minimized helper window)'
-    Assert-Condition -Condition ([bool]$minimizedCaptureResponse.Json.result.isError) -Message 'Minimized helper window capture must return isError=true before activation.'
-    $minimizedCapturePayload = $minimizedCaptureResponse.Json.result.structuredContent
+    Assert-Condition -Condition ([bool]$minimizedCaptureCall.Json.result.isError) -Message 'Minimized helper window capture must return isError=true before activation.'
+    $minimizedCapturePayload = $minimizedCaptureCall.Json.result.structuredContent
     Assert-Condition -Condition ([string]$minimizedCapturePayload.reason -like '*Свернутое окно*') -Message 'Minimized helper capture reason does not mention minimized-window policy.'
 
-    $rawActivateRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 20
-        method = 'tools/call'
-        params = @{
-            name = 'windows.activate_window'
-            arguments = @{}
-        }
+    $activateCall = Invoke-ToolCall -Process $process -Name 'windows.activate_window' -Arguments @{} -RequestName 'windows.activate_window'
+    $rawActivateRequest = $activateCall.RawRequest
+    $activateResponse = [PSCustomObject]@{
+        Raw = $activateCall.RawResponse
+        Json = $activateCall.Json
     }
-    $activateResponse = Read-Response -Process $process -RequestName 'windows.activate_window'
-    $activateResult = $activateResponse.Json.result
+    $activateResult = $activateCall.Json.result
     $activatePayload = $activateResult.structuredContent
     $activateStatus = [string]$activatePayload.status
     Assert-Condition -Condition (@('done', 'ambiguous') -contains $activateStatus) -Message "ActivateWindow returned unexpected status '$activateStatus'."
@@ -429,22 +519,14 @@ try {
     Assert-Condition -Condition ([bool]$activatePayload.wasMinimized) -Message 'ActivateWindow payload must report wasMinimized=true for helper window.'
     Assert-Condition -Condition ([long]$activatePayload.window.hwnd -eq $helperHwnd) -Message 'ActivateWindow payload hwnd does not match helper window.'
     Assert-Condition -Condition ([bool]$activatePayload.isForeground -eq ($activateStatus -eq 'done')) -Message 'ActivateWindow payload isForeground does not match done/ambiguous semantics.'
-
-    $rawHelperCaptureRequest = Send-Json -Process $process -Payload @{
-        jsonrpc = '2.0'
-        id = 21
-        method = 'tools/call'
-        params = @{
-            name = 'windows.capture'
-            arguments = @{
-                scope = 'window'
-            }
-        }
+    $helperCaptureResult = Wait-ForSuccessfulWindowCapture -Process $process
+    $rawHelperCaptureRequest = $helperCaptureResult.RawRequest
+    $helperCaptureResponse = [PSCustomObject]@{
+        Raw = $helperCaptureResult.RawResponse
+        Json = $helperCaptureResult.Json
     }
-    $helperCaptureResponse = Read-Response -Process $process -RequestName 'windows.capture(helper window)'
-    Assert-Condition -Condition (-not [bool]$helperCaptureResponse.Json.result.isError) -Message 'Helper window capture returned isError=true after activate_window.'
-    $helperCapturePayload = $helperCaptureResponse.Json.result.structuredContent
-    $helperCaptureImage = Get-ImageBlock -ToolResponse $helperCaptureResponse.Json
+    $helperCapturePayload = $helperCaptureResult.Payload
+    $helperCaptureImage = $helperCaptureResult.Image
     Assert-Condition -Condition ([long]$helperCapturePayload.hwnd -eq $helperHwnd) -Message 'Helper capture metadata hwnd does not match helper window.'
     Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($helperCaptureImage.data)) -Message 'Helper capture image block does not contain PNG data.'
 
