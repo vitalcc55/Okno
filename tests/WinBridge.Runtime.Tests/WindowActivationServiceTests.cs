@@ -49,11 +49,15 @@ public sealed class WindowActivationServiceTests
     }
 
     [Fact]
-    public async Task ActivateAsyncReturnsAmbiguousWhenPollObservedForegroundButFinalSnapshotIsNotUsable()
+    public async Task ActivateAsyncReturnsFailedWhenForegroundSnapshotIsStaleAfterPoll()
     {
-        FakeWindowActivationPlatform platform = new(windowExists: true, iconic: true, foregroundWindow: 0);
+        FakeWindowActivationPlatform platform = new(
+            windowExists: true,
+            iconic: false,
+            foregroundWindow: 0,
+            foregroundSequence: [212, 999]);
         FakeWindowManager windowManager = new(
-            windows: [CreateWindow(hwnd: 212, isForeground: false)],
+            windows: [CreateWindow(hwnd: 212, isForeground: true)],
             onFocus: hwnd => platform.ForegroundWindow = hwnd);
         WindowTargetResolver resolver = new(windowManager);
         WindowActivationService service = new(
@@ -64,8 +68,8 @@ public sealed class WindowActivationServiceTests
 
         ActivateWindowResult result = await service.ActivateAsync(CreateWindow(hwnd: 212), CancellationToken.None);
 
-        Assert.Equal("ambiguous", result.Status);
-        Assert.True(result.WasMinimized);
+        Assert.Equal("failed", result.Status);
+        Assert.False(result.WasMinimized);
         Assert.False(result.IsForeground);
         Assert.NotNull(result.Window);
     }
@@ -73,9 +77,13 @@ public sealed class WindowActivationServiceTests
     [Fact]
     public async Task ActivateAsyncReturnsAmbiguousWhenFinalSnapshotIsStillMinimized()
     {
-        FakeWindowActivationPlatform platform = new(windowExists: true, iconic: true, foregroundWindow: 0);
+        FakeWindowActivationPlatform platform = new(
+            windowExists: true,
+            iconic: true,
+            foregroundWindow: 0,
+            iconicSequence: [true, false, true]);
         FakeWindowManager windowManager = new(
-            windows: [CreateWindow(hwnd: 214, isForeground: true, windowState: WindowStateValues.Minimized)],
+            windows: [CreateWindow(hwnd: 214, isForeground: true)],
             onFocus: hwnd => platform.ForegroundWindow = hwnd);
         WindowTargetResolver resolver = new(windowManager);
         WindowActivationService service = new(
@@ -90,6 +98,38 @@ public sealed class WindowActivationServiceTests
         Assert.True(result.WasMinimized);
         Assert.False(result.IsForeground);
         Assert.NotNull(result.Window);
+    }
+
+    [Fact]
+    public async Task ActivateAsyncReturnsFailedWhenIdentityChangesDuringFinalVerification()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 216, isForeground: true);
+        FakeWindowManager windowManager = new(
+            windows: [originalWindow],
+            onFocus: _ => { });
+        FakeWindowActivationPlatform platform = new(
+            windowExists: true,
+            iconic: false,
+            foregroundWindow: 216,
+            snapshotFactory: _ => new ActivatedWindowVerificationSnapshot(
+                Exists: true,
+                ProcessId: 999,
+                ThreadId: 888,
+                ClassName: "ReplacementWindow",
+                IsForeground: true,
+                IsMinimized: false));
+        WindowTargetResolver resolver = new(windowManager);
+        WindowActivationService service = new(
+            windowManager,
+            resolver,
+            platform,
+            new WindowActivationOptions(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero));
+
+        ActivateWindowResult result = await service.ActivateAsync(originalWindow, CancellationToken.None);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Contains("identity", result.Reason, StringComparison.Ordinal);
+        Assert.Null(result.Window);
     }
 
     [Fact]
@@ -129,35 +169,53 @@ public sealed class WindowActivationServiceTests
             MonitorFriendlyName: "Primary monitor");
 
     private sealed class FakeWindowManager(
-        IReadOnlyList<WindowDescriptor> windows,
+        IReadOnlyList<WindowDescriptor>? windows = null,
+        Func<IReadOnlyList<WindowDescriptor>>? windowsProvider = null,
         Action<long>? onFocus = null) : IWindowManager
     {
-        public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible = false) => windows;
+        private IReadOnlyList<WindowDescriptor> CurrentWindows =>
+            windowsProvider?.Invoke() ?? windows ?? [];
+
+        public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible = false) => CurrentWindows;
 
         public WindowDescriptor? FindWindow(WindowSelector selector)
         {
             selector.Validate();
-            return windows.FirstOrDefault(window => window.Hwnd == selector.Hwnd);
+            return CurrentWindows.FirstOrDefault(window => window.Hwnd == selector.Hwnd);
         }
 
         public bool TryFocus(long hwnd)
         {
             onFocus?.Invoke(hwnd);
-            return windows.Any(window => window.Hwnd == hwnd);
+            return CurrentWindows.Any(window => window.Hwnd == hwnd);
         }
     }
 
     private sealed class FakeWindowActivationPlatform(
         bool windowExists,
         bool iconic,
-        long foregroundWindow) : IWindowActivationPlatform
+        long foregroundWindow,
+        IReadOnlyList<long>? foregroundSequence = null,
+        IReadOnlyList<bool>? iconicSequence = null,
+        Func<long, ActivatedWindowVerificationSnapshot>? snapshotFactory = null,
+        Action? onGetForegroundWindow = null) : IWindowActivationPlatform
     {
         public long ForegroundWindow { get; set; } = foregroundWindow;
         public bool RestoreCalled { get; private set; }
+        private readonly Queue<long> foregroundStates = foregroundSequence is null ? new() : new Queue<long>(foregroundSequence);
+        private readonly Queue<bool> iconicStates = iconicSequence is null ? new() : new Queue<bool>(iconicSequence);
 
         public bool IsWindow(long hwnd) => windowExists;
 
-        public bool IsIconic(long hwnd) => iconic;
+        public bool IsIconic(long hwnd)
+        {
+            if (iconicStates.Count > 0)
+            {
+                iconic = iconicStates.Dequeue();
+            }
+
+            return iconic;
+        }
 
         public void RestoreWindow(long hwnd)
         {
@@ -165,6 +223,32 @@ public sealed class WindowActivationServiceTests
             iconic = false;
         }
 
-        public long GetForegroundWindow() => ForegroundWindow;
+        public long GetForegroundWindow()
+        {
+            onGetForegroundWindow?.Invoke();
+
+            if (foregroundStates.Count > 0)
+            {
+                ForegroundWindow = foregroundStates.Dequeue();
+            }
+
+            return ForegroundWindow;
+        }
+
+        public ActivatedWindowVerificationSnapshot ProbeWindow(long hwnd)
+        {
+            if (snapshotFactory is not null)
+            {
+                return snapshotFactory(hwnd);
+            }
+
+            return new(
+                Exists: IsWindow(hwnd),
+                ProcessId: 123,
+                ThreadId: 456,
+                ClassName: "OknoWindow",
+                IsForeground: GetForegroundWindow() == hwnd,
+                IsMinimized: IsIconic(hwnd));
+        }
     }
 }

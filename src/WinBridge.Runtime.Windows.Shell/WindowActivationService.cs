@@ -36,33 +36,75 @@ public sealed class WindowActivationService(
             options.FocusTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        WindowDescriptor? window = windowTargetResolver.ResolveLiveWindowByIdentity(targetWindow);
-        if (window is null)
+        ActivatedWindowVerificationResult verification = VerifyActivatedWindow(targetWindow);
+        if (!verification.IdentityConfirmed || !verification.Exists || verification.ResolvedWindow is null)
         {
-            return Failed("Окно для активации больше не найдено или больше не совпадает с исходной identity.", wasMinimized);
+            return Failed(verification.FailureReason!, wasMinimized);
         }
 
-        if (IsUsableActivatedWindow(window))
+        if (IsUsableActivatedWindow(verification))
         {
-            return new ActivateWindowResult("done", null, window, wasMinimized, true);
+            return new ActivateWindowResult("done", null, verification.ResolvedWindow, wasMinimized, true);
         }
 
-        return CreateUnconfirmedResult(window, wasMinimized, isForeground);
+        return CreateUnconfirmedResult(verification.ResolvedWindow, verification, wasMinimized, isForeground);
     }
 
     private static ActivateWindowResult Failed(string reason, bool wasMinimized) =>
         new("failed", reason, null, wasMinimized, false);
 
-    private static bool IsUsableActivatedWindow(WindowDescriptor window) =>
-        window.IsForeground
-        && !string.Equals(window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal);
+    private ActivatedWindowVerificationResult VerifyActivatedWindow(WindowDescriptor expectedWindow)
+    {
+        WindowDescriptor? resolvedWindow = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
+        if (resolvedWindow is null)
+        {
+            return new(null, false, false, false, false, "Окно для активации больше не найдено или больше не совпадает с исходной identity.");
+        }
+
+        ActivatedWindowVerificationSnapshot finalSnapshot = platform.ProbeWindow(resolvedWindow.Hwnd);
+        if (!finalSnapshot.Exists)
+        {
+            return new(null, false, false, finalSnapshot.IsForeground, finalSnapshot.IsMinimized, "Окно исчезло до завершения финальной activation verification.");
+        }
+
+        if (!WindowIdentityValidator.MatchesStableIdentity(finalSnapshot, expectedWindow))
+        {
+            return new(null, false, false, finalSnapshot.IsForeground, finalSnapshot.IsMinimized, "Окно для активации больше не найдено или больше не совпадает с исходной identity в финальном activation snapshot.");
+        }
+
+        return new(
+            ApplyFinalSnapshot(resolvedWindow, finalSnapshot),
+            true,
+            true,
+            finalSnapshot.IsForeground,
+            finalSnapshot.IsMinimized,
+            null);
+    }
+
+    private static WindowDescriptor ApplyFinalSnapshot(WindowDescriptor window, ActivatedWindowVerificationSnapshot snapshot) =>
+        window with
+        {
+            ProcessId = snapshot.ProcessId,
+            ThreadId = snapshot.ThreadId,
+            ClassName = snapshot.ClassName,
+            IsForeground = snapshot.IsForeground,
+            WindowState = snapshot.IsMinimized
+                ? WindowStateValues.Minimized
+                : string.Equals(window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal)
+                    ? WindowStateValues.Normal
+                    : window.WindowState,
+        };
+
+    private static bool IsUsableActivatedWindow(ActivatedWindowVerificationResult verification) =>
+        verification.IsForeground && !verification.IsMinimized;
 
     private static ActivateWindowResult CreateUnconfirmedResult(
         WindowDescriptor window,
+        ActivatedWindowVerificationResult verification,
         bool wasMinimized,
         bool pollObservedForeground)
     {
-        string reason = string.Equals(window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal)
+        string reason = verification.IsMinimized
             ? "Окно снова оказалось свернутым до завершения активации."
             : wasMinimized
                 ? "Окно восстановлено, но foreground focus не удалось подтвердить по финальному live-state."
@@ -73,6 +115,14 @@ public sealed class WindowActivationService(
         string status = wasMinimized ? "ambiguous" : "failed";
         return new ActivateWindowResult(status, reason, window, wasMinimized, false);
     }
+
+    private readonly record struct ActivatedWindowVerificationResult(
+        WindowDescriptor? ResolvedWindow,
+        bool IdentityConfirmed,
+        bool Exists,
+        bool IsForeground,
+        bool IsMinimized,
+        string? FailureReason);
 
     private async Task<bool> WaitUntilAsync(Func<bool> condition, TimeSpan timeout, CancellationToken cancellationToken)
     {

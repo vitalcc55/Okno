@@ -23,6 +23,10 @@
 
 - Smoke harness и raw MCP integration smoke переведены на session-scoped JSON-RPC request ids и строгий response matching по ожидаемому `id`, чтобы retry-циклы не могли переиспользовать корреляционные идентификаторы и ловить ответы не от своей фазы.
 
+## 2026-03-16 16:56
+
+- `windows.activate_window` больше не собирает final verdict из разрозненных raw-handle probes: финальная verification теперь опирается на единый platform-backed snapshot с identity (`ProcessId`/`ThreadId`/`ClassName`) и usability (`IsForeground`/`IsMinimized`) signals, а `done` выдаётся только по нему.
+
 ## 2026-03-15 12:36
 
 - `windows.attach_window` теперь разводит invalid selector и ambiguous match: отсутствие `hwnd`/`titlePattern`/`processName` возвращается как `failed`, а `ambiguous` остаётся только для реального multi-match path.

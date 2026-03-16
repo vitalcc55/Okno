@@ -1,5 +1,5 @@
 ﻿{
-    "generated_at_utc":  "2026-03-16T13:17:58.5365580Z",
+    "generated_at_utc":  "2026-03-16T15:27:29.1755715Z",
     "product_name":  "Okno",
     "transport":  {
                       "kind":  "stdio",
@@ -32,20 +32,20 @@
                               "ci":  "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"
                           },
     "latest_smoke":  {
-                         "run_id":  "20260316T161753414",
+                         "run_id":  "20260316T182723567",
                          "server":  "Okno.Server",
                          "protocol":  "2025-06-18",
                          "declared_tools":  15,
                          "monitor_count":  3,
                          "desktop_monitor_id":  "display-source:000000000001259e:2",
-                         "visible_windows":  18,
-                         "attached_hwnd":  7280812,
-                         "capture_artifact":  "artifacts/diagnostics/20260316T131754576-0e6cb/captures/window-window-7280812-20260316T131755214-3c5fde8e6bc04c7da951925b70de53bf.png",
-                         "helper_window_hwnd":  7280812,
+                         "visible_windows":  20,
+                         "attached_hwnd":  3414742,
+                         "capture_artifact":  "artifacts/diagnostics/20260316T152725108-805b1/captures/window-window-3414742-20260316T152725961-b0f39ac264ae4ddcbe622e3a2463171e.png",
+                         "helper_window_hwnd":  3414742,
                          "helper_activation_status":  "done",
-                         "audit_directory":  "artifacts/diagnostics/20260316T131754576-0e6cb",
-                         "smoke_report":  "artifacts/smoke/20260316T161753414/report.json",
-                         "audit_summary":  "artifacts/diagnostics/20260316T131754576-0e6cb/summary.md"
+                         "audit_directory":  "artifacts/diagnostics/20260316T152725108-805b1",
+                         "smoke_report":  "artifacts/smoke/20260316T182723567/report.json",
+                         "audit_summary":  "artifacts/diagnostics/20260316T152725108-805b1/summary.md"
                      },
     "deferred_scope":  [
                            "UIA",

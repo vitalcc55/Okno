@@ -39,4 +39,16 @@ public static class WindowIdentityValidator
             && liveCandidate.ThreadId == expectedWindow.ThreadId
             && string.Equals(liveCandidate.ClassName, expectedWindow.ClassName, StringComparison.Ordinal);
     }
+
+    public static bool MatchesStableIdentity(ActivatedWindowVerificationSnapshot snapshot, WindowDescriptor expectedWindow)
+    {
+        if (!TryValidateStableIdentity(expectedWindow, out _))
+        {
+            return false;
+        }
+
+        return snapshot.ProcessId == expectedWindow.ProcessId
+            && snapshot.ThreadId == expectedWindow.ThreadId
+            && string.Equals(snapshot.ClassName, expectedWindow.ClassName, StringComparison.Ordinal);
+    }
 }
