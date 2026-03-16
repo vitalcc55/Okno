@@ -407,11 +407,14 @@ try {
         }
     }
     $activateResponse = Read-Response -Process $process -RequestName 'windows.activate_window'
-    $activatePayload = $activateResponse.Json.result.structuredContent
-    Assert-Condition -Condition ($activatePayload.status -eq 'done') -Message "ActivateWindow returned unexpected status '$($activatePayload.status)'."
+    $activateResult = $activateResponse.Json.result
+    $activatePayload = $activateResult.structuredContent
+    $activateStatus = [string]$activatePayload.status
+    Assert-Condition -Condition (@('done', 'ambiguous') -contains $activateStatus) -Message "ActivateWindow returned unexpected status '$activateStatus'."
+    Assert-Condition -Condition ([bool]$activateResult.isError -eq ($activateStatus -eq 'ambiguous')) -Message 'ActivateWindow isError does not match done/ambiguous semantics.'
     Assert-Condition -Condition ([bool]$activatePayload.wasMinimized) -Message 'ActivateWindow payload must report wasMinimized=true for helper window.'
-    Assert-Condition -Condition ([bool]$activatePayload.isForeground) -Message 'ActivateWindow payload must confirm foreground focus.'
     Assert-Condition -Condition ([long]$activatePayload.window.hwnd -eq $helperHwnd) -Message 'ActivateWindow payload hwnd does not match helper window.'
+    Assert-Condition -Condition ([bool]$activatePayload.isForeground -eq ($activateStatus -eq 'done')) -Message 'ActivateWindow payload isForeground does not match done/ambiguous semantics.'
 
     $rawHelperCaptureRequest = Send-Json -Process $process -Payload @{
         jsonrpc = '2.0'

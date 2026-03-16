@@ -11,13 +11,12 @@ public sealed class Win32MonitorManager : IMonitorManager
     private const int MonitorDefaultToNearest = 2;
     private const uint MonitorInfoPrimary = 1;
     private const uint QdcOnlyActivePaths = 0x00000002;
-    private readonly object _aliasSync = new();
-    private readonly Dictionary<string, string> _monitorAliases = new(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyList<MonitorInfo> ListMonitors()
     {
-        IReadOnlyDictionary<string, DisplayConfigMonitorIdentity> displayConfigMap = QueryDisplayConfigMap();
-        List<MonitorInfo> monitors = new();
+        Dictionary<string, DisplayConfigSourceIdentity> displayConfigMap = QueryDisplayConfigMap();
+        bool hasDisplayConfig = displayConfigMap.Count > 0;
+        Dictionary<string, MonitorAccumulator> monitors = new(StringComparer.OrdinalIgnoreCase);
 
         _ = EnumDisplayMonitors(
             IntPtr.Zero,
@@ -32,13 +31,18 @@ public sealed class Win32MonitorManager : IMonitorManager
 
                 string gdiDeviceName = info.szDevice;
                 string normalizedGdiDeviceName = NormalizeGdiDeviceName(gdiDeviceName);
-                _ = displayConfigMap.TryGetValue(normalizedGdiDeviceName, out DisplayConfigMonitorIdentity? displayIdentity);
+                DisplayConfigSourceIdentity? displayIdentity = null;
+                if (hasDisplayConfig && !displayConfigMap.TryGetValue(normalizedGdiDeviceName, out displayIdentity))
+                {
+                    return true;
+                }
 
-                string monitorId = displayIdentity is null
-                    ? BuildFallbackMonitorId(gdiDeviceName)
-                    : BuildDisplayConfigMonitorId(displayIdentity.AdapterId, displayIdentity.TargetId);
-                string friendlyName = !string.IsNullOrWhiteSpace(displayIdentity?.FriendlyName)
-                    ? displayIdentity.FriendlyName!
+                string monitorId = hasDisplayConfig
+                    ? BuildDisplaySourceMonitorId(displayIdentity!)
+                    : BuildFallbackMonitorId(gdiDeviceName);
+
+                string friendlyName = hasDisplayConfig
+                    ? displayIdentity!.GetPublicFriendlyName(gdiDeviceName)
                     : gdiDeviceName;
 
                 MonitorDescriptor descriptor = new(
@@ -49,23 +53,27 @@ public sealed class Win32MonitorManager : IMonitorManager
                     WorkArea: new Bounds(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right, info.rcWork.Bottom),
                     DpiScale: GetMonitorDpiScale(monitor),
                     IsPrimary: (info.dwFlags & MonitorInfoPrimary) != 0);
-                monitors.Add(new MonitorInfo(descriptor, monitor.ToInt64()));
+                long handle = monitor.ToInt64();
+
+                if (!monitors.TryGetValue(monitorId, out MonitorAccumulator? accumulator))
+                {
+                    accumulator = new MonitorAccumulator(descriptor, handle);
+                    monitors[monitorId] = accumulator;
+                    return true;
+                }
+
+                accumulator.AddHandle(handle);
+                if (descriptor.IsPrimary && !accumulator.Descriptor.IsPrimary)
+                {
+                    accumulator.ReplaceRepresentative(descriptor, handle);
+                }
 
                 return true;
             },
             IntPtr.Zero);
 
-        lock (_aliasSync)
-        {
-            foreach (MonitorInfo monitor in monitors)
-            {
-                string fallbackId = BuildFallbackMonitorId(monitor.Descriptor.GdiDeviceName);
-                _monitorAliases[fallbackId] = fallbackId;
-                _monitorAliases[monitor.Descriptor.MonitorId] = fallbackId;
-            }
-        }
-
-        return monitors
+        return monitors.Values
+            .Select(accumulator => accumulator.Build())
             .OrderByDescending(item => item.Descriptor.IsPrimary)
             .ThenBy(item => item.Descriptor.MonitorId, StringComparer.Ordinal)
             .ToArray();
@@ -78,34 +86,17 @@ public sealed class Win32MonitorManager : IMonitorManager
             return null;
         }
 
-        IReadOnlyList<MonitorInfo> monitors = ListMonitors();
-        MonitorInfo? exactMatch = monitors.FirstOrDefault(
+        return ListMonitors().FirstOrDefault(
             monitor => string.Equals(
                 monitor.Descriptor.MonitorId,
                 monitorId,
-                StringComparison.OrdinalIgnoreCase));
-        if (exactMatch is not null)
-        {
-            return exactMatch;
-        }
-
-        string? fallbackAlias = ResolveFallbackAlias(monitorId);
-        if (fallbackAlias is null)
-        {
-            return null;
-        }
-
-        return monitors.FirstOrDefault(
-            monitor => string.Equals(
-                BuildFallbackMonitorId(monitor.Descriptor.GdiDeviceName),
-                fallbackAlias,
                 StringComparison.OrdinalIgnoreCase));
     }
 
     public MonitorInfo? FindMonitorByHandle(long handle, IReadOnlyList<MonitorInfo>? monitors = null)
     {
         IReadOnlyList<MonitorInfo> source = monitors ?? ListMonitors();
-        return source.FirstOrDefault(item => item.Handle == handle);
+        return source.FirstOrDefault(item => item.Handles.Contains(handle));
     }
 
     public long? GetMonitorHandleForWindow(long hwnd)
@@ -128,7 +119,7 @@ public sealed class Win32MonitorManager : IMonitorManager
     public MonitorInfo? GetPrimaryMonitor() =>
         ListMonitors().FirstOrDefault(item => item.Descriptor.IsPrimary);
 
-    private static Dictionary<string, DisplayConfigMonitorIdentity> QueryDisplayConfigMap()
+    private static Dictionary<string, DisplayConfigSourceIdentity> QueryDisplayConfigMap()
     {
         for (int attempt = 0; attempt < 2; attempt++)
         {
@@ -151,7 +142,7 @@ public sealed class Win32MonitorManager : IMonitorManager
                 return EmptyDisplayConfigMap();
             }
 
-            Dictionary<string, DisplayConfigMonitorIdentity> map = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, DisplayConfigSourceIdentity> map = new(StringComparer.OrdinalIgnoreCase);
             for (int index = 0; index < pathCount; index++)
             {
                 DISPLAYCONFIG_PATH_INFO path = paths[index];
@@ -163,7 +154,13 @@ public sealed class Win32MonitorManager : IMonitorManager
 
                 string normalized = NormalizeGdiDeviceName(gdiDeviceName);
                 string? friendlyName = TryGetTargetFriendlyName(path.targetInfo.adapterId, path.targetInfo.id);
-                map[normalized] = new DisplayConfigMonitorIdentity(path.targetInfo.adapterId, path.targetInfo.id, friendlyName);
+                if (!map.TryGetValue(normalized, out DisplayConfigSourceIdentity? identity))
+                {
+                    identity = new DisplayConfigSourceIdentity(path.sourceInfo.adapterId, path.sourceInfo.id);
+                    map[normalized] = identity;
+                }
+
+                identity.AddFriendlyName(friendlyName);
             }
 
             return map;
@@ -172,8 +169,8 @@ public sealed class Win32MonitorManager : IMonitorManager
         return EmptyDisplayConfigMap();
     }
 
-    private static Dictionary<string, DisplayConfigMonitorIdentity> EmptyDisplayConfigMap() =>
-        new Dictionary<string, DisplayConfigMonitorIdentity>(StringComparer.OrdinalIgnoreCase);
+    private static Dictionary<string, DisplayConfigSourceIdentity> EmptyDisplayConfigMap() =>
+        new Dictionary<string, DisplayConfigSourceIdentity>(StringComparer.OrdinalIgnoreCase);
 
     private static string? TryGetSourceGdiDeviceName(Luid adapterId, uint sourceId)
     {
@@ -222,24 +219,14 @@ public sealed class Win32MonitorManager : IMonitorManager
         return dpiX / 96.0;
     }
 
-    private static string BuildDisplayConfigMonitorId(Luid adapterId, uint targetId)
-        => MonitorIdFormatter.FromDisplayConfig(adapterId.HighPart, adapterId.LowPart, targetId);
+    private static string BuildDisplaySourceMonitorId(DisplayConfigSourceIdentity sourceIdentity)
+        => MonitorIdFormatter.FromDisplaySource(sourceIdentity.AdapterId.HighPart, sourceIdentity.AdapterId.LowPart, sourceIdentity.SourceId);
 
     private static string BuildFallbackMonitorId(string gdiDeviceName)
         => MonitorIdFormatter.FromGdiDeviceName(gdiDeviceName);
 
     private static string NormalizeGdiDeviceName(string gdiDeviceName) =>
         (gdiDeviceName ?? string.Empty).Trim().ToUpperInvariant();
-
-    private string? ResolveFallbackAlias(string monitorId)
-    {
-        lock (_aliasSync)
-        {
-            return _monitorAliases.TryGetValue(monitorId, out string? fallbackAlias)
-                ? fallbackAlias
-                : null;
-        }
-    }
 
     private delegate bool MonitorEnumProc(
         IntPtr monitor,
@@ -504,5 +491,52 @@ public sealed class Win32MonitorManager : IMonitorManager
     [DllImport("shcore.dll")]
     private static extern int GetDpiForMonitor(IntPtr monitor, MonitorDpiType dpiType, out uint dpiX, out uint dpiY);
 
-    private sealed record DisplayConfigMonitorIdentity(Luid AdapterId, uint TargetId, string? FriendlyName);
+    private sealed class DisplayConfigSourceIdentity(Luid adapterId, uint sourceId)
+    {
+        private readonly HashSet<string> _friendlyNames = new(StringComparer.OrdinalIgnoreCase);
+
+        public Luid AdapterId { get; } = adapterId;
+
+        public uint SourceId { get; } = sourceId;
+
+        public void AddFriendlyName(string? friendlyName)
+        {
+            if (!string.IsNullOrWhiteSpace(friendlyName))
+            {
+                _friendlyNames.Add(friendlyName);
+            }
+        }
+
+        public string GetPublicFriendlyName(string gdiDeviceName)
+        {
+            return _friendlyNames.Count == 1
+                ? _friendlyNames.First()
+                : gdiDeviceName;
+        }
+    }
+
+    private sealed class MonitorAccumulator(MonitorDescriptor descriptor, long captureHandle)
+    {
+        private readonly HashSet<long> _handles = [captureHandle];
+
+        public MonitorDescriptor Descriptor { get; private set; } = descriptor;
+
+        public long CaptureHandle { get; private set; } = captureHandle;
+
+        public void AddHandle(long handle) =>
+            _handles.Add(handle);
+
+        public void ReplaceRepresentative(MonitorDescriptor descriptor, long captureHandle)
+        {
+            Descriptor = descriptor;
+            CaptureHandle = captureHandle;
+            _handles.Add(captureHandle);
+        }
+
+        public MonitorInfo Build() =>
+            new(
+                Descriptor,
+                CaptureHandle,
+                _handles.OrderBy(handle => handle).ToArray());
+    }
 }

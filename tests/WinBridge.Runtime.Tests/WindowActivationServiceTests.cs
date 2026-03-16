@@ -72,7 +72,7 @@ public sealed class WindowActivationServiceTests
             IsForeground: false,
             IsVisible: true,
             WindowState: WindowStateValues.Normal,
-            MonitorId: "displayconfig:0000000100000000:1",
+            MonitorId: "display-source:0000000100000000:1",
             MonitorFriendlyName: "Primary monitor");
 
     private sealed class FakeWindowManager(

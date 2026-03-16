@@ -32,6 +32,7 @@ public sealed class WindowTools
     private readonly ISessionManager _sessionManager;
     private readonly IWindowActivationService _windowActivationService;
     private readonly IWindowManager _windowManager;
+    private readonly IWindowTargetResolver _windowTargetResolver;
 
     public WindowTools(
         AuditLog auditLog,
@@ -39,7 +40,8 @@ public sealed class WindowTools
         IWindowManager windowManager,
         ICaptureService captureService,
         IMonitorManager monitorManager,
-        IWindowActivationService windowActivationService)
+        IWindowActivationService windowActivationService,
+        IWindowTargetResolver windowTargetResolver)
     {
         _auditLog = auditLog;
         _captureService = captureService;
@@ -47,6 +49,7 @@ public sealed class WindowTools
         _sessionManager = sessionManager;
         _windowActivationService = windowActivationService;
         _windowManager = windowManager;
+        _windowTargetResolver = windowTargetResolver;
     }
 
     [McpServerTool(Name = ToolNames.WindowsListMonitors)]
@@ -184,8 +187,8 @@ public sealed class WindowTools
             new { hwnd },
             async invocation =>
             {
-                long? targetHwnd = hwnd ?? _sessionManager.GetAttachedWindow()?.Window.Hwnd;
-                if (targetHwnd is null)
+                WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
+                if (hwnd is null && attachedWindow is null)
                 {
                     ActivateWindowResult missingTarget = new(
                         Status: "failed",
@@ -198,28 +201,30 @@ public sealed class WindowTools
                     return CreateToolResult(missingTarget, isError: true);
                 }
 
-                IReadOnlyList<WindowDescriptor> windows = _windowManager.ListWindows(includeInvisible: true);
-                if (windows.All(candidate => candidate.Hwnd != targetHwnd.Value))
+                WindowDescriptor? targetWindow = _windowTargetResolver.ResolveExplicitOrAttachedWindow(hwnd, attachedWindow);
+                if (targetWindow is null)
                 {
                     ActivateWindowResult missingWindow = new(
                         Status: "failed",
-                        Reason: "Окно для активации больше не найдено.",
+                        Reason: hwnd is not null
+                            ? "Окно для активации больше не найдено."
+                            : "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
                         Window: null,
                         WasMinimized: false,
                         IsForeground: false);
 
-                    invocation.Complete("failed", missingWindow.Reason!, targetHwnd.Value);
+                    invocation.Complete("failed", missingWindow.Reason!, hwnd ?? attachedWindow?.Hwnd);
                     return CreateToolResult(missingWindow, isError: true);
                 }
 
                 ActivateWindowResult result = await _windowActivationService
-                    .ActivateAsync(targetHwnd.Value, cancellationToken)
+                    .ActivateAsync(targetWindow.Hwnd, cancellationToken)
                     .ConfigureAwait(false);
 
                 invocation.Complete(
                     result.Status,
                     result.Status == "done" ? "Окно активировано и готово к работе." : result.Reason!,
-                    targetHwnd.Value,
+                    targetWindow.Hwnd,
                     new Dictionary<string, string?>
                     {
                         ["was_minimized"] = result.WasMinimized.ToString(CultureInfo.InvariantCulture),
@@ -238,8 +243,8 @@ public sealed class WindowTools
             new { hwnd },
             invocation =>
             {
-                long? targetHwnd = hwnd ?? _sessionManager.GetAttachedWindow()?.Window.Hwnd;
-                if (targetHwnd is null)
+                WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
+                if (hwnd is null && attachedWindow is null)
                 {
                     FocusWindowResult missingTarget = new(
                         Status: "failed",
@@ -250,20 +255,21 @@ public sealed class WindowTools
                     return missingTarget;
                 }
 
-                IReadOnlyList<WindowDescriptor> windows = _windowManager.ListWindows(includeInvisible: true);
-                WindowDescriptor? window = windows.FirstOrDefault(candidate => candidate.Hwnd == targetHwnd.Value);
+                WindowDescriptor? window = _windowTargetResolver.ResolveExplicitOrAttachedWindow(hwnd, attachedWindow);
                 if (window is null)
                 {
                     FocusWindowResult missingWindow = new(
                         Status: "failed",
-                        Reason: "Окно для фокуса больше не найдено.",
+                        Reason: hwnd is not null
+                            ? "Окно для фокуса больше не найдено."
+                            : "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
                         Window: null);
 
-                    invocation.Complete("failed", missingWindow.Reason!, targetHwnd.Value);
+                    invocation.Complete("failed", missingWindow.Reason!, hwnd ?? attachedWindow?.Hwnd);
                     return missingWindow;
                 }
 
-                bool focused = _windowManager.TryFocus(targetHwnd.Value);
+                bool focused = _windowManager.TryFocus(window.Hwnd);
                 FocusWindowResult result = new(
                     Status: focused ? "done" : "failed",
                     Reason: focused ? null : "Windows отказалась перевести окно в foreground.",
@@ -272,7 +278,7 @@ public sealed class WindowTools
                 invocation.Complete(
                     result.Status,
                     focused ? "Запрошен foreground focus для окна." : result.Reason!,
-                    targetHwnd.Value);
+                    window.Hwnd);
 
                 return result;
             });
@@ -415,51 +421,7 @@ public sealed class WindowTools
             return null;
         }
 
-        if (hwnd is long explicitHwnd)
-        {
-            return _windowManager.ListWindows(includeInvisible: true)
-                .FirstOrDefault(candidate => candidate.Hwnd == explicitHwnd);
-        }
-
-        WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
-        if (attachedWindow is null)
-        {
-            return null;
-        }
-
-        IReadOnlyList<WindowDescriptor> liveWindows = _windowManager.ListWindows(includeInvisible: true);
-        return TryResolveLiveAttachedWindow(attachedWindow, liveWindows);
-    }
-
-    private static WindowDescriptor? TryResolveLiveAttachedWindow(
-        WindowDescriptor attachedWindow,
-        IReadOnlyList<WindowDescriptor> liveWindows)
-    {
-        WindowDescriptor? liveCandidate = liveWindows
-            .FirstOrDefault(candidate => candidate.Hwnd == attachedWindow.Hwnd);
-        if (liveCandidate is null)
-        {
-            return null;
-        }
-
-        return MatchesAttachedWindowIdentity(liveCandidate, attachedWindow) ? liveCandidate : null;
-    }
-
-    private static bool MatchesAttachedWindowIdentity(
-        WindowDescriptor liveCandidate,
-        WindowDescriptor attachedWindow)
-    {
-        bool processIdCompatible = liveCandidate.ProcessId is null
-            || attachedWindow.ProcessId is null
-            || liveCandidate.ProcessId == attachedWindow.ProcessId;
-        bool threadIdCompatible = liveCandidate.ThreadId is null
-            || attachedWindow.ThreadId is null
-            || liveCandidate.ThreadId == attachedWindow.ThreadId;
-        bool classNameCompatible = string.IsNullOrWhiteSpace(liveCandidate.ClassName)
-            || string.IsNullOrWhiteSpace(attachedWindow.ClassName)
-            || string.Equals(liveCandidate.ClassName, attachedWindow.ClassName, StringComparison.Ordinal);
-
-        return processIdCompatible && threadIdCompatible && classNameCompatible;
+        return _windowTargetResolver.ResolveExplicitOrAttachedWindow(hwnd, _sessionManager.GetAttachedWindow()?.Window);
     }
 
     private static CallToolResult CreateSuccessResult(CaptureResult result)

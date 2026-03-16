@@ -80,11 +80,11 @@ public sealed class WindowSessionToolTests
         IReadOnlyList<MonitorInfo> monitors =
         [
             WindowToolTestData.CreateMonitor(
-                monitorId: "displayconfig:0000000100000000:1",
+                monitorId: "display-source:0000000100000000:1",
                 friendlyName: "Primary monitor",
                 handle: 501),
             WindowToolTestData.CreateMonitor(
-                monitorId: "displayconfig:0000000100000000:2",
+                monitorId: "display-source:0000000100000000:2",
                 friendlyName: "Secondary monitor",
                 isPrimary: false,
                 handle: 502),
@@ -94,7 +94,7 @@ public sealed class WindowSessionToolTests
         ListMonitorsResult result = tools.ListMonitors();
 
         Assert.Equal(2, result.Count);
-        Assert.Equal("displayconfig:0000000100000000:1", result.Monitors[0].MonitorId);
+        Assert.Equal("display-source:0000000100000000:1", result.Monitors[0].MonitorId);
         Assert.Equal("Secondary monitor", result.Monitors[1].FriendlyName);
     }
 
@@ -176,6 +176,26 @@ public sealed class WindowSessionToolTests
     }
 
     [Fact]
+    public async Task ActivateWindowReturnsFailedWhenAttachedWindowIdentityIsReused()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 360, title: "Original", processId: 123, threadId: 900, className: "MainWindow");
+        WindowDescriptor reusedLiveWindow = CreateWindow(hwnd: 360, title: "Different", processId: 123, threadId: 901, className: "MainWindow");
+        FakeWindowActivationService activationService = new(
+            _ => throw new InvalidOperationException("Activation service should not be called for reused attached HWND."));
+        WindowTools tools = CreateTools(
+            windows: [reusedLiveWindow],
+            attachedWindow: attachedWindow,
+            activationService: activationService);
+
+        CallToolResult result = await tools.ActivateWindow();
+
+        Assert.True(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("failed", payload.GetProperty("status").GetString());
+        Assert.Contains("не совпадает с live target", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FocusWindowUsesExplicitHwndWhenAvailable()
     {
         WindowDescriptor targetWindow = CreateWindow(hwnd: 401, title: "Focus target");
@@ -233,6 +253,20 @@ public sealed class WindowSessionToolTests
     }
 
     [Fact]
+    public void FocusWindowReturnsFailedWhenAttachedWindowIdentityIsReused()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 403, title: "Original", processId: 123, threadId: 900, className: "MainWindow");
+        WindowDescriptor reusedLiveWindow = CreateWindow(hwnd: 403, title: "Different", processId: 123, threadId: 901, className: "MainWindow");
+        WindowTools tools = CreateTools(windows: [reusedLiveWindow], attachedWindow: attachedWindow);
+
+        FocusWindowResult result = tools.FocusWindow();
+
+        Assert.Equal("failed", result.Status);
+        Assert.Contains("не совпадает с live target", result.Reason, StringComparison.Ordinal);
+        Assert.Null(result.Window);
+    }
+
+    [Fact]
     public void FocusWindowReturnsFailedWhenForegroundRequestIsRejected()
     {
         WindowDescriptor targetWindow = CreateWindow(hwnd: 404, title: "Rejected");
@@ -284,13 +318,15 @@ public sealed class WindowSessionToolTests
             sessionManager.Attach(attachedWindow, "hwnd");
         }
 
+        FakeWindowManager windowManager = new(windows, titlePatternsThatTimeout, focusResults);
         WindowTools tools = new(
             auditLog,
             sessionManager,
-            new FakeWindowManager(windows, titlePatternsThatTimeout, focusResults),
+            windowManager,
             new NoopCaptureService(),
             new FakeMonitorManager(monitors),
-            activationService ?? new FakeWindowActivationService());
+            activationService ?? new FakeWindowActivationService(),
+            new WindowTargetResolver(windowManager));
 
         return new TestContext(tools, sessionManager);
     }

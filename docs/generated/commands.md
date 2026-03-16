@@ -27,10 +27,10 @@
 
 ## Latest Smoke Evidence
 
-- smoke run id: 20260315T154316160
+- smoke run id: 20260316T091425322
 - monitor count: 3
-- desktop monitor id: displayconfig:000000000001287f:20535
-- audit directory: artifacts/diagnostics/20260315T124317065-b2796
-- capture artifact: artifacts/diagnostics/20260315T124317065-b2796/captures/window-window-16713664-20260315T124317871-6a964cfdb8704b1c957fc66f94a24123.png
-- helper capture artifact: artifacts/diagnostics/20260315T124317065-b2796/captures/window-window-16713664-20260315T124318302-d6b9160c037a4792a1f2cf117368cb6c.png
-- smoke report: artifacts/smoke/20260315T154316160/report.json
+- desktop monitor id: display-source:000000000001259e:2
+- audit directory: artifacts/diagnostics/20260316T061426218-11a4a
+- capture artifact: artifacts/diagnostics/20260316T061426218-11a4a/captures/window-window-2754584-20260316T061426734-4cadf8c63da4445290489a969537d2f3.png
+- helper capture artifact: artifacts/diagnostics/20260316T061426218-11a4a/captures/window-window-2754584-20260316T061426947-87e230b3667b4253833bc9f37e3dd71c.png
+- smoke report: artifacts/smoke/20260316T091425322/report.json

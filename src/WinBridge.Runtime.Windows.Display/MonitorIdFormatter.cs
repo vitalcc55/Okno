@@ -2,10 +2,10 @@ namespace WinBridge.Runtime.Windows.Display;
 
 public static class MonitorIdFormatter
 {
-    public static string FromDisplayConfig(int highPart, uint lowPart, uint targetId)
+    public static string FromDisplaySource(int highPart, uint lowPart, uint sourceId)
     {
         uint high = unchecked((uint)highPart);
-        return $"displayconfig:{high:x8}{lowPart:x8}:{targetId}";
+        return $"display-source:{high:x8}{lowPart:x8}:{sourceId}";
     }
 
     public static string FromGdiDeviceName(string gdiDeviceName)

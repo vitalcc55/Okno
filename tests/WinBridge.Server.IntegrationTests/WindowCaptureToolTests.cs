@@ -80,21 +80,21 @@ public sealed class WindowCaptureToolTests
                 window: null,
                 scope: "desktop",
                 targetKind: "monitor",
-                monitorId: "displayconfig:0000000100000000:2",
+                monitorId: "display-source:0000000100000000:2",
                 monitorFriendlyName: "Secondary monitor"));
         WindowTools tools = CreateTools(
             windows: [],
             captureService: captureService,
             attachedWindow: null);
 
-        CallToolResult result = await tools.Capture(scope: "desktop", monitorId: "displayconfig:0000000100000000:2");
+        CallToolResult result = await tools.Capture(scope: "desktop", monitorId: "display-source:0000000100000000:2");
 
         Assert.False(result.IsError);
         Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
-        Assert.Equal("displayconfig:0000000100000000:2", captureService.LastTarget?.MonitorId);
+        Assert.Equal("display-source:0000000100000000:2", captureService.LastTarget?.MonitorId);
 
         JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("displayconfig:0000000100000000:2", payload.GetProperty("monitorId").GetString());
+        Assert.Equal("display-source:0000000100000000:2", payload.GetProperty("monitorId").GetString());
         Assert.Equal("Secondary monitor", payload.GetProperty("monitorFriendlyName").GetString());
     }
 
@@ -106,7 +106,7 @@ public sealed class WindowCaptureToolTests
             captureService: new FakeCaptureService(CreateCaptureResult(CreateWindow(), "window")),
             attachedWindow: null);
 
-        CallToolResult result = await tools.Capture(scope: "window", monitorId: "displayconfig:0000000100000000:1");
+        CallToolResult result = await tools.Capture(scope: "window", monitorId: "display-source:0000000100000000:1");
 
         Assert.True(result.IsError);
         JsonElement payload = AssertStructuredPayload(result);
@@ -126,7 +126,7 @@ public sealed class WindowCaptureToolTests
         CallToolResult result = await tools.Capture(
             scope: "desktop",
             hwnd: window.Hwnd,
-            monitorId: "displayconfig:0000000100000000:1");
+            monitorId: "display-source:0000000100000000:1");
 
         Assert.True(result.IsError);
         JsonElement payload = AssertStructuredPayload(result);
@@ -300,7 +300,8 @@ public sealed class WindowCaptureToolTests
             new FakeWindowManager(windows),
             captureService,
             new FakeMonitorManager(),
-            new FakeWindowActivationService());
+            new FakeWindowActivationService(),
+            new WindowTargetResolver(new FakeWindowManager(windows)));
     }
 
     private static WindowDescriptor CreateWindow(
@@ -326,7 +327,7 @@ public sealed class WindowCaptureToolTests
         string scope,
         string targetKind = "window",
         byte[]? pngBytes = null,
-        string? monitorId = "displayconfig:0000000100000000:1",
+        string? monitorId = "display-source:0000000100000000:1",
         string? monitorFriendlyName = "Primary monitor",
         string? monitorGdiDeviceName = @"\\.\DISPLAY1")
     {

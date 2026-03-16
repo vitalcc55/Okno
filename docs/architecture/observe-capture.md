@@ -24,7 +24,7 @@
 
 На текущем этапе `observe/capture` slice опирается на четыре публичных capability:
 
-- `windows.list_monitors` — перечисляет активные monitor targets и их stable identity;
+- `windows.list_monitors` — перечисляет captureable desktop view targets и их stable source/view identity;
 - `windows.list_windows` — перечисляет видимые top-level окна и их базовые metadata;
 - `windows.attach_window` — делает выбранное окно текущим session target;
 - `windows.capture` — возвращает снимок окна или monitor в виде MCP tool result с image block, structured metadata и локальным PNG artifact.

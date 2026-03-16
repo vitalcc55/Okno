@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMonitorManager, Win32MonitorManager>();
         services.AddSingleton<ICaptureService, GraphicsCaptureService>();
         services.AddSingleton<IWindowManager, Win32WindowManager>();
+        services.AddSingleton<IWindowTargetResolver, WindowTargetResolver>();
         services.AddSingleton(WindowActivationOptions.Default);
         services.AddSingleton<IWindowActivationPlatform, Win32WindowActivationPlatform>();
         services.AddSingleton<IWindowActivationService, WindowActivationService>();

@@ -7,7 +7,7 @@ namespace WinBridge.Server.IntegrationTests;
 internal static class WindowToolTestData
 {
     public static MonitorInfo CreateMonitor(
-        string monitorId = "displayconfig:0000000100000000:1",
+        string monitorId = "display-source:0000000100000000:1",
         string friendlyName = "Primary monitor",
         string gdiDeviceName = @"\\.\DISPLAY1",
         bool isPrimary = true,
@@ -21,7 +21,8 @@ internal static class WindowToolTestData
                 WorkArea: new Bounds(0, 0, 1920, 1040),
                 DpiScale: 1.0,
                 IsPrimary: isPrimary),
-            handle);
+            handle,
+            [handle]);
 }
 
 internal sealed class FakeMonitorManager(
@@ -43,13 +44,13 @@ internal sealed class FakeMonitorManager(
     public MonitorInfo? FindMonitorByHandle(long handle, IReadOnlyList<MonitorInfo>? monitors = null)
     {
         IReadOnlyList<MonitorInfo> source = monitors ?? _monitors;
-        return source.FirstOrDefault(monitor => monitor.Handle == handle);
+        return source.FirstOrDefault(monitor => monitor.Handles.Contains(handle));
     }
 
     public long? GetMonitorHandleForWindow(long hwnd)
     {
         MonitorInfo? monitor = FindMonitorForWindow(hwnd);
-        return monitor?.Handle;
+        return monitor?.CaptureHandle;
     }
 
     public MonitorInfo? FindMonitorForWindow(long hwnd)

@@ -5,11 +5,11 @@ namespace WinBridge.Runtime.Tests;
 public sealed class MonitorIdFormatterTests
 {
     [Fact]
-    public void FromDisplayConfigBuildsStableMonitorId()
+    public void FromDisplaySourceBuildsStableMonitorId()
     {
-        string monitorId = MonitorIdFormatter.FromDisplayConfig(unchecked((int)0xABCD1234), 0x0000BEEF, 7);
+        string monitorId = MonitorIdFormatter.FromDisplaySource(unchecked((int)0xABCD1234), 0x0000BEEF, 7);
 
-        Assert.Equal("displayconfig:abcd12340000beef:7", monitorId);
+        Assert.Equal("display-source:abcd12340000beef:7", monitorId);
     }
 
     [Fact]

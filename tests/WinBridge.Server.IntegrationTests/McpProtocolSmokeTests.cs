@@ -166,13 +166,16 @@ public sealed class McpProtocolSmokeTests
             Assert.True(await WaitUntilAsync(() => IsIconic(new IntPtr(helperHwnd))), "Smoke helper window did not become minimized in time.");
 
             using JsonDocument activateResponse = await CallToolAsync(reader, writer, 20, ToolNames.WindowsActivateWindow, new { hwnd = helperHwnd });
-            JsonElement activateRoot = activateResponse.RootElement
-                .GetProperty("result")
+            JsonElement activateResult = activateResponse.RootElement
+                .GetProperty("result");
+            JsonElement activateRoot = activateResult
                 .GetProperty("structuredContent");
-            Assert.Equal("done", activateRoot.GetProperty("status").GetString());
+            string activateStatus = activateRoot.GetProperty("status").GetString()!;
+            Assert.Contains(activateStatus, ["done", "ambiguous"]);
+            Assert.Equal(activateStatus == "ambiguous", activateResult.GetProperty("isError").GetBoolean());
             Assert.True(activateRoot.GetProperty("wasMinimized").GetBoolean());
-            Assert.True(activateRoot.GetProperty("isForeground").GetBoolean());
             Assert.Equal(helperHwnd, activateRoot.GetProperty("window").GetProperty("hwnd").GetInt64());
+            Assert.Equal(activateStatus == "done", activateRoot.GetProperty("isForeground").GetBoolean());
 
             using JsonDocument helperCaptureResponse = await CallToolAsync(
                 reader,

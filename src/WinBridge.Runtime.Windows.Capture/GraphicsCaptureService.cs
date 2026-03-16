@@ -145,7 +145,7 @@ public sealed class GraphicsCaptureService(
     {
         GraphicsCaptureItem item = resolvedTarget.Scope == CaptureScope.Window
             ? CreateItemForWindow(new IntPtr(resolvedTarget.Window!.Hwnd))
-            : CreateItemForMonitor(new IntPtr(resolvedTarget.Monitor!.Handle));
+            : CreateItemForMonitor(new IntPtr(resolvedTarget.Monitor!.CaptureHandle));
         SizeInt32 size = item.Size;
         if (size.Width <= 0 || size.Height <= 0)
         {
@@ -280,7 +280,7 @@ public sealed class GraphicsCaptureService(
             Directory.CreateDirectory(capturesDirectory);
 
             string handle = target.Window?.Hwnd.ToString(CultureInfo.InvariantCulture)
-                ?? target.Monitor?.Handle.ToString(CultureInfo.InvariantCulture)
+                ?? target.Monitor?.CaptureHandle.ToString(CultureInfo.InvariantCulture)
                 ?? "primary";
             string fileName = CaptureArtifactNameBuilder.Create(
                 target.Scope.ToContractValue(),

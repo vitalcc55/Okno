@@ -294,6 +294,9 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - dpi scale;
 - isPrimary.
 
+Примечание:
+- список monitor targets должен отражать captureable desktop views текущей topology, а не “все физические outputs любой ценой”.
+
 ### `windows.list_windows`
 Возвращает:
 - hwnd/id;
@@ -324,6 +327,8 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - для minimизированного окна сначала делает restore;
 - затем пытается подтвердить foreground focus;
 - используется как основной путь перед `window capture`, `input` и `wait`.
+
+Если Windows не подтверждает foreground после restore, допустим честный `ambiguous`, а не ложный `done`.
 
 ---
 
