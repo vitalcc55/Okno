@@ -1,5 +1,5 @@
 ﻿{
-    "generated_at_utc":  "2026-03-16T11:23:50.8169628Z",
+    "generated_at_utc":  "2026-03-16T12:03:55.4674230Z",
     "product_name":  "Okno",
     "transport":  {
                       "kind":  "stdio",
@@ -11,17 +11,18 @@
                                  "export_script":  "scripts/refresh-generated-docs.ps1"
                              },
     "runtime_projects":  [
-                             "src/WinBridge.Runtime",
                              "src/WinBridge.Runtime.Contracts",
-                             "src/WinBridge.Runtime.Tooling",
                              "src/WinBridge.Runtime.Diagnostics",
                              "src/WinBridge.Runtime.Session",
+                             "src/WinBridge.Runtime.Tooling",
+                             "src/WinBridge.Runtime.Waiting",
+                             "src/WinBridge.Runtime.Windows.Capture",
+                             "src/WinBridge.Runtime.Windows.Clipboard",
+                             "src/WinBridge.Runtime.Windows.Display",
+                             "src/WinBridge.Runtime.Windows.Input",
                              "src/WinBridge.Runtime.Windows.Shell",
                              "src/WinBridge.Runtime.Windows.UIA",
-                             "src/WinBridge.Runtime.Windows.Capture",
-                             "src/WinBridge.Runtime.Windows.Input",
-                             "src/WinBridge.Runtime.Windows.Clipboard",
-                             "src/WinBridge.Runtime.Waiting"
+                             "src/WinBridge.Runtime"
                          ],
     "latest_validation":  {
                               "build":  "dotnet build WinBridge.sln --no-restore",
@@ -31,20 +32,20 @@
                               "ci":  "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"
                           },
     "latest_smoke":  {
-                         "run_id":  "20260316T142345572",
+                         "run_id":  "20260316T150349469",
                          "server":  "Okno.Server",
                          "protocol":  "2025-06-18",
                          "declared_tools":  15,
                          "monitor_count":  3,
                          "desktop_monitor_id":  "display-source:000000000001259e:2",
                          "visible_windows":  18,
-                         "attached_hwnd":  32181498,
-                         "capture_artifact":  "artifacts/diagnostics/20260316T112346503-9a6da/captures/window-window-32181498-20260316T112347080-eb0b42b043a049c6ba4b71ffaca23cf8.png",
-                         "helper_window_hwnd":  32181498,
+                         "attached_hwnd":  4786180,
+                         "capture_artifact":  "artifacts/diagnostics/20260316T120350737-e1ef7/captures/window-window-4786180-20260316T120351649-77a408ceb13d427caee6a05e9e1f8895.png",
+                         "helper_window_hwnd":  4786180,
                          "helper_activation_status":  "done",
-                         "audit_directory":  "artifacts/diagnostics/20260316T112346503-9a6da",
-                         "smoke_report":  "artifacts/smoke/20260316T142345572/report.json",
-                         "audit_summary":  "artifacts/diagnostics/20260316T112346503-9a6da/summary.md"
+                         "audit_directory":  "artifacts/diagnostics/20260316T120350737-e1ef7",
+                         "smoke_report":  "artifacts/smoke/20260316T150349469/report.json",
+                         "audit_summary":  "artifacts/diagnostics/20260316T120350737-e1ef7/summary.md"
                      },
     "deferred_scope":  [
                            "UIA",

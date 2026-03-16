@@ -38,6 +38,13 @@ function Convert-ToRepoRelative {
     return $fullPath
 }
 
+function Get-RuntimeProjectDirectories {
+    return Get-ChildItem -Path (Join-Path $repoRoot 'src') -Filter '*.csproj' -Recurse |
+        Where-Object { $_.BaseName -like 'WinBridge.Runtime*' } |
+        Sort-Object FullName |
+        ForEach-Object { Convert-ToRepoRelative -Path $_.DirectoryName }
+}
+
 function New-CommandsMarkdown {
     param(
         [object] $SmokeReport,
@@ -135,19 +142,7 @@ function New-BootstrapStatusObject {
             tool_manifest = 'src/WinBridge.Runtime.Tooling/ToolContractManifest.cs'
             export_script = 'scripts/refresh-generated-docs.ps1'
         }
-        runtime_projects = @(
-            'src/WinBridge.Runtime',
-            'src/WinBridge.Runtime.Contracts',
-            'src/WinBridge.Runtime.Tooling',
-            'src/WinBridge.Runtime.Diagnostics',
-            'src/WinBridge.Runtime.Session',
-            'src/WinBridge.Runtime.Windows.Shell',
-            'src/WinBridge.Runtime.Windows.UIA',
-            'src/WinBridge.Runtime.Windows.Capture',
-            'src/WinBridge.Runtime.Windows.Input',
-            'src/WinBridge.Runtime.Windows.Clipboard',
-            'src/WinBridge.Runtime.Waiting'
-        )
+        runtime_projects = @(Get-RuntimeProjectDirectories)
         latest_validation = [ordered]@{
             build = 'dotnet build WinBridge.sln --no-restore'
             test = 'dotnet test WinBridge.sln'

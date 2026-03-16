@@ -42,20 +42,37 @@ public sealed class WindowActivationService(
             return Failed("Окно для активации больше не найдено или больше не совпадает с исходной identity.", wasMinimized);
         }
 
-        if (isForeground)
+        if (IsUsableActivatedWindow(window))
         {
             return new ActivateWindowResult("done", null, window, wasMinimized, true);
         }
 
-        string reason = wasMinimized
-            ? "Окно восстановлено, но foreground focus не удалось подтвердить."
-            : "Windows отказалась перевести окно в foreground.";
-        string status = wasMinimized ? "ambiguous" : "failed";
-        return new ActivateWindowResult(status, reason, window, wasMinimized, false);
+        return CreateUnconfirmedResult(window, wasMinimized, isForeground);
     }
 
     private static ActivateWindowResult Failed(string reason, bool wasMinimized) =>
         new("failed", reason, null, wasMinimized, false);
+
+    private static bool IsUsableActivatedWindow(WindowDescriptor window) =>
+        window.IsForeground
+        && !string.Equals(window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal);
+
+    private static ActivateWindowResult CreateUnconfirmedResult(
+        WindowDescriptor window,
+        bool wasMinimized,
+        bool pollObservedForeground)
+    {
+        string reason = string.Equals(window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal)
+            ? "Окно снова оказалось свернутым до завершения активации."
+            : wasMinimized
+                ? "Окно восстановлено, но foreground focus не удалось подтвердить по финальному live-state."
+                : pollObservedForeground
+                    ? "Окно кратковременно было foreground, но финальный live-state не подтвердил usability."
+                    : "Windows отказалась перевести окно в foreground.";
+
+        string status = wasMinimized ? "ambiguous" : "failed";
+        return new ActivateWindowResult(status, reason, window, wasMinimized, false);
+    }
 
     private async Task<bool> WaitUntilAsync(Func<bool> condition, TimeSpan timeout, CancellationToken cancellationToken)
     {

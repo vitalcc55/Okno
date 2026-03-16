@@ -9,6 +9,11 @@
 - Display seam переведён на source/view-oriented `monitorId` для captureable desktop views; alias fallback для stale strong ids убран, а `windows.list_windows` перешёл на batch-friendly monitor lookup без full scan на каждый HWND.
 - Smoke harness переведён на helper как канонический attach/capture target: сначала normal window capture, затем `minimize -> activate_window -> helper capture`, при этом acceptance для activation path выровнен с платформой как `done | ambiguous` вместо безусловочного `done`.
 
+## 2026-03-16 14:58
+
+- `windows.activate_window` теперь возвращает `done` только когда финальный live snapshot подтверждает usable state: окно остаётся foreground и уже не находится в `minimized`.
+- `WinBridge.Runtime.Windows.Display` зарегистрирован как полноценный runtime slice в `WinBridge.sln`, а `scripts/refresh-generated-docs.ps1` больше собирает `runtime_projects` автоматически по `WinBridge.Runtime*` csproj, чтобы bootstrap inventory не дрейфовал от фактической архитектуры.
+
 ## 2026-03-15 12:36
 
 - `windows.attach_window` теперь разводит invalid selector и ambiguous match: отсутствие `hwnd`/`titlePattern`/`processName` возвращается как `failed`, а `ambiguous` остаётся только для реального multi-match path.

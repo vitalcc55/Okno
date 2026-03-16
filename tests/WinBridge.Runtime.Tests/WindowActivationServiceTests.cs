@@ -10,7 +10,7 @@ public sealed class WindowActivationServiceTests
     {
         FakeWindowActivationPlatform platform = new(windowExists: true, iconic: true, foregroundWindow: 0);
         FakeWindowManager windowManager = new(
-            windows: [CreateWindow(hwnd: 101)],
+            windows: [CreateWindow(hwnd: 101, isForeground: true)],
             onFocus: hwnd => platform.ForegroundWindow = hwnd);
         WindowTargetResolver resolver = new(windowManager);
         WindowActivationService service = new(
@@ -32,7 +32,7 @@ public sealed class WindowActivationServiceTests
     {
         FakeWindowActivationPlatform platform = new(windowExists: true, iconic: true, foregroundWindow: 999);
         FakeWindowManager windowManager = new(
-            windows: [CreateWindow(hwnd: 202)],
+            windows: [CreateWindow(hwnd: 202, isForeground: false)],
             onFocus: _ => { });
         WindowTargetResolver resolver = new(windowManager);
         WindowActivationService service = new(
@@ -46,6 +46,50 @@ public sealed class WindowActivationServiceTests
         Assert.Equal("ambiguous", result.Status);
         Assert.True(result.WasMinimized);
         Assert.False(result.IsForeground);
+    }
+
+    [Fact]
+    public async Task ActivateAsyncReturnsAmbiguousWhenPollObservedForegroundButFinalSnapshotIsNotUsable()
+    {
+        FakeWindowActivationPlatform platform = new(windowExists: true, iconic: true, foregroundWindow: 0);
+        FakeWindowManager windowManager = new(
+            windows: [CreateWindow(hwnd: 212, isForeground: false)],
+            onFocus: hwnd => platform.ForegroundWindow = hwnd);
+        WindowTargetResolver resolver = new(windowManager);
+        WindowActivationService service = new(
+            windowManager,
+            resolver,
+            platform,
+            new WindowActivationOptions(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero));
+
+        ActivateWindowResult result = await service.ActivateAsync(CreateWindow(hwnd: 212), CancellationToken.None);
+
+        Assert.Equal("ambiguous", result.Status);
+        Assert.True(result.WasMinimized);
+        Assert.False(result.IsForeground);
+        Assert.NotNull(result.Window);
+    }
+
+    [Fact]
+    public async Task ActivateAsyncReturnsAmbiguousWhenFinalSnapshotIsStillMinimized()
+    {
+        FakeWindowActivationPlatform platform = new(windowExists: true, iconic: true, foregroundWindow: 0);
+        FakeWindowManager windowManager = new(
+            windows: [CreateWindow(hwnd: 214, isForeground: true, windowState: WindowStateValues.Minimized)],
+            onFocus: hwnd => platform.ForegroundWindow = hwnd);
+        WindowTargetResolver resolver = new(windowManager);
+        WindowActivationService service = new(
+            windowManager,
+            resolver,
+            platform,
+            new WindowActivationOptions(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero));
+
+        ActivateWindowResult result = await service.ActivateAsync(CreateWindow(hwnd: 214), CancellationToken.None);
+
+        Assert.Equal("ambiguous", result.Status);
+        Assert.True(result.WasMinimized);
+        Assert.False(result.IsForeground);
+        Assert.NotNull(result.Window);
     }
 
     [Fact]
@@ -66,7 +110,10 @@ public sealed class WindowActivationServiceTests
         Assert.Contains("больше не найдено", result.Reason, StringComparison.Ordinal);
     }
 
-    private static WindowDescriptor CreateWindow(long hwnd) =>
+    private static WindowDescriptor CreateWindow(
+        long hwnd,
+        bool isForeground = false,
+        string windowState = WindowStateValues.Normal) =>
         new(
             Hwnd: hwnd,
             Title: "Window",
@@ -75,9 +122,9 @@ public sealed class WindowActivationServiceTests
             ThreadId: 456,
             ClassName: "OknoWindow",
             Bounds: new Bounds(10, 20, 210, 220),
-            IsForeground: false,
+            IsForeground: isForeground,
             IsVisible: true,
-            WindowState: WindowStateValues.Normal,
+            WindowState: windowState,
             MonitorId: "display-source:0000000100000000:1",
             MonitorFriendlyName: "Primary monitor");
 
