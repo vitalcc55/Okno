@@ -8,19 +8,19 @@ public sealed class DisplayIdentityDiagnosticsPipelineTests
     [Fact]
     public void IdentityBreakingSourceFailureWinsOverEarlierTargetNameDegradation()
     {
-        DisplayConfigFailureInfo? failure = null;
+        DisplayIdentityFailureInfo? failure = null;
 
-        failure = DisplayConfigFailureAggregator.SelectMoreSignificant(
+        failure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
             failure,
-            new DisplayConfigFailureInfo(
+            new DisplayIdentityFailureInfo(
                 FailedStage: DisplayIdentityFailureStageValues.GetTargetName,
                 ErrorCode: 50,
                 ErrorName: "ERROR_NOT_SUPPORTED",
                 MessageHuman: "Friendly name lookup degraded."));
 
-        failure = DisplayConfigFailureAggregator.SelectMoreSignificant(
+        failure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
             failure,
-            new DisplayConfigFailureInfo(
+            new DisplayIdentityFailureInfo(
                 FailedStage: DisplayIdentityFailureStageValues.GetSourceName,
                 ErrorCode: 5,
                 ErrorName: "ERROR_ACCESS_DENIED",
@@ -38,6 +38,78 @@ public sealed class DisplayIdentityDiagnosticsPipelineTests
 
         Assert.Equal(DisplayIdentityModeValues.GdiFallback, diagnostics.IdentityMode);
         Assert.Equal(DisplayIdentityFailureStageValues.GetSourceName, diagnostics.FailedStage);
+        Assert.Equal("ERROR_ACCESS_DENIED", diagnostics.ErrorName);
+    }
+
+    [Fact]
+    public void MonitorEnumerationFailureWinsOverEarlierTargetNameDegradation()
+    {
+        DisplayIdentityFailureInfo? failure = null;
+
+        failure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
+            failure,
+            new DisplayIdentityFailureInfo(
+                FailedStage: DisplayIdentityFailureStageValues.GetTargetName,
+                ErrorCode: 50,
+                ErrorName: "ERROR_NOT_SUPPORTED",
+                MessageHuman: "Friendly name lookup degraded."));
+
+        failure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
+            failure,
+            new DisplayIdentityFailureInfo(
+                FailedStage: DisplayIdentityFailureStageValues.GetMonitorInfo,
+                ErrorCode: 5,
+                ErrorName: "ERROR_ACCESS_DENIED",
+                MessageHuman: "Monitor enumeration failed."));
+
+        DisplayIdentityDiagnostics diagnostics = DisplayIdentityDiagnosticsBuilder.Build(
+            new DisplayConfigQueryDiagnostics(
+                FailedStage: failure?.FailedStage,
+                ErrorCode: failure?.ErrorCode,
+                ErrorName: failure?.ErrorName,
+                MessageHuman: failure?.MessageHuman),
+            usedFallbackMonitorIdentity: true,
+            activeMonitorCount: 1,
+            capturedAtUtc: DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(DisplayIdentityModeValues.GdiFallback, diagnostics.IdentityMode);
+        Assert.Equal(DisplayIdentityFailureStageValues.GetMonitorInfo, diagnostics.FailedStage);
+        Assert.Equal("ERROR_ACCESS_DENIED", diagnostics.ErrorName);
+    }
+
+    [Fact]
+    public void QueryDisplayConfigFailureWinsOverLaterMonitorEnumerationFailure()
+    {
+        DisplayIdentityFailureInfo? failure = null;
+
+        failure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
+            failure,
+            new DisplayIdentityFailureInfo(
+                FailedStage: DisplayIdentityFailureStageValues.QueryDisplayConfig,
+                ErrorCode: 5,
+                ErrorName: "ERROR_ACCESS_DENIED",
+                MessageHuman: "QueryDisplayConfig failed."));
+
+        failure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
+            failure,
+            new DisplayIdentityFailureInfo(
+                FailedStage: DisplayIdentityFailureStageValues.GetMonitorInfo,
+                ErrorCode: 50,
+                ErrorName: "ERROR_NOT_SUPPORTED",
+                MessageHuman: "Monitor enumeration failed."));
+
+        DisplayIdentityDiagnostics diagnostics = DisplayIdentityDiagnosticsBuilder.Build(
+            new DisplayConfigQueryDiagnostics(
+                FailedStage: failure?.FailedStage,
+                ErrorCode: failure?.ErrorCode,
+                ErrorName: failure?.ErrorName,
+                MessageHuman: failure?.MessageHuman),
+            usedFallbackMonitorIdentity: true,
+            activeMonitorCount: 1,
+            capturedAtUtc: DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(DisplayIdentityModeValues.GdiFallback, diagnostics.IdentityMode);
+        Assert.Equal(DisplayIdentityFailureStageValues.QueryDisplayConfig, diagnostics.FailedStage);
         Assert.Equal("ERROR_ACCESS_DENIED", diagnostics.ErrorName);
     }
 }

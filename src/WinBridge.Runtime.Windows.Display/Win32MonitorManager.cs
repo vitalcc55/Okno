@@ -24,6 +24,7 @@ public sealed class Win32MonitorManager(AuditLog auditLog) : IMonitorManager
         bool hasDisplayConfig = displayConfigOutcome.DisplayConfigMap.Count > 0;
         HashSet<string> desktopGdiDevices = ListDesktopGdiDevices();
         Dictionary<string, MonitorAccumulator> monitors = new(StringComparer.OrdinalIgnoreCase);
+        DisplayIdentityFailureInfo? topologyFailure = null;
         bool usedFallbackMonitorIdentity = false;
 
         _ = EnumDisplayMonitors(
@@ -34,6 +35,14 @@ public sealed class Win32MonitorManager(AuditLog auditLog) : IMonitorManager
                 MONITORINFOEX info = new() { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
                 if (!GetMonitorInfo(monitor, ref info))
                 {
+                    int errorCode = Marshal.GetLastWin32Error();
+                    topologyFailure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
+                        topologyFailure,
+                        DisplayIdentityFailureInfoFactory.Create(
+                            DisplayIdentityFailureStageValues.GetMonitorInfo,
+                            errorCode,
+                            "Не удалось получить monitor metadata через GetMonitorInfo; topology snapshot неполный и runtime не может считать strong identity fully intact."));
+                    usedFallbackMonitorIdentity = true;
                     return true;
                 }
 
@@ -94,12 +103,21 @@ public sealed class Win32MonitorManager(AuditLog auditLog) : IMonitorManager
             .OrderByDescending(item => item.Descriptor.IsPrimary)
             .ThenBy(item => item.Descriptor.MonitorId, StringComparer.Ordinal)
             .ToArray();
+        DisplayIdentityFailureInfo? combinedFailure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
+            topologyFailure,
+            displayConfigOutcome.FailedStage is null
+                ? null
+                : new DisplayIdentityFailureInfo(
+                    displayConfigOutcome.FailedStage,
+                    displayConfigOutcome.ErrorCode ?? 0,
+                    displayConfigOutcome.ErrorName ?? "WIN32_UNKNOWN",
+                    displayConfigOutcome.MessageHuman ?? "Display identity деградировала."));
         DisplayIdentityDiagnostics diagnostics = DisplayIdentityDiagnosticsBuilder.Build(
             new DisplayConfigQueryDiagnostics(
-                displayConfigOutcome.FailedStage,
-                displayConfigOutcome.ErrorCode,
-                displayConfigOutcome.ErrorName,
-                displayConfigOutcome.MessageHuman),
+                combinedFailure?.FailedStage,
+                combinedFailure?.ErrorCode,
+                combinedFailure?.ErrorName,
+                combinedFailure?.MessageHuman),
             usedFallbackMonitorIdentity,
             materializedMonitors.Length,
             DateTimeOffset.UtcNow);
@@ -175,7 +193,7 @@ public sealed class Win32MonitorManager(AuditLog auditLog) : IMonitorManager
             }
 
             Dictionary<string, DisplayConfigSourceIdentity> map = new(StringComparer.OrdinalIgnoreCase);
-            DisplayConfigFailureInfo? firstFailure = null;
+            DisplayIdentityFailureInfo? firstFailure = null;
             for (int index = 0; index < pathCount; index++)
             {
                 DISPLAYCONFIG_PATH_INFO path = paths[index];
@@ -183,9 +201,9 @@ public sealed class Win32MonitorManager(AuditLog auditLog) : IMonitorManager
                 string? gdiDeviceName = sourceNameResult.Value;
                 if (string.IsNullOrWhiteSpace(gdiDeviceName))
                 {
-                    firstFailure = DisplayConfigFailureAggregator.SelectMoreSignificant(
+                    firstFailure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
                         firstFailure,
-                        DisplayConfigFailureInfoFactory.Create(
+                        DisplayIdentityFailureInfoFactory.Create(
                         DisplayIdentityFailureStageValues.GetSourceName,
                         sourceNameResult.ResultCode,
                         "Не удалось получить GDI имя display source; runtime использует `gdi:` fallback для monitor identity."));
@@ -197,9 +215,9 @@ public sealed class Win32MonitorManager(AuditLog auditLog) : IMonitorManager
                 string? friendlyName = friendlyNameResult.Value;
                 if (friendlyNameResult.ResultCode != ErrorSuccess)
                 {
-                    firstFailure = DisplayConfigFailureAggregator.SelectMoreSignificant(
+                    firstFailure = DisplayIdentityFailureAggregator.SelectMoreSignificant(
                         firstFailure,
-                        DisplayConfigFailureInfoFactory.Create(
+                        DisplayIdentityFailureInfoFactory.Create(
                         DisplayIdentityFailureStageValues.GetTargetName,
                         friendlyNameResult.ResultCode,
                         "Не удалось получить friendly name display target; strong monitor identity сохранена, но human-readable monitor name деградирует."));
@@ -665,9 +683,9 @@ public sealed class Win32MonitorManager(AuditLog auditLog) : IMonitorManager
                 $"{messageHuman} Win32 error: {GetWin32ErrorName(errorCode)} ({errorCode}).");
     }
 
-    private static class DisplayConfigFailureInfoFactory
+    private static class DisplayIdentityFailureInfoFactory
     {
-        public static DisplayConfigFailureInfo Create(string failedStage, int errorCode, string messageHuman)
+        public static DisplayIdentityFailureInfo Create(string failedStage, int errorCode, string messageHuman)
         {
             string errorName = GetWin32ErrorName(errorCode) ?? "WIN32_UNKNOWN";
             return new(

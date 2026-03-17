@@ -2,13 +2,15 @@
 
 > Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.
 
-| Layer | Command | Coverage now | Status |
-| --- | --- | --- | --- |
-| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors | green |
-| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, title-pattern timeout guardrails, monitor id formatting, activation decision logic, session dedupe, session mutation | green |
-| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, attach/focus/activate contract semantics, monitor inventory, desktop capture by `monitorId`, capture result shape | green |
-| Smoke | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | init -> tools/list -> health -> list monitors -> desktop capture by monitorId -> list windows -> attach -> session_state -> capture -> helper minimize/activate/window capture | green |
-| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke | green |
+> Матрица ниже описывает coverage и entry points. Она не утверждает факт успешного последнего прогона; смотри `docs/generated/commands.md` и `docs/bootstrap/bootstrap-status.json` для latest verified validation.
+
+| Layer | Command | Coverage now |
+| --- | --- | --- |
+| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |
+| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, display identity pipeline, monitor id formatting, activation decision logic, session dedupe, session mutation |
+| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, attach/focus/activate contract semantics, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |
+| Smoke | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | init -> tools/list -> health -> list monitors -> desktop capture by monitorId -> list windows -> attach -> session_state -> capture -> helper minimize/activate/window capture |
+| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke |
 
 ## Чего пока не хватает
 

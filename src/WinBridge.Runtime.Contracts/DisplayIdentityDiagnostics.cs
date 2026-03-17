@@ -9,6 +9,7 @@ public static class DisplayIdentityModeValues
 public static class DisplayIdentityFailureStageValues
 {
     public const string CoverageGap = "display_config_coverage_gap";
+    public const string GetMonitorInfo = "get_monitor_info";
     public const string GetBufferSizes = "get_buffer_sizes";
     public const string QueryDisplayConfig = "query_display_config";
     public const string GetSourceName = "get_source_name";

@@ -32,6 +32,10 @@
 
 - Verification gaps закрыты локальными test seams: добавлен pipeline-level runtime test на mixed-case display failures (`GetTargetName` -> `GetSourceName`) и behavioural integration test на `windows.capture(scope="desktop", hwnd=...)`, подтверждающий monitor resolution explicit HWND поверх attached window. Smoke по-прежнему проверяет tools/list metadata и end-to-end protocol flow, а не подменяет эти два таргетных контракта.
 
+## 2026-03-17 15:15
+
+- `refresh-generated-docs.ps1` больше не публикует ложный `green` в `docs/generated/test-matrix.md`: матрица стала декларативной, а не evidence-claiming. В том же цикле добавлена `Normalize-SmokeReport`, чтобы generated docs не падали на legacy/partial smoke reports, а `GetMonitorInfo` degradation теперь поднимается в typed diagnostics вместо тихого skip-case.
+
 ## 2026-03-17 09:21
 
 - Добавлен активный exec-plan `docs/exec-plans/active/display-window-contract-hardening.md` для линейного refactor-контура по DPI/coordinate semantics, display identity diagnostics, MCP self-documentation и optional `IsWindowArranged`.

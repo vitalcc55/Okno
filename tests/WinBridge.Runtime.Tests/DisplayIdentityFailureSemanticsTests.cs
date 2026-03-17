@@ -11,6 +11,14 @@ public sealed class DisplayIdentityFailureSemanticsTests
         Assert.True(
             DisplayIdentityFailureSemantics.GetPriority(DisplayIdentityFailureStageValues.GetSourceName)
             > DisplayIdentityFailureSemantics.GetPriority(DisplayIdentityFailureStageValues.GetTargetName));
+
+        Assert.True(
+            DisplayIdentityFailureSemantics.GetPriority(DisplayIdentityFailureStageValues.GetMonitorInfo)
+            > DisplayIdentityFailureSemantics.GetPriority(DisplayIdentityFailureStageValues.GetTargetName));
+
+        Assert.True(
+            DisplayIdentityFailureSemantics.GetPriority(DisplayIdentityFailureStageValues.QueryDisplayConfig)
+            > DisplayIdentityFailureSemantics.GetPriority(DisplayIdentityFailureStageValues.GetMonitorInfo));
     }
 
     [Fact]

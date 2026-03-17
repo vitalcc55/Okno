@@ -1,17 +1,22 @@
 namespace WinBridge.Runtime.Windows.Display;
 
-internal sealed record DisplayConfigFailureInfo(
+internal sealed record DisplayIdentityFailureInfo(
     string FailedStage,
     int ErrorCode,
     string ErrorName,
     string MessageHuman);
 
-internal static class DisplayConfigFailureAggregator
+internal static class DisplayIdentityFailureAggregator
 {
-    public static DisplayConfigFailureInfo? SelectMoreSignificant(
-        DisplayConfigFailureInfo? current,
-        DisplayConfigFailureInfo candidate)
+    public static DisplayIdentityFailureInfo? SelectMoreSignificant(
+        DisplayIdentityFailureInfo? current,
+        DisplayIdentityFailureInfo? candidate)
     {
+        if (candidate is null)
+        {
+            return current;
+        }
+
         if (current is null)
         {
             return candidate;

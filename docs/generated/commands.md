@@ -17,20 +17,22 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |
 | `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |
 
-## Latest Verified Validation
+## Validation Entry Points
 
-- `dotnet build WinBridge.sln --no-restore` -> success, 0 warnings, 0 errors.
-- `dotnet test WinBridge.sln` -> success; all unit + integration tests passed.
-- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` -> success; verified init, tools/list, `okno.health`, `windows.list_monitors`, explicit desktop capture by `monitorId`, `windows.list_windows`, `windows.attach_window`, `okno.session_state`, `windows.activate_window`, `windows.capture`.
-- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` -> success; regenerated `project-interfaces.*`, `commands.md`, `bootstrap-status.json`.
-- `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` -> success.
+> Этот раздел перечисляет канонические validation commands, но не утверждает факт успешного последнего прогона. Реальное smoke evidence публикуется ниже, а full validation state должен подтверждаться отдельными run artifacts или `scripts/codex/verify.ps1`.
+
+- `dotnet build WinBridge.sln --no-restore`
+- `dotnet test WinBridge.sln`
+- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`
 
 ## Latest Smoke Evidence
 
-- smoke run id: 20260317T123101863
+- smoke run id: 20260317T152814184
 - monitor count: 3
 - desktop monitor id: display-source:0000000000012673:2
-- audit directory: artifacts/diagnostics/20260317T093102706-3da5e
-- capture artifact: artifacts/diagnostics/20260317T093102706-3da5e/captures/window-window-2623776-20260317T093103407-bd98be5a776647b6b5518d039646acdb.png
-- helper capture artifact: artifacts/diagnostics/20260317T093102706-3da5e/captures/window-window-2623776-20260317T093103752-f1a45bf2e88d4adca65e2b1d8fcdc842.png
-- smoke report: artifacts/smoke/20260317T123101863/report.json
+- audit directory: artifacts/diagnostics/20260317T122815827-46875
+- capture artifact: artifacts/diagnostics/20260317T122815827-46875/captures/window-window-2885672-20260317T122816898-c28bc49d6cf0466f9fe932c041874b87.png
+- helper capture artifact: artifacts/diagnostics/20260317T122815827-46875/captures/window-window-2885672-20260317T122817536-e2a23c3d21d74615ab07bbbbe06e5c6f.png
+- smoke report: artifacts/smoke/20260317T152814184/report.json

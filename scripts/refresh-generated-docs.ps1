@@ -73,13 +73,15 @@ function New-CommandsMarkdown {
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |',
         '| `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |',
         '',
-        '## Latest Verified Validation',
+        '## Validation Entry Points',
         '',
-        '- `dotnet build WinBridge.sln --no-restore` -> success, 0 warnings, 0 errors.',
-        '- `dotnet test WinBridge.sln` -> success; all unit + integration tests passed.',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` -> success; verified init, tools/list, `okno.health`, `windows.list_monitors`, explicit desktop capture by `monitorId`, `windows.list_windows`, `windows.attach_window`, `okno.session_state`, `windows.activate_window`, `windows.capture`.',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` -> success; regenerated `project-interfaces.*`, `commands.md`, `bootstrap-status.json`.',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` -> success.',
+        '> Этот раздел перечисляет канонические validation commands, но не утверждает факт успешного последнего прогона. Реальное smoke evidence публикуется ниже, а full validation state должен подтверждаться отдельными run artifacts или `scripts/codex/verify.ps1`.',
+        '',
+        '- `dotnet build WinBridge.sln --no-restore`',
+        '- `dotnet test WinBridge.sln`',
+        '- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`',
+        '- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`',
+        '- `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`',
         '',
         '## Latest Smoke Evidence',
         '',
@@ -95,19 +97,127 @@ function New-CommandsMarkdown {
     return $lines -join [Environment]::NewLine
 }
 
+function Get-OptionalValue {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Object,
+        [Parameter(Mandatory)]
+        [string[]] $PathSegments,
+        [object] $Default = $null
+    )
+
+    $current = $Object
+    foreach ($segment in $PathSegments) {
+        if ($null -eq $current) {
+            return $Default
+        }
+
+        $property = $current.PSObject.Properties[$segment]
+        if ($null -eq $property) {
+            return $Default
+        }
+
+        $current = $property.Value
+    }
+
+    return $current
+}
+
+function Normalize-SmokeReport {
+    param(
+        [Parameter(Mandatory)]
+        [object] $RawSmokeReport
+    )
+
+    $healthArtifactsDirectory = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('health', 'artifactsDirectory')
+    $captureArtifactPath = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('capture', 'artifactPath')
+    $helperCaptureArtifactPath = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('helper_capture', 'artifactPath')
+
+    return [pscustomobject]@{
+        run_id = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('run_id')
+        initialized_protocol = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('initialized_protocol')
+        server_name = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('server_name')
+        declared_tools = @(Get-OptionalValue -Object $RawSmokeReport -PathSegments @('declared_tools') -Default @())
+        health = [pscustomobject]@{
+            artifactsDirectory = $healthArtifactsDirectory
+        }
+        monitors = [pscustomobject]@{
+            count = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('monitors', 'count') -Default 0
+            diagnostics = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('monitors', 'diagnostics') -Default $null
+        }
+        windows = [pscustomobject]@{
+            count = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('windows', 'count') -Default 0
+        }
+        attached_window = [pscustomobject]@{
+            attachedWindow = [pscustomobject]@{
+                window = [pscustomobject]@{
+                    hwnd = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('attached_window', 'attachedWindow', 'window', 'hwnd')
+                }
+            }
+        }
+        capture = [pscustomobject]@{
+            artifactPath = $captureArtifactPath
+        }
+        desktop_capture = [pscustomobject]@{
+            monitorId = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('desktop_capture', 'monitorId')
+        }
+        helper_capture = [pscustomobject]@{
+            artifactPath = $helperCaptureArtifactPath
+        }
+        helper_window = [pscustomobject]@{
+            hwnd = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('helper_window', 'hwnd')
+        }
+        helper_activate = [pscustomobject]@{
+            status = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('helper_activate', 'status')
+        }
+    }
+}
+
+function Get-SmokeDerivedMetadata {
+    param(
+        [Parameter(Mandatory)]
+        [object] $SmokeReport
+    )
+
+    $artifactsDirectory = $SmokeReport.health.artifactsDirectory
+    $auditSummaryPath = $null
+    if (-not [string]::IsNullOrWhiteSpace($artifactsDirectory)) {
+        $auditSummaryPath = Convert-ToRepoRelative -Path (Join-Path $artifactsDirectory 'summary.md')
+    }
+
+    return [pscustomobject]@{
+        audit_directory = Convert-ToRepoRelative -Path $artifactsDirectory
+        audit_summary = $auditSummaryPath
+        capture_artifact = Convert-ToRepoRelative -Path $SmokeReport.capture.artifactPath
+        helper_capture_artifact = Convert-ToRepoRelative -Path $SmokeReport.helper_capture.artifactPath
+        smoke_run_id = [string]$SmokeReport.run_id
+        smoke_server = $SmokeReport.server_name
+        smoke_protocol = $SmokeReport.initialized_protocol
+        smoke_declared_tools = @($SmokeReport.declared_tools).Count
+        smoke_monitor_count = $SmokeReport.monitors.count
+        smoke_desktop_monitor_id = $SmokeReport.desktop_capture.monitorId
+        smoke_visible_windows = $SmokeReport.windows.count
+        smoke_attached_hwnd = $SmokeReport.attached_window.attachedWindow.window.hwnd
+        smoke_helper_window_hwnd = $SmokeReport.helper_window.hwnd
+        smoke_helper_activation_status = $SmokeReport.helper_activate.status
+    }
+}
+
 function New-TestMatrixMarkdown {
     $lines = @(
         '# Test Matrix',
         '',
         '> Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.',
         '',
-        '| Layer | Command | Coverage now | Status |',
-        '| --- | --- | --- | --- |',
-        '| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors | green |',
-        '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, title-pattern timeout guardrails, monitor id formatting, activation decision logic, session dedupe, session mutation | green |',
-        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, attach/focus/activate contract semantics, monitor inventory, desktop capture by `monitorId`, capture result shape | green |',
-        '| Smoke | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | init -> tools/list -> health -> list monitors -> desktop capture by monitorId -> list windows -> attach -> session_state -> capture -> helper minimize/activate/window capture | green |',
-        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke | green |',
+        '> Матрица ниже описывает coverage и entry points. Она не утверждает факт успешного последнего прогона; смотри `docs/generated/commands.md` и `docs/bootstrap/bootstrap-status.json` для latest verified validation.',
+        '',
+        '| Layer | Command | Coverage now |',
+        '| --- | --- | --- |',
+        '| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |',
+        '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, display identity pipeline, monitor id formatting, activation decision logic, session dedupe, session mutation |',
+        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, attach/focus/activate contract semantics, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
+        '| Smoke | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | init -> tools/list -> health -> list monitors -> desktop capture by monitorId -> list windows -> attach -> session_state -> capture -> helper minimize/activate/window capture |',
+        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke |',
         '',
         '## Чего пока не хватает',
         '',
@@ -181,11 +291,12 @@ if ($null -eq $latestSmokeReport) {
     throw 'Cannot refresh generated docs without at least one smoke report. Run scripts/smoke.ps1 first.'
 }
 
-$smokeReport = Get-Content $latestSmokeReport.FullName -Raw | ConvertFrom-Json
+$smokeReport = Normalize-SmokeReport -RawSmokeReport ((Get-Content $latestSmokeReport.FullName -Raw | ConvertFrom-Json))
+$smokeDerivedMetadata = Get-SmokeDerivedMetadata -SmokeReport $smokeReport
 $smokeRunId = [string]$smokeReport.run_id
-$auditDirectory = Convert-ToRepoRelative -Path $smokeReport.health.artifactsDirectory
+$auditDirectory = $smokeDerivedMetadata.audit_directory
 $smokeReportRelativePath = Convert-ToRepoRelative -Path $latestSmokeReport.FullName
-$latestAuditSummaryPath = Convert-ToRepoRelative -Path (Join-Path $smokeReport.health.artifactsDirectory 'summary.md')
+$latestAuditSummaryPath = $smokeDerivedMetadata.audit_summary
 
 New-CommandsMarkdown -SmokeReport $smokeReport -SmokeRunId $smokeRunId -AuditDirectory $auditDirectory -SmokeReportPath $smokeReportRelativePath |
     Set-Content -Path $commandsMarkdownPath -Encoding utf8
