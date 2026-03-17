@@ -93,6 +93,12 @@
 - `byteSize`
 - `sessionRunId`
 
+Metadata строятся не из исходного pre-capture target snapshot, а из authoritative target snapshot после завершения capture path. Это важно для двух случаев:
+
+- после `Recreate` runtime публикует уже обновлённые `bounds` и связанные target fields, согласованные с финальным PNG;
+- перед desktop `GDI` fallback runtime заново резолвит текущий monitor target, чтобы не возвращать успешный screenshot по устаревшей topology.
+- для успешного `desktop` WGC capture runtime не делает silent retarget на другой monitor: monitor identity остаётся от того target, по которому был создан `GraphicsCaptureItem`, а refreshed topology используется только если она подтверждает тот же monitor.
+
 Аннотации tool тоже теперь выровнены с фактическим поведением:
 
 - `ReadOnly = false`, потому что успешный capture пишет локальный PNG artifact;
@@ -120,8 +126,10 @@
 3. `Direct3D11CaptureFramePool`
 4. `GraphicsCaptureSession.StartCapture()`
 5. `FrameArrived -> TryGetNextFrame()`
-6. `SoftwareBitmap.CreateCopyFromSurfaceAsync`
-7. PNG encoding через `BitmapEncoder`
+6. проверка `Direct3D11CaptureFrame.ContentSize` против текущего размера frame pool
+7. при первом size drift — `Direct3D11CaptureFramePool.Recreate(...)` и ожидание следующего frame
+8. только после size stabilization — `SoftwareBitmap.CreateCopyFromSurfaceAsync`
+9. PNG encoding через `BitmapEncoder`
 
 То есть первый path максимально windows-native и не изобретает собственный графический pipeline поверх shell или внешних утилит.
 
@@ -136,7 +144,9 @@
 Поэтому fallback policy сейчас разделена так:
 
 - для `scope="desktop"` `GDI` screen copy через `Graphics.CopyFromScreen` допустим и как fallback после timeout/native ошибки, и как прямой backend, если `Windows.Graphics.Capture` недоступен в текущей сессии;
+- для `scope="desktop"` туда же относится persistent geometry mismatch: если после single `Recreate` `ContentSize` всё ещё не стабилизировался, runtime считает WGC acquisition недостоверным и уходит в тот же desktop fallback;
 - для `scope="window"` screen-copy fallback больше не используется, потому что он может вернуть чужие экранные пиксели и нарушить semantics конкретного `HWND`;
+- для `scope="window"` size drift после single `Recreate` считается честной tool-level ошибкой, а не поводом подменять window semantics screen-copy fallback'ом;
 - для minimизированного окна runtime возвращает tool-level error и просит сначала вызвать `windows.activate_window`.
 
 Важно:
@@ -255,6 +265,8 @@
 - `GraphicsCaptureSession`;
 - `StartCapture`;
 - `FrameArrived`;
+- `ContentSize` как authoritative размер кадра на момент рендера;
+- `Recreate` как канонический ответ на size drift frame pool;
 - захват через `B8G8R8A8`;
 - общую форму capture pipeline для первого native backend.
 

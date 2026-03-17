@@ -497,6 +497,20 @@
 - В MCP surface не осталось немых ключевых tools/parameters.
 - `arranged` остался metadata-only enrichment.
 
+## Post-stage follow-up: WGC frame-size stabilization
+
+- Источник истины для WGC geometry — `Direct3D11CaptureFrame.ContentSize`, а не только исходный `GraphicsCaptureItem.Size`.
+- Если `ContentSize` не совпал с текущим размером frame pool, runtime не сохраняет transitional frame как финальный screenshot.
+- Разрешена ровно одна попытка `Direct3D11CaptureFramePool.Recreate(...)` внутри одного capture.
+- Если после single `Recreate` size drift сохраняется:
+- для `desktop` runtime использует существующий `Graphics.CopyFromScreen` fallback;
+- для `window` runtime возвращает tool-level error без подмены window semantics desktop screenshot'ом.
+- Crop/sub-rect path не вводится: V1 должен получать стабилизированный frame, а не визуально "лечить" потенциально undefined data постобработкой.
+- Официальные источники для этого follow-up:
+- `Screen capture`: <https://learn.microsoft.com/en-us/windows/uwp/audio-video-camera/screen-capture>
+- `Direct3D11CaptureFrame`: <https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframe?view=winrt-26100>
+- `Direct3D11CaptureFramePool.Recreate`: <https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.recreate?view=winrt-26100>
+
 ## Глобальный шаблон отчета агента после полного выполнения плана
 
 - Итоговый статус:

@@ -22,9 +22,11 @@ public sealed class GraphicsCaptureService(
     AuditLogOptions auditLogOptions,
     IMonitorManager monitorManager) : ICaptureService
 {
+    private const int GraphicsCaptureBufferCount = 1;
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
     private const uint D3D11SdkVersion = 7;
     private static readonly TimeSpan WindowsGraphicsCaptureTimeout = TimeSpan.FromSeconds(3);
+    private static readonly DirectXPixelFormat GraphicsCapturePixelFormat = DirectXPixelFormat.B8G8R8A8UIntNormalized;
     private static readonly Guid GraphicsCaptureItemInteropId = typeof(IGraphicsCaptureItemInterop).GUID;
     private static readonly Guid GraphicsCaptureItemInterfaceId = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
     private static readonly Guid DxgiDeviceId = typeof(IDxgiDevice).GUID;
@@ -34,38 +36,42 @@ public sealed class GraphicsCaptureService(
     {
         try
         {
-            ResolvedCaptureTarget resolvedTarget = ResolveTarget(target);
+            CaptureResolvedTarget resolvedTarget = ResolveTarget(target);
             CaptureBackend backend = CaptureBackendSelector.Select(target.Scope, GraphicsCaptureSession.IsSupported());
             if (backend == CaptureBackend.Unsupported)
             {
                 throw new CaptureOperationException("Windows Graphics Capture недоступен в текущей сессии.");
             }
 
-            RasterizedCapture capture = await CaptureRasterizedAsync(resolvedTarget, backend, cancellationToken).ConfigureAwait(false);
-            string artifactPath = WriteArtifact(capture.PngBytes, resolvedTarget);
+            CaptureExecutionResult execution = await CaptureRasterizedAsync(
+                target,
+                resolvedTarget,
+                backend,
+                cancellationToken).ConfigureAwait(false);
+            string artifactPath = WriteArtifact(execution.Capture.PngBytes, execution.Target);
 
             CaptureMetadata metadata = new(
                 Scope: target.Scope.ToContractValue(),
-                TargetKind: resolvedTarget.TargetKind,
-                Hwnd: resolvedTarget.Window?.Hwnd,
-                Title: resolvedTarget.Window?.Title,
-                ProcessName: resolvedTarget.Window?.ProcessName,
-                Bounds: resolvedTarget.Bounds,
-                CoordinateSpace: resolvedTarget.CoordinateSpace,
-                PixelWidth: capture.PixelWidth,
-                PixelHeight: capture.PixelHeight,
+                TargetKind: execution.Target.TargetKind,
+                Hwnd: execution.Target.Window?.Hwnd,
+                Title: execution.Target.Window?.Title,
+                ProcessName: execution.Target.Window?.ProcessName,
+                Bounds: execution.Target.Bounds,
+                CoordinateSpace: execution.Target.CoordinateSpace,
+                PixelWidth: execution.Capture.PixelWidth,
+                PixelHeight: execution.Capture.PixelHeight,
                 CapturedAtUtc: DateTimeOffset.UtcNow,
                 ArtifactPath: artifactPath,
                 MimeType: "image/png",
-                ByteSize: capture.PngBytes.Length,
+                ByteSize: execution.Capture.PngBytes.Length,
                 SessionRunId: auditLogOptions.RunId,
-                EffectiveDpi: resolvedTarget.EffectiveDpi,
-                DpiScale: resolvedTarget.DpiScale,
-                MonitorId: resolvedTarget.Monitor?.Descriptor.MonitorId,
-                MonitorFriendlyName: resolvedTarget.Monitor?.Descriptor.FriendlyName,
-                MonitorGdiDeviceName: resolvedTarget.Monitor?.Descriptor.GdiDeviceName);
+                EffectiveDpi: execution.Target.EffectiveDpi,
+                DpiScale: execution.Target.DpiScale,
+                MonitorId: execution.Target.Monitor?.Descriptor.MonitorId,
+                MonitorFriendlyName: execution.Target.Monitor?.Descriptor.FriendlyName,
+                MonitorGdiDeviceName: execution.Target.Monitor?.Descriptor.GdiDeviceName);
 
-            return new CaptureResult(metadata, capture.PngBytes);
+            return new CaptureResult(metadata, execution.Capture.PngBytes);
         }
         catch (CaptureOperationException)
         {
@@ -77,14 +83,16 @@ public sealed class GraphicsCaptureService(
         }
     }
 
-    private async Task<RasterizedCapture> CaptureRasterizedAsync(
-        ResolvedCaptureTarget resolvedTarget,
+    private async Task<CaptureExecutionResult> CaptureRasterizedAsync(
+        CaptureTarget request,
+        CaptureResolvedTarget resolvedTarget,
         CaptureBackend backend,
         CancellationToken cancellationToken)
     {
         if (backend == CaptureBackend.DesktopGdiFallback)
         {
-            return CaptureDesktopWithGdi(resolvedTarget);
+            CaptureResolvedTarget fallbackTarget = ResolveTarget(request);
+            return new(fallbackTarget, CaptureDesktopWithGdi(fallbackTarget));
         }
 
         using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -92,71 +100,184 @@ public sealed class GraphicsCaptureService(
 
         try
         {
-            SoftwareBitmap bitmap = await CaptureSoftwareBitmapAsync(resolvedTarget, timeoutSource.Token).ConfigureAwait(false);
+            WgcCaptureOutcome outcome = await CaptureSoftwareBitmapAsync(
+                resolvedTarget,
+                cancellationToken,
+                timeoutSource.Token).ConfigureAwait(false);
+            CaptureResolvedTarget authoritativeTarget = BuildAuthoritativeWgcTarget(
+                request,
+                resolvedTarget,
+                outcome.AcceptedContentSize);
             try
             {
-                byte[] pngBytes = await EncodePngAsync(bitmap).ConfigureAwait(false);
-                return new RasterizedCapture(pngBytes, bitmap.PixelWidth, bitmap.PixelHeight);
+                byte[] pngBytes = await EncodePngAsync(outcome.Bitmap).ConfigureAwait(false);
+                return new(
+                    authoritativeTarget,
+                    new RasterizedCapture(pngBytes, outcome.Bitmap.PixelWidth, outcome.Bitmap.PixelHeight));
             }
             finally
             {
-                bitmap.Dispose();
+                outcome.Bitmap.Dispose();
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (WgcAcquisitionException exception)
         {
-            return FallbackOrThrow(
-                resolvedTarget,
-                "Windows Graphics Capture не вернул frame вовремя для выбранной цели.");
+            return FallbackOrThrow(request, exception);
+        }
+    }
+
+    private CaptureExecutionResult FallbackOrThrow(
+        CaptureTarget request,
+        WgcAcquisitionException exception)
+    {
+        if (WgcAcquisitionFailurePolicy.Evaluate(request.Scope) == WgcAcquisitionFailureAction.FallbackToDesktopGdi)
+        {
+            CaptureResolvedTarget fallbackTarget = ResolveTarget(request);
+            return new(fallbackTarget, CaptureDesktopWithGdi(fallbackTarget));
+        }
+
+        throw new CaptureOperationException(exception.Message, exception);
+    }
+
+    private async Task<WgcCaptureOutcome> CaptureSoftwareBitmapAsync(
+        CaptureResolvedTarget resolvedTarget,
+        CancellationToken userCancellationToken,
+        CancellationToken acquisitionCancellationToken)
+    {
+        try
+        {
+            GraphicsCaptureItem item = resolvedTarget.Scope == CaptureScope.Window
+                ? CreateItemForWindow(new IntPtr(resolvedTarget.Window!.Hwnd))
+                : CreateItemForMonitor(new IntPtr(resolvedTarget.Monitor!.CaptureHandle));
+            SizeInt32 size = item.Size;
+            if (size.Width <= 0 || size.Height <= 0)
+            {
+                throw new WgcAcquisitionException("У выбранной цели capture недопустимый размер.");
+            }
+
+            using Direct3D11CaptureFramePool framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
+                _device.Value,
+                GraphicsCapturePixelFormat,
+                GraphicsCaptureBufferCount,
+                size);
+            using GraphicsCaptureSession session = framePool.CreateCaptureSession(item);
+            session.StartCapture();
+            return await CaptureStableSoftwareBitmapAsync(
+                framePool,
+                size,
+                acquisitionCancellationToken).ConfigureAwait(false);
+        }
+        catch (WgcAcquisitionException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException) when (!userCancellationToken.IsCancellationRequested)
+        {
+            throw new WgcAcquisitionException("Windows Graphics Capture не вернул frame вовремя для выбранной цели.");
         }
         catch (COMException exception)
         {
-            return FallbackOrThrow(
-                resolvedTarget,
-                "Windows Graphics Capture не смог получить frame для выбранной цели.",
-                exception);
+            throw new WgcAcquisitionException("Windows Graphics Capture не смог получить frame для выбранной цели.", exception);
         }
         catch (InvalidCastException exception)
         {
-            return FallbackOrThrow(
-                resolvedTarget,
-                "Windows Graphics Capture не поддержал выбранную цель в текущей сессии.",
+            throw new WgcAcquisitionException("Windows Graphics Capture не поддержал выбранную цель в текущей сессии.", exception);
+        }
+    }
+
+    private async Task<WgcCaptureOutcome> CaptureStableSoftwareBitmapAsync(
+        Direct3D11CaptureFramePool framePool,
+        SizeInt32 initialSize,
+        CancellationToken cancellationToken)
+    {
+        WgcFrameSize expectedSize = WgcFrameSize.FromSizeInt32(initialSize);
+        bool recreateAttempted = false;
+
+        while (true)
+        {
+            using Direct3D11CaptureFrame frame = await WaitForNextFrameAsync(framePool, cancellationToken).ConfigureAwait(false);
+            WgcFrameSize contentSize = WgcFrameSize.FromSizeInt32(frame.ContentSize);
+
+            switch (WgcFrameSizingPolicy.Evaluate(expectedSize, contentSize, recreateAttempted))
+            {
+                case WgcFrameSizingDecision.Accept:
+                {
+                    SoftwareBitmap softwareBitmap = await SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface);
+
+                    if (softwareBitmap.BitmapPixelFormat == BitmapPixelFormat.Bgra8
+                        && softwareBitmap.BitmapAlphaMode == BitmapAlphaMode.Premultiplied)
+                    {
+                        return new WgcCaptureOutcome(softwareBitmap, contentSize);
+                    }
+
+                    SoftwareBitmap converted = SoftwareBitmap.Convert(
+                        softwareBitmap,
+                        BitmapPixelFormat.Bgra8,
+                        BitmapAlphaMode.Premultiplied);
+                    softwareBitmap.Dispose();
+                    return new WgcCaptureOutcome(converted, contentSize);
+                }
+
+                case WgcFrameSizingDecision.RecreateAndRetry:
+                    RecreateFramePool(framePool, contentSize);
+                    expectedSize = contentSize;
+                    recreateAttempted = true;
+                    continue;
+
+                case WgcFrameSizingDecision.Fail:
+                    throw CreateGeometryMismatchException(expectedSize, contentSize, recreateAttempted);
+
+                default:
+                    throw new InvalidOperationException("WGC frame sizing policy returned an unsupported decision.");
+            }
+        }
+    }
+
+    private void RecreateFramePool(
+        Direct3D11CaptureFramePool framePool,
+        WgcFrameSize contentSize)
+    {
+        try
+        {
+            framePool.Recreate(
+                _device.Value,
+                GraphicsCapturePixelFormat,
+                GraphicsCaptureBufferCount,
+                contentSize.ToSizeInt32());
+        }
+        catch (COMException exception)
+        {
+            throw new WgcAcquisitionException(
+                $"Windows Graphics Capture не смог выполнить Recreate для ContentSize {contentSize}.",
                 exception);
         }
     }
 
-    private static RasterizedCapture FallbackOrThrow(
-        ResolvedCaptureTarget resolvedTarget,
-        string message,
-        Exception? innerException = null)
+    private static WgcAcquisitionException CreateGeometryMismatchException(
+        WgcFrameSize expectedSize,
+        WgcFrameSize contentSize,
+        bool recreateAttempted)
     {
-        if (resolvedTarget.Scope == CaptureScope.Desktop)
+        if (!contentSize.IsValid)
         {
-            return CaptureDesktopWithGdi(resolvedTarget);
+            return new WgcAcquisitionException(
+                $"Windows Graphics Capture вернул недопустимый ContentSize {contentSize}. Runtime не будет сохранять frame с invalid geometry.");
         }
 
-        throw new CaptureOperationException(message, innerException);
+        if (!recreateAttempted)
+        {
+            return new WgcAcquisitionException(
+                $"Windows Graphics Capture вернул ContentSize {contentSize}, который не совпадает с ожидаемым размером frame pool {expectedSize}. Runtime требует Recreate перед сохранением кадра.");
+        }
+
+        return new WgcAcquisitionException(
+            $"Windows Graphics Capture не стабилизировал ContentSize после Recreate. Ожидался {expectedSize}, получен {contentSize}.");
     }
 
-    private async Task<SoftwareBitmap> CaptureSoftwareBitmapAsync(
-        ResolvedCaptureTarget resolvedTarget,
+    private static async Task<Direct3D11CaptureFrame> WaitForNextFrameAsync(
+        Direct3D11CaptureFramePool framePool,
         CancellationToken cancellationToken)
     {
-        GraphicsCaptureItem item = resolvedTarget.Scope == CaptureScope.Window
-            ? CreateItemForWindow(new IntPtr(resolvedTarget.Window!.Hwnd))
-            : CreateItemForMonitor(new IntPtr(resolvedTarget.Monitor!.CaptureHandle));
-        SizeInt32 size = item.Size;
-        if (size.Width <= 0 || size.Height <= 0)
-        {
-            throw new CaptureOperationException("У выбранной цели capture недопустимый размер.");
-        }
-
-        using Direct3D11CaptureFramePool framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
-            _device.Value,
-            DirectXPixelFormat.B8G8R8A8UIntNormalized,
-            1,
-            size);
-        using GraphicsCaptureSession session = framePool.CreateCaptureSession(item);
         TaskCompletionSource<Direct3D11CaptureFrame> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TypedEventHandler<Direct3D11CaptureFramePool, object>? handler = null;
         CancellationTokenRegistration registration = default;
@@ -168,12 +289,6 @@ public sealed class GraphicsCaptureService(
                 Direct3D11CaptureFrame? frame = sender.TryGetNextFrame();
                 if (frame is null)
                 {
-                    return;
-                }
-
-                if (frame.ContentSize.Width <= 0 || frame.ContentSize.Height <= 0)
-                {
-                    frame.Dispose();
                     return;
                 }
 
@@ -193,23 +308,13 @@ public sealed class GraphicsCaptureService(
 
         try
         {
-            session.StartCapture();
-
-            using Direct3D11CaptureFrame frame = await completion.Task.ConfigureAwait(false);
-            SoftwareBitmap softwareBitmap = await SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface);
-
-            if (softwareBitmap.BitmapPixelFormat == BitmapPixelFormat.Bgra8
-                && softwareBitmap.BitmapAlphaMode == BitmapAlphaMode.Premultiplied)
+            Direct3D11CaptureFrame? immediateFrame = framePool.TryGetNextFrame();
+            if (immediateFrame is not null && !completion.TrySetResult(immediateFrame))
             {
-                return softwareBitmap;
+                immediateFrame.Dispose();
             }
 
-            SoftwareBitmap converted = SoftwareBitmap.Convert(
-                softwareBitmap,
-                BitmapPixelFormat.Bgra8,
-                BitmapAlphaMode.Premultiplied);
-            softwareBitmap.Dispose();
-            return converted;
+            return await completion.Task.ConfigureAwait(false);
         }
         finally
         {
@@ -218,7 +323,7 @@ public sealed class GraphicsCaptureService(
         }
     }
 
-    private static RasterizedCapture CaptureDesktopWithGdi(ResolvedCaptureTarget resolvedTarget)
+    private static RasterizedCapture CaptureDesktopWithGdi(CaptureResolvedTarget resolvedTarget)
     {
         if (resolvedTarget.Bounds.Width <= 0 || resolvedTarget.Bounds.Height <= 0)
         {
@@ -271,7 +376,31 @@ public sealed class GraphicsCaptureService(
         return bytes;
     }
 
-    private string WriteArtifact(byte[] pngBytes, ResolvedCaptureTarget target)
+    private CaptureResolvedTarget BuildAuthoritativeWgcTarget(
+        CaptureTarget request,
+        CaptureResolvedTarget initialTarget,
+        WgcFrameSize acceptedContentSize)
+    {
+        CaptureResolvedTarget? refreshedTarget = TryResolveTarget(request);
+        return CaptureResolvedTargetPolicy.BuildAuthoritativeWgcTarget(
+            initialTarget,
+            refreshedTarget,
+            acceptedContentSize);
+    }
+
+    private CaptureResolvedTarget? TryResolveTarget(CaptureTarget request)
+    {
+        try
+        {
+            return ResolveTarget(request);
+        }
+        catch (CaptureOperationException)
+        {
+            return null;
+        }
+    }
+
+    private string WriteArtifact(byte[] pngBytes, CaptureResolvedTarget target)
     {
         try
         {
@@ -300,7 +429,7 @@ public sealed class GraphicsCaptureService(
         }
     }
 
-    private ResolvedCaptureTarget ResolveTarget(CaptureTarget target) =>
+    private CaptureResolvedTarget ResolveTarget(CaptureTarget target) =>
         target.Scope switch
         {
             CaptureScope.Window => ResolveWindowTarget(target.Window),
@@ -308,7 +437,7 @@ public sealed class GraphicsCaptureService(
             _ => throw new ArgumentOutOfRangeException(nameof(target), target.Scope, null),
         };
 
-    private ResolvedCaptureTarget ResolveWindowTarget(WindowDescriptor? window)
+    private CaptureResolvedTarget ResolveWindowTarget(WindowDescriptor? window)
     {
         if (window is null)
         {
@@ -327,7 +456,7 @@ public sealed class GraphicsCaptureService(
         DisplayTopologySnapshot topology = monitorManager.GetTopologySnapshot();
         MonitorInfo? monitor = monitorManager.FindMonitorForWindow(window.Hwnd, topology);
 
-        return new ResolvedCaptureTarget(
+        return new CaptureResolvedTarget(
             CaptureScope.Window,
             "window",
             window,
@@ -338,7 +467,7 @@ public sealed class GraphicsCaptureService(
             monitor);
     }
 
-    private ResolvedCaptureTarget ResolveDesktopTarget(WindowDescriptor? window, string? explicitMonitorId)
+    private CaptureResolvedTarget ResolveDesktopTarget(WindowDescriptor? window, string? explicitMonitorId)
     {
         DisplayTopologySnapshot topology = monitorManager.GetTopologySnapshot();
         MonitorInfo? monitor = DesktopCaptureMonitorResolver.Resolve(window, explicitMonitorId, monitorManager, topology);
@@ -350,7 +479,7 @@ public sealed class GraphicsCaptureService(
                     : "Не удалось определить monitor для desktop capture.");
         }
 
-        return new ResolvedCaptureTarget(
+        return new CaptureResolvedTarget(
             CaptureScope.Desktop,
             "monitor",
             window,
@@ -616,15 +745,13 @@ public sealed class GraphicsCaptureService(
     {
     }
 
-    private sealed record ResolvedCaptureTarget(
-        CaptureScope Scope,
-        string TargetKind,
-        WindowDescriptor? Window,
-        Bounds Bounds,
-        string CoordinateSpace,
-        int? EffectiveDpi,
-        double? DpiScale,
-        MonitorInfo? Monitor);
+    private sealed record CaptureExecutionResult(
+        CaptureResolvedTarget Target,
+        RasterizedCapture Capture);
+
+    private sealed record WgcCaptureOutcome(
+        SoftwareBitmap Bitmap,
+        WgcFrameSize AcceptedContentSize);
 
     private sealed record RasterizedCapture(
         byte[] PngBytes,

@@ -2,12 +2,13 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
-## 2026-03-17 09:39
+## 2026-03-17 16:07
 
-- Перестроен display/window contract: `MonitorDescriptor` больше не несёт authoritative `DpiScale`, `WindowDescriptor` теперь содержит `EffectiveDpi`, а `windows.capture` возвращает `coordinateSpace=physical_pixels` и window-authoritative DPI metadata только для window targets.
-- `WinBridge.Runtime.Windows.Display` теперь возвращает typed `DisplayTopologySnapshot` с `DisplayIdentityDiagnostics`; `windows.list_monitors`, `okno.health`, audit `events.jsonl` и summary получили evidence о `display_config_strong` vs `gdi_fallback` без изменения safe fallback behavior.
-- MCP surface стал самодокументируемым: добавлен единый `ToolDescriptions` source of truth, `DescriptionAttribute` на ключевые tools/parameters и smoke/integration checks на наличие descriptions в `tools/list`.
-- `IsWindowArranged` переведён в optional metadata probe через runtime export lookup, чтобы `windowState=arranged` оставался enrichment-сигналом и не создавал жёсткой платформенной зависимости inventory.
+- WGC one-shot capture path больше не считает первый пришедший frame автоматически годным: runtime теперь валидирует `Direct3D11CaptureFrame.ContentSize`, допускает ровно один `Direct3D11CaptureFramePool.Recreate(...)` и сохраняет PNG только после стабилизации геометрии кадра.
+- Persistent WGC size drift после single `Recreate` теперь считается отдельным acquisition failure class: для `desktop` runtime уходит в существующий `Graphics.CopyFromScreen` fallback, а для `window` возвращает честный tool-level error без подмены window semantics screen-copy screenshot'ом.
+- Metadata и artifact materialization больше не опираются на pre-acquisition target snapshot: после WGC stabilization runtime пере-выравнивает target fields под финальный PNG, а перед desktop fallback заново резолвит текущий monitor target вместо silent reuse устаревших bounds.
+- Для успешного `desktop` WGC path monitor identity больше не может silently перепрыгнуть на новый live monitor после refresh: refreshed topology используется только если она подтверждает тот же target, по которому уже был создан capture item.
+- Добавлены unit tests на sizing/failure policy и authoritative target materialization, чтобы WGC stabilization не расходилась с MCP metadata path.
 
 ## 2026-03-17 10:30
 
@@ -31,6 +32,13 @@
 ## 2026-03-17 12:15
 
 - Verification gaps закрыты локальными test seams: добавлен pipeline-level runtime test на mixed-case display failures (`GetTargetName` -> `GetSourceName`) и behavioural integration test на `windows.capture(scope="desktop", hwnd=...)`, подтверждающий monitor resolution explicit HWND поверх attached window. Smoke по-прежнему проверяет tools/list metadata и end-to-end protocol flow, а не подменяет эти два таргетных контракта.
+
+## 2026-03-17 09:39
+
+- Перестроен display/window contract: `MonitorDescriptor` больше не несёт authoritative `DpiScale`, `WindowDescriptor` теперь содержит `EffectiveDpi`, а `windows.capture` возвращает `coordinateSpace=physical_pixels` и window-authoritative DPI metadata только для window targets.
+- `WinBridge.Runtime.Windows.Display` теперь возвращает typed `DisplayTopologySnapshot` с `DisplayIdentityDiagnostics`; `windows.list_monitors`, `okno.health`, audit `events.jsonl` и summary получили evidence о `display_config_strong` vs `gdi_fallback` без изменения safe fallback behavior.
+- MCP surface стал самодокументируемым: добавлен единый `ToolDescriptions` source of truth, `DescriptionAttribute` на ключевые tools/parameters и smoke/integration checks на наличие descriptions в `tools/list`.
+- `IsWindowArranged` переведён в optional metadata probe через runtime export lookup, чтобы `windowState=arranged` оставался enrichment-сигналом и не создавал жёсткой платформенной зависимости inventory.
 
 ## 2026-03-17 15:15
 
