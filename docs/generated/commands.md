@@ -1,4 +1,4 @@
-﻿# Commands Inventory
+# Commands Inventory
 
 > Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.
 
@@ -29,10 +29,10 @@
 
 ## Latest Smoke Evidence
 
-- smoke run id: 20260317T152814184
+- smoke run id: 20260317T173903433
 - monitor count: 3
 - desktop monitor id: display-source:0000000000012673:2
-- audit directory: artifacts/diagnostics/20260317T122815827-46875
-- capture artifact: artifacts/diagnostics/20260317T122815827-46875/captures/window-window-2885672-20260317T122816898-c28bc49d6cf0466f9fe932c041874b87.png
-- helper capture artifact: artifacts/diagnostics/20260317T122815827-46875/captures/window-window-2885672-20260317T122817536-e2a23c3d21d74615ab07bbbbe06e5c6f.png
-- smoke report: artifacts/smoke/20260317T152814184/report.json
+- audit directory: artifacts/diagnostics/20260317T143905097-7911c
+- capture artifact: artifacts/diagnostics/20260317T143905097-7911c/captures/window-window-3933762-20260317T143905862-6ba4dcae43f64d0b9f7fbd84f6e35822.png
+- helper capture artifact: artifacts/diagnostics/20260317T143905097-7911c/captures/window-window-3933762-20260317T143906232-aa67cbe0a50447cdb7b761a12e55552a.png
+- smoke report: artifacts/smoke/20260317T173903433/report.json

@@ -1,4 +1,4 @@
-﻿# Test Matrix
+# Test Matrix
 
 > Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.
 

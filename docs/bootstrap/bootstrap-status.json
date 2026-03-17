@@ -1,57 +1,57 @@
-﻿{
-    "generated_at_utc":  "2026-03-17T12:28:20.8489326Z",
-    "product_name":  "Okno",
-    "transport":  {
-                      "kind":  "stdio",
-                      "delivery_status":  "product-ready target"
-                  },
-    "tool_contract_source":  {
-                                 "tool_names":  "src/WinBridge.Runtime.Tooling/ToolNames.cs",
-                                 "tool_manifest":  "src/WinBridge.Runtime.Tooling/ToolContractManifest.cs",
-                                 "export_script":  "scripts/refresh-generated-docs.ps1"
-                             },
-    "runtime_projects":  [
-                             "src/WinBridge.Runtime.Contracts",
-                             "src/WinBridge.Runtime.Diagnostics",
-                             "src/WinBridge.Runtime.Session",
-                             "src/WinBridge.Runtime.Tooling",
-                             "src/WinBridge.Runtime.Waiting",
-                             "src/WinBridge.Runtime.Windows.Capture",
-                             "src/WinBridge.Runtime.Windows.Clipboard",
-                             "src/WinBridge.Runtime.Windows.Display",
-                             "src/WinBridge.Runtime.Windows.Input",
-                             "src/WinBridge.Runtime.Windows.Shell",
-                             "src/WinBridge.Runtime.Windows.UIA",
-                             "src/WinBridge.Runtime"
-                         ],
-    "latest_validation":  {
-                              "build":  "dotnet build WinBridge.sln --no-restore",
-                              "test":  "dotnet test WinBridge.sln",
-                              "smoke":  "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",
-                              "refresh_generated_docs":  "powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1",
-                              "ci":  "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"
-                          },
-    "latest_smoke":  {
-                         "run_id":  "20260317T152814184",
-                         "server":  "Okno.Server",
-                         "protocol":  "2025-06-18",
-                         "declared_tools":  15,
-                         "monitor_count":  3,
-                         "desktop_monitor_id":  "display-source:0000000000012673:2",
-                         "visible_windows":  18,
-                         "attached_hwnd":  2885672,
-                         "capture_artifact":  "artifacts/diagnostics/20260317T122815827-46875/captures/window-window-2885672-20260317T122816898-c28bc49d6cf0466f9fe932c041874b87.png",
-                         "helper_window_hwnd":  2885672,
-                         "helper_activation_status":  "done",
-                         "audit_directory":  "artifacts/diagnostics/20260317T122815827-46875",
-                         "smoke_report":  "artifacts/smoke/20260317T152814184/report.json",
-                         "audit_summary":  "artifacts/diagnostics/20260317T122815827-46875/summary.md"
-                     },
-    "deferred_scope":  [
-                           "UIA",
-                           "Input",
-                           "Clipboard",
-                           "Waiting",
-                           "HTTP transport"
-                       ]
+{
+  "generated_at_utc": "2026-03-17T14:39:08.7837261Z",
+  "product_name": "Okno",
+  "transport": {
+    "kind": "stdio",
+    "delivery_status": "product-ready target"
+  },
+  "tool_contract_source": {
+    "tool_names": "src/WinBridge.Runtime.Tooling/ToolNames.cs",
+    "tool_manifest": "src/WinBridge.Runtime.Tooling/ToolContractManifest.cs",
+    "export_script": "scripts/refresh-generated-docs.ps1"
+  },
+  "runtime_projects": [
+    "src/WinBridge.Runtime.Contracts",
+    "src/WinBridge.Runtime.Diagnostics",
+    "src/WinBridge.Runtime.Session",
+    "src/WinBridge.Runtime.Tooling",
+    "src/WinBridge.Runtime.Waiting",
+    "src/WinBridge.Runtime.Windows.Capture",
+    "src/WinBridge.Runtime.Windows.Clipboard",
+    "src/WinBridge.Runtime.Windows.Display",
+    "src/WinBridge.Runtime.Windows.Input",
+    "src/WinBridge.Runtime.Windows.Shell",
+    "src/WinBridge.Runtime.Windows.UIA",
+    "src/WinBridge.Runtime"
+  ],
+  "latest_validation": {
+    "build": "dotnet build WinBridge.sln --no-restore",
+    "test": "dotnet test WinBridge.sln",
+    "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",
+    "refresh_generated_docs": "powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1",
+    "ci": "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"
+  },
+  "latest_smoke": {
+    "run_id": "20260317T173903433",
+    "server": "Okno.Server",
+    "protocol": "2025-06-18",
+    "declared_tools": 15,
+    "monitor_count": 3,
+    "desktop_monitor_id": "display-source:0000000000012673:2",
+    "visible_windows": 16,
+    "attached_hwnd": 3933762,
+    "capture_artifact": "artifacts/diagnostics/20260317T143905097-7911c/captures/window-window-3933762-20260317T143905862-6ba4dcae43f64d0b9f7fbd84f6e35822.png",
+    "helper_window_hwnd": 3933762,
+    "helper_activation_status": "done",
+    "audit_directory": "artifacts/diagnostics/20260317T143905097-7911c",
+    "smoke_report": "artifacts/smoke/20260317T173903433/report.json",
+    "audit_summary": "artifacts/diagnostics/20260317T143905097-7911c/summary.md"
+  },
+  "deferred_scope": [
+    "UIA",
+    "Input",
+    "Clipboard",
+    "Waiting",
+    "HTTP transport"
+  ]
 }
