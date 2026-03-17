@@ -1,5 +1,8 @@
 # ExecPlan: Display/Window Contract Hardening
 
+Статус: completed
+Архивирован: 2026-03-17
+
 ## Контекст
 
 Текущий runtime уже реализует `windows.list_monitors`, `windows.list_windows`, `windows.attach_window`, `windows.activate_window` и `windows.capture`, но в слое display/window contract остаются четыре инженерных долга:

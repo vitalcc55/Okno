@@ -46,7 +46,7 @@
 
 ## 2026-03-17 09:21
 
-- Добавлен активный exec-plan `docs/exec-plans/active/display-window-contract-hardening.md` для линейного refactor-контура по DPI/coordinate semantics, display identity diagnostics, MCP self-documentation и optional `IsWindowArranged`.
+- Добавлен exec-plan `docs/exec-plans/completed/completed-2026-03-17-display-window-contract-hardening.md` для линейного refactor-контура по DPI/coordinate semantics, display identity diagnostics, MCP self-documentation и optional `IsWindowArranged`.
 
 ## 2026-03-15 14:57
 
