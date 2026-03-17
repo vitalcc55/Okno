@@ -76,13 +76,15 @@
 - `scope`
 - `targetKind`
 - `hwnd`
+- `coordinateSpace`
+- `effectiveDpi` для `window` capture
+- `dpiScale` как derived convenience field только там, где у runtime есть authoritative window DPI
 - `monitorId`
 - `monitorFriendlyName`
 - `monitorGdiDeviceName`
 - `title`
 - `processName`
 - `bounds`
-- `dpiScale`
 - `pixelWidth`
 - `pixelHeight`
 - `capturedAtUtc`
@@ -142,6 +144,7 @@
 - desktop fallback не меняет публичный MCP contract;
 - desktop fallback остаётся Windows-native;
 - window path теперь предпочитает честный `isError=true`, если достоверный window-specific capture невозможен.
+- runtime process должен быть DPI-aware до старта MCP host, иначе `physical_pixels` contract для window bounds и capture metadata недостоверен.
 
 ## Почему реализовано именно так
 

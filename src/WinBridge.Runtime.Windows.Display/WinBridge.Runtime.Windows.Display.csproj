@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WinBridge.Runtime.Contracts\WinBridge.Runtime.Contracts.csproj" />
+    <ProjectReference Include="..\WinBridge.Runtime.Diagnostics\WinBridge.Runtime.Diagnostics.csproj" />
   </ItemGroup>
 
 </Project>

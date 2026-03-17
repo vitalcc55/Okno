@@ -214,7 +214,8 @@ Python можно использовать:
 - scope (`desktop` / `window`);
 - window title / hwnd, если есть;
 - bounds;
-- DPI scale.
+- явный `coordinateSpace`;
+- window DPI только там, где target действительно является окном.
 
 ---
 
@@ -291,7 +292,8 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - friendly name;
 - gdi device name;
 - bounds / work area;
-- dpi scale;
+- diagnostics.identityMode;
+- diagnostics.failedStage / errorCode / errorName для primary reason code, если есть fallback или partial degradation detail;
 - isPrimary.
 
 Примечание:
@@ -303,6 +305,8 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - title;
 - process name (если доступно);
 - bounds;
+- effectiveDpi;
+- dpiScale;
 - windowState;
 - monitorId;
 - monitorFriendlyName;
@@ -337,9 +341,10 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 ### `windows.capture`
 Аргументы:
 - `scope`: `desktop | window`
-- `hwnd`: optional явная цель для `window` capture
+- `hwnd`: optional явная цель окна; для `window` capture выбирает само окно, для `desktop` capture выбирает monitor этого окна, если `monitorId` не задан
 - `monitorId`: optional явная цель для `desktop` capture
 - для `window` без `hwnd` используется attached window
+- для `desktop` с `hwnd` и без `monitorId` используется monitor указанного окна
 - для `desktop` с `monitorId` используется именно выбранный monitor без silent fallback
 - для `desktop` без `monitorId` и без `hwnd` используется monitor attached window или primary monitor
 
@@ -348,6 +353,8 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - metadata;
 - local artifact path.
 - monitor metadata.
+- `coordinateSpace = physical_pixels`.
+- `effectiveDpi` и derived `dpiScale` только для `window` capture.
 
 ### `windows.uia_snapshot`
 Аргументы:

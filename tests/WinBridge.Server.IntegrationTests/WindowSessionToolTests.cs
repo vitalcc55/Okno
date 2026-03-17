@@ -96,6 +96,7 @@ public sealed class WindowSessionToolTests
         Assert.Equal(2, result.Count);
         Assert.Equal("display-source:0000000100000000:1", result.Monitors[0].MonitorId);
         Assert.Equal("Secondary monitor", result.Monitors[1].FriendlyName);
+        Assert.Equal(DisplayIdentityModeValues.DisplayConfigStrong, result.Diagnostics.IdentityMode);
     }
 
     [Fact]

@@ -4,15 +4,15 @@ namespace WinBridge.Runtime.Windows.Display;
 
 public interface IMonitorManager
 {
-    IReadOnlyList<MonitorInfo> ListMonitors();
+    DisplayTopologySnapshot GetTopologySnapshot();
 
-    MonitorInfo? FindMonitorById(string monitorId);
+    MonitorInfo? FindMonitorById(string monitorId, DisplayTopologySnapshot? snapshot = null);
 
-    MonitorInfo? FindMonitorByHandle(long handle, IReadOnlyList<MonitorInfo>? monitors = null);
+    MonitorInfo? FindMonitorByHandle(long handle, DisplayTopologySnapshot? snapshot = null);
 
     long? GetMonitorHandleForWindow(long hwnd);
 
-    MonitorInfo? FindMonitorForWindow(long hwnd);
+    MonitorInfo? FindMonitorForWindow(long hwnd, DisplayTopologySnapshot? snapshot = null);
 
-    MonitorInfo? GetPrimaryMonitor();
+    MonitorInfo? GetPrimaryMonitor(DisplayTopologySnapshot? snapshot = null);
 }

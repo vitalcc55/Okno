@@ -1,3 +1,5 @@
+using WinBridge.Runtime.Contracts;
+
 namespace WinBridge.Runtime.Tooling;
 
 public sealed record ToolTransportDescriptor(
@@ -12,8 +14,8 @@ public sealed record FutureTransportDescriptor(
     string Policy);
 
 public sealed record ToolContractToolSection(
-    IReadOnlyList<ToolDescriptor> Implemented,
-    IReadOnlyList<ToolDescriptor> Deferred,
+    IReadOnlyList<ContractToolDescriptor> Implemented,
+    IReadOnlyList<ContractToolDescriptor> Deferred,
     IReadOnlyList<string> ImplementedNames,
     IReadOnlyList<string> SmokeRequiredNames,
     IReadOnlyDictionary<string, string> DeferredPhaseMap);

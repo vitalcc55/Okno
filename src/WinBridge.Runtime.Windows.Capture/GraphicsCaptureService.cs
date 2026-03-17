@@ -24,9 +24,6 @@ public sealed class GraphicsCaptureService(
 {
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
     private const uint D3D11SdkVersion = 7;
-    private const int MonitorDefaultToPrimary = 1;
-    private const int MonitorDefaultToNearest = 2;
-    private const uint MonitorInfoPrimary = 1;
     private static readonly TimeSpan WindowsGraphicsCaptureTimeout = TimeSpan.FromSeconds(3);
     private static readonly Guid GraphicsCaptureItemInteropId = typeof(IGraphicsCaptureItemInterop).GUID;
     private static readonly Guid GraphicsCaptureItemInterfaceId = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
@@ -54,7 +51,7 @@ public sealed class GraphicsCaptureService(
                 Title: resolvedTarget.Window?.Title,
                 ProcessName: resolvedTarget.Window?.ProcessName,
                 Bounds: resolvedTarget.Bounds,
-                DpiScale: resolvedTarget.DpiScale,
+                CoordinateSpace: resolvedTarget.CoordinateSpace,
                 PixelWidth: capture.PixelWidth,
                 PixelHeight: capture.PixelHeight,
                 CapturedAtUtc: DateTimeOffset.UtcNow,
@@ -62,6 +59,8 @@ public sealed class GraphicsCaptureService(
                 MimeType: "image/png",
                 ByteSize: capture.PngBytes.Length,
                 SessionRunId: auditLogOptions.RunId,
+                EffectiveDpi: resolvedTarget.EffectiveDpi,
+                DpiScale: resolvedTarget.DpiScale,
                 MonitorId: resolvedTarget.Monitor?.Descriptor.MonitorId,
                 MonitorFriendlyName: resolvedTarget.Monitor?.Descriptor.FriendlyName,
                 MonitorGdiDeviceName: resolvedTarget.Monitor?.Descriptor.GdiDeviceName);
@@ -319,19 +318,30 @@ public sealed class GraphicsCaptureService(
         IntPtr hwnd = new(window.Hwnd);
         Bounds bounds = TryGetWindowBounds(hwnd, out Bounds currentBounds) ? currentBounds : window.Bounds;
         ValidateWindowCaptureTarget(hwnd, bounds);
-        double dpiScale = GetWindowDpiScale(hwnd);
-        MonitorInfo? monitor = monitorManager.FindMonitorForWindow(window.Hwnd);
+        if (!WindowDpiReader.TryGetEffectiveDpi(hwnd, out int effectiveDpi))
+        {
+            throw new CaptureOperationException("Не удалось определить DPI выбранного окна для window capture.");
+        }
 
-        return new ResolvedCaptureTarget(CaptureScope.Window, "window", window, bounds, dpiScale, monitor);
+        double dpiScale = effectiveDpi / 96.0;
+        DisplayTopologySnapshot topology = monitorManager.GetTopologySnapshot();
+        MonitorInfo? monitor = monitorManager.FindMonitorForWindow(window.Hwnd, topology);
+
+        return new ResolvedCaptureTarget(
+            CaptureScope.Window,
+            "window",
+            window,
+            bounds,
+            CaptureCoordinateSpaceValues.PhysicalPixels,
+            effectiveDpi,
+            dpiScale,
+            monitor);
     }
 
     private ResolvedCaptureTarget ResolveDesktopTarget(WindowDescriptor? window, string? explicitMonitorId)
     {
-        MonitorInfo? monitor = !string.IsNullOrWhiteSpace(explicitMonitorId)
-            ? monitorManager.FindMonitorById(explicitMonitorId)
-            : window is null
-                ? monitorManager.GetPrimaryMonitor()
-                : monitorManager.FindMonitorForWindow(window.Hwnd);
+        DisplayTopologySnapshot topology = monitorManager.GetTopologySnapshot();
+        MonitorInfo? monitor = DesktopCaptureMonitorResolver.Resolve(window, explicitMonitorId, monitorManager, topology);
         if (monitor is null)
         {
             throw new CaptureOperationException(
@@ -345,7 +355,9 @@ public sealed class GraphicsCaptureService(
             "monitor",
             window,
             monitor.Descriptor.Bounds,
-            monitor.Descriptor.DpiScale,
+            CaptureCoordinateSpaceValues.PhysicalPixels,
+            null,
+            null,
             monitor);
     }
 
@@ -532,12 +544,6 @@ public sealed class GraphicsCaptureService(
         }
     }
 
-    private static double GetWindowDpiScale(IntPtr hwnd)
-    {
-        uint dpi = GetDpiForWindow(hwnd);
-        return dpi == 0 ? 1.0 : dpi / 96.0;
-    }
-
     [DllImport("combase.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
     private static extern int RoGetActivationFactory(IntPtr activatableClassId, Guid iid, out IntPtr factory);
 
@@ -571,9 +577,6 @@ public sealed class GraphicsCaptureService(
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -618,7 +621,9 @@ public sealed class GraphicsCaptureService(
         string TargetKind,
         WindowDescriptor? Window,
         Bounds Bounds,
-        double DpiScale,
+        string CoordinateSpace,
+        int? EffectiveDpi,
+        double? DpiScale,
         MonitorInfo? Monitor);
 
     private sealed record RasterizedCapture(

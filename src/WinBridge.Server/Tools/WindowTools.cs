@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -52,6 +53,7 @@ public sealed class WindowTools
         _windowTargetResolver = windowTargetResolver;
     }
 
+    [Description(ToolDescriptions.WindowsListMonitorsTool)]
     [McpServerTool(
         Name = ToolNames.WindowsListMonitors,
         ReadOnly = true,
@@ -66,10 +68,11 @@ public sealed class WindowTools
             new { },
             invocation =>
             {
-                MonitorDescriptor[] monitors = _monitorManager.ListMonitors()
+                DisplayTopologySnapshot topology = _monitorManager.GetTopologySnapshot();
+                MonitorDescriptor[] monitors = topology.Monitors
                     .Select(item => item.Descriptor)
                     .ToArray();
-                ListMonitorsResult result = new(monitors, monitors.Length, _sessionManager.GetSnapshot());
+                ListMonitorsResult result = new(monitors, monitors.Length, topology.Diagnostics, _sessionManager.GetSnapshot());
 
                 invocation.Complete(
                     "done",
@@ -77,13 +80,17 @@ public sealed class WindowTools
                     data: new Dictionary<string, string?>
                     {
                         ["count"] = monitors.Length.ToString(CultureInfo.InvariantCulture),
+                        ["identity_mode"] = topology.Diagnostics.IdentityMode,
                     });
 
                 return result;
             });
 
+    [Description(ToolDescriptions.WindowsListWindowsTool)]
     [McpServerTool(Name = ToolNames.WindowsListWindows)]
-    public ListWindowsResult ListWindows(bool includeInvisible = false)
+    public ListWindowsResult ListWindows(
+        [Description(ToolDescriptions.IncludeInvisibleParameter)]
+        bool includeInvisible = false)
         => RuntimeToolExecution.Run(
             _auditLog,
             _sessionManager.GetSnapshot(),
@@ -106,8 +113,15 @@ public sealed class WindowTools
                 return result;
             });
 
+    [Description(ToolDescriptions.WindowsAttachWindowTool)]
     [McpServerTool(Name = ToolNames.WindowsAttachWindow)]
-    public AttachWindowResult AttachWindow(long? hwnd = null, string? titlePattern = null, string? processName = null)
+    public AttachWindowResult AttachWindow(
+        [Description(ToolDescriptions.HwndParameter)]
+        long? hwnd = null,
+        [Description(ToolDescriptions.TitlePatternParameter)]
+        string? titlePattern = null,
+        [Description(ToolDescriptions.ProcessNameParameter)]
+        string? processName = null)
         => RuntimeToolExecution.Run(
             _auditLog,
             _sessionManager.GetSnapshot(),
@@ -195,6 +209,7 @@ public sealed class WindowTools
                 }
             });
 
+    [Description(ToolDescriptions.WindowsActivateWindowTool)]
     [McpServerTool(
         Name = ToolNames.WindowsActivateWindow,
         ReadOnly = false,
@@ -255,8 +270,11 @@ public sealed class WindowTools
                 return CreateToolResult(result, isError: ActivateStatusIsToolError(result.Status));
             });
 
+    [Description(ToolDescriptions.WindowsFocusWindowTool)]
     [McpServerTool(Name = ToolNames.WindowsFocusWindow)]
-    public FocusWindowResult FocusWindow(long? hwnd = null)
+    public FocusWindowResult FocusWindow(
+        [Description(ToolDescriptions.FocusHwndParameter)]
+        long? hwnd = null)
         => RuntimeToolExecution.Run(
             _auditLog,
             _sessionManager.GetSnapshot(),
@@ -304,6 +322,7 @@ public sealed class WindowTools
                 return result;
             });
 
+    [Description(ToolDescriptions.WindowsCaptureTool)]
     [McpServerTool(
         Name = ToolNames.WindowsCapture,
         ReadOnly = false,
@@ -312,8 +331,11 @@ public sealed class WindowTools
         OpenWorld = true,
         UseStructuredContent = true)]
     public Task<CallToolResult> Capture(
+        [Description(ToolDescriptions.CaptureScopeParameter)]
         string scope = "window",
+        [Description(ToolDescriptions.CaptureHwndParameter)]
         long? hwnd = null,
+        [Description(ToolDescriptions.CaptureMonitorIdParameter)]
         string? monitorId = null,
         CancellationToken cancellationToken = default) =>
         RuntimeToolExecution.RunAsync(
@@ -374,6 +396,9 @@ public sealed class WindowTools
                         {
                             ["scope"] = metadata.Scope,
                             ["target_kind"] = metadata.TargetKind,
+                            ["coordinate_space"] = metadata.CoordinateSpace,
+                            ["effective_dpi"] = metadata.EffectiveDpi?.ToString(CultureInfo.InvariantCulture),
+                            ["dpi_scale"] = metadata.DpiScale?.ToString(CultureInfo.InvariantCulture),
                             ["monitor_id"] = metadata.MonitorId,
                             ["artifact_path"] = metadata.ArtifactPath,
                             ["mime_type"] = metadata.MimeType,

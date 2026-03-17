@@ -1,26 +1,30 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Diagnostics;
 
 namespace WinBridge.Runtime.Windows.Display;
 
-public sealed class Win32MonitorManager : IMonitorManager
+public sealed class Win32MonitorManager(AuditLog auditLog) : IMonitorManager
 {
+    private const int ErrorAccessDenied = 5;
     private const int ErrorInsufficientBuffer = 122;
+    private const int ErrorNotSupported = 50;
     private const int ErrorSuccess = 0;
     private const int MonitorDefaultToNearest = 2;
-    private const int EnumCurrentSettings = -1;
     private const uint DisplayDeviceAttachedToDesktop = 0x00000001;
     private const uint DisplayDeviceMirroringDriver = 0x00000008;
     private const uint MonitorInfoPrimary = 1;
     private const uint QdcOnlyActivePaths = 0x00000002;
 
-    public IReadOnlyList<MonitorInfo> ListMonitors()
+    public DisplayTopologySnapshot GetTopologySnapshot()
     {
-        Dictionary<string, DisplayConfigSourceIdentity> displayConfigMap = QueryDisplayConfigMap();
-        bool hasDisplayConfig = displayConfigMap.Count > 0;
+        DisplayConfigQueryOutcome displayConfigOutcome = QueryDisplayConfigMap();
+        bool hasDisplayConfig = displayConfigOutcome.DisplayConfigMap.Count > 0;
         HashSet<string> desktopGdiDevices = ListDesktopGdiDevices();
         Dictionary<string, MonitorAccumulator> monitors = new(StringComparer.OrdinalIgnoreCase);
+        bool usedFallbackMonitorIdentity = false;
 
         _ = EnumDisplayMonitors(
             IntPtr.Zero,
@@ -43,7 +47,12 @@ public sealed class Win32MonitorManager : IMonitorManager
                 DisplayConfigSourceIdentity? displayIdentity = null;
                 if (hasDisplayConfig)
                 {
-                    _ = displayConfigMap.TryGetValue(normalizedGdiDeviceName, out displayIdentity);
+                    _ = displayConfigOutcome.DisplayConfigMap.TryGetValue(normalizedGdiDeviceName, out displayIdentity);
+                }
+
+                if (displayIdentity is null)
+                {
+                    usedFallbackMonitorIdentity = true;
                 }
 
                 string monitorId = displayIdentity is not null
@@ -60,7 +69,6 @@ public sealed class Win32MonitorManager : IMonitorManager
                     GdiDeviceName: gdiDeviceName,
                     Bounds: new Bounds(info.rcMonitor.Left, info.rcMonitor.Top, info.rcMonitor.Right, info.rcMonitor.Bottom),
                     WorkArea: new Bounds(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right, info.rcWork.Bottom),
-                    DpiScale: GetMonitorDpiScale(monitor),
                     IsPrimary: (info.dwFlags & MonitorInfoPrimary) != 0);
                 long handle = monitor.ToInt64();
 
@@ -81,27 +89,39 @@ public sealed class Win32MonitorManager : IMonitorManager
             },
             IntPtr.Zero);
 
-        return monitors.Values
+        MonitorInfo[] materializedMonitors = monitors.Values
             .Select(accumulator => accumulator.Build())
             .OrderByDescending(item => item.Descriptor.IsPrimary)
             .ThenBy(item => item.Descriptor.MonitorId, StringComparer.Ordinal)
             .ToArray();
+        DisplayIdentityDiagnostics diagnostics = DisplayIdentityDiagnosticsBuilder.Build(
+            new DisplayConfigQueryDiagnostics(
+                displayConfigOutcome.FailedStage,
+                displayConfigOutcome.ErrorCode,
+                displayConfigOutcome.ErrorName,
+                displayConfigOutcome.MessageHuman),
+            usedFallbackMonitorIdentity,
+            materializedMonitors.Length,
+            DateTimeOffset.UtcNow);
+        auditLog.RecordDisplayIdentityStateChange(diagnostics, materializedMonitors.Length);
+        return new(materializedMonitors, diagnostics);
     }
 
-    public MonitorInfo? FindMonitorById(string monitorId)
+    public MonitorInfo? FindMonitorById(string monitorId, DisplayTopologySnapshot? snapshot = null)
     {
         if (string.IsNullOrWhiteSpace(monitorId))
         {
             return null;
         }
 
-        return ListMonitors().FirstOrDefault(
+        IReadOnlyList<MonitorInfo> monitors = (snapshot ?? GetTopologySnapshot()).Monitors;
+        return monitors.FirstOrDefault(
             monitor => MonitorAddressMatcher.Matches(monitorId, monitor.Descriptor));
     }
 
-    public MonitorInfo? FindMonitorByHandle(long handle, IReadOnlyList<MonitorInfo>? monitors = null)
+    public MonitorInfo? FindMonitorByHandle(long handle, DisplayTopologySnapshot? snapshot = null)
     {
-        IReadOnlyList<MonitorInfo> source = monitors ?? ListMonitors();
+        IReadOnlyList<MonitorInfo> source = (snapshot ?? GetTopologySnapshot()).Monitors;
         return source.FirstOrDefault(item => item.Handles.Contains(handle));
     }
 
@@ -111,7 +131,7 @@ public sealed class Win32MonitorManager : IMonitorManager
         return monitor == IntPtr.Zero ? null : monitor.ToInt64();
     }
 
-    public MonitorInfo? FindMonitorForWindow(long hwnd)
+    public MonitorInfo? FindMonitorForWindow(long hwnd, DisplayTopologySnapshot? snapshot = null)
     {
         long? handle = GetMonitorHandleForWindow(hwnd);
         if (handle is null)
@@ -119,20 +139,23 @@ public sealed class Win32MonitorManager : IMonitorManager
             return null;
         }
 
-        return FindMonitorByHandle(handle.Value);
+        return FindMonitorByHandle(handle.Value, snapshot);
     }
 
-    public MonitorInfo? GetPrimaryMonitor() =>
-        ListMonitors().FirstOrDefault(item => item.Descriptor.IsPrimary);
+    public MonitorInfo? GetPrimaryMonitor(DisplayTopologySnapshot? snapshot = null) =>
+        (snapshot ?? GetTopologySnapshot()).Monitors.FirstOrDefault(item => item.Descriptor.IsPrimary);
 
-    private static Dictionary<string, DisplayConfigSourceIdentity> QueryDisplayConfigMap()
+    private static DisplayConfigQueryOutcome QueryDisplayConfigMap()
     {
         for (int attempt = 0; attempt < 2; attempt++)
         {
             int bufferResult = GetDisplayConfigBufferSizes(QdcOnlyActivePaths, out uint pathCount, out uint modeCount);
             if (bufferResult != ErrorSuccess)
             {
-                return EmptyDisplayConfigMap();
+                return DisplayConfigQueryOutcome.Failed(
+                    DisplayIdentityFailureStageValues.GetBufferSizes,
+                    bufferResult,
+                    "Не удалось получить размер буфера display topology; runtime использует `gdi:` fallback для monitor identity.");
             }
 
             DISPLAYCONFIG_PATH_INFO[] paths = new DISPLAYCONFIG_PATH_INFO[pathCount];
@@ -145,21 +168,43 @@ public sealed class Win32MonitorManager : IMonitorManager
 
             if (queryResult != ErrorSuccess)
             {
-                return EmptyDisplayConfigMap();
+                return DisplayConfigQueryOutcome.Failed(
+                    DisplayIdentityFailureStageValues.QueryDisplayConfig,
+                    queryResult,
+                    "Не удалось получить active display topology через QueryDisplayConfig; runtime использует `gdi:` fallback для monitor identity.");
             }
 
             Dictionary<string, DisplayConfigSourceIdentity> map = new(StringComparer.OrdinalIgnoreCase);
+            DisplayConfigFailureInfo? firstFailure = null;
             for (int index = 0; index < pathCount; index++)
             {
                 DISPLAYCONFIG_PATH_INFO path = paths[index];
-                string? gdiDeviceName = TryGetSourceGdiDeviceName(path.sourceInfo.adapterId, path.sourceInfo.id);
+                DeviceInfoQueryResult sourceNameResult = TryGetSourceGdiDeviceName(path.sourceInfo.adapterId, path.sourceInfo.id);
+                string? gdiDeviceName = sourceNameResult.Value;
                 if (string.IsNullOrWhiteSpace(gdiDeviceName))
                 {
+                    firstFailure = DisplayConfigFailureAggregator.SelectMoreSignificant(
+                        firstFailure,
+                        DisplayConfigFailureInfoFactory.Create(
+                        DisplayIdentityFailureStageValues.GetSourceName,
+                        sourceNameResult.ResultCode,
+                        "Не удалось получить GDI имя display source; runtime использует `gdi:` fallback для monitor identity."));
                     continue;
                 }
 
                 string normalized = NormalizeGdiDeviceName(gdiDeviceName);
-                string? friendlyName = TryGetTargetFriendlyName(path.targetInfo.adapterId, path.targetInfo.id);
+                DeviceInfoQueryResult friendlyNameResult = TryGetTargetFriendlyName(path.targetInfo.adapterId, path.targetInfo.id);
+                string? friendlyName = friendlyNameResult.Value;
+                if (friendlyNameResult.ResultCode != ErrorSuccess)
+                {
+                    firstFailure = DisplayConfigFailureAggregator.SelectMoreSignificant(
+                        firstFailure,
+                        DisplayConfigFailureInfoFactory.Create(
+                        DisplayIdentityFailureStageValues.GetTargetName,
+                        friendlyNameResult.ResultCode,
+                        "Не удалось получить friendly name display target; strong monitor identity сохранена, но human-readable monitor name деградирует."));
+                }
+
                 if (!map.TryGetValue(normalized, out DisplayConfigSourceIdentity? identity))
                 {
                     identity = new DisplayConfigSourceIdentity(path.sourceInfo.adapterId, path.sourceInfo.id);
@@ -169,16 +214,21 @@ public sealed class Win32MonitorManager : IMonitorManager
                 identity.AddFriendlyName(friendlyName);
             }
 
-            return map;
+            return new DisplayConfigQueryOutcome(
+                map,
+                firstFailure?.FailedStage,
+                firstFailure?.ErrorCode,
+                firstFailure?.ErrorName,
+                firstFailure?.MessageHuman);
         }
 
-        return EmptyDisplayConfigMap();
+        return DisplayConfigQueryOutcome.Failed(
+            DisplayIdentityFailureStageValues.QueryDisplayConfig,
+            ErrorInsufficientBuffer,
+            "Не удалось стабильно получить display topology после повтора QueryDisplayConfig; runtime использует `gdi:` fallback для monitor identity.");
     }
 
-    private static Dictionary<string, DisplayConfigSourceIdentity> EmptyDisplayConfigMap() =>
-        new Dictionary<string, DisplayConfigSourceIdentity>(StringComparer.OrdinalIgnoreCase);
-
-    private static string? TryGetSourceGdiDeviceName(Luid adapterId, uint sourceId)
+    private static DeviceInfoQueryResult TryGetSourceGdiDeviceName(Luid adapterId, uint sourceId)
     {
         DISPLAYCONFIG_SOURCE_DEVICE_NAME request = new()
         {
@@ -191,12 +241,11 @@ public sealed class Win32MonitorManager : IMonitorManager
             },
         };
 
-        return DisplayConfigGetDeviceInfo(ref request) == ErrorSuccess
-            ? request.viewGdiDeviceName
-            : null;
+        int resultCode = DisplayConfigGetDeviceInfo(ref request);
+        return new(resultCode, resultCode == ErrorSuccess ? request.viewGdiDeviceName : null);
     }
 
-    private static string? TryGetTargetFriendlyName(Luid adapterId, uint targetId)
+    private static DeviceInfoQueryResult TryGetTargetFriendlyName(Luid adapterId, uint targetId)
     {
         DISPLAYCONFIG_TARGET_DEVICE_NAME request = new()
         {
@@ -209,20 +258,8 @@ public sealed class Win32MonitorManager : IMonitorManager
             },
         };
 
-        return DisplayConfigGetDeviceInfo(ref request) == ErrorSuccess
-            ? request.monitorFriendlyDeviceName
-            : null;
-    }
-
-    private static double GetMonitorDpiScale(IntPtr monitor)
-    {
-        int hr = GetDpiForMonitor(monitor, MonitorDpiType.Effective, out uint dpiX, out _);
-        if (hr < 0 || dpiX == 0)
-        {
-            return 1.0;
-        }
-
-        return dpiX / 96.0;
+        int resultCode = DisplayConfigGetDeviceInfo(ref request);
+        return new(resultCode, resultCode == ErrorSuccess ? request.monitorFriendlyDeviceName : null);
     }
 
     private static string BuildDisplaySourceMonitorId(DisplayConfigSourceIdentity sourceIdentity)
@@ -233,6 +270,17 @@ public sealed class Win32MonitorManager : IMonitorManager
 
     private static string NormalizeGdiDeviceName(string gdiDeviceName) =>
         (gdiDeviceName ?? string.Empty).Trim().ToUpperInvariant();
+
+    private static string? GetWin32ErrorName(int? errorCode) =>
+        errorCode switch
+        {
+            null => null,
+            ErrorSuccess => "ERROR_SUCCESS",
+            ErrorAccessDenied => "ERROR_ACCESS_DENIED",
+            ErrorNotSupported => "ERROR_NOT_SUPPORTED",
+            ErrorInsufficientBuffer => "ERROR_INSUFFICIENT_BUFFER",
+            _ => "WIN32_" + errorCode.Value.ToString(CultureInfo.InvariantCulture),
+        };
 
     private static HashSet<string> ListDesktopGdiDevices()
     {
@@ -510,11 +558,6 @@ public sealed class Win32MonitorManager : IMonitorManager
         PixelformatNongdi = 5,
     }
 
-    private enum MonitorDpiType
-    {
-        Effective = 0,
-    }
-
     [DllImport("user32.dll")]
     private static extern bool EnumDisplayMonitors(
         IntPtr hdc,
@@ -552,9 +595,6 @@ public sealed class Win32MonitorManager : IMonitorManager
 
     [DllImport("user32.dll")]
     private static extern int DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_TARGET_DEVICE_NAME requestPacket);
-
-    [DllImport("shcore.dll")]
-    private static extern int GetDpiForMonitor(IntPtr monitor, MonitorDpiType dpiType, out uint dpiX, out uint dpiY);
 
     private sealed class DisplayConfigSourceIdentity(Luid adapterId, uint sourceId)
     {
@@ -603,5 +643,38 @@ public sealed class Win32MonitorManager : IMonitorManager
                 Descriptor,
                 CaptureHandle,
                 _handles.OrderBy(handle => handle).ToArray());
+    }
+
+    private readonly record struct DeviceInfoQueryResult(
+        int ResultCode,
+        string? Value);
+
+    private sealed record DisplayConfigQueryOutcome(
+        Dictionary<string, DisplayConfigSourceIdentity> DisplayConfigMap,
+        string? FailedStage,
+        int? ErrorCode,
+        string? ErrorName,
+        string? MessageHuman)
+    {
+        public static DisplayConfigQueryOutcome Failed(string failedStage, int errorCode, string messageHuman) =>
+            new(
+                new Dictionary<string, DisplayConfigSourceIdentity>(StringComparer.OrdinalIgnoreCase),
+                failedStage,
+                errorCode,
+                GetWin32ErrorName(errorCode),
+                $"{messageHuman} Win32 error: {GetWin32ErrorName(errorCode)} ({errorCode}).");
+    }
+
+    private static class DisplayConfigFailureInfoFactory
+    {
+        public static DisplayConfigFailureInfo Create(string failedStage, int errorCode, string messageHuman)
+        {
+            string errorName = GetWin32ErrorName(errorCode) ?? "WIN32_UNKNOWN";
+            return new(
+                failedStage,
+                errorCode,
+                errorName,
+                $"{messageHuman} Win32 error: {errorName} ({errorCode}).");
+        }
     }
 }

@@ -9,6 +9,7 @@ namespace WinBridge.Server.IntegrationTests;
 public sealed class McpProtocolSmokeTests
 {
     private static readonly string[] AttachSuccessStates = { "done", "already_attached" };
+    private const int ProcessPerMonitorDpiAware = 2;
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan ProcessExitTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan HelperWindowTimeout = TimeSpan.FromSeconds(10);
@@ -26,6 +27,10 @@ public sealed class McpProtocolSmokeTests
 
         try
         {
+            Assert.True(
+                await WaitUntilAsync(() => TryGetProcessDpiAwareness(process, out int awareness) && awareness == ProcessPerMonitorDpiAware),
+                "Okno.Server did not reach per-monitor DPI awareness during startup.");
+
             using JsonDocument initializeResponse = await session.SendRequestAsync(
                 "initialize",
                 new
@@ -67,33 +72,45 @@ public sealed class McpProtocolSmokeTests
 
             JsonElement captureDescriptor = tools.EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsCapture);
+            Assert.False(string.IsNullOrWhiteSpace(captureDescriptor.GetProperty("description").GetString()));
+            Assert.Contains("explicit hwnd", captureDescriptor.GetProperty("description").GetString(), StringComparison.OrdinalIgnoreCase);
             JsonElement captureAnnotations = captureDescriptor.GetProperty("annotations");
             Assert.False(captureAnnotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.False(captureAnnotations.GetProperty("idempotentHint").GetBoolean());
             Assert.False(captureAnnotations.GetProperty("destructiveHint").GetBoolean());
             Assert.True(captureAnnotations.GetProperty("openWorldHint").GetBoolean());
+            JsonElement captureProperties = captureDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            Assert.False(string.IsNullOrWhiteSpace(captureProperties.GetProperty("scope").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(captureProperties.GetProperty("monitorId").GetProperty("description").GetString()));
+            Assert.Contains("desktop", captureProperties.GetProperty("hwnd").GetProperty("description").GetString(), StringComparison.OrdinalIgnoreCase);
 
             JsonElement listMonitorsDescriptor = tools.EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsListMonitors);
+            Assert.False(string.IsNullOrWhiteSpace(listMonitorsDescriptor.GetProperty("description").GetString()));
             JsonElement listMonitorsAnnotations = listMonitorsDescriptor.GetProperty("annotations");
             Assert.True(listMonitorsAnnotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.False(listMonitorsAnnotations.GetProperty("destructiveHint").GetBoolean());
 
             JsonElement activateDescriptor = tools.EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsActivateWindow);
+            Assert.False(string.IsNullOrWhiteSpace(activateDescriptor.GetProperty("description").GetString()));
             JsonElement activateAnnotations = activateDescriptor.GetProperty("annotations");
             Assert.False(activateAnnotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.False(activateAnnotations.GetProperty("destructiveHint").GetBoolean());
 
             using JsonDocument healthResponse = await session.CallToolAsync(ToolNames.OknoHealth, new { });
-            string healthText = GetToolTextPayload(healthResponse);
-            Assert.Contains("\"service\":\"Okno\"", healthText, StringComparison.Ordinal);
+            using JsonDocument healthPayload = JsonDocument.Parse(GetToolTextPayload(healthResponse));
+            JsonElement healthRoot = healthPayload.RootElement;
+            Assert.Equal("Okno", healthRoot.GetProperty("service").GetString());
+            Assert.True(healthRoot.GetProperty("activeMonitorCount").GetInt32() > 0);
+            Assert.False(string.IsNullOrWhiteSpace(healthRoot.GetProperty("displayIdentity").GetProperty("identityMode").GetString()));
 
             using JsonDocument monitorsResponse = await session.CallToolAsync(ToolNames.WindowsListMonitors, new { });
             using JsonDocument monitorsPayload = JsonDocument.Parse(GetToolTextPayload(monitorsResponse));
             JsonElement monitorsRoot = monitorsPayload.RootElement;
             int monitorCount = monitorsRoot.GetProperty("count").GetInt32();
             Assert.True(monitorCount > 0, "Smoke contract requires at least one active monitor.");
+            Assert.False(string.IsNullOrWhiteSpace(monitorsRoot.GetProperty("diagnostics").GetProperty("identityMode").GetString()));
             string primaryMonitorId = monitorsRoot.GetProperty("monitors")[0].GetProperty("monitorId").GetString()!;
             long helperHwnd = await WaitForMainWindowAsync(helperProcess);
 
@@ -117,6 +134,7 @@ public sealed class McpProtocolSmokeTests
             JsonElement desktopStructuredContent = desktopCaptureResult.GetProperty("structuredContent");
             Assert.Equal("desktop", desktopStructuredContent.GetProperty("scope").GetString());
             Assert.Equal(primaryMonitorId, desktopStructuredContent.GetProperty("monitorId").GetString());
+            Assert.Equal("physical_pixels", desktopStructuredContent.GetProperty("coordinateSpace").GetString());
 
             using JsonDocument attachResponse = await session.CallToolAsync(ToolNames.WindowsAttachWindow, new { hwnd = helperHwnd });
             using JsonDocument attachPayload = JsonDocument.Parse(GetToolTextPayload(attachResponse));
@@ -137,6 +155,8 @@ public sealed class McpProtocolSmokeTests
             JsonElement structuredContent = captureResult.GetProperty("structuredContent");
             Assert.Equal("window", structuredContent.GetProperty("scope").GetString());
             Assert.Equal(helperHwnd, structuredContent.GetProperty("hwnd").GetInt64());
+            Assert.Equal("physical_pixels", structuredContent.GetProperty("coordinateSpace").GetString());
+            Assert.True(structuredContent.GetProperty("effectiveDpi").GetInt32() >= 96);
             Assert.True(structuredContent.GetProperty("pixelWidth").GetInt32() > 0);
             Assert.True(structuredContent.GetProperty("pixelHeight").GetInt32() > 0);
 
@@ -215,6 +235,19 @@ public sealed class McpProtocolSmokeTests
                 $"MCP integration smoke timed out while waiting for server process {process.Id} to exit.",
                 exception);
         }
+    }
+
+    private static bool TryGetProcessDpiAwareness(Process process, out int awareness)
+    {
+        awareness = -1;
+        if (process.HasExited)
+        {
+            return false;
+        }
+
+        int result = GetProcessDpiAwarenessNative(process.Handle, out int processAwareness);
+        awareness = processAwareness;
+        return result == 0;
     }
 
     private sealed class McpRequestSession(StreamReader reader, StreamWriter writer)
@@ -490,4 +523,7 @@ public sealed class McpProtocolSmokeTests
 
     [DllImport("user32.dll")]
     private static extern bool IsIconic(IntPtr hwnd);
+
+    [DllImport("shcore.dll", EntryPoint = "GetProcessDpiAwareness")]
+    private static extern int GetProcessDpiAwarenessNative(IntPtr processHandle, out int awareness);
 }

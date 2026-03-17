@@ -19,7 +19,6 @@ internal static class WindowToolTestData
                 GdiDeviceName: gdiDeviceName,
                 Bounds: new Bounds(0, 0, 1920, 1080),
                 WorkArea: new Bounds(0, 0, 1920, 1040),
-                DpiScale: 1.0,
                 IsPrimary: isPrimary),
             handle,
             [handle]);
@@ -27,23 +26,31 @@ internal static class WindowToolTestData
 
 internal sealed class FakeMonitorManager(
     IReadOnlyList<MonitorInfo>? monitors = null,
+    DisplayIdentityDiagnostics? diagnostics = null,
     IReadOnlyDictionary<long, string>? windowToMonitorMap = null) : IMonitorManager
 {
     private readonly IReadOnlyList<MonitorInfo> _monitors = monitors ?? [WindowToolTestData.CreateMonitor()];
+    private readonly DisplayIdentityDiagnostics _diagnostics = diagnostics ?? new(
+        IdentityMode: DisplayIdentityModeValues.DisplayConfigStrong,
+        FailedStage: null,
+        ErrorCode: null,
+        ErrorName: null,
+        MessageHuman: "Strong monitor identity resolved through QueryDisplayConfig for all active desktop monitors.",
+        CapturedAtUtc: DateTimeOffset.UtcNow);
     private readonly IReadOnlyDictionary<long, string> _windowToMonitorMap = windowToMonitorMap ?? new Dictionary<long, string>();
 
-    public IReadOnlyList<MonitorInfo> ListMonitors() => _monitors;
+    public DisplayTopologySnapshot GetTopologySnapshot() => new(_monitors, _diagnostics);
 
-    public MonitorInfo? FindMonitorById(string monitorId) =>
-        _monitors.FirstOrDefault(
+    public MonitorInfo? FindMonitorById(string monitorId, DisplayTopologySnapshot? snapshot = null) =>
+        (snapshot?.Monitors ?? _monitors).FirstOrDefault(
             monitor => string.Equals(
                 monitor.Descriptor.MonitorId,
                 monitorId,
                 StringComparison.OrdinalIgnoreCase));
 
-    public MonitorInfo? FindMonitorByHandle(long handle, IReadOnlyList<MonitorInfo>? monitors = null)
+    public MonitorInfo? FindMonitorByHandle(long handle, DisplayTopologySnapshot? snapshot = null)
     {
-        IReadOnlyList<MonitorInfo> source = monitors ?? _monitors;
+        IReadOnlyList<MonitorInfo> source = snapshot?.Monitors ?? _monitors;
         return source.FirstOrDefault(monitor => monitor.Handles.Contains(handle));
     }
 
@@ -53,27 +60,29 @@ internal sealed class FakeMonitorManager(
         return monitor?.CaptureHandle;
     }
 
-    public MonitorInfo? FindMonitorForWindow(long hwnd)
+    public MonitorInfo? FindMonitorForWindow(long hwnd, DisplayTopologySnapshot? snapshot = null)
     {
         if (_windowToMonitorMap.TryGetValue(hwnd, out string? monitorId))
         {
-            return FindMonitorById(monitorId);
+            return FindMonitorById(monitorId, snapshot);
         }
 
-        return _monitors.Count > 0 ? _monitors[0] : null;
+        IReadOnlyList<MonitorInfo> source = snapshot?.Monitors ?? _monitors;
+        return source.Count > 0 ? source[0] : null;
     }
 
-    public MonitorInfo? GetPrimaryMonitor()
+    public MonitorInfo? GetPrimaryMonitor(DisplayTopologySnapshot? snapshot = null)
     {
-        for (int index = 0; index < _monitors.Count; index++)
+        IReadOnlyList<MonitorInfo> source = snapshot?.Monitors ?? _monitors;
+        for (int index = 0; index < source.Count; index++)
         {
-            if (_monitors[index].Descriptor.IsPrimary)
+            if (source[index].Descriptor.IsPrimary)
             {
-                return _monitors[index];
+                return source[index];
             }
         }
 
-        return _monitors.Count > 0 ? _monitors[0] : null;
+        return source.Count > 0 ? source[0] : null;
     }
 }
 

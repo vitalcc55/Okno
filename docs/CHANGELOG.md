@@ -2,6 +2,40 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-17 09:39
+
+- Перестроен display/window contract: `MonitorDescriptor` больше не несёт authoritative `DpiScale`, `WindowDescriptor` теперь содержит `EffectiveDpi`, а `windows.capture` возвращает `coordinateSpace=physical_pixels` и window-authoritative DPI metadata только для window targets.
+- `WinBridge.Runtime.Windows.Display` теперь возвращает typed `DisplayTopologySnapshot` с `DisplayIdentityDiagnostics`; `windows.list_monitors`, `okno.health`, audit `events.jsonl` и summary получили evidence о `display_config_strong` vs `gdi_fallback` без изменения safe fallback behavior.
+- MCP surface стал самодокументируемым: добавлен единый `ToolDescriptions` source of truth, `DescriptionAttribute` на ключевые tools/parameters и smoke/integration checks на наличие descriptions в `tools/list`.
+- `IsWindowArranged` переведён в optional metadata probe через runtime export lookup, чтобы `windowState=arranged` оставался enrichment-сигналом и не создавал жёсткой платформенной зависимости inventory.
+
+## 2026-03-17 10:30
+
+- Review-driven hardening закрыл подтверждённые P1/P2 gaps: MCP server теперь явно включает per-monitor DPI awareness в startup bootstrap, а integration smoke ждёт достижение этого process invariant перед валидацией contract.
+- Display identity diagnostics переведены на отдельный builder/state machine: query failures больше не могут ложно репортиться как `display_config_strong`, а деградация `GetTargetName` теперь сохраняется в typed diagnostics без понижения strong identity до `gdi_fallback`.
+- `okno.contract` обогащён до структурированных `ContractToolDescriptor` вместо списка имён, а `ToolContractManifest` и generated interfaces теперь публикуют те же полные описания, что и MCP `tools/list`.
+- Manual docs синхронизированы с новым contract: `observe-capture`, `observability` и `okno-spec` больше не описывают удалённый monitor `dpi scale` и теперь отражают `coordinateSpace`, window-authoritative DPI и display identity diagnostics.
+
+## 2026-03-17 10:44
+
+- Закрыт residual bug в `DisplayIdentityDiagnosticsBuilder`: mixed-case `GetTargetName` degradation + `gdi_fallback` больше не может выдавать противоречивое сообщение в духе "strong identity preserved"; добавлен red/green unit test на этот сценарий.
+
+## 2026-03-17 10:53
+
+- Stage 3 contract surface доведён до консистентности: `okno.contract` и export/generated contract теперь используют общий `ContractToolDescriptorFactory`, а enum-like поля `lifecycle` и `safetyClass` публикуются в одном canonical snake_case literal format без drift между live tool и exported interfaces.
+
+## 2026-03-17 11:40
+
+- Review-driven closeout для workstream 1/2/3 завершён: `Win32WindowManager` больше не маскирует `GetDpiForWindow == 0` значением `96`, coverage-driven `gdi_fallback` теперь получает typed reason `display_config_coverage_gap`, а manual spec `windows.list_monitors` / `windows.list_windows` синхронизирована с фактическими diagnostics и window DPI fields.
+
+## 2026-03-17 12:15
+
+- Verification gaps закрыты локальными test seams: добавлен pipeline-level runtime test на mixed-case display failures (`GetTargetName` -> `GetSourceName`) и behavioural integration test на `windows.capture(scope="desktop", hwnd=...)`, подтверждающий monitor resolution explicit HWND поверх attached window. Smoke по-прежнему проверяет tools/list metadata и end-to-end protocol flow, а не подменяет эти два таргетных контракта.
+
+## 2026-03-17 09:21
+
+- Добавлен активный exec-plan `docs/exec-plans/active/display-window-contract-hardening.md` для линейного refactor-контура по DPI/coordinate semantics, display identity diagnostics, MCP self-documentation и optional `IsWindowArranged`.
+
 ## 2026-03-15 14:57
 
 - `windows.activate_window` теперь маркирует `ambiguous` как tool-level error на MCP boundary, а не как успешный result.

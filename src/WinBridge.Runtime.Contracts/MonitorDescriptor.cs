@@ -6,5 +6,4 @@ public sealed record MonitorDescriptor(
     string GdiDeviceName,
     Bounds Bounds,
     Bounds WorkArea,
-    double DpiScale,
     bool IsPrimary);

@@ -7,5 +7,7 @@ public sealed record HealthResult(
     string AuditSchemaVersion,
     string RunId,
     string ArtifactsDirectory,
+    int ActiveMonitorCount,
+    DisplayIdentityDiagnostics DisplayIdentity,
     IReadOnlyList<string> ImplementedTools,
     IReadOnlyDictionary<string, string> DeferredTools);

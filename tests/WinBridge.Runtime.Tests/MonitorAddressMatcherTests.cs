@@ -60,6 +60,5 @@ public sealed class MonitorAddressMatcherTests
             GdiDeviceName: gdiDeviceName,
             Bounds: new Bounds(0, 0, 1920, 1080),
             WorkArea: new Bounds(0, 0, 1920, 1040),
-            DpiScale: 1.0,
             IsPrimary: true);
 }

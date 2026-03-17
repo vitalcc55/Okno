@@ -21,6 +21,7 @@ public sealed class AuditLog
     private readonly AuditLogOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly object _sync = new();
+    private string? _lastDisplayIdentityFingerprint;
 
     public AuditLog(AuditLogOptions options, TimeProvider timeProvider)
     {
@@ -83,6 +84,48 @@ public sealed class AuditLog
                 ["current_hwnd"] = currentHwnd?.ToString(CultureInfo.InvariantCulture),
                 ["mode"] = after.Mode,
                 ["match_strategy"] = after.AttachedWindow?.MatchStrategy,
+            });
+    }
+
+    public void RecordDisplayIdentityStateChange(DisplayIdentityDiagnostics diagnostics, int activeMonitorCount)
+    {
+        string fingerprint = string.Join(
+            "|",
+            diagnostics.IdentityMode,
+            diagnostics.FailedStage ?? string.Empty,
+            diagnostics.ErrorCode?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            diagnostics.ErrorName ?? string.Empty,
+            activeMonitorCount.ToString(CultureInfo.InvariantCulture));
+
+        bool changed;
+        lock (_sync)
+        {
+            changed = !string.Equals(_lastDisplayIdentityFingerprint, fingerprint, StringComparison.Ordinal);
+            if (changed)
+            {
+                _lastDisplayIdentityFingerprint = fingerprint;
+            }
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        WriteEvent(
+            severity: diagnostics.IdentityMode == DisplayIdentityModeValues.GdiFallback ? "warning" : "info",
+            eventName: "display.identity.state_changed",
+            messageHuman: diagnostics.MessageHuman,
+            toolName: null,
+            outcome: diagnostics.IdentityMode,
+            windowHwnd: null,
+            data: new Dictionary<string, string?>
+            {
+                ["identity_mode"] = diagnostics.IdentityMode,
+                ["failed_stage"] = diagnostics.FailedStage,
+                ["error_code"] = diagnostics.ErrorCode?.ToString(CultureInfo.InvariantCulture),
+                ["error_name"] = diagnostics.ErrorName,
+                ["active_monitor_count"] = activeMonitorCount.ToString(CultureInfo.InvariantCulture),
             });
     }
 
