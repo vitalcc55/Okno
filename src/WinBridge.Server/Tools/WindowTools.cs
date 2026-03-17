@@ -1,8 +1,9 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using WinBridge.Runtime;
@@ -11,6 +12,7 @@ using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Capture;
+using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
 using RuntimeToolExecution = WinBridge.Runtime.Diagnostics.ToolExecution;
 
@@ -27,23 +29,68 @@ public sealed class WindowTools
 
     private readonly AuditLog _auditLog;
     private readonly ICaptureService _captureService;
+    private readonly IMonitorManager _monitorManager;
     private readonly ISessionManager _sessionManager;
+    private readonly IWindowActivationService _windowActivationService;
     private readonly IWindowManager _windowManager;
+    private readonly IWindowTargetResolver _windowTargetResolver;
 
     public WindowTools(
         AuditLog auditLog,
         ISessionManager sessionManager,
         IWindowManager windowManager,
-        ICaptureService captureService)
+        ICaptureService captureService,
+        IMonitorManager monitorManager,
+        IWindowActivationService windowActivationService,
+        IWindowTargetResolver windowTargetResolver)
     {
         _auditLog = auditLog;
         _captureService = captureService;
+        _monitorManager = monitorManager;
         _sessionManager = sessionManager;
+        _windowActivationService = windowActivationService;
         _windowManager = windowManager;
+        _windowTargetResolver = windowTargetResolver;
     }
 
+    [Description(ToolDescriptions.WindowsListMonitorsTool)]
+    [McpServerTool(
+        Name = ToolNames.WindowsListMonitors,
+        ReadOnly = true,
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = true)]
+    public ListMonitorsResult ListMonitors()
+        => RuntimeToolExecution.Run(
+            _auditLog,
+            _sessionManager.GetSnapshot(),
+            ToolNames.WindowsListMonitors,
+            new { },
+            invocation =>
+            {
+                DisplayTopologySnapshot topology = _monitorManager.GetTopologySnapshot();
+                MonitorDescriptor[] monitors = topology.Monitors
+                    .Select(item => item.Descriptor)
+                    .ToArray();
+                ListMonitorsResult result = new(monitors, monitors.Length, topology.Diagnostics, _sessionManager.GetSnapshot());
+
+                invocation.Complete(
+                    "done",
+                    $"Найдено {monitors.Length} активных monitor targets.",
+                    data: new Dictionary<string, string?>
+                    {
+                        ["count"] = monitors.Length.ToString(CultureInfo.InvariantCulture),
+                        ["identity_mode"] = topology.Diagnostics.IdentityMode,
+                    });
+
+                return result;
+            });
+
+    [Description(ToolDescriptions.WindowsListWindowsTool)]
     [McpServerTool(Name = ToolNames.WindowsListWindows)]
-    public ListWindowsResult ListWindows(bool includeInvisible = false)
+    public ListWindowsResult ListWindows(
+        [Description(ToolDescriptions.IncludeInvisibleParameter)]
+        bool includeInvisible = false)
         => RuntimeToolExecution.Run(
             _auditLog,
             _sessionManager.GetSnapshot(),
@@ -66,8 +113,15 @@ public sealed class WindowTools
                 return result;
             });
 
+    [Description(ToolDescriptions.WindowsAttachWindowTool)]
     [McpServerTool(Name = ToolNames.WindowsAttachWindow)]
-    public AttachWindowResult AttachWindow(long? hwnd = null, string? titlePattern = null, string? processName = null)
+    public AttachWindowResult AttachWindow(
+        [Description(ToolDescriptions.HwndParameter)]
+        long? hwnd = null,
+        [Description(ToolDescriptions.TitlePatternParameter)]
+        string? titlePattern = null,
+        [Description(ToolDescriptions.ProcessNameParameter)]
+        string? processName = null)
         => RuntimeToolExecution.Run(
             _auditLog,
             _sessionManager.GetSnapshot(),
@@ -89,6 +143,18 @@ public sealed class WindowTools
 
                         invocation.Complete("failed", notFound.Reason!);
                         return notFound;
+                    }
+
+                    if (!WindowIdentityValidator.TryValidateStableIdentity(window, out string? reason))
+                    {
+                        AttachWindowResult weakIdentity = new(
+                            Status: "failed",
+                            Reason: reason,
+                            AttachedWindow: null,
+                            Session: _sessionManager.GetSnapshot());
+
+                        invocation.Complete("failed", reason!, window.Hwnd);
+                        return weakIdentity;
                     }
 
                     SessionMutation mutation = _sessionManager.Attach(window, selector.MatchStrategy);
@@ -119,6 +185,17 @@ public sealed class WindowTools
                     invocation.Complete("failed", timedOut.Reason!);
                     return timedOut;
                 }
+                catch (ArgumentException exception)
+                {
+                    AttachWindowResult invalidSelector = new(
+                        Status: "failed",
+                        Reason: exception.Message,
+                        AttachedWindow: null,
+                        Session: _sessionManager.GetSnapshot());
+
+                    invocation.Complete("failed", exception.Message);
+                    return invalidSelector;
+                }
                 catch (InvalidOperationException exception)
                 {
                     AttachWindowResult ambiguous = new(
@@ -132,8 +209,72 @@ public sealed class WindowTools
                 }
             });
 
+    [Description(ToolDescriptions.WindowsActivateWindowTool)]
+    [McpServerTool(
+        Name = ToolNames.WindowsActivateWindow,
+        ReadOnly = false,
+        Destructive = false,
+        Idempotent = false,
+        OpenWorld = true,
+        UseStructuredContent = true)]
+    public Task<CallToolResult> ActivateWindow(CancellationToken cancellationToken = default) =>
+        RuntimeToolExecution.RunAsync(
+            _auditLog,
+            _sessionManager.GetSnapshot(),
+            ToolNames.WindowsActivateWindow,
+            new { },
+            async invocation =>
+            {
+                WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
+                if (attachedWindow is null)
+                {
+                    ActivateWindowResult missingTarget = new(
+                        Status: "failed",
+                        Reason: "Для активации сначала прикрепи окно через windows.attach_window.",
+                        Window: null,
+                        WasMinimized: false,
+                        IsForeground: false);
+
+                    invocation.Complete("failed", missingTarget.Reason!);
+                    return CreateToolResult(missingTarget, isError: true);
+                }
+
+                WindowDescriptor? targetWindow = _windowTargetResolver.ResolveExplicitOrAttachedWindow(null, attachedWindow);
+                if (targetWindow is null)
+                {
+                    ActivateWindowResult missingWindow = new(
+                        Status: "failed",
+                        Reason: "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
+                        Window: null,
+                        WasMinimized: false,
+                        IsForeground: false);
+
+                    invocation.Complete("failed", missingWindow.Reason!, attachedWindow?.Hwnd);
+                    return CreateToolResult(missingWindow, isError: true);
+                }
+
+                ActivateWindowResult result = await _windowActivationService
+                    .ActivateAsync(targetWindow, cancellationToken)
+                    .ConfigureAwait(false);
+
+                invocation.Complete(
+                    result.Status,
+                    result.Status == "done" ? "Окно активировано и готово к работе." : result.Reason!,
+                    targetWindow.Hwnd,
+                    new Dictionary<string, string?>
+                    {
+                        ["was_minimized"] = result.WasMinimized.ToString(CultureInfo.InvariantCulture),
+                        ["is_foreground"] = result.IsForeground.ToString(CultureInfo.InvariantCulture),
+                    });
+
+                return CreateToolResult(result, isError: ActivateStatusIsToolError(result.Status));
+            });
+
+    [Description(ToolDescriptions.WindowsFocusWindowTool)]
     [McpServerTool(Name = ToolNames.WindowsFocusWindow)]
-    public FocusWindowResult FocusWindow(long? hwnd = null)
+    public FocusWindowResult FocusWindow(
+        [Description(ToolDescriptions.FocusHwndParameter)]
+        long? hwnd = null)
         => RuntimeToolExecution.Run(
             _auditLog,
             _sessionManager.GetSnapshot(),
@@ -141,8 +282,8 @@ public sealed class WindowTools
             new { hwnd },
             invocation =>
             {
-                long? targetHwnd = hwnd ?? _sessionManager.GetAttachedWindow()?.Window.Hwnd;
-                if (targetHwnd is null)
+                WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
+                if (hwnd is null && attachedWindow is null)
                 {
                     FocusWindowResult missingTarget = new(
                         Status: "failed",
@@ -153,20 +294,21 @@ public sealed class WindowTools
                     return missingTarget;
                 }
 
-                IReadOnlyList<WindowDescriptor> windows = _windowManager.ListWindows(includeInvisible: true);
-                WindowDescriptor? window = windows.FirstOrDefault(candidate => candidate.Hwnd == targetHwnd.Value);
+                WindowDescriptor? window = _windowTargetResolver.ResolveExplicitOrAttachedWindow(hwnd, attachedWindow);
                 if (window is null)
                 {
                     FocusWindowResult missingWindow = new(
                         Status: "failed",
-                        Reason: "Окно для фокуса больше не найдено.",
+                        Reason: hwnd is not null
+                            ? "Окно для фокуса больше не найдено."
+                            : "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
                         Window: null);
 
-                    invocation.Complete("failed", missingWindow.Reason!, targetHwnd.Value);
+                    invocation.Complete("failed", missingWindow.Reason!, hwnd ?? attachedWindow?.Hwnd);
                     return missingWindow;
                 }
 
-                bool focused = _windowManager.TryFocus(targetHwnd.Value);
+                bool focused = _windowManager.TryFocus(window.Hwnd);
                 FocusWindowResult result = new(
                     Status: focused ? "done" : "failed",
                     Reason: focused ? null : "Windows отказалась перевести окно в foreground.",
@@ -175,11 +317,12 @@ public sealed class WindowTools
                 invocation.Complete(
                     result.Status,
                     focused ? "Запрошен foreground focus для окна." : result.Reason!,
-                    targetHwnd.Value);
+                    window.Hwnd);
 
                 return result;
             });
 
+    [Description(ToolDescriptions.WindowsCaptureTool)]
     [McpServerTool(
         Name = ToolNames.WindowsCapture,
         ReadOnly = false,
@@ -187,37 +330,58 @@ public sealed class WindowTools
         Idempotent = false,
         OpenWorld = true,
         UseStructuredContent = true)]
-    public Task<CallToolResult> Capture(string scope = "window", long? hwnd = null, CancellationToken cancellationToken = default) =>
+    public Task<CallToolResult> Capture(
+        [Description(ToolDescriptions.CaptureScopeParameter)]
+        string scope = "window",
+        [Description(ToolDescriptions.CaptureHwndParameter)]
+        long? hwnd = null,
+        [Description(ToolDescriptions.CaptureMonitorIdParameter)]
+        string? monitorId = null,
+        CancellationToken cancellationToken = default) =>
         RuntimeToolExecution.RunAsync(
             _auditLog,
             _sessionManager.GetSnapshot(),
             ToolNames.WindowsCapture,
-            new { scope, hwnd },
+            new { scope, hwnd, monitorId },
             async invocation =>
             {
                 if (!CaptureScopeExtensions.TryParse(scope, out CaptureScope captureScope))
                 {
                     string reason = $"Unsupported capture scope '{scope}'. Допустимые значения: window, desktop.";
                     invocation.Complete("failed", reason);
-                    return CreateErrorResult(reason, scope, hwnd);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
                 }
 
-                WindowDescriptor? window = ResolveCaptureWindow(captureScope, hwnd);
+                if (captureScope == CaptureScope.Window && !string.IsNullOrWhiteSpace(monitorId))
+                {
+                    string reason = "Аргумент monitorId поддерживается только для desktop capture.";
+                    invocation.Complete("failed", reason);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
+                }
+
+                if (captureScope == CaptureScope.Desktop && hwnd is not null && !string.IsNullOrWhiteSpace(monitorId))
+                {
+                    string reason = "Для desktop capture нельзя одновременно передавать hwnd и monitorId.";
+                    invocation.Complete("failed", reason);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
+                }
+
+                WindowDescriptor? window = ResolveCaptureWindow(captureScope, hwnd, monitorId);
                 if (hwnd is not null && window is null)
                 {
                     string reason = "Окно для capture по указанному hwnd больше не найдено.";
                     invocation.Complete("failed", reason, hwnd);
-                    return CreateErrorResult(reason, scope, hwnd);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
                 }
 
                 if (captureScope == CaptureScope.Window && window is null)
                 {
                     string reason = "Для window capture нужно передать hwnd или сначала прикрепить окно.";
                     invocation.Complete("failed", reason);
-                    return CreateErrorResult(reason, scope, hwnd);
+                    return CreateErrorResult(reason, scope, hwnd, monitorId);
                 }
 
-                CaptureTarget target = new(captureScope, window);
+                CaptureTarget target = new(captureScope, window, monitorId);
 
                 try
                 {
@@ -232,6 +396,10 @@ public sealed class WindowTools
                         {
                             ["scope"] = metadata.Scope,
                             ["target_kind"] = metadata.TargetKind,
+                            ["coordinate_space"] = metadata.CoordinateSpace,
+                            ["effective_dpi"] = metadata.EffectiveDpi?.ToString(CultureInfo.InvariantCulture),
+                            ["dpi_scale"] = metadata.DpiScale?.ToString(CultureInfo.InvariantCulture),
+                            ["monitor_id"] = metadata.MonitorId,
                             ["artifact_path"] = metadata.ArtifactPath,
                             ["mime_type"] = metadata.MimeType,
                             ["pixel_width"] = metadata.PixelWidth.ToString(CultureInfo.InvariantCulture),
@@ -244,7 +412,7 @@ public sealed class WindowTools
                 catch (CaptureOperationException exception)
                 {
                     invocation.Complete("failed", exception.Message, window?.Hwnd);
-                    return CreateErrorResult(exception.Message, scope, hwnd ?? window?.Hwnd);
+                    return CreateErrorResult(exception.Message, scope, hwnd ?? window?.Hwnd, monitorId);
                 }
             });
 
@@ -292,53 +460,14 @@ public sealed class WindowTools
                 return result;
             });
 
-    private WindowDescriptor? ResolveCaptureWindow(CaptureScope scope, long? hwnd)
+    private WindowDescriptor? ResolveCaptureWindow(CaptureScope scope, long? hwnd, string? monitorId)
     {
-        if (hwnd is long explicitHwnd)
-        {
-            return _windowManager.ListWindows(includeInvisible: true)
-                .FirstOrDefault(candidate => candidate.Hwnd == explicitHwnd);
-        }
-
-        WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
-        if (attachedWindow is null)
+        if (scope == CaptureScope.Desktop && !string.IsNullOrWhiteSpace(monitorId))
         {
             return null;
         }
 
-        IReadOnlyList<WindowDescriptor> liveWindows = _windowManager.ListWindows(includeInvisible: true);
-        return TryResolveLiveAttachedWindow(attachedWindow, liveWindows);
-    }
-
-    private static WindowDescriptor? TryResolveLiveAttachedWindow(
-        WindowDescriptor attachedWindow,
-        IReadOnlyList<WindowDescriptor> liveWindows)
-    {
-        WindowDescriptor? liveCandidate = liveWindows
-            .FirstOrDefault(candidate => candidate.Hwnd == attachedWindow.Hwnd);
-        if (liveCandidate is null)
-        {
-            return null;
-        }
-
-        return MatchesAttachedWindowIdentity(liveCandidate, attachedWindow) ? liveCandidate : null;
-    }
-
-    private static bool MatchesAttachedWindowIdentity(
-        WindowDescriptor liveCandidate,
-        WindowDescriptor attachedWindow)
-    {
-        bool processIdCompatible = liveCandidate.ProcessId is null
-            || attachedWindow.ProcessId is null
-            || liveCandidate.ProcessId == attachedWindow.ProcessId;
-        bool threadIdCompatible = liveCandidate.ThreadId is null
-            || attachedWindow.ThreadId is null
-            || liveCandidate.ThreadId == attachedWindow.ThreadId;
-        bool classNameCompatible = string.IsNullOrWhiteSpace(liveCandidate.ClassName)
-            || string.IsNullOrWhiteSpace(attachedWindow.ClassName)
-            || string.Equals(liveCandidate.ClassName, attachedWindow.ClassName, StringComparison.Ordinal);
-
-        return processIdCompatible && threadIdCompatible && classNameCompatible;
+        return _windowTargetResolver.ResolveExplicitOrAttachedWindow(hwnd, _sessionManager.GetAttachedWindow()?.Window);
     }
 
     private static CallToolResult CreateSuccessResult(CaptureResult result)
@@ -364,7 +493,28 @@ public sealed class WindowTools
         };
     }
 
-    private static CallToolResult CreateErrorResult(string reason, string scope, long? hwnd)
+    private static CallToolResult CreateToolResult<T>(T payload, bool isError)
+    {
+        JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, PayloadJsonOptions);
+
+        return new CallToolResult
+        {
+            IsError = isError,
+            StructuredContent = structuredContent,
+            Content =
+            [
+                new TextContentBlock
+                {
+                    Text = JsonSerializer.Serialize(payload, PayloadJsonOptions),
+                },
+            ],
+        };
+    }
+
+    private static bool ActivateStatusIsToolError(string status) =>
+        status is "failed" or "ambiguous";
+
+    private static CallToolResult CreateErrorResult(string reason, string scope, long? hwnd, string? monitorId)
     {
         JsonElement payload = JsonSerializer.SerializeToElement(
             new
@@ -373,6 +523,7 @@ public sealed class WindowTools
                 reason,
                 scope,
                 hwnd,
+                monitorId,
             },
             PayloadJsonOptions);
 

@@ -214,7 +214,8 @@ Python можно использовать:
 - scope (`desktop` / `window`);
 - window title / hwnd, если есть;
 - bounds;
-- DPI scale.
+- явный `coordinateSpace`;
+- window DPI только там, где target действительно является окном.
 
 ---
 
@@ -284,12 +285,31 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 
 ## 4.1. Window/session primitives
 
+### `windows.list_monitors`
+Возвращает:
+- count;
+- monitor id;
+- friendly name;
+- gdi device name;
+- bounds / work area;
+- diagnostics.identityMode;
+- diagnostics.failedStage / errorCode / errorName для primary reason code, если есть fallback или partial degradation detail;
+- isPrimary.
+
+Примечание:
+- список monitor targets должен отражать captureable desktop views текущей topology, а не “все физические outputs любой ценой”.
+
 ### `windows.list_windows`
 Возвращает:
 - hwnd/id;
 - title;
 - process name (если доступно);
 - bounds;
+- effectiveDpi;
+- dpiScale;
+- windowState;
+- monitorId;
+- monitorFriendlyName;
 - isForeground;
 - isVisible.
 
@@ -306,6 +326,14 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 ### `windows.focus_window`
 Явно поднимает окно в foreground.
 
+### `windows.activate_window`
+Явно делает окно usable target:
+- для minimизированного окна сначала делает restore;
+- затем пытается подтвердить foreground focus;
+- используется как основной путь перед `window capture`, `input` и `wait`.
+
+Если Windows не подтверждает foreground после restore, допустим честный `ambiguous`, а не ложный `done`.
+
 ---
 
 ## 4.2. Observation primitives
@@ -313,14 +341,20 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 ### `windows.capture`
 Аргументы:
 - `scope`: `desktop | window`
-- `hwnd`: optional явная цель для `window` capture
+- `hwnd`: optional явная цель окна; для `window` capture выбирает само окно, для `desktop` capture выбирает monitor этого окна, если `monitorId` не задан
+- `monitorId`: optional явная цель для `desktop` capture
 - для `window` без `hwnd` используется attached window
-- для `desktop` без `hwnd` используется monitor attached window или primary monitor
+- для `desktop` с `hwnd` и без `monitorId` используется monitor указанного окна
+- для `desktop` с `monitorId` используется именно выбранный monitor без silent fallback
+- для `desktop` без `monitorId` и без `hwnd` используется monitor attached window или primary monitor
 
 Возвращает:
 - image;
 - metadata;
 - local artifact path.
+- monitor metadata.
+- `coordinateSpace = physical_pixels`.
+- `effectiveDpi` и derived `dpiScale` только для `window` capture.
 
 ### `windows.uia_snapshot`
 Аргументы:

@@ -48,6 +48,25 @@ public sealed class ToolContractExporterTests
             document.Artifacts);
     }
 
+    [Fact]
+    public void ExportJsonUsesCanonicalSnakeCaseContractLiterals()
+    {
+        string root = CreateTempDirectory();
+        string jsonPath = Path.Combine(root, "project-interfaces.json");
+
+        ToolContractExporter.ExportJson(jsonPath);
+
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
+        JsonElement attachTool = document.RootElement
+            .GetProperty("tools")
+            .GetProperty("implemented")
+            .EnumerateArray()
+            .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsAttachWindow);
+
+        Assert.Equal("implemented", attachTool.GetProperty("lifecycle").GetString());
+        Assert.Equal("session_mutation", attachTool.GetProperty("safety_class").GetString());
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));

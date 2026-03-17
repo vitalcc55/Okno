@@ -1,6 +1,6 @@
 namespace WinBridge.Runtime.Contracts;
 
 public sealed record ContractSummaryResult(
-    IReadOnlyList<string> ImplementedTools,
-    IReadOnlyDictionary<string, string> DeferredTools,
+    IReadOnlyList<ContractToolDescriptor> ImplementedTools,
+    IReadOnlyList<ContractToolDescriptor> DeferredTools,
     string Notes);

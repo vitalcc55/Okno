@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Windows.Capture;
+using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Runtime;
@@ -18,8 +19,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(sp => new SessionContext(sp.GetRequiredService<AuditLogOptions>().RunId));
         services.AddSingleton<AuditLog>();
         services.AddSingleton<ISessionManager, InMemorySessionManager>();
+        services.AddSingleton<IMonitorManager, Win32MonitorManager>();
         services.AddSingleton<ICaptureService, GraphicsCaptureService>();
         services.AddSingleton<IWindowManager, Win32WindowManager>();
+        services.AddSingleton<IWindowTargetResolver, WindowTargetResolver>();
+        services.AddSingleton(WindowActivationOptions.Default);
+        services.AddSingleton<IWindowActivationPlatform, Win32WindowActivationPlatform>();
+        services.AddSingleton<IWindowActivationService, WindowActivationService>();
         services.AddSingleton<RuntimeInfo>();
 
         return services;

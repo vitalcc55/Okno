@@ -5,8 +5,10 @@ public static class ToolNames
     public const string OknoHealth = "okno.health";
     public const string OknoContract = "okno.contract";
     public const string OknoSessionState = "okno.session_state";
+    public const string WindowsListMonitors = "windows.list_monitors";
     public const string WindowsListWindows = "windows.list_windows";
     public const string WindowsAttachWindow = "windows.attach_window";
+    public const string WindowsActivateWindow = "windows.activate_window";
     public const string WindowsFocusWindow = "windows.focus_window";
     public const string WindowsCapture = "windows.capture";
     public const string WindowsClipboardGet = "windows.clipboard_get";

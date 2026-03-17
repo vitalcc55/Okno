@@ -11,6 +11,8 @@ if (TryRunExportMode(args))
     return;
 }
 
+global::WinBridge.Server.DpiAwarenessBootstrap.EnsurePerMonitorAware();
+
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
 builder.Services.AddWinBridgeRuntime(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);

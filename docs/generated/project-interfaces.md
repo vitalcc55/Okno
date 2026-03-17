@@ -25,13 +25,15 @@
 
 | Tool | Safety class | Notes |
 | --- | --- | --- |
-| `okno.health` | `ReadOnly` | Возвращает сводку состояния runtime и артефактов. |
-| `okno.contract` | `ReadOnly` | Возвращает текущий tool contract runtime. |
-| `okno.session_state` | `ReadOnly` | Возвращает текущий session snapshot. |
-| `windows.list_windows` | `ReadOnly` | Перечисляет top-level окна Windows. |
-| `windows.attach_window` | `SessionMutation` | Прикрепляет текущую сессию к выбранному окну. |
-| `windows.focus_window` | `OsSideEffect` | Пытается перевести окно в foreground. |
-| `windows.capture` | `OsSideEffect` | Снимает window или desktop monitor capture и возвращает PNG + metadata. |
+| `okno.health` | `read_only` | Возвращает сводку состояния runtime: transport, artifacts, implemented tools, active monitor count и состояние display identity path. |
+| `okno.contract` | `read_only` | Возвращает текущий MCP contract runtime: implemented tools, deferred tools и notes без вызова side effects. |
+| `okno.session_state` | `read_only` | Возвращает текущий session snapshot, включая attached window и mode без изменения session state. |
+| `windows.list_monitors` | `read_only` | Возвращает active monitor targets текущей desktop session вместе с diagnostics display identity path. Используй перед explicit desktop capture по monitorId. |
+| `windows.list_windows` | `read_only` | Возвращает live inventory top-level окон. По умолчанию показывает видимые рабочие окна; includeInvisible=true добавляет invisible и untitled windows для diagnostics и target resolution. |
+| `windows.attach_window` | `session_mutation` | Выбирает live window target и прикрепляет его к текущей сессии. Attach требует стабильной identity окна, а не только совпавшего заголовка. |
+| `windows.activate_window` | `os_side_effect` | Делает attached window usable target: при необходимости restore, затем попытка foreground focus и обязательная final live-state verification. Status done означает подтверждённый foreground usable state, а не просто попытку активации. |
+| `windows.focus_window` | `os_side_effect` | Запрашивает foreground focus для explicit hwnd или attached window. В отличие от activate_window не делает restore и не подтверждает usability final-state. |
+| `windows.capture` | `os_side_effect` | Выполняет capture выбранной цели и возвращает PNG + structured metadata. При scope=window target выбирается как explicit hwnd или attached window. При scope=desktop target выбирается как explicit monitorId, explicit hwnd, attached window или primary monitor. Все bounds и pixel sizes выражены в physical_pixels. |
 
 ### Deferred but declared
 

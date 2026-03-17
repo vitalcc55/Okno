@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using WinBridge.Runtime.Contracts;
 
 namespace WinBridge.Runtime.Tooling;
 
@@ -22,8 +23,8 @@ public static class ToolContractExporter
                 new FutureTransportDescriptor("http", "not implemented", "after stable stdio only"),
             ],
             Tools: new ToolContractToolSection(
-                Implemented: ToolContractManifest.Implemented,
-                Deferred: ToolContractManifest.Deferred,
+                Implemented: ToolContractManifest.Implemented.Select(ContractToolDescriptorFactory.FromToolDescriptor).ToArray(),
+                Deferred: ToolContractManifest.Deferred.Select(ContractToolDescriptorFactory.FromToolDescriptor).ToArray(),
                 ImplementedNames: ToolContractManifest.ImplementedNames,
                 SmokeRequiredNames: ToolContractManifest.SmokeRequiredToolNames,
                 DeferredPhaseMap: ToolContractManifest.DeferredPhaseMap),
@@ -91,7 +92,7 @@ public static class ToolContractExporter
         builder.AppendLine("| Tool | Safety class | Notes |");
         builder.AppendLine("| --- | --- | --- |");
 
-        foreach (ToolDescriptor descriptor in document.Tools.Implemented)
+        foreach (ContractToolDescriptor descriptor in document.Tools.Implemented)
         {
             builder.AppendLine("| `" + descriptor.Name + "` | `" + descriptor.SafetyClass + "` | " + descriptor.Summary + " |");
         }
@@ -102,7 +103,7 @@ public static class ToolContractExporter
         builder.AppendLine("| Tool | Current outcome | Planned phase |");
         builder.AppendLine("| --- | --- | --- |");
 
-        foreach (ToolDescriptor descriptor in document.Tools.Deferred)
+        foreach (ContractToolDescriptor descriptor in document.Tools.Deferred)
         {
             builder.AppendLine("| `" + descriptor.Name + "` | `unsupported` | " + descriptor.PlannedPhase + " |");
         }

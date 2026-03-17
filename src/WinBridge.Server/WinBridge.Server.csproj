@@ -7,6 +7,7 @@
     <ProjectReference Include="..\WinBridge.Runtime.Session\WinBridge.Runtime.Session.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Tooling\WinBridge.Runtime.Tooling.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.Capture\WinBridge.Runtime.Windows.Capture.csproj" />
+    <ProjectReference Include="..\WinBridge.Runtime.Windows.Display\WinBridge.Runtime.Windows.Display.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
   </ItemGroup>
 

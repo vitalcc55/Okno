@@ -1,14 +1,17 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Windows.Display;
 
 namespace WinBridge.Runtime.Windows.Shell;
 
-public sealed class Win32WindowManager : IWindowManager
+public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindowManager
 {
     public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible = false)
     {
         IntPtr foregroundWindow = GetForegroundWindow();
+        DisplayTopologySnapshot topology = monitorManager.GetTopologySnapshot();
+        IReadOnlyList<MonitorInfo> monitors = topology.Monitors;
         List<WindowDescriptor> windows = new();
 
         _ = EnumWindows(
@@ -32,6 +35,15 @@ public sealed class Win32WindowManager : IWindowManager
                 }
 
                 uint threadId = GetWindowThreadProcessId(hWnd, out uint processId);
+                long? monitorHandle = monitorManager.GetMonitorHandleForWindow(hWnd.ToInt64());
+                MonitorInfo? monitor = monitorHandle is long handle
+                    ? monitorManager.FindMonitorByHandle(handle, topology)
+                    : null;
+                if (!WindowDpiReader.TryGetEffectiveDpi(hWnd, out int effectiveDpi))
+                {
+                    return true;
+                }
+
                 windows.Add(
                     new WindowDescriptor(
                         Hwnd: hWnd.ToInt64(),
@@ -42,7 +54,12 @@ public sealed class Win32WindowManager : IWindowManager
                         ClassName: TryGetWindowClassName(hWnd),
                         Bounds: new Bounds(rect.Left, rect.Top, rect.Right, rect.Bottom),
                         IsForeground: hWnd == foregroundWindow,
-                        IsVisible: isVisible));
+                        IsVisible: isVisible,
+                        EffectiveDpi: effectiveDpi,
+                        DpiScale: effectiveDpi / 96.0,
+                        WindowState: GetWindowState(hWnd),
+                        MonitorId: monitor?.Descriptor.MonitorId,
+                        MonitorFriendlyName: monitor?.Descriptor.FriendlyName));
 
                 return true;
             },
@@ -135,6 +152,29 @@ public sealed class Win32WindowManager : IWindowManager
         return length > 0 ? new string(buffer, 0, length) : null;
     }
 
+    private static string GetWindowState(IntPtr hWnd)
+    {
+        WINDOWPLACEMENT placement = new() { length = Marshal.SizeOf<WINDOWPLACEMENT>() };
+        if (!GetWindowPlacement(hWnd, ref placement))
+        {
+            return WindowStateValues.Unknown;
+        }
+
+        return placement.showCmd switch
+        {
+            SwShowMaximized => WindowStateValues.Maximized,
+            SwShowMinimized or SwMinimize or SwShowMinNoActive => WindowStateValues.Minimized,
+            _ when TryIsWindowArranged(hWnd) => WindowStateValues.Arranged,
+            _ => WindowStateValues.Normal,
+        };
+    }
+
+    private static bool TryIsWindowArranged(IntPtr hWnd)
+    {
+        IsWindowArrangedInvoker? invoker = s_isWindowArrangedInvoker.Value;
+        return invoker is not null && invoker(hWnd);
+    }
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -145,6 +185,30 @@ public sealed class Win32WindowManager : IWindowManager
         public int Right;
         public int Bottom;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPLACEMENT
+    {
+        public int length;
+        public int flags;
+        public int showCmd;
+        public POINT ptMinPosition;
+        public POINT ptMaxPosition;
+        public RECT rcNormalPosition;
+    }
+
+    private const int SwShowMaximized = 3;
+    private const int SwShowMinimized = 2;
+    private const int SwMinimize = 6;
+    private const int SwShowMinNoActive = 7;
+    private static readonly Lazy<IsWindowArrangedInvoker?> s_isWindowArrangedInvoker = new(LoadIsWindowArrangedInvoker);
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -175,4 +239,29 @@ public sealed class Win32WindowManager : IWindowManager
 
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
+    private static IsWindowArrangedInvoker? LoadIsWindowArrangedInvoker()
+    {
+        try
+        {
+            if (!NativeLibrary.TryLoad("user32.dll", out IntPtr libraryHandle))
+            {
+                return null;
+            }
+
+            return NativeLibrary.TryGetExport(libraryHandle, "IsWindowArranged", out IntPtr functionPointer)
+                ? Marshal.GetDelegateForFunctionPointer<IsWindowArrangedInvoker>(functionPointer)
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate bool IsWindowArrangedInvoker(IntPtr hWnd);
 }

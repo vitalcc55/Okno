@@ -6,6 +6,11 @@
 
 `windows.list_windows -> windows.attach_window -> windows.capture`
 
+Начиная с display/activation hardening этот observe-loop дополняется двумя важными правилами:
+
+- explicit desktop target выбирается через `windows.list_monitors` + `monitorId`;
+- minimизированное окно сначала проходит через `windows.activate_window`, а не через hidden restore внутри `windows.capture`.
+
 Его цель проста: агент должен надёжно увидеть нужное окно, получить новый визуальный контекст и только потом переходить к более хрупким шагам вроде `click`, `type` или `wait`.
 
 Документ описывает:
@@ -17,8 +22,9 @@
 
 ## Что реализовано
 
-На текущем этапе `observe/capture` slice состоит из трёх публичных tool:
+На текущем этапе `observe/capture` slice опирается на четыре публичных capability:
 
+- `windows.list_monitors` — перечисляет captureable desktop view targets и их stable source/view identity;
 - `windows.list_windows` — перечисляет видимые top-level окна и их базовые metadata;
 - `windows.attach_window` — делает выбранное окно текущим session target;
 - `windows.capture` — возвращает снимок окна или monitor в виде MCP tool result с image block, structured metadata и локальным PNG artifact.
@@ -44,9 +50,10 @@
 
 Для `scope="desktop"` порядок сейчас такой:
 
-1. если есть explicit или attached window, выбирается monitor этого окна;
-2. если target window нет, берётся именно primary monitor через Win32 monitor enumeration, а не через virtual-screen origin heuristic;
-3. если attached window устарело или live окно с тем же `HWND` больше не совпадает с attached snapshot по ключевым metadata, runtime нормализует его в `no target` и тоже уходит в primary monitor, а не в tool error.
+1. если передан `monitorId`, выбирается именно он;
+2. иначе если есть explicit или attached window, выбирается monitor этого окна;
+3. если target window нет, берётся именно primary monitor через monitor inventory;
+4. если attached window устарело или live окно с тем же `HWND` больше не совпадает с attached snapshot по ключевым metadata, runtime нормализует его в `no target` и тоже уходит в primary monitor, а не в tool error.
 
 При этом attached identity теперь читается так:
 
@@ -69,10 +76,15 @@
 - `scope`
 - `targetKind`
 - `hwnd`
+- `coordinateSpace`
+- `effectiveDpi` для `window` capture
+- `dpiScale` как derived convenience field только там, где у runtime есть authoritative window DPI
+- `monitorId`
+- `monitorFriendlyName`
+- `monitorGdiDeviceName`
 - `title`
 - `processName`
 - `bounds`
-- `dpiScale`
 - `pixelWidth`
 - `pixelHeight`
 - `capturedAtUtc`
@@ -80,6 +92,12 @@
 - `mimeType`
 - `byteSize`
 - `sessionRunId`
+
+Metadata строятся не из исходного pre-capture target snapshot, а из authoritative target snapshot после завершения capture path. Это важно для двух случаев:
+
+- после `Recreate` runtime публикует уже обновлённые `bounds` и связанные target fields, согласованные с финальным PNG;
+- перед desktop `GDI` fallback runtime заново резолвит текущий monitor target, чтобы не возвращать успешный screenshot по устаревшей topology.
+- для успешного `desktop` WGC capture runtime не делает silent retarget на другой monitor: monitor identity остаётся от того target, по которому был создан `GraphicsCaptureItem`, а refreshed topology используется только если она подтверждает тот же monitor.
 
 Аннотации tool тоже теперь выровнены с фактическим поведением:
 
@@ -108,8 +126,10 @@
 3. `Direct3D11CaptureFramePool`
 4. `GraphicsCaptureSession.StartCapture()`
 5. `FrameArrived -> TryGetNextFrame()`
-6. `SoftwareBitmap.CreateCopyFromSurfaceAsync`
-7. PNG encoding через `BitmapEncoder`
+6. проверка `Direct3D11CaptureFrame.ContentSize` против текущего размера frame pool
+7. при первом size drift — `Direct3D11CaptureFramePool.Recreate(...)` и ожидание следующего frame
+8. только после size stabilization — `SoftwareBitmap.CreateCopyFromSurfaceAsync`
+9. PNG encoding через `BitmapEncoder`
 
 То есть первый path максимально windows-native и не изобретает собственный графический pipeline поверх shell или внешних утилит.
 
@@ -124,14 +144,17 @@
 Поэтому fallback policy сейчас разделена так:
 
 - для `scope="desktop"` `GDI` screen copy через `Graphics.CopyFromScreen` допустим и как fallback после timeout/native ошибки, и как прямой backend, если `Windows.Graphics.Capture` недоступен в текущей сессии;
+- для `scope="desktop"` туда же относится persistent geometry mismatch: если после single `Recreate` `ContentSize` всё ещё не стабилизировался, runtime считает WGC acquisition недостоверным и уходит в тот же desktop fallback;
 - для `scope="window"` screen-copy fallback больше не используется, потому что он может вернуть чужие экранные пиксели и нарушить semantics конкретного `HWND`;
-- для minimизированного окна runtime возвращает tool-level error и просит сначала восстановить окно.
+- для `scope="window"` size drift после single `Recreate` считается честной tool-level ошибкой, а не поводом подменять window semantics screen-copy fallback'ом;
+- для minimизированного окна runtime возвращает tool-level error и просит сначала вызвать `windows.activate_window`.
 
 Важно:
 
 - desktop fallback не меняет публичный MCP contract;
 - desktop fallback остаётся Windows-native;
 - window path теперь предпочитает честный `isError=true`, если достоверный window-specific capture невозможен.
+- runtime process должен быть DPI-aware до старта MCP host, иначе `physical_pixels` contract для window bounds и capture metadata недостоверен.
 
 ## Почему реализовано именно так
 
@@ -180,7 +203,7 @@
 - region capture;
 - multi-monitor stitched desktop capture;
 - capture diff / visual compare;
-- отдельный monitor enumeration/select contract.
+- richer monitor selection contract beyond `windows.list_monitors` + `monitorId`.
 - offscreen window-specific fallback beyond `Windows.Graphics.Capture`.
 
 То есть это не полный visual subsystem, а первый рабочий observe foundation.
@@ -242,6 +265,8 @@
 - `GraphicsCaptureSession`;
 - `StartCapture`;
 - `FrameArrived`;
+- `ContentSize` как authoritative размер кадра на момент рендера;
+- `Recreate` как канонический ответ на size drift frame pool;
 - захват через `B8G8R8A8`;
 - общую форму capture pipeline для первого native backend.
 
