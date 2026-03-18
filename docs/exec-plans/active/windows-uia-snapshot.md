@@ -52,6 +52,11 @@
 - MCP tools обязаны отдавать честный `isError`, structured result можно и нужно публиковать через `structuredContent`, а для backwards compatibility structured payload стоит дублировать в `TextContent`. Источник: [MCP Tools](https://modelcontextprotocol.io/specification/draft/server/tools).
 - MCP authorization note для текущего repo не переносится на `STDIO`: HTTP OAuth flow сюда не применяется, credentials должны оставаться environment-based. Источник: [MCP Authorization](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization).
 
+Дополнительное требование к реализации active-path:
+
+- перед кодом отдельно перепроверить official Windows docs и API для active window resolution; exact runtime meaning `active` нельзя зафиксировать эвристикой "как сейчас кажется удобным".
+- рабочая contract-гипотеза для этого плана: `active` означает top-level foreground window, а не focused child element внутри произвольного процесса; если official docs потребуют другой authoritative path, это решение должно быть явно отражено в plan/report/docs.
+
 ## Design contract
 
 ### Intent
@@ -71,10 +76,13 @@
 ### Target model
 
 - Explicit target: `hwnd` parameter.
-- Implicit target: attached window текущей session.
+- Implicit attached target: attached window текущей session. Используется, если `hwnd` не передан.
+- Implicit active target: текущий active/foreground top-level window. Используется только если `hwnd` не передан и в session нет attached window.
+- Target precedence: `explicit hwnd` -> `attached window` -> `active window`.
 - Missing target: честный `failed` с `isError=true`.
-- Stale attached target: честный `failed`; reuse старого `HWND` без identity re-check запрещен.
-- Ambiguous target: невозможен на уровне tool handler, потому что `windows.uia_snapshot` принимает only `hwnd` или attached window, а attach ambiguity уже закрывается в `windows.attach_window`.
+- Stale explicit target: честный `failed`; если caller указал `hwnd`, runtime не имеет права молча переключиться на attached или active window.
+- Stale attached target: честный `failed`; reuse старого `HWND` без identity re-check запрещен, и silent fallback из stale attached в active path запрещён.
+- Ambiguous active target: если runtime не может доказуемо определить один live top-level active window, tool должен вернуть `failed` или `unsupported`, а не выбирать "наиболее похожее" окно.
 
 ### Identity model
 
@@ -100,12 +108,14 @@
 - traversal/caching contract violated.
 - Allowed fallback:
 - from build-cache path to live property reads only if semantic target remains the same window and result marks `acquisitionMode`;
-- from requested attached target to explicit `hwnd` only when caller passed `hwnd`.
+- active path разрешён только как последний target-resolution step после отсутствия explicit и attached target, а не как fallback после stale explicit/attached target.
 - Forbidden fallback:
 - auto-focus/auto-restore window;
 - OCR or capture-based structure synthesis;
 - shell/input/action emulation;
-- silent switch from stale attached window to "какое-то похожее" live window.
+- silent switch from stale attached window to active window или "какое-то похожее" live window;
+- silent switch from explicit `hwnd` на attached или active window;
+- подмена `active window` focused child element или last-used app window без documented official API policy.
 - False success policy:
 - better `failed` or `unsupported` than shallow tree for wrong window.
 
@@ -224,6 +234,7 @@ Repo decision for V1: заменить vague `filtersJson` placeholder на type
 - заменить deferred signature `UiaSnapshot(int depth = 3, string? filtersJson = null)` на typed public surface без opaque JSON-фильтров;
 - рекомендуемая MCP shape:
 - `windows.uia_snapshot(hwnd?: long, depth?: int, maxNodes?: int) -> CallToolResult`;
+- semantic resolution without `hwnd`: сначала attached window, и только если attached target отсутствует, current active/foreground top-level window;
 - result должен использовать `UseStructuredContent = true` и `TextContentBlock` с сериализованным JSON.
 
 ### Manifest/export
@@ -239,6 +250,7 @@ Repo decision for V1: заменить vague `filtersJson` placeholder на type
 - Обновить `IUiAutomationService` так, чтобы service boundary принимал `UiaSnapshotRequest` и возвращал `UiaSnapshotResult`.
 - Добавить typed DTO в `src/WinBridge.Runtime.Contracts/`.
 - Зафиксировать final public method signature для `windows.uia_snapshot` в `WindowTools.cs`.
+- До заморозки target resolver отдельно проверить official Windows docs/API для active window path и зафиксировать в коде/доках, что именно считается authoritative active target.
 
 ### Step 2. UIA runtime service
 
@@ -255,7 +267,9 @@ Repo decision for V1: заменить vague `filtersJson` placeholder на type
 - Добавить dependency в `src/WinBridge.Server/Tools/WindowTools.cs`.
 - Реализовать handler:
 - explicit `hwnd` > attached window;
+- if no explicit and no attached target: active window;
 - missing/stale target -> `isError=true`;
+- stale attached target does not silently fall through to active path;
 - successful snapshot -> `isError=false`;
 - unsupported environment -> честный typed failure без transport breakage.
 
@@ -280,6 +294,7 @@ Repo decision for V1: заменить vague `filtersJson` placeholder на type
 
 - Добавить runtime-focused unit tests в `tests/WinBridge.Runtime.Tests/`, минимум:
 - selector/validation tests for request bounds;
+- target precedence tests for explicit/attached/active resolution;
 - traversal budget tests (`depth`, `maxNodes`, truncation);
 - element id/path builder tests;
 - artifact naming tests;
@@ -292,8 +307,10 @@ Repo decision for V1: заменить vague `filtersJson` placeholder на type
 - Покрыть:
 - explicit `hwnd` path;
 - attached window path;
+- active window path when no `hwnd` and no attached target;
 - missing target;
 - stale attached target;
+- stale attached target does not fall through to active path;
 - `isError` semantics;
 - structuredContent/text payload parity.
 
@@ -306,6 +323,7 @@ Repo decision for V1: заменить vague `filtersJson` placeholder на type
 - button;
 - optional checkbox/list if нужен еще один control type.
 - Обновить `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs` и `scripts/smoke.ps1`:
+- exercise active path before attach when helper window owns foreground;
 - attach helper window;
 - call `windows.uia_snapshot`;
 - assert root window node;
@@ -351,7 +369,9 @@ Repo decision for V1: заменить vague `filtersJson` placeholder на type
 
 - explicit `hwnd` wins over attached window;
 - attached window works when `hwnd` omitted;
+- active window path works when neither `hwnd` nor attached target are present;
 - missing/stale target returns `failed` + `isError=true`;
+- stale attached target does not silently switch to active window;
 - unsupported/UIA acquisition error remains typed tool failure, not exception leak;
 - successful response returns `structuredContent` and matching serialized text block.
 
@@ -371,6 +391,7 @@ Repo decision for V1: заменить vague `filtersJson` placeholder на type
 Smoke scenario:
 
 - поднять helper window с predictable child controls;
+- подтвердить active-path: пока helper в foreground и session ещё не attach-нута, `windows.uia_snapshot` без `hwnd` снимает именно helper window;
 - дождаться окна через `windows.list_windows`;
 - выполнить `windows.attach_window`;
 - вызвать `windows.uia_snapshot`;
@@ -378,18 +399,25 @@ Smoke scenario:
 - подтвердить наличие expected child semantics;
 - подтвердить наличие JSON artifact в diagnostics run directory.
 
-## Docs sync
+## Source-of-truth docs sync
 
 После реализации в том же цикле обновить:
 
+- `docs/product/index.md`
+- `docs/product/okno-spec.md`
+- `docs/product/okno-roadmap.md`
+- `docs/product/okno-vision.md`
 - `docs/generated/project-interfaces.md`
 - `docs/generated/project-interfaces.json`
 - `docs/generated/commands.md`
 - `docs/generated/test-matrix.md`
 - `docs/bootstrap/bootstrap-status.json`
 - `docs/architecture/observability.md`
-- `docs/product/okno-roadmap.md`
 - `docs/CHANGELOG.md`
+
+Для roadmap это означает не только обновить priority table/status, но и вычистить legacy narrative sections, которые всё ещё ставят clipboard/input раньше `windows.uia_snapshot`.
+
+Для product docs это означает не ограничиваться generated/export слоем: spec, vision и product index должны отражать final V1 contract и execution order этого slice, а не старую greenfield-последовательность.
 
 Команда синхронизации:
 

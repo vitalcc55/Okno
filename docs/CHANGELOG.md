@@ -5,6 +5,7 @@
 ## 2026-03-18 11:08
 
 - Добавлен отдельный exec-plan для следующего shipped capability slice `windows.uia_snapshot` в `docs/exec-plans/active/windows-uia-snapshot.md`: план фиксирует contract-first goal, non-goals, official Microsoft/MCP constraints, file-level integration map, typed DTO/result shape, L1/L2/L3 ladder, docs sync и rollback policy без преждевременного захода в `windows.wait`, `windows.input` или `windows.uia_action`.
+- В тот же exec-plan добавлена явная target policy `explicit -> attached -> active` для `windows.uia_snapshot` с запретом на silent fallback из stale attached/explicit target и расширен обязательный docs-sync до полного source-of-truth набора по slice: `product/index`, `okno-spec`, `okno-roadmap`, `okno-vision`, `observability` и generated docs.
 
 ## 2026-03-18 09:50
 
