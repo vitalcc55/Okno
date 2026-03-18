@@ -243,22 +243,28 @@ Input — это fallback и исполнительный слой, но не о
 ## 4.1. V1 core tools
 
 Обязательное ядро:
+- `windows.list_monitors`
 - `windows.list_windows`
 - `windows.attach_window`
+- `windows.focus_window`
+- `windows.activate_window`
 - `windows.capture`
 - `windows.uia_snapshot`
 - `windows.uia_action`
 - `windows.input`
 - `windows.wait`
-- `windows.clipboard`
+- `windows.clipboard_get`
+- `windows.clipboard_set`
 
 ## 4.2. V2 expanded tools
 
 Следующий полезный набор:
-- `windows.app`
-- `windows.window`
+- `windows.launch_process`
+- `windows.open_target`
 - `windows.dialog`
-- `windows.focus`
+- `windows.menu`
+- `windows.taskbar`
+- `windows.tray`
 - `windows.region_capture`
 - `windows.ocr`
 - `windows.process` (минимально read-only + safe control)

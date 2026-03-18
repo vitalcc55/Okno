@@ -2,6 +2,13 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-18 09:50
+
+- `docs/product/okno-roadmap.md` переведён из чисто greenfield narrative в repo-aligned operational roadmap: документ теперь явно фиксирует текущий реализованный bootstrap baseline (`Server` / `Contracts` / `Diagnostics` / `Session` / `Windows.Display` / `Windows.Shell` / `Windows.Capture`) и различает `реализовано`, `частично`, `только_seam` и `запланировано` для capability slices.
+- В roadmap добавлена таблица приоритетов в реальных именах репозитория и tool surface, чтобы execution order больше не расходился с текущим contract/runtime: следующий рубеж формулируется как `windows.uia_snapshot -> windows.wait -> environment/safety -> launch -> input`, а не как старый абстрактный порядок из greenfield-версии.
+- Порядок приоритета при нехватке времени и итоговая формулировка V1 выровнены под текущий repo state: `launch` разделён на `windows.launch_process` и `windows.open_target`, а преждевременное расширение `windows.input` прямо зафиксировано как риск до появления snapshot/wait/guard layers.
+- `docs/product/okno-vision.md` и `docs/product/okno-spec.md` дополнительно выровнены по concrete tool naming: V1 core tools теперь используют `windows.list_monitors`, `windows.focus_window`, `windows.activate_window`, `windows.clipboard_get` и `windows.clipboard_set`, а clipboard/paste терминология больше не расходится между vision/spec/roadmap.
+
 ## 2026-03-17 16:07
 
 - WGC one-shot capture path больше не считает первый пришедший frame автоматически годным: runtime теперь валидирует `Direct3D11CaptureFrame.ContentSize`, допускает ровно один `Direct3D11CaptureFramePool.Recreate(...)` и сохраняет PNG только после стабилизации геометрии кадра.
