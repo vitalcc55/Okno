@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-18 11:08
+
+- Добавлен отдельный exec-plan для следующего shipped capability slice `windows.uia_snapshot` в `docs/exec-plans/active/windows-uia-snapshot.md`: план фиксирует contract-first goal, non-goals, official Microsoft/MCP constraints, file-level integration map, typed DTO/result shape, L1/L2/L3 ladder, docs sync и rollback policy без преждевременного захода в `windows.wait`, `windows.input` или `windows.uia_action`.
+
 ## 2026-03-18 09:50
 
 - `docs/product/okno-roadmap.md` переведён из чисто greenfield narrative в repo-aligned operational roadmap: документ теперь явно фиксирует текущий реализованный bootstrap baseline (`Server` / `Contracts` / `Diagnostics` / `Session` / `Windows.Display` / `Windows.Shell` / `Windows.Capture`) и различает `реализовано`, `частично`, `только_seam` и `запланировано` для capability slices.
