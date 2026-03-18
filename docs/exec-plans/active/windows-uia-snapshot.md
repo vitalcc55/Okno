@@ -2,452 +2,212 @@
 
 Статус: active
 Создан: 2026-03-18
+Обновлён: 2026-03-18
 
 ## Goal
 
-Добавить `windows.uia_snapshot` как honest MCP observe tool для active/attached/explicit window без регрессии текущего `windows.list_windows` / `windows.attach_window` / `windows.activate_window` / `windows.capture` baseline.
+Зафиксировать и доказать только `Package A: contract + target policy` для capability slice `windows.uia_snapshot`.
 
-Полезный минимальный outcome:
+Что именно закрывает этот пакет:
 
-- tool принимает explicit `hwnd` или использует attached window;
-- tool возвращает typed semantic tree snapshot выбранного окна;
-- tool не делает hidden focus/input/action side effects;
-- tool оставляет audit/evidence и проходит L1/L2/L3.
+- docs-driven target policy для `explicit -> attached -> active`;
+- typed DTO groundwork для snapshot request/result/element;
+- typed shell seam для target-resolution policy;
+- L1/L2 tests на precedence, stale-policy и honest deferred surface.
 
-## Non-goals
+Что этот пакет намеренно **не** делает:
 
-- `windows.uia_action` и любые semantic actions по element id;
-- расширение `windows.input`, `SendInput`, mouse/keyboard orchestration;
-- OCR, screen parsing, image-to-structure fallback;
-- event subscriptions, watchers, daemon/background companion;
-- browser/DOM-specific semantics;
-- broad environment/safety layer beyond hooks, нужных для честного `unsupported`/`failed`;
-- silent fallback в `windows.capture`, shell automation или activation path ради "успешного" snapshot.
+- concrete `Win32UiAutomationService`;
+- DI registration;
+- public MCP handler rollout;
+- `ToolLifecycle.Implemented`;
+- audit/evidence rollout для нового tool;
+- smoke/generated-docs rollout;
+- commit/push.
+
+## Delivery packages
+
+### Package A — contract + target policy
+
+Статус: `done`
+
+В объёме текущего изменения:
+
+- фиксируем authoritative meaning `active`;
+- добавляем `UiaSnapshot*` DTO;
+- добавляем `UiaSnapshotTargetResolution` и failure/source literals;
+- расширяем shell seam до `ResolveUiaSnapshotTarget(...)`;
+- держим public surface `windows.uia_snapshot` в честном `Deferred/unsupported`.
+
+### Package B — runtime service + evidence
+
+Статус: `next`
+
+Отложено:
+
+- concrete UIA service;
+- `ElementFromHandle` / build-cache / traversal implementation;
+- artifact writing;
+- audit payload enrichment;
+- DI wiring.
+
+### Package C — server rollout + smoke + generated docs
+
+Статус: `pending`
+
+Отложено:
+
+- public `WindowTools` handler;
+- `CallToolResult` / `structuredContent` path;
+- lifecycle switch в `Implemented`;
+- smoke scenario;
+- `refresh-generated-docs.ps1`.
 
 ## Current repo state
 
-- `docs/product/okno-roadmap.md` фиксирует `windows.uia_snapshot` как следующий shipped capability slice после текущего `observe/window` baseline.
-- `docs/generated/project-interfaces.md` показывает `windows.uia_snapshot` как declared/deferred tool с текущим outcome `unsupported`.
-- `src/WinBridge.Runtime.Tooling/ToolNames.cs` уже объявляет `ToolNames.WindowsUiaSnapshot`.
-- `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs` держит tool в `ToolLifecycle.Deferred`.
-- `src/WinBridge.Server/Tools/WindowTools.cs` пока возвращает `DeferredToolResult UiaSnapshot(int depth = 3, string? filtersJson = null)`.
-- `src/WinBridge.Runtime.Windows.UIA/IUiAutomationService.cs` существует только как пустой seam.
-- `src/WinBridge.Runtime/ServiceCollectionExtensions.cs` пока не регистрирует UIA service.
-- `src/WinBridge.Runtime.Windows.Shell/IWindowTargetResolver.cs` и `WindowTargetResolver.cs` уже дают проверенный explicit/attached window resolution, который нужно переиспользовать.
-- `tests/WinBridge.Runtime.Tests`, `tests/WinBridge.Server.IntegrationTests` и `tests/WinBridge.SmokeWindowHost` уже дают готовый L1/L2/L3 harness; отдельного UIA coverage пока нет.
+- `windows.uia_snapshot` уже объявлен в `ToolNames`, но остаётся `Deferred` в `ToolContractManifest`.
+- Public handler в `WindowTools` по-прежнему возвращает `DeferredToolResult`; Package A не меняет этот факт.
+- Текущий репозиторий уже содержит pre-existing generated/bootstrap diffs вне объёма этого пакета; они не являются Package A truth и не должны откатываться в этом цикле.
+- После Package A в repo появляются typed contracts и policy seam, но tool всё ещё честно считается не реализованным.
 
 ## Official constraints
 
-Ниже перечислены external constraints, которые нужно считать обязательными, а не вкусовыми:
+- `GetForegroundWindow` возвращает окно, с которым пользователь сейчас работает; это authoritative source для cross-process active window semantics в текущем V1.
+- `GetActiveWindow` и `GetFocus` не подходят как meaning `active` для `windows.uia_snapshot`, потому что они привязаны к queue/thread semantics вызывающего контекста, а не к global top-level active target.
+- Для cross-thread GUI focus diagnostics существует `GetGUIThreadInfo`, но Package A не строит новый focus API; он только фиксирует, что `active` не равен focused child element.
+- UIA root acquisition для будущей реализации должен строиться от `IUIAutomation::ElementFromHandle`.
+- `IUIAutomationCacheRequest` и `ElementFromHandleBuildCache` считаются valid future optimization path, но не меняют Package A public surface.
+- Default semantic tree для shipped V1 остаётся `control view`, а не `raw view`.
+- `windows.uia_snapshot` не должен скрыто активировать окно; `SetForegroundWindow` restrictions остаются прямым запретом на hidden activation fallback.
+- MCP tools требуют honest `isError` semantics, но Package A не публикует новый tool handler.
+- MCP authorization note для `STDIO` не влечёт отдельного auth rollout в этом пакете.
 
-- UI Automation представляет UI как tree с desktop root и application windows как direct children; tree динамический и может содержать тысячи элементов, поэтому обход должен быть bounded, а не "все descendants без лимитов". Источник: [UI Automation Specification](https://learn.microsoft.com/en-us/windows/win32/winauto/ui-automation-specification), [UI Automation Tree Overview](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-treeoverview).
-- Для target window primary anchor должен быть `IUIAutomation::ElementFromHandle`, который получает UI Automation element для заданного `HWND`. Источник: [IUIAutomation::ElementFromHandle](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomation-elementfromhandle).
-- UIA cache requests существуют специально для batched property/pattern reads и снижения cross-process cost; V1 должен использовать narrow cache request вместо большого числа ad-hoc live reads. Источник: [IUIAutomationCacheRequest](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nn-uiautomationclient-iuiautomationcacherequest).
-- UI Automation tree имеет `raw`, `control` и `content` views; для automated testing наиболее уместен `control view`, а `raw view` слишком шумный для shipped default. Это repo decision, вытекающее из [UI Automation Tree Overview](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-treeoverview).
-- Control patterns выражают capability, могут комбинироваться и в некоторых случаях supportятся динамически; snapshot должен сообщать supported patterns, а не обещать, что pattern availability уже равна готовому action contract. Источник: [UI Automation Control Patterns Overview](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-controlpatternsoverview).
-- Control type задает canonical control identity и связан с required patterns/properties/tree semantics; result должен возвращать как минимум control type id/name и localized control type. Источник: [UI Automation Control Types Overview](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-controltypesoverview).
-- `SetForegroundWindow` сильно ограничен Windows policy и может быть отвергнут даже при формальном соблюдении условий; `windows.uia_snapshot` не должен скрыто активировать окно ради success path. Источник: [SetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow).
-- `SendInput` subject to UIPI и может fail без явного signal о причине; это прямой аргумент не тащить input fallback в snapshot slice. Источник: [SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput).
-- `windows.capture` уже опирается на `IGraphicsCaptureItemInterop::CreateForWindow`; `uia_snapshot` не должен ломать или подменять существующий observe/capture contract. Источник: [IGraphicsCaptureItemInterop::CreateForWindow](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow).
-- MCP tools обязаны отдавать честный `isError`, structured result можно и нужно публиковать через `structuredContent`, а для backwards compatibility structured payload стоит дублировать в `TextContent`. Источник: [MCP Tools](https://modelcontextprotocol.io/specification/draft/server/tools).
-- MCP authorization note для текущего repo не переносится на `STDIO`: HTTP OAuth flow сюда не применяется, credentials должны оставаться environment-based. Источник: [MCP Authorization](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization).
-
-Дополнительное требование к реализации active-path:
-
-- перед кодом отдельно перепроверить official Windows docs и API для active window resolution; exact runtime meaning `active` нельзя зафиксировать эвристикой "как сейчас кажется удобным".
-- рабочая contract-гипотеза для этого плана: `active` означает top-level foreground window, а не focused child element внутри произвольного процесса; если official docs потребуют другой authoritative path, это решение должно быть явно отражено в plan/report/docs.
-
-## Design contract
-
-### Intent
-
-- Закрыть первый semantic observe use-case поверх существующего window/session baseline.
-- Дать модели и человеку не screenshot, а typed tree окна с именами, control types и capability hints.
-- Подготовить next slice `windows.wait`, не обещая пока action semantics.
+## Package A design contract
 
 ### Boundary
 
-- Tool class: `observe`.
-- Host responsibility: input validation, explicit/attached target precedence, MCP `isError` semantics, text + structured payload.
-- Runtime responsibility: UIA root acquisition, bounded traversal, property/pattern extraction, evidence artifact, tool-level failure reasons.
-- Primary OS API path: COM UI Automation client (`ElementFromHandle` + cache request + tree walk).
-- Existing capture/session services остаются независимыми и не должны становиться fallback path для snapshot semantics.
+- `windows.uia_snapshot` в этом пакете остаётся declared/deferred tool.
+- Host/server boundary не меняется.
+- Runtime/UIA boundary становится typed, но остаётся seam-only.
+- Target policy фиксируется в shell seam, а не в `WindowTools`.
 
 ### Target model
 
-- Explicit target: `hwnd` parameter.
-- Implicit attached target: attached window текущей session. Используется, если `hwnd` не передан.
-- Implicit active target: текущий active/foreground top-level window. Используется только если `hwnd` не передан и в session нет attached window.
-- Target precedence: `explicit hwnd` -> `attached window` -> `active window`.
-- Missing target: честный `failed` с `isError=true`.
-- Stale explicit target: честный `failed`; если caller указал `hwnd`, runtime не имеет права молча переключиться на attached или active window.
-- Stale attached target: честный `failed`; reuse старого `HWND` без identity re-check запрещен, и silent fallback из stale attached в active path запрещён.
-- Ambiguous active target: если runtime не может доказуемо определить один live top-level active window, tool должен вернуть `failed` или `unsupported`, а не выбирать "наиболее похожее" окно.
+- Explicit target: `hwnd`, если он задан.
+- `explicitHwnd <= 0`, если он явно передан в UIA snapshot path, считается invalid explicit target и должен приводить к явному `stale_explicit_target`, а не к fallback в attached/active. Это правило не меняет shared explicit-target semantics существующих `focus/capture` tools.
+- Attached target: attached window текущей session, если explicit target не задан.
+- Active target: current foreground top-level window только если explicit и attached target отсутствуют.
+- Precedence: `explicit -> attached -> active`.
+
+Правила ошибок:
+
+- `missing_target`: explicit target не задан, attached target отсутствует и foreground `HWND` либо недоступен, либо уже не мапится в live top-level окно.
+- `stale_explicit_target`: caller передал explicit `HWND`, но live window по нему больше не существует. Silent fallback в attached/active запрещён.
+- `stale_attached_target`: attached window больше не проходит stable-identity revalidation. Silent fallback в active запрещён.
+- `ambiguous_active_target`: foreground `HWND` мапится более чем в один live candidate.
+
+Authoritative meaning `active`:
+
+- это foreground top-level window, а не focused child element;
+- это не `GetActiveWindow` calling thread;
+- это не “last used app window” и не эвристика по title/process.
+- active candidate должен определяться из одного live window snapshot, а не из двух раздельных чтений foreground/window inventory.
 
 ### Identity model
 
-- Window identity reuse: existing `WindowTargetResolver.ResolveExplicitOrAttachedWindow(...)` + `WindowIdentityValidator`.
-- Root element identity: selected live window `HWND`.
-- Element identity inside snapshot: runtime-generated path id вида `hwnd:<hwnd>/n0/n3/...`; этот id stable only within one snapshot artifact/result.
-- `AutomationId`, provider runtime id и native window handle считаются helpful metadata, но не promised durable identity across runs.
-- Mutable metadata: `name`, `value`, `isOffscreen`, `hasKeyboardFocus`, bounds, supported patterns.
-- If provider cannot expose strong child identity, element все равно можно вернуть, но только с snapshot-local `elementId`.
+- Explicit path в Package A резолвится только по live `HWND`; дополнительную historical identity для caller-provided explicit `HWND` пока не вводим.
+- Attached path использует существующую stable-identity revalidation (`ProcessId` + `ThreadId` + `ClassName`).
+- Child UIA element identity остаётся future-runtime concern; Package A лишь вводит typed DTO shape.
 
-### Success / error / fallback
+### Contract-first types
 
-- Success:
-- root window live and identity-validated;
-- UIA root acquired for this window;
-- snapshot built within configured depth/node budget;
-- result returns typed root node and evidence path.
-- Explicit error:
-- no target;
-- target stale/not found;
-- UIA unavailable in current environment;
-- root acquisition failed for explicit/attached window;
-- traversal/caching contract violated.
-- Allowed fallback:
-- from build-cache path to live property reads only if semantic target remains the same window and result marks `acquisitionMode`;
-- active path разрешён только как последний target-resolution step после отсутствия explicit и attached target, а не как fallback после stale explicit/attached target.
-- Forbidden fallback:
-- auto-focus/auto-restore window;
-- OCR or capture-based structure synthesis;
-- shell/input/action emulation;
-- silent switch from stale attached window to active window или "какое-то похожее" live window;
-- silent switch from explicit `hwnd` на attached или active window;
-- подмена `active window` focused child element или last-used app window без documented official API policy.
-- False success policy:
-- better `failed` or `unsupported` than shallow tree for wrong window.
-
-### Effect model
-
-- Tool reads live UIA state.
-- Tool does not mutate session state.
-- Tool does not call focus/activate/input APIs.
-- Tool writes evidence artifact to diagnostics directory.
-- Tool writes normal audit events through existing `AuditLog`.
-
-### Evidence
-
-- `tool.invocation.started/completed` must include `hwnd`, requested depth, node count, acquisition mode, truncated flag and artifact path.
-- Full serialized snapshot must be written to `artifacts/diagnostics/<run_id>/uia/<artifact>.json`.
-- `summary.md` must mention successful or failed `windows.uia_snapshot` invocation in the same style as other tools.
-- Smoke must prove both MCP payload usefulness and on-disk evidence.
-
-### V1 request/result shape
-
-Repo decision for V1: заменить vague `filtersJson` placeholder на typed request contract.
+Новые contracts этого пакета:
 
 - `UiaSnapshotRequest`
-- `long? Hwnd`
-- `int Depth = 2`
-- `int MaxNodes = 256`
 - `UiaSnapshotResult`
-- `string Status`
-- `string? Reason`
-- `WindowDescriptor? Window`
-- `string View = "control"`
-- `int RequestedDepth`
-- `int RealizedDepth`
-- `int NodeCount`
-- `bool Truncated`
-- `string AcquisitionMode`
-- `string? ArtifactPath`
-- `DateTimeOffset CapturedAtUtc`
-- `UiaElementSnapshot? Root`
-- `SessionSnapshot Session`
 - `UiaElementSnapshot`
-- `string ElementId`
-- `string? ParentElementId`
-- `int Depth`
-- `int Ordinal`
-- `string? Name`
-- `string? AutomationId`
-- `string? ClassName`
-- `string? FrameworkId`
-- `string ControlType`
-- `int ControlTypeId`
-- `string? LocalizedControlType`
-- `bool IsControlElement`
-- `bool IsContentElement`
-- `bool IsEnabled`
-- `bool IsOffscreen`
-- `bool HasKeyboardFocus`
-- `string[] Patterns`
-- `string? Value`
-- `Bounds? BoundingRectangle`
-- `long? NativeWindowHandle`
-- `UiaElementSnapshot[] Children`
+- `UiaSnapshotStatusValues`
+- `UiaSnapshotViewValues`
+- `UiaSnapshotTargetSourceValues`
+- `UiaSnapshotTargetFailureValues`
+- `UiaSnapshotTargetResolution`
 
-Замечание по `BoundingRectangle`: это только raw provider metadata для diagnostics/inspection. Его нельзя объявлять authoritative hit-testing contract для будущего input slice без отдельной design work.
+Typed UIA seam после Package A:
+
+- `Task<UiaSnapshotResult> SnapshotAsync(WindowDescriptor targetWindow, UiaSnapshotRequest request, CancellationToken cancellationToken);`
 
 ## Integration points
 
-- Target resolution reuse:
-- `src/WinBridge.Runtime.Windows.Shell/IWindowTargetResolver.cs`
-- `src/WinBridge.Runtime.Windows.Shell/WindowTargetResolver.cs`
-- Runtime contract DTOs:
-- new files in `src/WinBridge.Runtime.Contracts/`
-- Runtime service seam and implementation:
-- `src/WinBridge.Runtime.Windows.UIA/IUiAutomationService.cs`
-- new `src/WinBridge.Runtime.Windows.UIA/*.cs`
-- DI:
-- `src/WinBridge.Runtime/ServiceCollectionExtensions.cs`
-- MCP tool handler and `isError` semantics:
-- `src/WinBridge.Server/Tools/WindowTools.cs`
-- Tool descriptions / contract manifest / exporter:
-- `src/WinBridge.Runtime.Tooling/ToolDescriptions.cs`
-- `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
-- `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs`
-- Audit/evidence:
-- `src/WinBridge.Runtime.Diagnostics/AuditLog.cs`
-- maybe small helper under `src/WinBridge.Runtime.Diagnostics/` or `src/WinBridge.Runtime.Windows.UIA/` for artifact naming
-- Unit tests:
-- `tests/WinBridge.Runtime.Tests/*`
-- Server integration tests and doubles:
-- `tests/WinBridge.Server.IntegrationTests/WindowToolTestDoubles.cs`
-- `tests/WinBridge.Server.IntegrationTests/*`
-- Real smoke host and smoke runner:
-- `tests/WinBridge.SmokeWindowHost/Program.cs`
-- `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
-- `scripts/smoke.ps1`
-- Docs/generated:
-- `docs/architecture/observability.md`
-- `docs/generated/project-interfaces.md`
-- `docs/generated/project-interfaces.json`
-- `docs/generated/commands.md`
-- `docs/generated/test-matrix.md`
-- `docs/product/okno-roadmap.md`
-- `docs/CHANGELOG.md`
+Package A меняет только следующие слои:
 
-## DTO/contract changes
-
-### Contracts project
-
-- добавить `src/WinBridge.Runtime.Contracts/UiaSnapshotRequest.cs`;
-- добавить `src/WinBridge.Runtime.Contracts/UiaSnapshotResult.cs`;
-- добавить `src/WinBridge.Runtime.Contracts/UiaElementSnapshot.cs`;
-- при необходимости добавить `src/WinBridge.Runtime.Contracts/UiaSnapshotStatusValues.cs` и/или `UiaSnapshotViewValues.cs`, если строковые literals начнут повторяться.
-
-### Server tool surface
-
-- заменить deferred signature `UiaSnapshot(int depth = 3, string? filtersJson = null)` на typed public surface без opaque JSON-фильтров;
-- рекомендуемая MCP shape:
-- `windows.uia_snapshot(hwnd?: long, depth?: int, maxNodes?: int) -> CallToolResult`;
-- semantic resolution without `hwnd`: сначала attached window, и только если attached target отсутствует, current active/foreground top-level window;
-- result должен использовать `UseStructuredContent = true` и `TextContentBlock` с сериализованным JSON.
-
-### Manifest/export
-
-- перевести `windows.uia_snapshot` в `ToolLifecycle.Implemented`;
-- обновить description так, чтобы она явно объясняла explicit/attached target precedence, `control` view default и отсутствие action side effects;
-- при необходимости добавить `outputSchema`, если текущий MCP SDK/exporter это поддерживает без лишнего слоя ручного JSON.
-
-## Implementation order
-
-### Step 1. Contract-first DTO pass
-
-- Обновить `IUiAutomationService` так, чтобы service boundary принимал `UiaSnapshotRequest` и возвращал `UiaSnapshotResult`.
-- Добавить typed DTO в `src/WinBridge.Runtime.Contracts/`.
-- Зафиксировать final public method signature для `windows.uia_snapshot` в `WindowTools.cs`.
-- До заморозки target resolver отдельно проверить official Windows docs/API для active window path и зафиксировать в коде/доках, что именно считается authoritative active target.
-
-### Step 2. UIA runtime service
-
-- Добавить concrete implementation в `src/WinBridge.Runtime.Windows.UIA/`:
-- `Win32UiAutomationService.cs`
-- helper для cache request / traversal / artifact naming по месту.
-- Root acquisition делать от live window через `ElementFromHandle`.
-- Default traversal делать в `control view`, depth-bounded, node-budget-bounded.
-- Кешировать only minimum viable properties/patterns, а не полный raw dump.
-
-### Step 3. Tool handler and DI
-
-- Зарегистрировать service в `src/WinBridge.Runtime/ServiceCollectionExtensions.cs`.
-- Добавить dependency в `src/WinBridge.Server/Tools/WindowTools.cs`.
-- Реализовать handler:
-- explicit `hwnd` > attached window;
-- if no explicit and no attached target: active window;
-- missing/stale target -> `isError=true`;
-- stale attached target does not silently fall through to active path;
-- successful snapshot -> `isError=false`;
-- unsupported environment -> честный typed failure без transport breakage.
-
-### Step 4. Audit and evidence
-
-- Добавить evidence artifact writing under `artifacts/diagnostics/<run_id>/uia/`.
-- Расширить `AuditLog` или соседний helper так, чтобы `tool.invocation.completed` для `windows.uia_snapshot` писал structured data:
-- `view`
-- `requested_depth`
-- `realized_depth`
-- `node_count`
-- `truncated`
-- `acquisition_mode`
-- `artifact_path`
-
-### Step 5. Tool contract and docs metadata
-
-- Обновить `ToolDescriptions.cs`, `ToolContractManifest.cs`, `ToolContractExporter.cs`.
-- Убедиться, что `okno.contract`, exported markdown/json и `tools/list` больше не считают tool deferred/unsupported.
-
-### Step 6. L1 unit tests
-
-- Добавить runtime-focused unit tests в `tests/WinBridge.Runtime.Tests/`, минимум:
-- selector/validation tests for request bounds;
-- target precedence tests for explicit/attached/active resolution;
-- traversal budget tests (`depth`, `maxNodes`, truncation);
-- element id/path builder tests;
-- artifact naming tests;
-- manifest/exporter tests that `windows.uia_snapshot` is implemented.
-
-### Step 7. L2 server integration tests
-
-- Добавить `tests/WinBridge.Server.IntegrationTests/WindowUiaSnapshotToolTests.cs`.
-- Расширить `WindowToolTestDoubles.cs` fake UIA service.
-- Покрыть:
-- explicit `hwnd` path;
-- attached window path;
-- active window path when no `hwnd` and no attached target;
-- missing target;
-- stale attached target;
-- stale attached target does not fall through to active path;
-- `isError` semantics;
-- structuredContent/text payload parity.
-
-### Step 8. L3 real smoke
-
-- Расширить `tests/WinBridge.SmokeWindowHost/Program.cs`, чтобы helper window содержал deterministic semantic subtree:
-- window title;
-- label;
-- text box;
-- button;
-- optional checkbox/list if нужен еще один control type.
-- Обновить `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs` и `scripts/smoke.ps1`:
-- exercise active path before attach when helper window owns foreground;
-- attach helper window;
-- call `windows.uia_snapshot`;
-- assert root window node;
-- assert child nodes contain expected names and/or automation ids;
-- assert `artifactPath` exists;
-- assert tool succeeds без focus/input side effects.
-
-## Test ladder
-
-### L1. Unit / narrow contract
-
-Команды:
-
-- `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj`
-
-Файлы:
-
-- new `tests/WinBridge.Runtime.Tests/UiaSnapshot*Tests.cs`
-- existing `tests/WinBridge.Runtime.Tests/ToolContractManifestTests.cs`
-- existing `tests/WinBridge.Runtime.Tests/ToolContractExporterTests.cs`
-- existing `tests/WinBridge.Runtime.Tests/AuditLogTests.cs`
-
-Минимальные сценарии:
-
-- valid explicit request;
-- invalid depth / invalid maxNodes;
-- bounded traversal returns `truncated=true` when budget exceeded;
-- element ids are snapshot-local and deterministic for one traversal;
-- manifest/export no longer classify tool as deferred.
-
-### L2. Server integration
-
-Команды:
-
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj`
-
-Файлы:
-
-- new `tests/WinBridge.Server.IntegrationTests/WindowUiaSnapshotToolTests.cs`
-- updated `tests/WinBridge.Server.IntegrationTests/WindowToolTestDoubles.cs`
-
-Минимальные сценарии:
-
-- explicit `hwnd` wins over attached window;
-- attached window works when `hwnd` omitted;
-- active window path works when neither `hwnd` nor attached target are present;
-- missing/stale target returns `failed` + `isError=true`;
-- stale attached target does not silently switch to active window;
-- unsupported/UIA acquisition error remains typed tool failure, not exception leak;
-- successful response returns `structuredContent` and matching serialized text block.
-
-### L3. Real smoke
-
-Команды:
-
-- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`
-- `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1`
-
-Файлы:
-
-- `tests/WinBridge.SmokeWindowHost/Program.cs`
-- `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
-- `scripts/smoke.ps1`
-
-Smoke scenario:
-
-- поднять helper window с predictable child controls;
-- подтвердить active-path: пока helper в foreground и session ещё не attach-нута, `windows.uia_snapshot` без `hwnd` снимает именно helper window;
-- дождаться окна через `windows.list_windows`;
-- выполнить `windows.attach_window`;
-- вызвать `windows.uia_snapshot`;
-- подтвердить, что snapshot rooted in attached helper window;
-- подтвердить наличие expected child semantics;
-- подтвердить наличие JSON artifact в diagnostics run directory.
-
-## Source-of-truth docs sync
-
-После реализации в том же цикле обновить:
-
-- `docs/product/index.md`
+- `src/WinBridge.Runtime.Contracts/`
+- `src/WinBridge.Runtime.Windows.UIA/`
+- `src/WinBridge.Runtime.Windows.Shell/`
+- `tests/WinBridge.Runtime.Tests/`
+- `tests/WinBridge.Server.IntegrationTests/`
+- `docs/exec-plans/active/windows-uia-snapshot.md`
 - `docs/product/okno-spec.md`
 - `docs/product/okno-roadmap.md`
-- `docs/product/okno-vision.md`
-- `docs/generated/project-interfaces.md`
-- `docs/generated/project-interfaces.json`
-- `docs/generated/commands.md`
-- `docs/generated/test-matrix.md`
-- `docs/bootstrap/bootstrap-status.json`
-- `docs/architecture/observability.md`
 - `docs/CHANGELOG.md`
 
-Для roadmap это означает не только обновить priority table/status, но и вычистить legacy narrative sections, которые всё ещё ставят clipboard/input раньше `windows.uia_snapshot`.
+Package A осознанно не меняет:
 
-Для product docs это означает не ограничиваться generated/export слоем: spec, vision и product index должны отражать final V1 contract и execution order этого slice, а не старую greenfield-последовательность.
+- `src/WinBridge.Server/Tools/WindowTools.cs`
+- `src/WinBridge.Runtime/ServiceCollectionExtensions.cs`
+- `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
+- generated docs/exporters;
+- `docs/architecture/observability.md`.
 
-Команда синхронизации:
+## Test ladder for Package A
 
-- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`
+### L1. Runtime / contract tests
 
-Замечание:
+Обязательные сценарии:
 
-- `docs/architecture/capability-design-policy.md` менять только если в процессе появится reusable guardrail, который пригодится и для `windows.wait`/`windows.input`, а не как локальный комментарий к одной реализации.
+- request/result defaults;
+- explicit wins over attached/active;
+- stale explicit does not fall through;
+- attached path works when explicit is absent;
+- stale attached does not fall through;
+- active path works only for one foreground top-level window;
+- missing foreground => `missing_target`;
+- foreground `HWND` без live match => `missing_target`;
+- foreground `HWND` с несколькими candidates => `ambiguous_active_target`.
 
-## Risks / rollback
+### L2. Honest deferred surface
 
-- UIA provider quality varies by framework; некоторые окна дадут слабое дерево даже при корректном root acquisition. Это не повод silent fallback'иться в screenshot/OCR.
-- Unbounded descendant search может взорвать latency или дать шумный tree. Это снимается обязательными `Depth` и `MaxNodes`.
-- Element identity across runs inherently weak; snapshot-local `elementId` нельзя рекламировать как future-proof selector for actions.
-- `BoundingRectangle` может быть полезным metadata, но не должен неявно становиться input contract.
-- Minimized/offscreen windows могут дать бедный или меняющийся tree; tool должен сообщать фактический результат, а не активировать окно.
+Обязательные сценарии:
 
-Rollback:
+- `WindowTools.UiaSnapshot(...)` всё ещё возвращает `DeferredToolResult` / `unsupported`;
+- `ToolContractManifest` всё ещё держит tool в `Deferred`;
+- tests не притворяются, что есть public structured snapshot payload или implemented handler.
 
-- Если production implementation окажется unstable, допустим rollback только до честного deferred/unsupported state с одновременным откатом manifest/docs/tests, а не до half-implemented tool.
-- Если unstable окажется только cache path, допустим сохранить implemented tool с `acquisitionMode=live_read`, но только если target semantics и L1/L2/L3 остаются зелеными.
+### L3. Not in Package A
+
+- реальный smoke;
+- end-to-end MCP snapshot flow;
+- artifact assertions.
+
+## Docs sync policy
+
+В рамках Package A синхронизируются только:
+
+- этот exec-plan;
+- `okno-spec`, если wording по `active/selected window` слишком vague;
+- `okno-roadmap`, если wording по stage 6 расходится с `explicit -> attached -> active`;
+- `CHANGELOG`.
+
+Не синхронизируются в этом пакете:
+
+- generated docs;
+- observability docs;
+- exporter output.
 
 ## Checklist
 
-- [ ] План начинается с contract-first и не тянет реализацию до фиксации success/error/fallback/identity/evidence.
-- [ ] `windows.uia_snapshot` формулируется как honest observe tool для active/attached/explicit window.
-- [ ] `windows.uia_action`, `windows.input`, OCR, watchers и daemon явно оставлены вне объема.
-- [ ] Все integration points перечислены по конкретным файлам.
-- [ ] Все external constraints опираются на official Microsoft/MCP docs.
-- [ ] Есть явный L3 smoke-сценарий на живой helper window.
-- [ ] `windows.capture` baseline не используется как fallback for semantic snapshot.
-- [ ] Docs sync и generated refresh включены в тот же execution cycle.
-- [ ] Rollback не оставляет репозиторий в declared-implemented-but-unsupported state.
+- [x] Зафиксирован Package A как единственный scope текущего цикла.
+- [x] Зафиксирован precedence `explicit -> attached -> active`.
+- [x] Зафиксировано authoritative meaning `active = foreground top-level window`.
+- [x] Запрещён silent fallback из stale explicit/attached target в active path.
+- [x] Typed contracts и target policy seam разрешены без premature public rollout.
+- [x] `windows.uia_snapshot` остаётся честным `Deferred/unsupported` после Package A.

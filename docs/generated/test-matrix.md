@@ -2,7 +2,7 @@
 
 > Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.
 
-> Матрица ниже описывает coverage и entry points. Она не утверждает факт успешного последнего прогона; смотри `docs/generated/commands.md` и `docs/bootstrap/bootstrap-status.json` для latest verified validation.
+> Матрица ниже описывает coverage и entry points. Она не утверждает факт конкретного успешного прогона; evidence отдельного запуска смотри в `artifacts/smoke/<run_id>/` и `artifacts/diagnostics/<run_id>/`.
 
 | Layer | Command | Coverage now |
 | --- | --- | --- |

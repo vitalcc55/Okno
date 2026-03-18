@@ -7,4 +7,6 @@ public interface IWindowTargetResolver
     WindowDescriptor? ResolveExplicitOrAttachedWindow(long? explicitHwnd, WindowDescriptor? attachedWindow);
 
     WindowDescriptor? ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow);
+
+    UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow);
 }

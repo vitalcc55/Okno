@@ -241,6 +241,22 @@ public sealed class WindowSessionToolTests
     }
 
     [Fact]
+    public void FocusWindowDoesNotFallbackToAttachedWindowForExplicitZeroHwnd()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 402, title: "Attached target");
+        TestContext context = CreateContext(
+            windows: [attachedWindow],
+            attachedWindow: attachedWindow,
+            focusResults: new Dictionary<long, bool> { [attachedWindow.Hwnd] = true });
+
+        FocusWindowResult result = context.Tools.FocusWindow(hwnd: 0);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Contains("Окно для фокуса больше не найдено", result.Reason, StringComparison.Ordinal);
+        Assert.Null(result.Window);
+    }
+
+    [Fact]
     public void FocusWindowReturnsFailedWhenTargetIsMissing()
     {
         WindowTools tools = CreateTools(windows: []);

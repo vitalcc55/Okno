@@ -9,7 +9,7 @@ public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindow
 {
     public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible = false)
     {
-        IntPtr foregroundWindow = GetForegroundWindow();
+        long? foregroundWindowHwnd = GetForegroundWindowNativeHwnd();
         DisplayTopologySnapshot topology = monitorManager.GetTopologySnapshot();
         IReadOnlyList<MonitorInfo> monitors = topology.Monitors;
         List<WindowDescriptor> windows = new();
@@ -53,7 +53,7 @@ public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindow
                         ThreadId: threadId == 0 ? null : checked((int)threadId),
                         ClassName: TryGetWindowClassName(hWnd),
                         Bounds: new Bounds(rect.Left, rect.Top, rect.Right, rect.Bottom),
-                        IsForeground: hWnd == foregroundWindow,
+                        IsForeground: foregroundWindowHwnd is long foregroundHwnd && hWnd.ToInt64() == foregroundHwnd,
                         IsVisible: isVisible,
                         EffectiveDpi: effectiveDpi,
                         DpiScale: effectiveDpi / 96.0,
@@ -116,7 +116,13 @@ public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindow
         }
 
         bool success = SetForegroundWindow(target);
-        return success || GetForegroundWindow() == target;
+        return success || GetForegroundWindowNativeHwnd() == hwnd;
+    }
+
+    private static long? GetForegroundWindowNativeHwnd()
+    {
+        IntPtr foregroundWindow = GetForegroundWindow();
+        return foregroundWindow == IntPtr.Zero ? null : foregroundWindow.ToInt64();
     }
 
     private static string GetWindowTitle(IntPtr hWnd)

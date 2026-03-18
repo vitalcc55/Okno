@@ -1,5 +1,4 @@
 {
-  "generated_at_utc": "2026-03-18T07:42:21.7305622Z",
   "product_name": "Okno",
   "transport": {
     "kind": "stdio",
@@ -24,28 +23,19 @@
     "src/WinBridge.Runtime.Windows.UIA",
     "src/WinBridge.Runtime"
   ],
-  "latest_validation": {
+  "validation_entry_points": {
     "build": "dotnet build WinBridge.sln --no-restore",
     "test": "dotnet test WinBridge.sln",
     "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",
     "refresh_generated_docs": "powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1",
     "ci": "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"
   },
-  "latest_smoke": {
-    "run_id": "20260318T104214757",
-    "server": "Okno.Server",
-    "protocol": "2025-06-18",
-    "declared_tools": 15,
-    "monitor_count": 3,
-    "desktop_monitor_id": "display-source:000000000001299c:2",
-    "visible_windows": 13,
-    "attached_hwnd": 8717262,
-    "capture_artifact": "artifacts/diagnostics/20260318T074216243-f7ee9/captures/window-window-8717262-20260318T074216860-f05a88463dce41cfa0ae132534ec413d.png",
-    "helper_window_hwnd": 8717262,
-    "helper_activation_status": "done",
-    "audit_directory": "artifacts/diagnostics/20260318T074216243-f7ee9",
-    "smoke_report": "artifacts/smoke/20260318T104214757/report.json",
-    "audit_summary": "artifacts/diagnostics/20260318T074216243-f7ee9/summary.md"
+  "artifact_layout": {
+    "diagnostics_events": "artifacts/diagnostics/<run_id>/events.jsonl",
+    "diagnostics_summary": "artifacts/diagnostics/<run_id>/summary.md",
+    "capture_artifact": "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",
+    "smoke_report": "artifacts/smoke/<run_id>/report.json",
+    "smoke_summary": "artifacts/smoke/<run_id>/summary.md"
   },
   "deferred_scope": [
     "UIA",

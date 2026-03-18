@@ -63,4 +63,18 @@ public sealed class ToolContractManifestTests
             ToolContractManifest.Deferred,
             item => item.Name == ToolNames.WindowsCapture);
     }
+
+    [Fact]
+    public void WindowsUiaSnapshotRemainsDeferredDuringPackageA()
+    {
+        ToolDescriptor descriptor = Assert.Single(
+            ToolContractManifest.Deferred,
+            item => item.Name == ToolNames.WindowsUiaSnapshot);
+
+        Assert.Equal(ToolLifecycle.Deferred, descriptor.Lifecycle);
+        Assert.Equal(ToolSafetyClass.ReadOnly, descriptor.SafetyClass);
+        Assert.DoesNotContain(
+            ToolContractManifest.Implemented,
+            item => item.Name == ToolNames.WindowsUiaSnapshot);
+    }
 }

@@ -2,6 +2,33 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-18 16:04
+
+- Ещё один review-driven hardening проход довёл UIA target policy до строгой семантики explicit target: `explicitHwnd <= 0` в `windows.uia_snapshot` больше не нормализуется в “target absent”, а возвращает явный `stale_explicit_target`; при этом общий resolver для существующих `focus/capture` путей остаётся без этого UIA-specific правила.
+- Deterministic generation для tracked docs усилена до byte-level policy: `scripts/refresh-generated-docs.ps1` теперь не только пишет фиксированный UTF-8, но и нормализует line endings, а `bootstrap-status.json` получает полный JSON string escaping без runtime-dependent serializer drift между `powershell.exe` и `pwsh`.
+
+## 2026-03-18 15:41
+
+- Review-driven hardening локализовал `explicitHwnd <= 0` обратно в `windows.uia_snapshot` policy path: общий `ResolveExplicitOrAttachedWindow(...)` больше не меняет semantics для существующих `windows.focus_window` и `windows.capture`, а regression tests теперь явно страхуют `hwnd: 0` при attached session window.
+- `scripts/refresh-generated-docs.ps1` доведён до кросс-shell deterministic generation: tracked generated files теперь пишутся через общий UTF-8 writer с фиксированной BOM-policy, а `bootstrap-status.json` больше не зависит от различий `ConvertTo-Json` между `powershell.exe` и `pwsh`.
+
+## 2026-03-18 15:22
+
+- Review-driven fix для harness encoding вернул `scripts/refresh-generated-docs.ps1` в совместимый с Windows PowerShell режим: `.editorconfig` теперь фиксирует `utf-8-bom` для `*.ps1`, а сам скрипт повторно сохранён с BOM, чтобы `powershell.exe -File` больше не падал на non-ASCII литералах.
+- В том же цикле deterministic generated docs остались без run-specific smoke metadata, но `refresh-generated-docs.ps1`, `ci.ps1` и `scripts/codex/verify.ps1` снова проходят именно через стандартный Windows PowerShell execution path, а не только через текущую `pwsh`-сессию Codex.
+
+## 2026-03-18 12:59
+
+- `windows.uia_snapshot` переведён на package-aware execution plan: active exec-plan теперь явно разделяет `Package A` (target policy + typed groundwork), `Package B` (runtime/evidence) и `Package C` (server rollout/smoke/generated docs), чтобы текущий цикл больше не притворялся полным rollout до `Implemented`.
+- Для `windows.uia_snapshot` зафиксировано official-docs-driven meaning `active = foreground top-level window`, а product wording в spec/roadmap выровнен под precedence `explicit -> attached -> active` без преждевременного опубликования live MCP contract.
+- В коде добавлены typed `UiaSnapshot*` DTO, typed `IUiAutomationService` seam и capability-specific `UiaSnapshotTargetResolution`; при этом public handler, manifest lifecycle и generated docs намеренно оставлены в честном deferred state.
+
+## 2026-03-18 15:10
+
+- Review-driven hardening для `windows.uia_snapshot` убрал внутреннюю двусмысленность groundwork: service-level request больше не несёт второй authoritative target, defaults централизованы в `UiaSnapshotDefaults`, а `UiaSnapshotResult` больше не может родиться с implicit success status.
+- Active-path policy в `WindowTargetResolver` сделана snapshot-consistent: explicit `hwnd <= 0` нормализуется как absent target, active candidate выбирается из одного `ListWindows` snapshot, duplicate foreground entries по тому же `HWND` дедуплицируются, а `missing_target` и `ambiguous_active_target` больше не смешиваются.
+- `scripts/refresh-generated-docs.ps1`, `docs/generated/*`, `docs/bootstrap/bootstrap-status.json` и tool contract export переведены на deterministic generation: tracked docs больше не содержат run-specific smoke ids, absolute artifact paths и `generated_at_utc`, а конкретное evidence остаётся только в локальных `artifacts/`.
+
 ## 2026-03-18 11:08
 
 - Добавлен отдельный exec-plan для следующего shipped capability slice `windows.uia_snapshot` в `docs/exec-plans/active/windows-uia-snapshot.md`: план фиксирует contract-first goal, non-goals, official Microsoft/MCP constraints, file-level integration map, typed DTO/result shape, L1/L2/L3 ladder, docs sync и rollback policy без преждевременного захода в `windows.wait`, `windows.input` или `windows.uia_action`.

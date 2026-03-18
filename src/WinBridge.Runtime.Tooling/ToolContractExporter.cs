@@ -16,7 +16,6 @@ public static class ToolContractExporter
 
     public static ToolContractExportDocument CreateDocument()
         => new(
-            GeneratedAtUtc: DateTimeOffset.UtcNow.ToString("O"),
             Transport: new ToolTransportDescriptor("stdio", "2025-06-18", "src/WinBridge.Server/Program.cs", "product-ready target"),
             FutureTransports:
             [

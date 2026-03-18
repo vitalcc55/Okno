@@ -45,14 +45,25 @@ function Get-RuntimeProjectDirectories {
         ForEach-Object { Convert-ToRepoRelative -Path $_.DirectoryName }
 }
 
-function New-CommandsMarkdown {
+function Write-Utf8DeterministicFile {
     param(
-        [object] $SmokeReport,
-        [string] $SmokeRunId,
-        [string] $AuditDirectory,
-        [string] $SmokeReportPath
+        [Parameter(Mandatory)]
+        [string] $Path,
+        [Parameter(Mandatory)]
+        [string] $Content
     )
 
+    $directory = Split-Path -Parent $Path
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+    }
+
+    $normalizedContent = $Content.Replace("`r`n", "`n").Replace("`r", "`n").Replace("`n", "`r`n")
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $normalizedContent, $encoding)
+}
+
+function New-CommandsMarkdown {
     $lines = @(
         '# Commands Inventory',
         '',
@@ -66,16 +77,16 @@ function New-CommandsMarkdown {
         '| `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke and artifact report |',
-        '| `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate generated docs and bootstrap status |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |',
-        '| `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest audit/smoke summaries |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/bootstrap.ps1` | Codex bootstrap handshake |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |',
         '| `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |',
         '',
         '## Validation Entry Points',
         '',
-        '> Этот раздел перечисляет канонические validation commands, но не утверждает факт успешного последнего прогона. Реальное smoke evidence публикуется ниже, а full validation state должен подтверждаться отдельными run artifacts или `scripts/codex/verify.ps1`.',
+        '> Этот раздел перечисляет канонические validation commands и не зависит от конкретного run id. Для evidence конкретного запуска смотри `artifacts/smoke/<run_id>/` или используй `scripts/investigate.ps1`.',
         '',
         '- `dotnet build WinBridge.sln --no-restore`',
         '- `dotnet test WinBridge.sln`',
@@ -83,124 +94,16 @@ function New-CommandsMarkdown {
         '- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`',
         '- `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`',
         '',
-        '## Latest Smoke Evidence',
+        '## Artifact Layout',
         '',
-        ('- smoke run id: ' + $SmokeRunId),
-        ('- monitor count: ' + $SmokeReport.monitors.count),
-        ('- desktop monitor id: ' + $SmokeReport.desktop_capture.monitorId),
-        ('- audit directory: ' + $AuditDirectory),
-        ('- capture artifact: ' + (Convert-ToRepoRelative -Path $SmokeReport.capture.artifactPath)),
-        ('- helper capture artifact: ' + (Convert-ToRepoRelative -Path $SmokeReport.helper_capture.artifactPath)),
-        ('- smoke report: ' + $SmokeReportPath)
+        '- `artifacts/diagnostics/<run_id>/events.jsonl`',
+        '- `artifacts/diagnostics/<run_id>/summary.md`',
+        '- `artifacts/diagnostics/<run_id>/captures/<capture_id>.png`',
+        '- `artifacts/smoke/<run_id>/report.json`',
+        '- `artifacts/smoke/<run_id>/summary.md`'
     )
 
     return $lines -join [Environment]::NewLine
-}
-
-function Get-OptionalValue {
-    param(
-        [Parameter(Mandatory)]
-        [object] $Object,
-        [Parameter(Mandatory)]
-        [string[]] $PathSegments,
-        [object] $Default = $null
-    )
-
-    $current = $Object
-    foreach ($segment in $PathSegments) {
-        if ($null -eq $current) {
-            return $Default
-        }
-
-        $property = $current.PSObject.Properties[$segment]
-        if ($null -eq $property) {
-            return $Default
-        }
-
-        $current = $property.Value
-    }
-
-    return $current
-}
-
-function Normalize-SmokeReport {
-    param(
-        [Parameter(Mandatory)]
-        [object] $RawSmokeReport
-    )
-
-    $healthArtifactsDirectory = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('health', 'artifactsDirectory')
-    $captureArtifactPath = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('capture', 'artifactPath')
-    $helperCaptureArtifactPath = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('helper_capture', 'artifactPath')
-
-    return [pscustomobject]@{
-        run_id = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('run_id')
-        initialized_protocol = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('initialized_protocol')
-        server_name = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('server_name')
-        declared_tools = @(Get-OptionalValue -Object $RawSmokeReport -PathSegments @('declared_tools') -Default @())
-        health = [pscustomobject]@{
-            artifactsDirectory = $healthArtifactsDirectory
-        }
-        monitors = [pscustomobject]@{
-            count = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('monitors', 'count') -Default 0
-            diagnostics = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('monitors', 'diagnostics') -Default $null
-        }
-        windows = [pscustomobject]@{
-            count = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('windows', 'count') -Default 0
-        }
-        attached_window = [pscustomobject]@{
-            attachedWindow = [pscustomobject]@{
-                window = [pscustomobject]@{
-                    hwnd = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('attached_window', 'attachedWindow', 'window', 'hwnd')
-                }
-            }
-        }
-        capture = [pscustomobject]@{
-            artifactPath = $captureArtifactPath
-        }
-        desktop_capture = [pscustomobject]@{
-            monitorId = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('desktop_capture', 'monitorId')
-        }
-        helper_capture = [pscustomobject]@{
-            artifactPath = $helperCaptureArtifactPath
-        }
-        helper_window = [pscustomobject]@{
-            hwnd = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('helper_window', 'hwnd')
-        }
-        helper_activate = [pscustomobject]@{
-            status = Get-OptionalValue -Object $RawSmokeReport -PathSegments @('helper_activate', 'status')
-        }
-    }
-}
-
-function Get-SmokeDerivedMetadata {
-    param(
-        [Parameter(Mandatory)]
-        [object] $SmokeReport
-    )
-
-    $artifactsDirectory = $SmokeReport.health.artifactsDirectory
-    $auditSummaryPath = $null
-    if (-not [string]::IsNullOrWhiteSpace($artifactsDirectory)) {
-        $auditSummaryPath = Convert-ToRepoRelative -Path (Join-Path $artifactsDirectory 'summary.md')
-    }
-
-    return [pscustomobject]@{
-        audit_directory = Convert-ToRepoRelative -Path $artifactsDirectory
-        audit_summary = $auditSummaryPath
-        capture_artifact = Convert-ToRepoRelative -Path $SmokeReport.capture.artifactPath
-        helper_capture_artifact = Convert-ToRepoRelative -Path $SmokeReport.helper_capture.artifactPath
-        smoke_run_id = [string]$SmokeReport.run_id
-        smoke_server = $SmokeReport.server_name
-        smoke_protocol = $SmokeReport.initialized_protocol
-        smoke_declared_tools = @($SmokeReport.declared_tools).Count
-        smoke_monitor_count = $SmokeReport.monitors.count
-        smoke_desktop_monitor_id = $SmokeReport.desktop_capture.monitorId
-        smoke_visible_windows = $SmokeReport.windows.count
-        smoke_attached_hwnd = $SmokeReport.attached_window.attachedWindow.window.hwnd
-        smoke_helper_window_hwnd = $SmokeReport.helper_window.hwnd
-        smoke_helper_activation_status = $SmokeReport.helper_activate.status
-    }
 }
 
 function New-TestMatrixMarkdown {
@@ -209,7 +112,7 @@ function New-TestMatrixMarkdown {
         '',
         '> Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.',
         '',
-        '> Матрица ниже описывает coverage и entry points. Она не утверждает факт успешного последнего прогона; смотри `docs/generated/commands.md` и `docs/bootstrap/bootstrap-status.json` для latest verified validation.',
+        '> Матрица ниже описывает coverage и entry points. Она не утверждает факт конкретного успешного прогона; evidence отдельного запуска смотри в `artifacts/smoke/<run_id>/` и `artifacts/diagnostics/<run_id>/`.',
         '',
         '| Layer | Command | Coverage now |',
         '| --- | --- | --- |',
@@ -231,79 +134,129 @@ function New-TestMatrixMarkdown {
     return $lines -join [Environment]::NewLine
 }
 
-function New-BootstrapStatusObject {
+function Convert-ToJsonStringLiteral {
     param(
-        [object] $SmokeReport,
-        [string] $SmokeRunId,
-        [string] $AuditDirectory,
-        [string] $SmokeReportPath,
-        [string] $LatestAuditSummaryPath
+        [AllowNull()]
+        [string] $Value
     )
 
-    return [ordered]@{
-        generated_at_utc = (Get-Date).ToUniversalTime().ToString('o')
-        product_name = 'Okno'
-        transport = [ordered]@{
-            kind = 'stdio'
-            delivery_status = 'product-ready target'
-        }
-        tool_contract_source = [ordered]@{
-            tool_names = 'src/WinBridge.Runtime.Tooling/ToolNames.cs'
-            tool_manifest = 'src/WinBridge.Runtime.Tooling/ToolContractManifest.cs'
-            export_script = 'scripts/refresh-generated-docs.ps1'
-        }
-        runtime_projects = @(Get-RuntimeProjectDirectories)
-        latest_validation = [ordered]@{
-            build = 'dotnet build WinBridge.sln --no-restore'
-            test = 'dotnet test WinBridge.sln'
-            smoke = 'powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1'
-            refresh_generated_docs = 'powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1'
-            ci = 'powershell -ExecutionPolicy Bypass -File scripts/ci.ps1'
-        }
-        latest_smoke = [ordered]@{
-            run_id = $SmokeRunId
-            server = $SmokeReport.server_name
-            protocol = $SmokeReport.initialized_protocol
-            declared_tools = @($SmokeReport.declared_tools).Count
-            monitor_count = $SmokeReport.monitors.count
-            desktop_monitor_id = $SmokeReport.desktop_capture.monitorId
-            visible_windows = $SmokeReport.windows.count
-            attached_hwnd = $SmokeReport.attached_window.attachedWindow.window.hwnd
-            capture_artifact = (Convert-ToRepoRelative -Path $SmokeReport.capture.artifactPath)
-            helper_window_hwnd = $SmokeReport.helper_window.hwnd
-            helper_activation_status = $SmokeReport.helper_activate.status
-            audit_directory = $AuditDirectory
-            smoke_report = $SmokeReportPath
-            audit_summary = $LatestAuditSummaryPath
-        }
-        deferred_scope = @(
-            'UIA',
-            'Input',
-            'Clipboard',
-            'Waiting',
-            'HTTP transport'
-        )
+    if ($null -eq $Value) {
+        return 'null'
     }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+
+    foreach ($char in $Value.ToCharArray()) {
+        $code = [int][char]$char
+
+        switch ($code) {
+            8 {
+                [void]$builder.Append('\b')
+                continue
+            }
+            9 {
+                [void]$builder.Append('\t')
+                continue
+            }
+            10 {
+                [void]$builder.Append('\n')
+                continue
+            }
+            12 {
+                [void]$builder.Append('\f')
+                continue
+            }
+            13 {
+                [void]$builder.Append('\r')
+                continue
+            }
+            34 {
+                [void]$builder.Append('\"')
+                continue
+            }
+            92 {
+                [void]$builder.Append('\\')
+                continue
+            }
+        }
+
+        if ($code -lt 0x20) {
+            [void]$builder.AppendFormat('\u{0:x4}', $code)
+            continue
+        }
+
+        [void]$builder.Append($char)
+    }
+
+    [void]$builder.Append('"')
+    return $builder.ToString()
 }
 
-$latestSmokeReport = Get-LatestFile -Path (Join-Path $repoRoot 'artifacts/smoke') -Filter 'report.json'
-if ($null -eq $latestSmokeReport) {
-    throw 'Cannot refresh generated docs without at least one smoke report. Run scripts/smoke.ps1 first.'
+function New-BootstrapStatusJson {
+    $runtimeProjects = @(Get-RuntimeProjectDirectories)
+    $deferredScope = @(
+        'UIA',
+        'Input',
+        'Clipboard',
+        'Waiting',
+        'HTTP transport'
+    )
+
+    $lines = @(
+        '{',
+        '  "product_name": "Okno",',
+        '  "transport": {',
+        '    "kind": "stdio",',
+        '    "delivery_status": "product-ready target"',
+        '  },',
+        '  "tool_contract_source": {',
+        '    "tool_names": "src/WinBridge.Runtime.Tooling/ToolNames.cs",',
+        '    "tool_manifest": "src/WinBridge.Runtime.Tooling/ToolContractManifest.cs",',
+        '    "export_script": "scripts/refresh-generated-docs.ps1"',
+        '  },',
+        '  "runtime_projects": ['
+    )
+
+    for ($index = 0; $index -lt $runtimeProjects.Count; $index++) {
+        $suffix = if ($index -lt ($runtimeProjects.Count - 1)) { ',' } else { '' }
+        $lines += '    ' + (Convert-ToJsonStringLiteral $runtimeProjects[$index]) + $suffix
+    }
+
+    $lines += @(
+        '  ],',
+        '  "validation_entry_points": {',
+        '    "build": "dotnet build WinBridge.sln --no-restore",',
+        '    "test": "dotnet test WinBridge.sln",',
+        '    "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",',
+        '    "refresh_generated_docs": "powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1",',
+        '    "ci": "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"',
+        '  },',
+        '  "artifact_layout": {',
+        '    "diagnostics_events": "artifacts/diagnostics/<run_id>/events.jsonl",',
+        '    "diagnostics_summary": "artifacts/diagnostics/<run_id>/summary.md",',
+        '    "capture_artifact": "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",',
+        '    "smoke_report": "artifacts/smoke/<run_id>/report.json",',
+        '    "smoke_summary": "artifacts/smoke/<run_id>/summary.md"',
+        '  },',
+        '  "deferred_scope": ['
+    )
+
+    for ($index = 0; $index -lt $deferredScope.Count; $index++) {
+        $suffix = if ($index -lt ($deferredScope.Count - 1)) { ',' } else { '' }
+        $lines += '    ' + (Convert-ToJsonStringLiteral $deferredScope[$index]) + $suffix
+    }
+
+    $lines += @(
+        '  ]',
+        '}'
+    )
+
+    return $lines -join [Environment]::NewLine
 }
 
-$smokeReport = Normalize-SmokeReport -RawSmokeReport ((Get-Content $latestSmokeReport.FullName -Raw | ConvertFrom-Json))
-$smokeDerivedMetadata = Get-SmokeDerivedMetadata -SmokeReport $smokeReport
-$smokeRunId = [string]$smokeReport.run_id
-$auditDirectory = $smokeDerivedMetadata.audit_directory
-$smokeReportRelativePath = Convert-ToRepoRelative -Path $latestSmokeReport.FullName
-$latestAuditSummaryPath = $smokeDerivedMetadata.audit_summary
+Write-Utf8DeterministicFile -Path $commandsMarkdownPath -Content (New-CommandsMarkdown)
 
-New-CommandsMarkdown -SmokeReport $smokeReport -SmokeRunId $smokeRunId -AuditDirectory $auditDirectory -SmokeReportPath $smokeReportRelativePath |
-    Set-Content -Path $commandsMarkdownPath -Encoding utf8
+Write-Utf8DeterministicFile -Path $testMatrixMarkdownPath -Content (New-TestMatrixMarkdown)
 
-New-TestMatrixMarkdown |
-    Set-Content -Path $testMatrixMarkdownPath -Encoding utf8
-
-New-BootstrapStatusObject -SmokeReport $smokeReport -SmokeRunId $smokeRunId -AuditDirectory $auditDirectory -SmokeReportPath $smokeReportRelativePath -LatestAuditSummaryPath $latestAuditSummaryPath |
-    ConvertTo-Json -Depth 12 |
-    Set-Content -Path $bootstrapStatusJsonPath -Encoding utf8
+Write-Utf8DeterministicFile -Path $bootstrapStatusJsonPath -Content (New-BootstrapStatusJson)

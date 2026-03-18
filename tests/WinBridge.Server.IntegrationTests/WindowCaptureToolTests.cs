@@ -54,6 +54,26 @@ public sealed class WindowCaptureToolTests
     }
 
     [Fact]
+    public async Task CaptureDoesNotFallbackToAttachedWindowForExplicitZeroHwnd()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 303, title: "Attached");
+        FakeCaptureService captureService = new(CreateCaptureResult(attachedWindow, "window"));
+        WindowTools tools = CreateTools(
+            windows: [attachedWindow],
+            captureService: captureService,
+            attachedWindow: attachedWindow);
+
+        CallToolResult result = await tools.Capture(hwnd: 0);
+
+        Assert.True(result.IsError);
+        Assert.Null(captureService.LastTarget);
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("failed", payload.GetProperty("status").GetString());
+        Assert.Contains("по указанному hwnd больше не найдено", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CaptureUsesAttachedWindowMonitorForDesktopScope()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 404, title: "Attached");

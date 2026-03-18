@@ -67,6 +67,19 @@ public sealed class ToolContractExporterTests
         Assert.Equal("session_mutation", attachTool.GetProperty("safety_class").GetString());
     }
 
+    [Fact]
+    public void ExportJsonDoesNotContainRunSpecificGeneratedAtField()
+    {
+        string root = CreateTempDirectory();
+        string jsonPath = Path.Combine(root, "project-interfaces.json");
+
+        ToolContractExporter.ExportJson(jsonPath);
+
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
+
+        Assert.False(document.RootElement.TryGetProperty("generated_at_utc", out _));
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));

@@ -21,7 +21,6 @@ public sealed record ToolContractToolSection(
     IReadOnlyDictionary<string, string> DeferredPhaseMap);
 
 public sealed record ToolContractExportDocument(
-    string GeneratedAtUtc,
     ToolTransportDescriptor Transport,
     IReadOnlyList<FutureTransportDescriptor> FutureTransports,
     ToolContractToolSection Tools,

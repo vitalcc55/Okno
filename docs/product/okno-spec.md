@@ -34,7 +34,7 @@ _Почти техническое ТЗ для Okno V1 под Windows 11._
 - Привязка текущей рабочей сессии к конкретному окну.
 
 ### Семантика UI
-- Получать UIA snapshot для активного или выбранного окна.
+- Получать UIA snapshot для explicit, attached или active окна с precedence `explicit -> attached -> active`.
 - Искать элементы по базовым признакам:
   - name,
   - automation id,
@@ -358,9 +358,9 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 
 ### `windows.uia_snapshot`
 Аргументы:
-- target window;
-- optional depth;
-- optional filters.
+- selected window по target policy этого capability slice;
+- traversal limits для depth/node budget;
+- concrete public MCP shape публикуется только вместе с handler rollout.
 
 Возвращает:
 - список элементов или дерево;
