@@ -4,6 +4,7 @@
 
 ## 2026-03-19 14:34
 
+- Финальный branch-аудит по `windows.uia_snapshot` добрал остаточный doc drift вне основного rollout-контура: `architecture/index`, `architecture/layers`, `product/okno-roadmap`, `generated/stack-inventory` и `generated/stack-research` больше не описывают UIA как future seam/deferred path там, где текущий код уже публикует shipped public `windows.uia_snapshot`.
 - Review-driven hardening для `windows.uia_snapshot` закрыл четыре корневые проблемы public rollout сразу на boundary-уровне: shared `UiaSnapshotRequestValidator` теперь одинаково валидирует request в server/runtime и держит публичный `maxNodes` в диапазоне `1..1024`, runtime service больше не публикует stale pre-resolution descriptor и теперь берет `window` только как sparse runtime-observed metadata из того же backend capture path, который построил фактический root/subtree, diagnostics boundary получил отдельный sanitized-failure path с сохранением `exception_type`/`exception_message` в audit trail, а smoke-контуру добавлен polling до materialized semantic subtree вместо single-shot UIA assertions.
 
 ## 2026-03-19 13:25

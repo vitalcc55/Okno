@@ -57,6 +57,7 @@
 ### Что уже используется
 
 - Top-level window enumeration/focus через Win32 P/Invoke.
+- Public `windows.uia_snapshot` через managed UIA (`System.Windows.Automation`) с isolated worker boundary, JSON artifacts и MCP-facing contract.
 
 ### Official guidance
 
@@ -65,7 +66,8 @@
 
 ### Где проект соответствует
 
-- Bootstrap пока не притворяется, что UIA/capture уже готовы; эти части честно deferred.
+- Capture и UIA в текущем репозитории уже реализованы и подтверждаются build/test/smoke.
+- Deferred state сохраняется только у следующих slices: input, clipboard, wait и semantic actions.
 
 ## 4. Observability
 
