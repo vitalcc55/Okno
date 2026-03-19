@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -17,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.UIA.Hosting\WinBridge.Runtime.Windows.UIA.Hosting.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Contracts\WinBridge.Runtime.Contracts.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Diagnostics\WinBridge.Runtime.Diagnostics.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Session\WinBridge.Runtime.Session.csproj" />
@@ -24,6 +26,7 @@
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Capture\WinBridge.Runtime.Windows.Capture.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Display\WinBridge.Runtime.Windows.Display.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.UIA\WinBridge.Runtime.Windows.UIA.csproj" />
   </ItemGroup>
 
 </Project>

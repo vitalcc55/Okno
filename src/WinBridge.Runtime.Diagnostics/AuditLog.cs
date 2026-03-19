@@ -129,6 +129,29 @@ public sealed class AuditLog
             });
     }
 
+    public void RecordRuntimeEvent(
+        string eventName,
+        string severity,
+        string messageHuman,
+        string? toolName,
+        string? outcome,
+        long? windowHwnd,
+        IReadOnlyDictionary<string, string?>? data = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(severity);
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageHuman);
+
+        WriteEvent(
+            severity: severity,
+            eventName: eventName,
+            messageHuman: messageHuman,
+            toolName: toolName,
+            outcome: outcome,
+            windowHwnd: windowHwnd,
+            data: data);
+    }
+
     internal void WriteToolCompleted(
         string toolName,
         string outcome,

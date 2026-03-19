@@ -2,26 +2,28 @@
 
 Статус: active
 Создан: 2026-03-18
-Обновлён: 2026-03-18
+Обновлён: 2026-03-19
 
 ## Goal
 
-Зафиксировать и доказать только `Package A: contract + target policy` для capability slice `windows.uia_snapshot`.
+Зафиксировать staged delivery для capability slice `windows.uia_snapshot`, где:
 
-Что именно закрывает этот пакет:
+- `Package A: contract + target policy` уже завершён;
+- текущий цикл закрывает только `Package B: runtime service + evidence`;
+- `Package C: server rollout + smoke + generated docs` остаётся следующим пакетом.
 
-- docs-driven target policy для `explicit -> attached -> active`;
-- typed DTO groundwork для snapshot request/result/element;
-- typed shell seam для target-resolution policy;
-- L1/L2 tests на precedence, stale-policy и honest deferred surface.
+Что именно закрывает текущий пакет:
+
+- concrete `Win32UiAutomationService`;
+- `ElementFromHandle` root acquisition и bounded `control view` traversal;
+- JSON evidence under diagnostics run directory;
+- runtime audit event для snapshot path;
+- optional host-specific DI registration boundary, isolated worker execution boundary и L1/L2 regression coverage без premature public rollout.
 
 Что этот пакет намеренно **не** делает:
 
-- concrete `Win32UiAutomationService`;
-- DI registration;
 - public MCP handler rollout;
 - `ToolLifecycle.Implemented`;
-- audit/evidence rollout для нового tool;
 - smoke/generated-docs rollout;
 - commit/push.
 
@@ -41,15 +43,17 @@
 
 ### Package B — runtime service + evidence
 
-Статус: `next`
+Статус: `done`
 
-Отложено:
+В объёме текущего изменения:
 
-- concrete UIA service;
-- `ElementFromHandle` / build-cache / traversal implementation;
-- artifact writing;
-- audit payload enrichment;
-- DI wiring.
+- добавлен concrete `Win32UiAutomationService` c managed `System.Windows.Automation` backend;
+- root acquisition строится только от `AutomationElement.FromHandle(hwnd)` на dedicated MTA thread;
+- traversal ограничен `control view`, `Depth` и `MaxNodes`, `Truncated` теперь означает только реальное clipping по budget, а `DepthBoundaryReached` отдельно сигнализирует о достижении depth boundary без child probing;
+- runtime пишет JSON artifact в `artifacts/diagnostics/<run_id>/uia/` и capability-specific audit event `uia.snapshot.runtime.completed` c `requested_max_nodes`, `depth_boundary_reached`, `node_budget_boundary_reached`, `failure_stage` и `diagnostic_artifact_path`;
+- execution boundary для production path вынесен в isolated worker process, чтобы timeout утилизировал stuck UIA worker вместе с процессом, а in-proc MTA runner оставался только cooperative utility без ложного hard-timeout обещания;
+- host-specific registration boundary вынесена в отдельный проект `WinBridge.Runtime.Windows.UIA.Hosting`, а companion worker включён в project graph hosting-слоя как non-copying sidecar dependency; build и publish path stage-ят build/published worker artifacts раздельно, без repo-layout fallback; runtime launch boundary теперь понимает и `worker.exe`, и apphost-less `worker.dll` через текущий `dotnet` host, так что publish semantics больше не протекают напрямую в runtime launcher contract; сам hosting entry point остаётся self-contained и явно принимает diagnostics context (`contentRootPath`, `environmentName`), а не рассчитывает на скрытые prereqs из `WinBridge.Runtime`;
+- public deferred handler и manifest lifecycle намеренно не менялись.
 
 ### Package C — server rollout + smoke + generated docs
 
@@ -66,9 +70,9 @@
 ## Current repo state
 
 - `windows.uia_snapshot` уже объявлен в `ToolNames`, но остаётся `Deferred` в `ToolContractManifest`.
-- Public handler в `WindowTools` по-прежнему возвращает `DeferredToolResult`; Package A не меняет этот факт.
-- Текущий репозиторий уже содержит pre-existing generated/bootstrap diffs вне объёма этого пакета; они не являются Package A truth и не должны откатываться в этом цикле.
-- После Package A в repo появляются typed contracts и policy seam, но tool всё ещё честно считается не реализованным.
+- Public handler в `WindowTools` по-прежнему возвращает `DeferredToolResult`; Package B не меняет этот факт.
+- Текущий репозиторий уже содержит pre-existing generated/bootstrap diffs вне объёма этого пакета; они не являются truth текущего пакета и не должны откатываться в этом цикле.
+- После Package B в repo есть рабочий runtime/evidence слой, но tool всё ещё честно считается не реализованным публично до Package C.
 
 ## Official constraints
 
@@ -76,10 +80,10 @@
 - `GetActiveWindow` и `GetFocus` не подходят как meaning `active` для `windows.uia_snapshot`, потому что они привязаны к queue/thread semantics вызывающего контекста, а не к global top-level active target.
 - Для cross-thread GUI focus diagnostics существует `GetGUIThreadInfo`, но Package A не строит новый focus API; он только фиксирует, что `active` не равен focused child element.
 - UIA root acquisition для будущей реализации должен строиться от `IUIAutomation::ElementFromHandle`.
-- `IUIAutomationCacheRequest` и `ElementFromHandleBuildCache` считаются valid future optimization path, но не меняют Package A public surface.
+- `IUIAutomationCacheRequest` уже используется в runtime path этого пакета; `ElementFromHandleBuildCache` остаётся допустимой follow-up optimization/hardening option, если позже понадобится более агрессивный cache-first path.
 - Default semantic tree для shipped V1 остаётся `control view`, а не `raw view`.
 - `windows.uia_snapshot` не должен скрыто активировать окно; `SetForegroundWindow` restrictions остаются прямым запретом на hidden activation fallback.
-- MCP tools требуют honest `isError` semantics, но Package A не публикует новый tool handler.
+- MCP tools требуют honest `isError` semantics, но Package B по-прежнему не публикует новый tool handler.
 - MCP authorization note для `STDIO` не влечёт отдельного auth rollout в этом пакете.
 
 ## Package A design contract
@@ -138,25 +142,26 @@ Typed UIA seam после Package A:
 
 ## Integration points
 
-Package A меняет только следующие слои:
+Package A/B меняют только следующие слои:
 
 - `src/WinBridge.Runtime.Contracts/`
 - `src/WinBridge.Runtime.Windows.UIA/`
+- `src/WinBridge.Runtime.Diagnostics/`
 - `src/WinBridge.Runtime.Windows.Shell/`
+- `src/WinBridge.Runtime/`
 - `tests/WinBridge.Runtime.Tests/`
 - `tests/WinBridge.Server.IntegrationTests/`
 - `docs/exec-plans/active/windows-uia-snapshot.md`
-- `docs/product/okno-spec.md`
-- `docs/product/okno-roadmap.md`
+- `docs/architecture/observability.md`
 - `docs/CHANGELOG.md`
 
-Package A осознанно не меняет:
+Package A/B осознанно не меняют:
 
 - `src/WinBridge.Server/Tools/WindowTools.cs`
-- `src/WinBridge.Runtime/ServiceCollectionExtensions.cs`
 - `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
 - generated docs/exporters;
-- `docs/architecture/observability.md`.
+- `docs/product/okno-spec.md`;
+- `docs/product/okno-roadmap.md`.
 
 ## Test ladder for Package A
 
@@ -190,17 +195,15 @@ Package A осознанно не меняет:
 
 ## Docs sync policy
 
-В рамках Package A синхронизируются только:
+В рамках Package B синхронизируются:
 
 - этот exec-plan;
-- `okno-spec`, если wording по `active/selected window` слишком vague;
-- `okno-roadmap`, если wording по stage 6 расходится с `explicit -> attached -> active`;
+- `observability`, потому что появляется новый diagnostics channel для runtime snapshot path;
 - `CHANGELOG`.
 
 Не синхронизируются в этом пакете:
 
 - generated docs;
-- observability docs;
 - exporter output.
 
 ## Checklist
@@ -211,3 +214,12 @@ Package A осознанно не меняет:
 - [x] Запрещён silent fallback из stale explicit/attached target в active path.
 - [x] Typed contracts и target policy seam разрешены без premature public rollout.
 - [x] `windows.uia_snapshot` остаётся честным `Deferred/unsupported` после Package A.
+- [x] Package B добавил concrete runtime UIA service без hidden activation side effects.
+- [x] `ElementFromHandle` используется как canonical root acquisition path.
+- [x] `Depth` / `MaxNodes` / `Truncated` теперь enforced в runtime layer без ложноположительного truncation на depth boundary; `node_budget_boundary_reached` отдельно выражает strict no-probe budget boundary без перегрузки `Truncated`.
+- [x] JSON artifact пишется в `artifacts/diagnostics/<run_id>/uia/`.
+- [x] Audit event `uia.snapshot.runtime.completed` добавлен без public handler rollout и несёт `requested_max_nodes`, `depth_boundary_reached`, `node_budget_boundary_reached`, `failure_stage` и `diagnostic_artifact_path`.
+- [x] Timeout boundary для production path изолирован отдельным worker process.
+- [x] DI wiring добавлен как optional host-specific boundary через `WinBridge.Runtime.Windows.UIA.Hosting`, но `WindowTools` и `ToolContractManifest` по-прежнему deferred.
+- [x] Runtime и deferred regression tests покрывают Package B boundary.
+- [ ] Package C ещё не выполнен: public handler, `structuredContent`, lifecycle switch, smoke и generated docs остаются следующими шагами.

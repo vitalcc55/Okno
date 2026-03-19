@@ -2,6 +2,27 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-19 11:16
+
+- Review-driven hardening для `windows.uia_snapshot` развёл semantics bounded traversal по двум независимым границам: `UiaSnapshotTreeBuilder` больше не зондирует child nodes после исчерпания `MaxNodes`, `Truncated` остаётся только флагом доказанного clipping, а новый `node_budget_boundary_reached` фиксирует strict no-probe budget boundary так же явно, как `depth_boundary_reached` фиксирует depth boundary.
+- Isolated worker transport boundary доведён до evidence-grade поведения: parent/worker stdio теперь жёстко зафиксированы на UTF-8, stdin/process/payload failures маппятся в typed `worker_process` result без unhandled leak, raw worker stderr больше не публикуется как operator-facing `Reason`, а сохраняется в отдельный diagnostic artifact с `diagnostic_artifact_path` в runtime audit event.
+- Worker packaging переведён на publish-aware consumer graph: `WinBridge.Runtime.Windows.UIA.Worker` включён в hosting graph как non-copying sidecar dependency, build и publish path stage-ят build/published artifacts раздельно, а runtime launcher теперь использует явный dual launch contract (`worker.exe` или apphost-less `worker.dll` через текущий `dotnet` host), поэтому valid framework-dependent `UseAppHost=false` consumer publish больше не ломает UIA sidecar path.
+
+## 2026-03-19 09:51
+
+- Consumer-facing DI boundary для `windows.uia_snapshot` доведён до self-contained registration contract: в `WinBridge.Runtime.Diagnostics` выделен общий `AddWinBridgeRuntimeDiagnostics(...)`, `WinBridge.Runtime` и `WinBridge.Runtime.Windows.UIA.Hosting` переиспользуют один и тот же diagnostics/time-provider fragment, а `AddWinBridgeRuntimeWindowsUia(...)` теперь явно принимает `contentRootPath` и `environmentName` вместо скрытой зависимости от чужого composition root.
+- Добавлен минимальный consumer regression test на разрешение `IUiAutomationService` через hosting boundary без ручного дотягивания `AuditLog`/`AuditLogOptions`/`TimeProvider`; staging worker-а и DI resolution теперь проверяются как один согласованный hosting contract.
+
+## 2026-03-19 09:30
+
+- Follow-up hardening для `windows.uia_snapshot` довёл packaging/runtime boundary до consumer-facing контракта: `WinBridge.Runtime.Windows.UIA.Hosting` теперь stage-ит `WinBridge.Runtime.Windows.UIA.Worker.exe/.dll/.deps.json/.runtimeconfig.json` в собственный output и в output потребителей через явный MSBuild target, поэтому helper worker больше не появляется случайно только из-за прямых test references.
+- В том же цикле deployment failure перестал ломать DI construction: `ProcessIsolatedUiAutomationBackend` проверяет наличие worker-а только на execution path и переводит misdeployment в `failed` result + `uia.snapshot.runtime.completed`, а `UiAutomationMtaRunner` закреплён как cooperative MTA utility, тогда как единственным strict-timeout owner остаётся isolated process boundary.
+
+## 2026-03-18 16:58
+
+- `windows.uia_snapshot` получил только Package B runtime/evidence слой без premature public rollout: добавлены `Win32UiAutomationService`, managed UIA backend на отдельном MTA thread, `ElementFromHandle` root acquisition, bounded `control view` traversal, enforcement `Depth`/`MaxNodes`/`Truncated` и JSON artifact под `artifacts/diagnostics/<run_id>/uia/`.
+- Follow-up hardening этого же пакета убрал unintended host dependency drift и diagnostic gaps: UIA registration вынесена в отдельный host-facing project `WinBridge.Runtime.Windows.UIA.Hosting`, bootstrap `Okno.Server` снова не требует `Microsoft.WindowsDesktop.App` до Package C, worker artifact больше не ищется в `repo Debug` layout, production execution boundary переведена на isolated worker process, evidence shape теперь включает `requested_max_nodes`, `depth_boundary_reached` и `failure_stage`, а tree builder больше не перегружает `Truncated` ложноположительными depth-boundary срабатываниями.
+
 ## 2026-03-18 16:04
 
 - Ещё один review-driven hardening проход довёл UIA target policy до строгой семантики explicit target: `explicitHwnd <= 0` в `windows.uia_snapshot` больше не нормализуется в “target absent”, а возвращает явный `stale_explicit_target`; при этом общий resolver для существующих `focus/capture` путей остаётся без этого UIA-specific правила.

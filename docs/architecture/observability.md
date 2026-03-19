@@ -7,6 +7,7 @@
 - `artifacts/diagnostics/<run_id>/events.jsonl` — канонический machine-readable event stream.
 - `artifacts/diagnostics/<run_id>/summary.md` — human-readable journal того же запуска.
 - `artifacts/diagnostics/<run_id>/captures/<capture_id>.png` — фактические PNG-доказательства для `windows.capture`.
+- `artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json` — JSON-evidence для internal runtime `windows.uia_snapshot` path, включая успешные snapshot payloads и worker-process diagnostic artifacts при transport/process failure.
 
 Поверх этого `scripts/smoke.ps1` создаёт отдельный smoke-report в `artifacts/smoke/<run_id>/report.json` и `summary.md`.
 
@@ -41,6 +42,7 @@
 | `session.attached` | Да | Только state transition session -> window | Повторное attach к тому же окну не логируется вторично |
 | `display.identity.state_changed` | Да, при смене состояния | Typed diagnostics по `display_config_strong` vs `gdi_fallback` | Логируем только transition, а не каждый повторный вызов |
 | `capture artifacts` | Для `windows.capture` | PNG в diagnostics run directory + metadata в `tool.invocation.completed` | Храним один PNG на один успешный capture call, без отдельного verbose event stream |
+| `uia.snapshot.runtime.completed` | Для internal runtime snapshot path | Typed metadata + ссылка на JSON artifact в diagnostics run directory | Один итоговый runtime event на один snapshot; payload включает `requested_depth`, `requested_max_nodes`, `node_count`, `truncated`, `depth_boundary_reached`, `node_budget_boundary_reached`, `artifact_path`, `diagnostic_artifact_path` и `failure_stage`, без пошагового tree-walk spam |
 | `smoke report` | По запросу через `scripts/smoke.ps1` | Init/list/call raw MCP payloads + сводка | Один report на один run, без verbose console flood |
 
 ## Trace strategy
@@ -52,7 +54,8 @@
 1. Прогнать `powershell -File scripts/smoke.ps1`.
 2. Открыть `artifacts/smoke/<run_id>/summary.md`.
 3. При необходимости посмотреть соседний `report.json`, `artifacts/diagnostics/<run_id>/summary.md` и `artifacts/diagnostics/<run_id>/captures/`.
-4. Для быстрого доступа к последним артефактам использовать `powershell -File scripts/investigate.ps1`.
+4. Для `windows.uia_snapshot` runtime path дополнительно смотреть `artifacts/diagnostics/<run_id>/uia/*.json` и событие `uia.snapshot.runtime.completed` в `events.jsonl`.
+5. Для быстрого доступа к последним артефактам использовать `powershell -File scripts/investigate.ps1`.
 
 ## Осознанно отложено
 

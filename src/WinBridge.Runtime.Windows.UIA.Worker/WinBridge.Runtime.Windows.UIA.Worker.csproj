@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>true</UseAppHost>
+    <RuntimeIdentifiers Condition="'$(RuntimeIdentifiers)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinBridge.Runtime.Windows.UIA\WinBridge.Runtime.Windows.UIA.csproj" />
+  </ItemGroup>
+
+  <Target Name="GetBuiltUiaWorkerArtifacts" DependsOnTargets="Build" Returns="@(UiaWorkerArtifact)">
+    <ItemGroup>
+      <UiaWorkerArtifact Include="$(TargetDir)$(AssemblyName).exe" Condition="Exists('$(TargetDir)$(AssemblyName).exe')" />
+      <UiaWorkerArtifact Include="$(TargetPath)" Condition="Exists('$(TargetPath)')" />
+      <UiaWorkerArtifact Include="$(TargetDir)$(AssemblyName).runtimeconfig.json" Condition="Exists('$(TargetDir)$(AssemblyName).runtimeconfig.json')" />
+      <UiaWorkerArtifact Include="$(TargetDir)$(AssemblyName).deps.json" Condition="Exists('$(TargetDir)$(AssemblyName).deps.json')" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="GetPublishedUiaWorkerArtifacts" DependsOnTargets="Restore;Publish" Returns="@(UiaWorkerArtifact)">
+    <ItemGroup>
+      <UiaWorkerArtifact Include="$(PublishDir)$(AssemblyName).exe" Condition="Exists('$(PublishDir)$(AssemblyName).exe')" />
+      <UiaWorkerArtifact Include="$(PublishDir)$(AssemblyName).dll" Condition="Exists('$(PublishDir)$(AssemblyName).dll')" />
+      <UiaWorkerArtifact Include="$(PublishDir)$(AssemblyName).runtimeconfig.json" Condition="Exists('$(PublishDir)$(AssemblyName).runtimeconfig.json')" />
+      <UiaWorkerArtifact Include="$(PublishDir)$(AssemblyName).deps.json" Condition="Exists('$(PublishDir)$(AssemblyName).deps.json')" />
+    </ItemGroup>
+  </Target>
+
+</Project>

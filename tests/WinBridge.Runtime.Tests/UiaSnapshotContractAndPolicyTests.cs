@@ -22,9 +22,12 @@ public sealed class UiaSnapshotContractAndPolicyTests
         Assert.Equal(UiaSnapshotStatusValues.Failed, result.Status);
         Assert.Equal(UiaSnapshotViewValues.Control, result.View);
         Assert.Equal(UiaSnapshotDefaults.Depth, result.RequestedDepth);
+        Assert.Equal(UiaSnapshotDefaults.MaxNodes, result.RequestedMaxNodes);
         Assert.Equal(0, result.RealizedDepth);
         Assert.Equal(0, result.NodeCount);
         Assert.False(result.Truncated);
+        Assert.False(result.DepthBoundaryReached);
+        Assert.False(result.NodeBudgetBoundaryReached);
         Assert.Null(result.Root);
         Assert.Null(result.Window);
     }

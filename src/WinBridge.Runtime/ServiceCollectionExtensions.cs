@@ -14,10 +14,8 @@ public static class ServiceCollectionExtensions
         string contentRootPath,
         string environmentName)
     {
-        services.AddSingleton(TimeProvider.System);
-        services.AddSingleton(_ => AuditLogOptions.Create(contentRootPath, environmentName));
+        services.AddWinBridgeRuntimeDiagnostics(contentRootPath, environmentName);
         services.AddSingleton(sp => new SessionContext(sp.GetRequiredService<AuditLogOptions>().RunId));
-        services.AddSingleton<AuditLog>();
         services.AddSingleton<ISessionManager, InMemorySessionManager>();
         services.AddSingleton<IMonitorManager, Win32MonitorManager>();
         services.AddSingleton<ICaptureService, GraphicsCaptureService>();
