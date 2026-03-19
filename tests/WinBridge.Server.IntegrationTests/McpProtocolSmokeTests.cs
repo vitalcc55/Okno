@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Server.IntegrationTests;
@@ -98,6 +99,19 @@ public sealed class McpProtocolSmokeTests
             Assert.False(activateAnnotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.False(activateAnnotations.GetProperty("destructiveHint").GetBoolean());
 
+            JsonElement uiaSnapshotDescriptor = tools.EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsUiaSnapshot);
+            Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotDescriptor.GetProperty("description").GetString()));
+            JsonElement uiaSnapshotAnnotations = uiaSnapshotDescriptor.GetProperty("annotations");
+            Assert.True(uiaSnapshotAnnotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.True(uiaSnapshotAnnotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.False(uiaSnapshotAnnotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.True(uiaSnapshotAnnotations.GetProperty("openWorldHint").GetBoolean());
+            JsonElement uiaSnapshotProperties = uiaSnapshotDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("hwnd").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("depth").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("maxNodes").GetProperty("description").GetString()));
+
             using JsonDocument healthResponse = await session.CallToolAsync(ToolNames.OknoHealth, new { });
             using JsonDocument healthPayload = JsonDocument.Parse(GetToolTextPayload(healthResponse));
             JsonElement healthRoot = healthPayload.RootElement;
@@ -147,6 +161,36 @@ public sealed class McpProtocolSmokeTests
             JsonElement sessionRoot = sessionPayload.RootElement;
             Assert.Equal("window", sessionRoot.GetProperty("mode").GetString());
             Assert.Equal(helperHwnd, sessionRoot.GetProperty("attachedWindow").GetProperty("window").GetProperty("hwnd").GetInt64());
+
+            using JsonDocument uiaSnapshotResponse = await WaitForSemanticUiaSnapshotAsync(session);
+            JsonElement uiaSnapshotResult = uiaSnapshotResponse.RootElement.GetProperty("result");
+            Assert.False(uiaSnapshotResult.GetProperty("isError").GetBoolean());
+            JsonElement uiaSnapshotStructured = uiaSnapshotResult.GetProperty("structuredContent");
+            Assert.Equal(UiaSnapshotStatusValues.Done, uiaSnapshotStructured.GetProperty("status").GetString());
+            Assert.Equal(UiaSnapshotTargetSourceValues.Attached, uiaSnapshotStructured.GetProperty("targetSource").GetString());
+            Assert.Equal(helperHwnd, uiaSnapshotStructured.GetProperty("window").GetProperty("hwnd").GetInt64());
+            Assert.Equal("control", uiaSnapshotStructured.GetProperty("view").GetString());
+            Assert.Equal(5, uiaSnapshotStructured.GetProperty("requestedDepth").GetInt32());
+            Assert.Equal(128, uiaSnapshotStructured.GetProperty("requestedMaxNodes").GetInt32());
+            string uiaArtifactPath = uiaSnapshotStructured.GetProperty("artifactPath").GetString()!;
+            Assert.True(File.Exists(uiaArtifactPath), $"UIA snapshot artifact '{uiaArtifactPath}' was not created.");
+
+            JsonElement uiaContent = uiaSnapshotResult.GetProperty("content");
+            Assert.Equal(1, uiaContent.GetArrayLength());
+            Assert.Equal("text", uiaContent[0].GetProperty("type").GetString());
+            Assert.Contains("\"targetSource\":\"attached\"", uiaContent[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+
+            JsonElement uiaRoot = uiaSnapshotStructured.GetProperty("root");
+            JsonElement smokeButton = AssertUiaNodeExists(uiaRoot, "button", "Run semantic smoke");
+            Assert.Contains("invoke", smokeButton.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()));
+            JsonElement smokeCheckbox = AssertUiaNodeExists(uiaRoot, "check_box", "Remember semantic selection");
+            Assert.Contains("toggle", smokeCheckbox.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()));
+            JsonElement smokeEdit = AssertUiaNodeExists(uiaRoot, "edit", "Smoke query input");
+            string[] editPatterns = smokeEdit.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()!).ToArray();
+            Assert.True(editPatterns.Contains("value", StringComparer.Ordinal) || editPatterns.Contains("text", StringComparer.Ordinal));
+            AssertUiaNodeExists(uiaRoot, "tree", "Smoke navigation tree");
+            AssertUiaNodeExists(uiaRoot, "tree_item", "Workspace");
+            AssertUiaNodeExists(uiaRoot, "tree_item", "Inbox");
 
             using JsonDocument captureResponse = await session.CallToolAsync(ToolNames.WindowsCapture, new { scope = "window" });
             JsonElement captureResult = captureResponse.RootElement.GetProperty("result");
@@ -469,6 +513,89 @@ public sealed class McpProtocolSmokeTests
         }
 
         throw new TimeoutException($"Helper window did not become capturable after activation in time. Last capture reason: {lastReason}");
+    }
+
+    private static async Task<JsonDocument> WaitForSemanticUiaSnapshotAsync(McpRequestSession session)
+    {
+        DateTime deadlineUtc = DateTime.UtcNow + HelperWindowTimeout;
+        string? lastStatus = null;
+        string? lastArtifactPath = null;
+
+        while (DateTime.UtcNow < deadlineUtc)
+        {
+            using JsonDocument snapshotResponse = await CallToolAsync(
+                session,
+                ToolNames.WindowsUiaSnapshot,
+                new
+                {
+                    depth = 5,
+                    maxNodes = 128,
+                });
+            JsonElement result = snapshotResponse.RootElement.GetProperty("result");
+            JsonElement structured = result.GetProperty("structuredContent");
+
+            if (!result.GetProperty("isError").GetBoolean()
+                && structured.TryGetProperty("root", out JsonElement root)
+                && TryFindUiaNode(root, "button", "Run semantic smoke", out _)
+                && TryFindUiaNode(root, "check_box", "Remember semantic selection", out _)
+                && TryFindUiaNode(root, "edit", "Smoke query input", out _)
+                && TryFindUiaNode(root, "tree_item", "Inbox", out _))
+            {
+                return JsonDocument.Parse(snapshotResponse.RootElement.GetRawText());
+            }
+
+            if (structured.TryGetProperty("status", out JsonElement statusElement))
+            {
+                lastStatus = statusElement.GetString();
+            }
+
+            if (structured.TryGetProperty("artifactPath", out JsonElement artifactElement))
+            {
+                lastArtifactPath = artifactElement.GetString();
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException(
+            $"UIA semantic subtree did not materialize in time. Last status: {lastStatus ?? "<unknown>"}. Last artifact: {lastArtifactPath ?? "<none>"}");
+    }
+
+    private static JsonElement AssertUiaNodeExists(JsonElement root, string controlType, string name)
+    {
+        Assert.True(
+            TryFindUiaNode(root, controlType, name, out JsonElement match),
+            $"UIA snapshot did not contain expected node '{controlType}:{name}'.");
+        return match;
+    }
+
+    private static bool TryFindUiaNode(JsonElement node, string controlType, string name, out JsonElement match)
+    {
+        if (node.ValueKind == JsonValueKind.Object
+            && node.TryGetProperty("controlType", out JsonElement controlTypeElement)
+            && string.Equals(controlTypeElement.GetString(), controlType, StringComparison.Ordinal)
+            && node.TryGetProperty("name", out JsonElement nameElement)
+            && string.Equals(nameElement.GetString(), name, StringComparison.Ordinal))
+        {
+            match = node;
+            return true;
+        }
+
+        if (node.ValueKind == JsonValueKind.Object
+            && node.TryGetProperty("children", out JsonElement children)
+            && children.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement child in children.EnumerateArray())
+            {
+                if (TryFindUiaNode(child, controlType, name, out match))
+                {
+                    return true;
+                }
+            }
+        }
+
+        match = default;
+        return false;
     }
 
     private static Task<JsonDocument> CallToolAsync(

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Windows.UIA;
+using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Runtime.Tests;
 
@@ -27,6 +28,7 @@ public sealed class UiaHostingServiceCollectionExtensionsTests
         Assert.Equal(root, options.ContentRootPath);
         Assert.Equal("Tests", options.EnvironmentName);
         Assert.StartsWith(Path.Combine(root, "artifacts", "diagnostics"), options.RunDirectory, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(provider.GetService<IWindowTargetResolver>());
     }
 
     private static string CreateTempDirectory()

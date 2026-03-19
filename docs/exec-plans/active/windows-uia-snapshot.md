@@ -1,6 +1,6 @@
 # ExecPlan: windows.uia_snapshot
 
-Статус: active
+Статус: done
 Создан: 2026-03-18
 Обновлён: 2026-03-19
 
@@ -9,22 +9,18 @@
 Зафиксировать staged delivery для capability slice `windows.uia_snapshot`, где:
 
 - `Package A: contract + target policy` уже завершён;
-- текущий цикл закрывает только `Package B: runtime service + evidence`;
-- `Package C: server rollout + smoke + generated docs` остаётся следующим пакетом.
+- `Package B: runtime service + evidence` уже завершён;
+- текущий цикл закрывает `Package C: server rollout + smoke + generated docs`.
 
 Что именно закрывает текущий пакет:
 
-- concrete `Win32UiAutomationService`;
-- `ElementFromHandle` root acquisition и bounded `control view` traversal;
-- JSON evidence under diagnostics run directory;
-- runtime audit event для snapshot path;
-- optional host-specific DI registration boundary, isolated worker execution boundary и L1/L2 regression coverage без premature public rollout.
+- public `WindowTools` handler для `windows.uia_snapshot`;
+- `CallToolResult` / `structuredContent` public MCP shape;
+- lifecycle switch в `Implemented` и live tool contract;
+- end-to-end smoke scenario и generated docs refresh.
 
 Что этот пакет намеренно **не** делает:
 
-- public MCP handler rollout;
-- `ToolLifecycle.Implemented`;
-- smoke/generated-docs rollout;
 - commit/push.
 
 ## Delivery packages
@@ -57,9 +53,9 @@
 
 ### Package C — server rollout + smoke + generated docs
 
-Статус: `pending`
+Статус: `done`
 
-Отложено:
+Закрыто:
 
 - public `WindowTools` handler;
 - `CallToolResult` / `structuredContent` path;
@@ -69,10 +65,10 @@
 
 ## Current repo state
 
-- `windows.uia_snapshot` уже объявлен в `ToolNames`, но остаётся `Deferred` в `ToolContractManifest`.
-- Public handler в `WindowTools` по-прежнему возвращает `DeferredToolResult`; Package B не меняет этот факт.
+- `windows.uia_snapshot` объявлен в `ToolNames` и публикуется как `Implemented` в `ToolContractManifest`.
+- Public handler в `WindowTools` использует runtime UIA service и возвращает live `CallToolResult`.
 - Текущий репозиторий уже содержит pre-existing generated/bootstrap diffs вне объёма этого пакета; они не являются truth текущего пакета и не должны откатываться в этом цикле.
-- После Package B в repo есть рабочий runtime/evidence слой, но tool всё ещё честно считается не реализованным публично до Package C.
+- Slice закрыт как shipped public capability без преждевременного захода в `windows.uia_action`, `windows.wait` и `windows.input`.
 
 ## Official constraints
 
@@ -122,6 +118,11 @@ Authoritative meaning `active`:
 - Explicit path в Package A резолвится только по live `HWND`; дополнительную historical identity для caller-provided explicit `HWND` пока не вводим.
 - Attached path использует существующую stable-identity revalidation (`ProcessId` + `ThreadId` + `ClassName`).
 - Child UIA element identity остаётся future-runtime concern; Package A лишь вводит typed DTO shape.
+
+Invariant:
+- shell/resolution слой выбирает target для runtime;
+- runtime/result слой публикует metadata окна из фактического snapshot path;
+- `resolved target` и `observed window` нельзя сливать в один stale carrier object.
 
 ### Contract-first types
 
@@ -179,15 +180,15 @@ Package A/B осознанно не меняют:
 - foreground `HWND` без live match => `missing_target`;
 - foreground `HWND` с несколькими candidates => `ambiguous_active_target`.
 
-### L2. Honest deferred surface
+### L2. Public handler + contract surface
 
 Обязательные сценарии:
 
-- `WindowTools.UiaSnapshot(...)` всё ещё возвращает `DeferredToolResult` / `unsupported`;
-- `ToolContractManifest` всё ещё держит tool в `Deferred`;
-- tests не притворяются, что есть public structured snapshot payload или implemented handler.
+- `WindowTools.UiaSnapshot(...)` возвращает live `CallToolResult` c `structuredContent` и одним `TextContentBlock`;
+- `ToolContractManifest` публикует tool как `Implemented` / `SmokeRequired`;
+- `okno.contract`, exporter и `tools/list` не расходятся с реальным handler semantics.
 
-### L3. Not in Package A
+### L3. Smoke / evidence
 
 - реальный smoke;
 - end-to-end MCP snapshot flow;
@@ -195,16 +196,11 @@ Package A/B осознанно не меняют:
 
 ## Docs sync policy
 
-В рамках Package B синхронизируются:
+В рамках Package C синхронизируются:
 
 - этот exec-plan;
-- `observability`, потому что появляется новый diagnostics channel для runtime snapshot path;
-- `CHANGELOG`.
-
-Не синхронизируются в этом пакете:
-
-- generated docs;
-- exporter output.
+- `observability`, `okno-spec`, `okno-roadmap` и `CHANGELOG`;
+- generated docs и exporter output.
 
 ## Checklist
 
@@ -222,4 +218,6 @@ Package A/B осознанно не меняют:
 - [x] Timeout boundary для production path изолирован отдельным worker process.
 - [x] DI wiring добавлен как optional host-specific boundary через `WinBridge.Runtime.Windows.UIA.Hosting`, но `WindowTools` и `ToolContractManifest` по-прежнему deferred.
 - [x] Runtime и deferred regression tests покрывают Package B boundary.
-- [ ] Package C ещё не выполнен: public handler, `structuredContent`, lifecycle switch, smoke и generated docs остаются следующими шагами.
+- [x] Package C выполнил public handler, `structuredContent`, lifecycle switch, smoke и generated docs.
+- [x] Server runtime contract осознанно обновлён под live `windows.uia_snapshot` и больше не притворяется pre-rollout boundary.
+- [x] Residual scope остаётся ограничен только соседними capability slices: `windows.uia_action`, `windows.wait`, `windows.input`.

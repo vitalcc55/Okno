@@ -7,6 +7,7 @@ internal sealed record UiaSnapshotBackendResult(
     string? Reason,
     string? FailureStage,
     DateTimeOffset CapturedAtUtc,
+    ObservedWindowDescriptor? ObservedWindow = null,
     UiaElementSnapshot? Root = null,
     int RealizedDepth = 0,
     int NodeCount = 0,

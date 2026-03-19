@@ -14,6 +14,7 @@ using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
+using WinBridge.Runtime.Windows.UIA;
 using RuntimeToolExecution = WinBridge.Runtime.Diagnostics.ToolExecution;
 
 namespace WinBridge.Server.Tools;
@@ -31,6 +32,7 @@ public sealed class WindowTools
     private readonly ICaptureService _captureService;
     private readonly IMonitorManager _monitorManager;
     private readonly ISessionManager _sessionManager;
+    private readonly IUiAutomationService _uiAutomationService;
     private readonly IWindowActivationService _windowActivationService;
     private readonly IWindowManager _windowManager;
     private readonly IWindowTargetResolver _windowTargetResolver;
@@ -42,12 +44,14 @@ public sealed class WindowTools
         ICaptureService captureService,
         IMonitorManager monitorManager,
         IWindowActivationService windowActivationService,
-        IWindowTargetResolver windowTargetResolver)
+        IWindowTargetResolver windowTargetResolver,
+        IUiAutomationService uiAutomationService)
     {
         _auditLog = auditLog;
         _captureService = captureService;
         _monitorManager = monitorManager;
         _sessionManager = sessionManager;
+        _uiAutomationService = uiAutomationService;
         _windowActivationService = windowActivationService;
         _windowManager = windowManager;
         _windowTargetResolver = windowTargetResolver;
@@ -428,9 +432,77 @@ public sealed class WindowTools
     public DeferredToolResult Input(string actionsJson = "[]") =>
         Deferred(ToolNames.WindowsInput);
 
-    [McpServerTool(Name = ToolNames.WindowsUiaSnapshot)]
-    public DeferredToolResult UiaSnapshot(int depth = 3, string? filtersJson = null) =>
-        Deferred(ToolNames.WindowsUiaSnapshot);
+    [Description(ToolDescriptions.WindowsUiaSnapshotTool)]
+    [McpServerTool(
+        Name = ToolNames.WindowsUiaSnapshot,
+        ReadOnly = true,
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = true,
+        UseStructuredContent = true)]
+    public Task<CallToolResult> UiaSnapshot(
+        [Description(ToolDescriptions.UiaSnapshotHwndParameter)]
+        long? hwnd = null,
+        [Description(ToolDescriptions.UiaSnapshotDepthParameter)]
+        int depth = UiaSnapshotDefaults.Depth,
+        [Description(ToolDescriptions.UiaSnapshotMaxNodesParameter)]
+        int maxNodes = UiaSnapshotDefaults.MaxNodes,
+        CancellationToken cancellationToken = default) =>
+        RuntimeToolExecution.RunAsync(
+            _auditLog,
+            _sessionManager.GetSnapshot(),
+            ToolNames.WindowsUiaSnapshot,
+            new { hwnd, depth, maxNodes },
+            async invocation =>
+            {
+                UiaSnapshotRequest request = CreateUiaSnapshotRequest(depth, maxNodes);
+                if (!UiaSnapshotRequestValidator.TryValidate(request, out string? validationReason))
+                {
+                    return CreateInvalidRequestToolResult(invocation, hwnd, depth, maxNodes, validationReason!);
+                }
+
+                WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
+                UiaSnapshotTargetResolution resolution = _windowTargetResolver.ResolveUiaSnapshotTarget(hwnd, attachedWindow);
+                if (resolution.Window is null)
+                {
+                    return CreateTargetFailureToolResult(invocation, hwnd, depth, maxNodes, attachedWindow, resolution.FailureCode);
+                }
+
+                WindowDescriptor targetWindow = resolution.Window;
+
+                try
+                {
+                    UiaSnapshotResult runtimeResult = await _uiAutomationService
+                        .SnapshotAsync(
+                            targetWindow,
+                            request,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    return CreateCompletedUiaSnapshotToolResult(
+                        invocation,
+                        runtimeResult,
+                        hwnd,
+                        depth,
+                        maxNodes,
+                        resolution.Source,
+                        targetWindow.Hwnd);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    return CreateUnexpectedServerFailureToolResult(
+                        invocation,
+                        exception,
+                        hwnd,
+                        depth,
+                        maxNodes,
+                        resolution.Source,
+                        targetWindow.Hwnd);
+                }
+            });
 
     [McpServerTool(Name = ToolNames.WindowsUiaAction)]
     public DeferredToolResult UiaAction(string elementId, string action, string? value = null) =>
@@ -513,6 +585,223 @@ public sealed class WindowTools
 
     private static bool ActivateStatusIsToolError(string status) =>
         status is "failed" or "ambiguous";
+
+    private static bool UiaSnapshotStatusIsToolError(string status) =>
+        !string.Equals(status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal);
+
+    private static UiaSnapshotRequest CreateUiaSnapshotRequest(int depth, int maxNodes) =>
+        new()
+        {
+            Depth = depth,
+            MaxNodes = maxNodes,
+        };
+
+    private static CallToolResult CreateInvalidRequestToolResult(
+        AuditInvocationScope invocation,
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes,
+        string reason)
+    {
+        UiaSnapshotToolResult payload = CreateUiaSnapshotFailurePayload(
+            reason,
+            requestedHwnd,
+            requestedDepth,
+            requestedMaxNodes);
+        CompleteUiaSnapshotInvocation(
+            invocation,
+            outcome: "failed",
+            message: reason,
+            windowHwnd: requestedHwnd,
+            data: CreateUiaSnapshotValidationAuditData(requestedHwnd, requestedDepth, requestedMaxNodes));
+        return CreateToolResult(payload, isError: true);
+    }
+
+    private static CallToolResult CreateTargetFailureToolResult(
+        AuditInvocationScope invocation,
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes,
+        WindowDescriptor? attachedWindow,
+        string? targetFailureCode)
+    {
+        string reason = CreateUiaSnapshotTargetFailureReason(targetFailureCode);
+        UiaSnapshotToolResult payload = CreateUiaSnapshotFailurePayload(
+            reason,
+            requestedHwnd,
+            requestedDepth,
+            requestedMaxNodes,
+            targetFailureCode: targetFailureCode);
+        CompleteUiaSnapshotInvocation(
+            invocation,
+            outcome: "failed",
+            message: reason,
+            windowHwnd: requestedHwnd ?? attachedWindow?.Hwnd,
+            data: CreateUiaSnapshotTargetFailureAuditData(requestedHwnd, requestedDepth, requestedMaxNodes, targetFailureCode));
+        return CreateToolResult(payload, isError: true);
+    }
+
+    private static CallToolResult CreateCompletedUiaSnapshotToolResult(
+        AuditInvocationScope invocation,
+        UiaSnapshotResult runtimeResult,
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes,
+        string? targetSource,
+        long fallbackWindowHwnd)
+    {
+        UiaSnapshotToolResult payload = CreateUiaSnapshotToolResult(runtimeResult, targetSource, requestedHwnd);
+        CompleteUiaSnapshotInvocation(
+            invocation,
+            outcome: runtimeResult.Status,
+            message: runtimeResult.Status == UiaSnapshotStatusValues.Done
+                ? "UIA snapshot построен."
+                : runtimeResult.Reason ?? "UIA snapshot завершился с ошибкой.",
+            windowHwnd: runtimeResult.Window?.Hwnd ?? fallbackWindowHwnd,
+            data: CreateUiaSnapshotRuntimeAuditData(requestedHwnd, requestedDepth, requestedMaxNodes, targetSource, runtimeResult));
+        return CreateToolResult(payload, isError: UiaSnapshotStatusIsToolError(runtimeResult.Status));
+    }
+
+    private static CallToolResult CreateUnexpectedServerFailureToolResult(
+        AuditInvocationScope invocation,
+        Exception exception,
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes,
+        string? targetSource,
+        long targetHwnd)
+    {
+        const string reason = "Server не смог завершить UIA snapshot request.";
+        UiaSnapshotToolResult payload = CreateUiaSnapshotFailurePayload(
+            reason,
+            requestedHwnd,
+            requestedDepth,
+            requestedMaxNodes,
+            targetSource: targetSource);
+        invocation.CompleteSanitizedFailure(
+            reason,
+            exception,
+            targetHwnd,
+            CreateUiaSnapshotUnexpectedFailureAuditData(requestedHwnd, requestedDepth, requestedMaxNodes, targetSource));
+        return CreateToolResult(payload, isError: true);
+    }
+
+    private static UiaSnapshotToolResult CreateUiaSnapshotFailurePayload(
+        string reason,
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes,
+        string? targetSource = null,
+        string? targetFailureCode = null) =>
+        new(
+            Status: UiaSnapshotStatusValues.Failed,
+            Reason: reason,
+            Window: null,
+            RequestedHwnd: requestedHwnd,
+            RequestedDepth: requestedDepth,
+            RequestedMaxNodes: requestedMaxNodes,
+            TargetSource: targetSource,
+            TargetFailureCode: targetFailureCode);
+
+    private static Dictionary<string, string?> CreateUiaSnapshotValidationAuditData(
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes)
+    {
+        Dictionary<string, string?> data = CreateUiaSnapshotBaseAuditData(requestedHwnd, requestedDepth, requestedMaxNodes);
+        data["request_validation"] = bool.TrueString;
+        return data;
+    }
+
+    private static Dictionary<string, string?> CreateUiaSnapshotTargetFailureAuditData(
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes,
+        string? targetFailureCode)
+    {
+        Dictionary<string, string?> data = CreateUiaSnapshotBaseAuditData(requestedHwnd, requestedDepth, requestedMaxNodes);
+        data["target_failure_code"] = targetFailureCode;
+        return data;
+    }
+
+    private static Dictionary<string, string?> CreateUiaSnapshotRuntimeAuditData(
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes,
+        string? targetSource,
+        UiaSnapshotResult runtimeResult)
+    {
+        Dictionary<string, string?> data = CreateUiaSnapshotBaseAuditData(requestedHwnd, requestedDepth, requestedMaxNodes);
+        data["target_source"] = targetSource;
+        data["node_count"] = runtimeResult.NodeCount.ToString(CultureInfo.InvariantCulture);
+        data["artifact_path"] = runtimeResult.ArtifactPath;
+        return data;
+    }
+
+    private static Dictionary<string, string?> CreateUiaSnapshotUnexpectedFailureAuditData(
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes,
+        string? targetSource)
+    {
+        Dictionary<string, string?> data = CreateUiaSnapshotBaseAuditData(requestedHwnd, requestedDepth, requestedMaxNodes);
+        data["target_source"] = targetSource;
+        data["unexpected_server_failure"] = bool.TrueString;
+        return data;
+    }
+
+    private static Dictionary<string, string?> CreateUiaSnapshotBaseAuditData(
+        long? requestedHwnd,
+        int requestedDepth,
+        int requestedMaxNodes) =>
+        new()
+        {
+            ["requested_hwnd"] = requestedHwnd?.ToString(CultureInfo.InvariantCulture),
+            ["requested_depth"] = requestedDepth.ToString(CultureInfo.InvariantCulture),
+            ["requested_max_nodes"] = requestedMaxNodes.ToString(CultureInfo.InvariantCulture),
+        };
+
+    private static void CompleteUiaSnapshotInvocation(
+        AuditInvocationScope invocation,
+        string outcome,
+        string message,
+        long? windowHwnd,
+        IReadOnlyDictionary<string, string?> data) =>
+        invocation.Complete(outcome, message, windowHwnd, data);
+
+    private static UiaSnapshotToolResult CreateUiaSnapshotToolResult(
+        UiaSnapshotResult runtimeResult,
+        string? targetSource,
+        long? requestedHwnd) =>
+        new(
+            Status: runtimeResult.Status,
+            Reason: runtimeResult.Reason,
+            Window: runtimeResult.Window,
+            RequestedHwnd: requestedHwnd,
+            RequestedDepth: runtimeResult.RequestedDepth,
+            RequestedMaxNodes: runtimeResult.RequestedMaxNodes,
+            TargetSource: targetSource,
+            TargetFailureCode: null,
+            View: runtimeResult.View,
+            RealizedDepth: runtimeResult.RealizedDepth,
+            NodeCount: runtimeResult.NodeCount,
+            Truncated: runtimeResult.Truncated,
+            DepthBoundaryReached: runtimeResult.DepthBoundaryReached,
+            NodeBudgetBoundaryReached: runtimeResult.NodeBudgetBoundaryReached,
+            AcquisitionMode: runtimeResult.AcquisitionMode,
+            ArtifactPath: runtimeResult.ArtifactPath,
+            CapturedAtUtc: runtimeResult.CapturedAtUtc,
+            Root: runtimeResult.Root);
+
+    private static string CreateUiaSnapshotTargetFailureReason(string? failureCode) =>
+        failureCode switch
+        {
+            UiaSnapshotTargetFailureValues.MissingTarget => "Для UIA snapshot нужно передать hwnd, прикрепить окно или иметь единственный foreground top-level window.",
+            UiaSnapshotTargetFailureValues.StaleExplicitTarget => "Окно для UIA snapshot по указанному hwnd больше не найдено или explicit hwnd недействителен.",
+            UiaSnapshotTargetFailureValues.StaleAttachedTarget => "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
+            UiaSnapshotTargetFailureValues.AmbiguousActiveTarget => "Foreground window для UIA snapshot неоднозначен: найдено несколько live top-level candidates.",
+            _ => "Не удалось разрешить target для UIA snapshot.",
+        };
 
     private static CallToolResult CreateErrorResult(string reason, string scope, long? hwnd, string? monitorId)
     {

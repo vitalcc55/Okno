@@ -358,18 +358,26 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 
 ### `windows.uia_snapshot`
 Аргументы:
-- selected window по target policy этого capability slice;
-- traversal limits для depth/node budget;
-- concrete public MCP shape публикуется только вместе с handler rollout.
+- `hwnd`: optional explicit top-level window target;
+- если `hwnd` не передан, target policy: `attached -> active`;
+- при explicit `hwnd <= 0` или stale explicit target tool возвращает `targetFailureCode = stale_explicit_target` без fallback;
+- `depth`: bounded control-view depth, `>= 0`;
+- `maxNodes`: bounded node budget, `1..1024`.
+
+Invariant:
+- `resolved target` определяет, какой `HWND` runtime пытается snapshot-ить;
+- `window` в результате и artifact относится к metadata, которую runtime публикует после фактического snapshot path;
+- эти два смысла не должны смешиваться в один stale descriptor.
 
 Возвращает:
-- список элементов или дерево;
-- `element_id`;
-- name;
-- automation id;
-- control type;
-- bounding rect;
-- patterns.
+- `structuredContent` + один `TextContentBlock`, без image block;
+- `status`, `reason`, `targetSource`, `targetFailureCode`;
+- runtime-observed window metadata, если target удалось реально переobserve-ить во время snapshot;
+- `window` отсутствует на unobserved failure path;
+- отдельные поля `window` могут отсутствовать, если runtime их не наблюдал честно и не может подтвердить без stale fallback;
+- requested depth/node budget и realized traversal metadata;
+- `artifactPath` для JSON evidence в diagnostics run directory;
+- root element/subtree с `element_id`, `name`, `automation_id`, `control_type`, `bounding_rect`, `patterns`.
 
 ---
 

@@ -355,7 +355,8 @@ public sealed class WindowSessionToolTests
             new NoopCaptureService(),
             new FakeMonitorManager(monitors),
             activationService ?? new FakeWindowActivationService(),
-            new WindowTargetResolver(windowManager));
+            new WindowTargetResolver(windowManager),
+            new FakeUiAutomationService());
 
         return new TestContext(tools, sessionManager);
     }

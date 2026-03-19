@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
@@ -78,6 +79,32 @@ public sealed class Win32UiAutomationServiceTests
     }
 
     [Fact]
+    public async Task SnapshotAsyncFailsEarlyForTooLargeMaxNodesWithoutCallingBackend()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-uia-too-many-nodes");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        CountingBackend backend = new(CreateBackendResult(CreateSuccessResult()));
+        Win32UiAutomationService service = new(
+            backend,
+            new UiaSnapshotArtifactWriter(options),
+            auditLog,
+            TimeProvider.System);
+
+        UiaSnapshotResult result = await service.SnapshotAsync(
+            CreateWindow(),
+            new UiaSnapshotRequest { Depth = 1, MaxNodes = UiaSnapshotRequestValidator.MaxNodesCeiling + 1 },
+            CancellationToken.None);
+
+        Assert.Equal(UiaSnapshotStatusValues.Failed, result.Status);
+        Assert.Equal(0, backend.Calls);
+        Assert.Contains(UiaSnapshotRequestValidator.MaxNodesCeiling.ToString(CultureInfo.InvariantCulture), result.Reason, StringComparison.Ordinal);
+        string[] eventLines = await File.ReadAllLinesAsync(options.EventsPath);
+        Assert.Single(eventLines);
+        Assert.Contains("\"failure_stage\":\"request_validation\"", eventLines[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SnapshotAsyncReturnsFailedWhenArtifactWriteFails()
     {
         string root = CreateTempDirectory();
@@ -107,6 +134,47 @@ public sealed class Win32UiAutomationServiceTests
     }
 
     [Fact]
+    public async Task SnapshotAsyncSupportsPathRootFallbackAndUsesObservedWindowMetadata()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-uia-observed-window");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        ObservedWindowDescriptor observedWindow = CreateObservedWindow(
+            hwnd: 42,
+            title: "Observed Calculator",
+            processId: 777,
+            threadId: 778,
+            className: "ObservedCalcWindow",
+            bounds: new Bounds(10, 20, 810, 620));
+        Win32UiAutomationService service = new(
+            new FakeBackend(CreateBackendResult(CreateSuccessResult(observedWindow, "path:0"))),
+            new UiaSnapshotArtifactWriter(options),
+            auditLog,
+            TimeProvider.System);
+
+        UiaSnapshotResult result = await service.SnapshotAsync(CreateWindow(), new UiaSnapshotRequest(), CancellationToken.None);
+
+        Assert.Equal(UiaSnapshotStatusValues.Done, result.Status);
+        Assert.Equal("Observed Calculator", result.Window?.Title);
+        Assert.Equal(777, result.Window?.ProcessId);
+        Assert.Equal(778, result.Window?.ThreadId);
+        Assert.Equal("ObservedCalcWindow", result.Window?.ClassName);
+        Assert.Equal("path:0", result.Root?.ElementId);
+        Assert.Null(result.Window?.MonitorId);
+        Assert.Null(result.Window?.EffectiveDpi);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath!));
+        JsonElement artifactWindow = artifact.RootElement.GetProperty("window");
+        Assert.Equal("Observed Calculator", artifactWindow.GetProperty("title").GetString());
+        Assert.Equal("path:0", artifact.RootElement.GetProperty("root").GetProperty("element_id").GetString());
+        Assert.False(artifactWindow.TryGetProperty("monitorId", out _));
+        Assert.False(artifactWindow.TryGetProperty("effectiveDpi", out _));
+        string[] eventLines = await File.ReadAllLinesAsync(options.EventsPath);
+        Assert.Single(eventLines);
+        Assert.Contains("\"outcome\":\"done\"", eventLines[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SnapshotAsyncReturnsFailedWhenBackendCannotResolveRoot()
     {
         string root = CreateTempDirectory();
@@ -121,6 +189,7 @@ public sealed class Win32UiAutomationServiceTests
         UiaSnapshotResult result = await service.SnapshotAsync(CreateWindow(), new UiaSnapshotRequest(), CancellationToken.None);
 
         Assert.Equal(UiaSnapshotStatusValues.Failed, result.Status);
+        Assert.Null(result.Window);
         Assert.Null(result.Root);
         Assert.Null(result.ArtifactPath);
         Assert.Equal("element_from_handle", result.AcquisitionMode);
@@ -177,11 +246,11 @@ public sealed class Win32UiAutomationServiceTests
             IsForeground: true,
             IsVisible: true);
 
-    private static UiaSnapshotResult CreateSuccessResult() =>
+    private static UiaSnapshotResult CreateSuccessResult(ObservedWindowDescriptor? window = null, string rootElementId = "rid:1.2") =>
         new(
             Status: UiaSnapshotStatusValues.Done,
             Reason: null,
-            Window: CreateWindow(),
+            Window: window ?? CreateObservedWindow(),
             View: UiaSnapshotViewValues.Control,
             RequestedDepth: 3,
             RequestedMaxNodes: UiaSnapshotDefaults.MaxNodes,
@@ -195,7 +264,7 @@ public sealed class Win32UiAutomationServiceTests
             CapturedAtUtc: new DateTimeOffset(2026, 3, 18, 12, 34, 56, TimeSpan.Zero),
             Root: new UiaElementSnapshot
             {
-                ElementId = "rid:1.2",
+                ElementId = rootElementId,
                 ParentElementId = null,
                 Depth = 0,
                 Ordinal = 0,
@@ -220,7 +289,7 @@ public sealed class Win32UiAutomationServiceTests
                     new UiaElementSnapshot
                     {
                         ElementId = "path:0/0",
-                        ParentElementId = "rid:1.2",
+                        ParentElementId = rootElementId,
                         Depth = 1,
                         Ordinal = 0,
                         Name = "Save",
@@ -250,12 +319,29 @@ public sealed class Win32UiAutomationServiceTests
             Reason: null,
             FailureStage: null,
             CapturedAtUtc: result.CapturedAtUtc,
+            ObservedWindow: result.Window,
             Root: result.Root,
             RealizedDepth: result.RealizedDepth,
             NodeCount: result.NodeCount,
             Truncated: result.Truncated,
             DepthBoundaryReached: result.DepthBoundaryReached,
             NodeBudgetBoundaryReached: result.NodeBudgetBoundaryReached);
+
+    private static ObservedWindowDescriptor CreateObservedWindow(
+        long hwnd = 42,
+        string? title = "Calculator",
+        int? processId = 42,
+        int? threadId = 84,
+        string? className = "CalcWindow",
+        Bounds? bounds = null) =>
+        new(
+            Hwnd: hwnd,
+            Title: title,
+            ProcessName: processId is int ? "CalculatorApp" : null,
+            ProcessId: processId,
+            ThreadId: threadId,
+            ClassName: className,
+            Bounds: bounds ?? new Bounds(0, 0, 800, 600));
 
     private static string CreateTempDirectory()
     {

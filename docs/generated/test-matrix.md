@@ -7,15 +7,15 @@
 | Layer | Command | Coverage now |
 | --- | --- | --- |
 | Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |
-| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, display identity pipeline, monitor id formatting, activation decision logic, session dedupe, session mutation |
-| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, attach/focus/activate contract semantics, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |
-| Smoke | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | init -> tools/list -> health -> list monitors -> desktop capture by monitorId -> list windows -> attach -> session_state -> capture -> helper minimize/activate/window capture |
+| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, display identity pipeline, monitor id formatting, activation decision logic, UIA runtime packaging/evidence, session dedupe, session mutation |
+| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |
+| Smoke | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | init -> tools/list -> health -> list monitors -> desktop capture by monitorId -> list windows -> attach -> session_state -> uia_snapshot -> capture -> helper minimize/activate/window capture |
 | Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke |
 
 ## Чего пока не хватает
 
 - Contract tests на конкретную JSON-форму каждого deferred tool.
-- Production-coverage для следующих slices: UIA, input, clipboard, wait.
+- Production-coverage для следующих slices: input, clipboard, wait.
 - Отдельный monitor-select contract beyond `windows.list_monitors` + `monitorId` targeting, если позже понадобится richer multi-monitor workflow.
 - Boundary tests на проектные зависимости, если слоёв станет больше.
 - Coverage reporting как отдельный отчётный шаг.

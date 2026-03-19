@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using WinBridge.Runtime;
 using WinBridge.Runtime.Tooling;
+using WinBridge.Runtime.Windows.UIA;
 using WinBridge.Server.Tools;
 
 if (TryRunExportMode(args))
@@ -16,6 +17,7 @@ global::WinBridge.Server.DpiAwarenessBootstrap.EnsurePerMonitorAware();
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
 builder.Services.AddWinBridgeRuntime(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);
+builder.Services.AddWinBridgeRuntimeWindowsUia(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);
 builder.Services.AddSingleton<AdminTools>();
 builder.Services.AddSingleton<WindowTools>();
 builder.Services

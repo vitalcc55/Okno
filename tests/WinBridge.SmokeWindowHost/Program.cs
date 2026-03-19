@@ -32,16 +32,59 @@ internal static class Program
         {
             Text = title;
             StartPosition = FormStartPosition.Manual;
-            Bounds = new Rectangle(120, 120, 420, 280);
+            Bounds = new Rectangle(120, 120, 520, 360);
             ShowInTaskbar = true;
+            Controls.Add(CreateRunButton());
+            Controls.Add(CreateRememberCheckBox());
+            Controls.Add(CreateQueryTextBox());
+            Controls.Add(CreateTreeView());
+        }
 
-            Controls.Add(
-                new Label
-                {
-                    Dock = DockStyle.Fill,
-                    Text = "Okno smoke window",
-                    TextAlign = ContentAlignment.MiddleCenter,
-                });
+        private static Button CreateRunButton() =>
+            new()
+            {
+                Name = "RunSemanticSmokeButton",
+                AccessibleName = "Run semantic smoke",
+                Text = "Run semantic smoke",
+                Bounds = new Rectangle(24, 24, 180, 34),
+                UseVisualStyleBackColor = true,
+            };
+
+        private static CheckBox CreateRememberCheckBox() =>
+            new()
+            {
+                Name = "RememberSemanticSelectionCheckBox",
+                AccessibleName = "Remember semantic selection",
+                Text = "Remember semantic selection",
+                Bounds = new Rectangle(24, 72, 220, 24),
+                Checked = true,
+            };
+
+        private static TextBox CreateQueryTextBox() =>
+            new()
+            {
+                Name = "SmokeQueryInputTextBox",
+                AccessibleName = "Smoke query input",
+                Text = "semantic text",
+                Bounds = new Rectangle(24, 112, 220, 28),
+            };
+
+        private static TreeView CreateTreeView()
+        {
+            TreeView treeView = new()
+            {
+                Name = "SmokeNavigationTree",
+                AccessibleName = "Smoke navigation tree",
+                Bounds = new Rectangle(24, 160, 220, 140),
+                HideSelection = false,
+            };
+
+            TreeNode workspaceNode = new("Workspace");
+            workspaceNode.Nodes.Add("Inbox");
+            workspaceNode.Nodes.Add("Archive");
+            treeView.Nodes.Add(workspaceNode);
+            treeView.ExpandAll();
+            return treeView;
         }
     }
 }

@@ -6,10 +6,11 @@ namespace WinBridge.Server.IntegrationTests;
 public sealed class BootstrapRuntimeDependencyTests
 {
     [Fact]
-    public void ServerRuntimeConfigDoesNotRequireWindowsDesktopBeforePublicUiaRollout()
+    public void ServerRuntimeConfigRequiresWindowsDesktopAndStagesUiaWorkerAfterPublicRollout()
     {
         string serverAssemblyPath = typeof(WindowTools).Assembly.Location;
         string runtimeConfigPath = Path.ChangeExtension(serverAssemblyPath, ".runtimeconfig.json")!;
+        string outputDirectory = Path.GetDirectoryName(serverAssemblyPath)!;
 
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(runtimeConfigPath));
         JsonElement runtimeOptions = document.RootElement.GetProperty("runtimeOptions");
@@ -24,8 +25,12 @@ public sealed class BootstrapRuntimeDependencyTests
             frameworkNames.Add(framework.GetProperty("name").GetString());
         }
 
-        Assert.DoesNotContain(
+        Assert.Contains(
             frameworkNames,
             frameworkName => string.Equals(frameworkName, "Microsoft.WindowsDesktop.App", StringComparison.Ordinal));
+        Assert.True(File.Exists(Path.Combine(outputDirectory, "WinBridge.Runtime.Windows.UIA.Worker.exe")));
+        Assert.True(File.Exists(Path.Combine(outputDirectory, "WinBridge.Runtime.Windows.UIA.Worker.dll")));
+        Assert.True(File.Exists(Path.Combine(outputDirectory, "WinBridge.Runtime.Windows.UIA.Worker.runtimeconfig.json")));
+        Assert.True(File.Exists(Path.Combine(outputDirectory, "WinBridge.Runtime.Windows.UIA.Worker.deps.json")));
     }
 }

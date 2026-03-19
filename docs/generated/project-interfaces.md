@@ -34,6 +34,7 @@
 | `windows.activate_window` | `os_side_effect` | Делает attached window usable target: при необходимости restore, затем попытка foreground focus и обязательная final live-state verification. Status done означает подтверждённый foreground usable state, а не просто попытку активации. |
 | `windows.focus_window` | `os_side_effect` | Запрашивает foreground focus для explicit hwnd или attached window. В отличие от activate_window не делает restore и не подтверждает usability final-state. |
 | `windows.capture` | `os_side_effect` | Выполняет capture выбранной цели и возвращает PNG + structured metadata. При scope=window target выбирается как explicit hwnd или attached window. При scope=desktop target выбирается как explicit monitorId, explicit hwnd, attached window или primary monitor. Все bounds и pixel sizes выражены в physical_pixels. |
+| `windows.uia_snapshot` | `read_only` | Возвращает UIA snapshot выбранного окна в control view. Target policy: explicit hwnd -> attached window -> active foreground top-level window. Tool не активирует окно скрыто и возвращает structured metadata + text payload без image block. |
 
 ### Deferred but declared
 
@@ -42,7 +43,6 @@
 | `windows.clipboard_get` | `unsupported` | roadmap stage 4 |
 | `windows.clipboard_set` | `unsupported` | roadmap stage 4 |
 | `windows.input` | `unsupported` | roadmap stage 5 |
-| `windows.uia_snapshot` | `unsupported` | roadmap stage 6 |
 | `windows.uia_action` | `unsupported` | roadmap stage 7 |
 | `windows.wait` | `unsupported` | roadmap stage 8 |
 
@@ -63,5 +63,6 @@
 - `artifacts/diagnostics/<run_id>/events.jsonl`
 - `artifacts/diagnostics/<run_id>/summary.md`
 - `artifacts/diagnostics/<run_id>/captures/<capture_id>.png`
+- `artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json`
 - `artifacts/smoke/<run_id>/report.json`
 - `artifacts/smoke/<run_id>/summary.md`

@@ -36,11 +36,11 @@
     "diagnostics_events": "artifacts/diagnostics/<run_id>/events.jsonl",
     "diagnostics_summary": "artifacts/diagnostics/<run_id>/summary.md",
     "capture_artifact": "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",
+    "uia_artifact": "artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json",
     "smoke_report": "artifacts/smoke/<run_id>/report.json",
     "smoke_summary": "artifacts/smoke/<run_id>/summary.md"
   },
   "deferred_scope": [
-    "UIA",
     "Input",
     "Clipboard",
     "Waiting",

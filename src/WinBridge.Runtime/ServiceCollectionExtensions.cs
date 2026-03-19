@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Windows.Capture;

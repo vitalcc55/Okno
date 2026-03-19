@@ -2,6 +2,16 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-19 14:34
+
+- Review-driven hardening для `windows.uia_snapshot` закрыл четыре корневые проблемы public rollout сразу на boundary-уровне: shared `UiaSnapshotRequestValidator` теперь одинаково валидирует request в server/runtime и держит публичный `maxNodes` в диапазоне `1..1024`, runtime service больше не публикует stale pre-resolution descriptor и теперь берет `window` только как sparse runtime-observed metadata из того же backend capture path, который построил фактический root/subtree, diagnostics boundary получил отдельный sanitized-failure path с сохранением `exception_type`/`exception_message` в audit trail, а smoke-контуру добавлен polling до materialized semantic subtree вместо single-shot UIA assertions.
+
+## 2026-03-19 13:25
+
+- `windows.uia_snapshot` доведён до shipped public slice: `Okno.Server` теперь публикует live MCP handler с `hwnd + depth + maxNodes`, `CallToolResult`, `structuredContent` и одним `TextContentBlock` без image block; target policy `explicit -> attached -> active` честно резолвится через existing shell seam, а stale/ambiguous target cases больше не маскируются deferred stub-ом.
+- Public rollout осознанно изменил server runtime contract: `Okno.Server` получил host-facing зависимость на `WinBridge.Runtime.Windows.UIA.Hosting`, runtime config теперь legitimately включает `Microsoft.WindowsDesktop.App`, а boundary protection перенесён из pre-rollout запрета в positive guard на staged UIA worker artifacts и новый WindowsDesktop-backed shipped state.
+- Smoke и generated/docs слой выровнены под live contract: helper window теперь содержит предсказуемый semantic subtree на WinForms standard controls, `McpProtocolSmokeTests` и `scripts/smoke.ps1` проверяют attached-source UIA snapshot и JSON evidence artifact, `project-interfaces`/`bootstrap-status`/`test-matrix` больше не держат UIA в deferred scope, а `observability`/`okno-spec`/`okno-roadmap` синхронизированы по фактическому shipped behavior.
+
 ## 2026-03-19 11:16
 
 - Review-driven hardening для `windows.uia_snapshot` развёл semantics bounded traversal по двум независимым границам: `UiaSnapshotTreeBuilder` больше не зондирует child nodes после исчерпания `MaxNodes`, `Truncated` остаётся только флагом доказанного clipping, а новый `node_budget_boundary_reached` фиксирует strict no-probe budget boundary так же явно, как `depth_boundary_reached` фиксирует depth boundary.

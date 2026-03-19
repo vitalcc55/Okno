@@ -27,4 +27,9 @@ public static class ToolDescriptions
     public const string CaptureScopeParameter = "Capture scope. window снимает explicit hwnd или attached window. desktop снимает explicit monitorId, explicit hwnd, attached window или primary monitor.";
     public const string CaptureHwndParameter = "Явный HWND target. При scope=window имеет приоритет над attached window. При scope=desktop используется для выбора monitor окна, если monitorId не задан. Для desktop capture нельзя передавать одновременно с monitorId.";
     public const string CaptureMonitorIdParameter = "Явный monitor target для desktop capture. Допустим только при scope=desktop и имеет приоритет над monitor attached window.";
+
+    public const string WindowsUiaSnapshotTool = "Возвращает UIA snapshot выбранного окна в control view. Target policy: explicit hwnd -> attached window -> active foreground top-level window. Tool не активирует окно скрыто и возвращает structured metadata + text payload без image block.";
+    public const string UiaSnapshotHwndParameter = "Явный HWND для UIA snapshot. Если передан, имеет приоритет над attached и active target. Stale или invalid explicit hwnd не fallback-ится и даёт targetFailureCode=stale_explicit_target.";
+    public const string UiaSnapshotDepthParameter = "Максимальная глубина обхода control view. Значение должно быть >= 0. По умолчанию используется канонический UIA snapshot depth.";
+    public const string UiaSnapshotMaxNodesParameter = "Максимальный node budget для materialized subtree. Значение должно быть в диапазоне 1..1024. При достижении budget result честно помечает truncated и nodeBudgetBoundaryReached.";
 }

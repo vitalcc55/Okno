@@ -140,6 +140,50 @@ function Get-RequiredToolNames {
     return @($Manifest.tools.smoke_required_names)
 }
 
+function Find-UiaNodes {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Node,
+        [string] $ControlType,
+        [string] $Name
+    )
+
+    if ($null -eq $Node) {
+        return @()
+    }
+
+    $matches = @()
+    $nodeControlType = if ($null -ne $Node.controlType) { [string]$Node.controlType } else { $null }
+    $nodeName = if ($null -ne $Node.name) { [string]$Node.name } else { $null }
+
+    if (([string]::IsNullOrWhiteSpace($ControlType) -or $nodeControlType -eq $ControlType) -and
+        ([string]::IsNullOrWhiteSpace($Name) -or $nodeName -eq $Name)) {
+        $matches += $Node
+    }
+
+    foreach ($child in @($Node.children)) {
+        $matches += @(Find-UiaNodes -Node $child -ControlType $ControlType -Name $Name)
+    }
+
+    return $matches
+}
+
+function Test-UiaSemanticSubtreeReady {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Payload
+    )
+
+    if ($null -eq $Payload.root) {
+        return $false
+    }
+
+    return (@(Find-UiaNodes -Node $Payload.root -ControlType 'button' -Name 'Run semantic smoke').Count -gt 0) -and
+        (@(Find-UiaNodes -Node $Payload.root -ControlType 'check_box' -Name 'Remember semantic selection').Count -gt 0) -and
+        (@(Find-UiaNodes -Node $Payload.root -ControlType 'edit' -Name 'Smoke query input').Count -gt 0) -and
+        (@(Find-UiaNodes -Node $Payload.root -ControlType 'tree_item' -Name 'Inbox').Count -gt 0)
+}
+
 function Wait-Until {
     param(
         [Parameter(Mandatory)]
@@ -328,6 +372,45 @@ function Wait-ForSuccessfulWindowCapture {
     throw "Helper window did not become capturable after activation in time. Last capture reason: $lastReason"
 }
 
+function Wait-ForSemanticUiaSnapshot {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [int] $TimeoutMilliseconds = 10000,
+        [int] $PollMilliseconds = 100
+    )
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    $lastStatus = $null
+    $lastArtifactPath = $null
+
+    do {
+        $toolCall = Invoke-ToolCall -Process $Process -Name 'windows.uia_snapshot' -Arguments @{
+            depth = 5
+            maxNodes = 128
+        } -RequestName 'windows.uia_snapshot(attached helper window)'
+        $result = $toolCall.Json.result
+        $payload = $result.structuredContent
+
+        if ((-not [bool]$result.isError) -and (Test-UiaSemanticSubtreeReady -Payload $payload)) {
+            return [PSCustomObject]@{
+                Id = $toolCall.Id
+                RawRequest = $toolCall.RawRequest
+                RawResponse = $toolCall.RawResponse
+                Json = $toolCall.Json
+                Payload = $payload
+            }
+        }
+
+        $lastStatus = [string]$payload.status
+        $lastArtifactPath = [string]$payload.artifactPath
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+    while ((Get-Date) -lt $deadline)
+
+    throw "UIA semantic subtree did not materialize in time. Last status: $lastStatus. Last artifact: $lastArtifactPath"
+}
+
 function Minimize-Window {
     param(
         [Parameter(Mandatory)]
@@ -450,6 +533,7 @@ try {
 
     $attachedWindow = $null
     $sessionPayload = $null
+    $uiaSnapshotPayload = $null
     $capturePayload = $null
     $captureImage = $null
     $activatePayload = $null
@@ -475,6 +559,38 @@ try {
     $sessionPayload = $sessionCall.Payload
     Assert-Condition -Condition ($sessionPayload.mode -eq 'window') -Message "Session snapshot mode is '$($sessionPayload.mode)', expected 'window'."
     Assert-Condition -Condition ([long]$sessionPayload.attachedWindow.window.hwnd -eq $helperHwnd) -Message 'Session snapshot does not point to the helper hwnd.'
+
+    $uiaSnapshotCall = Wait-ForSemanticUiaSnapshot -Process $process
+    $rawUiaSnapshotRequest = $uiaSnapshotCall.RawRequest
+    $uiaSnapshotResponse = [PSCustomObject]@{
+        Raw = $uiaSnapshotCall.RawResponse
+        Json = $uiaSnapshotCall.Json
+    }
+    Assert-Condition -Condition (-not [bool]$uiaSnapshotCall.Json.result.isError) -Message 'UIA snapshot for attached helper window returned isError=true.'
+    Assert-Condition -Condition (@($uiaSnapshotCall.Json.result.content).Count -eq 1) -Message 'UIA snapshot must return exactly one text content block.'
+    Assert-Condition -Condition ($uiaSnapshotCall.Json.result.content[0].type -eq 'text') -Message 'UIA snapshot content block must be text-only.'
+    Assert-Condition -Condition (@($uiaSnapshotCall.Json.result.content | Where-Object { $_.type -eq 'image' }).Count -eq 0) -Message 'UIA snapshot must not return image content blocks.'
+    $uiaSnapshotPayload = $uiaSnapshotCall.Json.result.structuredContent
+    Assert-Condition -Condition ($uiaSnapshotPayload.status -eq 'done') -Message "UIA snapshot returned unexpected status '$($uiaSnapshotPayload.status)'."
+    Assert-Condition -Condition ($uiaSnapshotPayload.targetSource -eq 'attached') -Message "UIA snapshot target source is '$($uiaSnapshotPayload.targetSource)', expected 'attached'."
+    Assert-Condition -Condition ([long]$uiaSnapshotPayload.window.hwnd -eq $helperHwnd) -Message 'UIA snapshot hwnd does not match helper window.'
+    Assert-Condition -Condition ([int]$uiaSnapshotPayload.requestedDepth -eq 5) -Message 'UIA snapshot did not preserve requested depth.'
+    Assert-Condition -Condition ([int]$uiaSnapshotPayload.requestedMaxNodes -eq 128) -Message 'UIA snapshot did not preserve requested maxNodes.'
+    Assert-Condition -Condition (Test-Path $uiaSnapshotPayload.artifactPath) -Message "UIA snapshot artifact '$($uiaSnapshotPayload.artifactPath)' was not created."
+
+    $smokeButtonNodes = @(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'button' -Name 'Run semantic smoke')
+    Assert-Condition -Condition ($smokeButtonNodes.Count -gt 0) -Message 'UIA snapshot did not include expected smoke button.'
+    Assert-Condition -Condition (@($smokeButtonNodes[0].patterns) -contains 'invoke') -Message 'UIA snapshot smoke button does not expose invoke pattern.'
+    $smokeCheckboxNodes = @(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'check_box' -Name 'Remember semantic selection')
+    Assert-Condition -Condition ($smokeCheckboxNodes.Count -gt 0) -Message 'UIA snapshot did not include expected smoke checkbox.'
+    Assert-Condition -Condition (@($smokeCheckboxNodes[0].patterns) -contains 'toggle') -Message 'UIA snapshot smoke checkbox does not expose toggle pattern.'
+    $smokeEditNodes = @(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'edit' -Name 'Smoke query input')
+    Assert-Condition -Condition ($smokeEditNodes.Count -gt 0) -Message 'UIA snapshot did not include expected smoke edit control.'
+    $editPatterns = @($smokeEditNodes[0].patterns)
+    Assert-Condition -Condition (($editPatterns -contains 'value') -or ($editPatterns -contains 'text')) -Message 'UIA snapshot smoke edit control does not expose value/text pattern.'
+    Assert-Condition -Condition (@(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'tree' -Name 'Smoke navigation tree').Count -gt 0) -Message 'UIA snapshot did not include expected smoke tree.'
+    Assert-Condition -Condition (@(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'tree_item' -Name 'Workspace').Count -gt 0) -Message 'UIA snapshot did not include expected Workspace tree item.'
+    Assert-Condition -Condition (@(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'tree_item' -Name 'Inbox').Count -gt 0) -Message 'UIA snapshot did not include expected Inbox tree item.'
 
     $captureCall = Invoke-ToolCall -Process $process -Name 'windows.capture' -Arguments @{ scope = 'window' } -RequestName 'windows.capture(window)'
     $rawCaptureRequest = $captureCall.RawRequest
@@ -555,6 +671,7 @@ try {
         attached_window = $attachedWindow
         session = $sessionPayload
         desktop_capture = $desktopCapturePayload
+        uia_snapshot = $uiaSnapshotPayload
         capture = $capturePayload
         helper_window = [ordered]@{
             hwnd = $helperHwnd
@@ -571,6 +688,7 @@ try {
             desktop_capture = $rawDesktopCaptureRequest
             attach_window = $rawAttachRequest
             session_state = $rawSessionRequest
+            uia_snapshot = $rawUiaSnapshotRequest
             capture = $rawCaptureRequest
             activate_window = $rawActivateRequest
             helper_window_capture = $rawHelperCaptureRequest
@@ -584,6 +702,7 @@ try {
             desktop_capture = $desktopCaptureResponse.Raw
             attach_window = $attachResponse.Raw
             session_state = $sessionResponse.Raw
+            uia_snapshot = $uiaSnapshotResponse.Raw
             capture = $captureResponse.Raw
             activate_window = $activateResponse.Raw
             helper_window_capture = $helperCaptureResponse.Raw
@@ -607,6 +726,8 @@ try {
         "- desktop_monitor_id: $primaryMonitorId",
         "- visible_windows: $($windowsPayload.count)",
         "- attached_hwnd: $attachedHwnd",
+        "- uia_snapshot_status: $($uiaSnapshotPayload.status)",
+        "- uia_snapshot_artifact: $($uiaSnapshotPayload.artifactPath)",
         "- capture_artifact: $($capturePayload.artifactPath)",
         "- helper_hwnd: $helperHwnd",
         "- helper_activation_status: $($activatePayload.status)",

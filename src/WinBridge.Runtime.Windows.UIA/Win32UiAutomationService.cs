@@ -45,26 +45,15 @@ public sealed class Win32UiAutomationService : IUiAutomationService
         ArgumentNullException.ThrowIfNull(targetWindow);
         ArgumentNullException.ThrowIfNull(request);
 
-        if (request.Depth < 0)
+        if (!UiaSnapshotRequestValidator.TryValidate(request, out string? validationReason))
         {
-            UiaSnapshotResult invalidDepthResult = CreateFailedResult(
-                "Параметр depth для UIA snapshot должен быть >= 0.",
-                targetWindow,
+            UiaSnapshotResult invalidRequestResult = CreateFailedResult(
+                validationReason!,
+                observedWindow: null,
                 request,
                 _timeProvider.GetUtcNow());
-            RecordRuntimeEvent(invalidDepthResult, UiaSnapshotFailureStageValues.RequestValidation);
-            return invalidDepthResult;
-        }
-
-        if (request.MaxNodes < 1)
-        {
-            UiaSnapshotResult invalidBudgetResult = CreateFailedResult(
-                "Параметр maxNodes для UIA snapshot должен быть >= 1.",
-                targetWindow,
-                request,
-                _timeProvider.GetUtcNow());
-            RecordRuntimeEvent(invalidBudgetResult, UiaSnapshotFailureStageValues.RequestValidation);
-            return invalidBudgetResult;
+            RecordRuntimeEvent(invalidRequestResult, UiaSnapshotFailureStageValues.RequestValidation);
+            return invalidRequestResult;
         }
 
         UiaSnapshotBackendResult backendResult = await _backend
@@ -75,17 +64,18 @@ public sealed class Win32UiAutomationService : IUiAutomationService
         {
             UiaSnapshotResult failedResult = CreateFailedResult(
                 backendResult.Reason ?? "UI Automation не смогла построить snapshot выбранного окна.",
-                targetWindow,
+                backendResult.ObservedWindow,
                 request,
                 backendResult.CapturedAtUtc);
             RecordRuntimeEvent(failedResult, backendResult.FailureStage, backendResult.DiagnosticArtifactPath);
             return failedResult;
         }
+        ObservedWindowDescriptor observedWindow = backendResult.ObservedWindow ?? new ObservedWindowDescriptor(targetWindow.Hwnd);
 
         UiaSnapshotResult successResult = new(
             Status: UiaSnapshotStatusValues.Done,
             Reason: null,
-            Window: targetWindow,
+            Window: observedWindow,
             View: UiaSnapshotViewValues.Control,
             RequestedDepth: request.Depth,
             RequestedMaxNodes: request.MaxNodes,
@@ -111,7 +101,7 @@ public sealed class Win32UiAutomationService : IUiAutomationService
         {
             UiaSnapshotResult artifactFailureResult = CreateFailedResult(
                 exception.Message,
-                targetWindow,
+                observedWindow,
                 request,
                 backendResult.CapturedAtUtc,
                 realizedDepth: backendResult.RealizedDepth,
@@ -159,7 +149,7 @@ public sealed class Win32UiAutomationService : IUiAutomationService
 
     private static UiaSnapshotResult CreateFailedResult(
         string reason,
-        WindowDescriptor targetWindow,
+        ObservedWindowDescriptor? observedWindow,
         UiaSnapshotRequest request,
         DateTimeOffset capturedAtUtc,
         int realizedDepth = 0,
@@ -171,7 +161,7 @@ public sealed class Win32UiAutomationService : IUiAutomationService
         new(
             Status: UiaSnapshotStatusValues.Failed,
             Reason: reason,
-            Window: targetWindow,
+            Window: observedWindow,
             View: UiaSnapshotViewValues.Control,
             RequestedDepth: request.Depth,
             RequestedMaxNodes: request.MaxNodes,

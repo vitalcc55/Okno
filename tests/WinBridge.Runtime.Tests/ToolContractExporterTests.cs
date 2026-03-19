@@ -46,6 +46,9 @@ public sealed class ToolContractExporterTests
         Assert.Contains(
             "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",
             document.Artifacts);
+        Assert.Contains(
+            "artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json",
+            document.Artifacts);
     }
 
     [Fact]

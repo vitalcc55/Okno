@@ -65,16 +65,15 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
-    public void WindowsUiaSnapshotRemainsDeferredDuringPackageA()
+    public void WindowsUiaSnapshotIsImplementedAndSmokeRequired()
     {
         ToolDescriptor descriptor = Assert.Single(
-            ToolContractManifest.Deferred,
-            item => item.Name == ToolNames.WindowsUiaSnapshot);
-
-        Assert.Equal(ToolLifecycle.Deferred, descriptor.Lifecycle);
-        Assert.Equal(ToolSafetyClass.ReadOnly, descriptor.SafetyClass);
-        Assert.DoesNotContain(
             ToolContractManifest.Implemented,
             item => item.Name == ToolNames.WindowsUiaSnapshot);
+
+        Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
+        Assert.Equal(ToolSafetyClass.ReadOnly, descriptor.SafetyClass);
+        Assert.Contains(ToolNames.WindowsUiaSnapshot, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsUiaSnapshot);
     }
 }

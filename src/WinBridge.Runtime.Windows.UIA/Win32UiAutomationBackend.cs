@@ -1,7 +1,7 @@
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Automation;
+using System.Runtime.InteropServices;
 using WinBridge.Runtime.Contracts;
 
 namespace WinBridge.Runtime.Windows.UIA;
@@ -80,48 +80,52 @@ internal sealed class Win32UiAutomationBackend : IUiaSnapshotBackend
             return Failed("UI Automation не смогла получить root element для выбранного hwnd.", UiaSnapshotFailureStageValues.RootAcquisition, capturedAtUtc);
         }
 
+        ObservedWindowDescriptor? observedWindow = null;
         try
         {
             CacheRequest cacheRequest = CreateCacheRequest();
             AutomationSnapshotNode rootNode = new(root, cacheRequest);
+            observedWindow = ObservedWindowBuilder.Create(targetWindow, root, rootNode.GetData());
             UiaSnapshotTreeBuilder.UiaSnapshotTreeBuildResult tree = UiaSnapshotTreeBuilder.Build(
                 rootNode,
                 request.Depth,
                 request.MaxNodes,
                 cancellationToken);
 
-                return new(
-                    Success: true,
-                    Reason: null,
-                    FailureStage: null,
-                    CapturedAtUtc: capturedAtUtc,
-                    Root: tree.Root,
-                    RealizedDepth: tree.RealizedDepth,
-                    NodeCount: tree.NodeCount,
-                    Truncated: tree.Truncated,
-                    DepthBoundaryReached: tree.DepthBoundaryReached,
-                    NodeBudgetBoundaryReached: tree.NodeBudgetBoundaryReached);
+            return new(
+                Success: true,
+                Reason: null,
+                FailureStage: null,
+                CapturedAtUtc: capturedAtUtc,
+                ObservedWindow: observedWindow,
+                Root: tree.Root,
+                RealizedDepth: tree.RealizedDepth,
+                NodeCount: tree.NodeCount,
+                Truncated: tree.Truncated,
+                DepthBoundaryReached: tree.DepthBoundaryReached,
+                NodeBudgetBoundaryReached: tree.NodeBudgetBoundaryReached);
         }
         catch (InvalidOperationException exception)
         {
-            return Failed(exception.Message, UiaSnapshotFailureStageValues.Traversal, capturedAtUtc);
+            return Failed(exception.Message, UiaSnapshotFailureStageValues.Traversal, capturedAtUtc, observedWindow);
         }
         catch (ElementNotAvailableException)
         {
-            return Failed("UI Automation не смогла материализовать snapshot tree для выбранного hwnd.", UiaSnapshotFailureStageValues.Traversal, capturedAtUtc);
+            return Failed("UI Automation не смогла материализовать snapshot tree для выбранного hwnd.", UiaSnapshotFailureStageValues.Traversal, capturedAtUtc, observedWindow);
         }
         catch (COMException)
         {
-            return Failed("UI Automation не смогла материализовать snapshot tree для выбранного hwnd.", UiaSnapshotFailureStageValues.Traversal, capturedAtUtc);
+            return Failed("UI Automation не смогла материализовать snapshot tree для выбранного hwnd.", UiaSnapshotFailureStageValues.Traversal, capturedAtUtc, observedWindow);
         }
     }
 
-    private static UiaSnapshotBackendResult Failed(string reason, string failureStage, DateTimeOffset capturedAtUtc) =>
+    private static UiaSnapshotBackendResult Failed(string reason, string failureStage, DateTimeOffset capturedAtUtc, ObservedWindowDescriptor? observedWindow = null) =>
         new(
             Success: false,
             Reason: reason,
             FailureStage: failureStage,
             CapturedAtUtc: capturedAtUtc,
+            ObservedWindow: observedWindow,
             Root: null,
             RealizedDepth: 0,
             NodeCount: 0,
@@ -149,6 +153,7 @@ internal sealed class Win32UiAutomationBackend : IUiaSnapshotBackend
         cacheRequest.Add(AutomationElementIdentifiers.IsEnabledProperty);
         cacheRequest.Add(AutomationElementIdentifiers.IsOffscreenProperty);
         cacheRequest.Add(AutomationElementIdentifiers.HasKeyboardFocusProperty);
+        cacheRequest.Add(AutomationElementIdentifiers.ProcessIdProperty);
         cacheRequest.Add(AutomationElementIdentifiers.BoundingRectangleProperty);
         cacheRequest.Add(AutomationElementIdentifiers.NativeWindowHandleProperty);
         cacheRequest.Add(AutomationElementIdentifiers.IsPasswordProperty);
@@ -316,4 +321,5 @@ internal sealed class Win32UiAutomationBackend : IUiaSnapshotBackend
                 (int)Math.Ceiling(bottom));
         }
     }
+
 }

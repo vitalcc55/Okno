@@ -1,6 +1,7 @@
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
+using WinBridge.Runtime.Windows.UIA;
 
 namespace WinBridge.Server.IntegrationTests;
 
@@ -99,5 +100,32 @@ internal sealed class FakeWindowActivationService(Func<WindowDescriptor, Activat
         }
 
         return Task.FromResult(handler(targetWindow));
+    }
+}
+
+internal sealed class FakeUiAutomationService(
+    Func<WindowDescriptor, UiaSnapshotRequest, CancellationToken, Task<UiaSnapshotResult>>? handler = null) : IUiAutomationService
+{
+    public int Calls { get; private set; }
+
+    public WindowDescriptor? LastWindow { get; private set; }
+
+    public UiaSnapshotRequest? LastRequest { get; private set; }
+
+    public Task<UiaSnapshotResult> SnapshotAsync(
+        WindowDescriptor targetWindow,
+        UiaSnapshotRequest request,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastWindow = targetWindow;
+        LastRequest = request;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("UIA snapshot не должен вызываться в этом тесте.");
+        }
+
+        return handler(targetWindow, request, cancellationToken);
     }
 }

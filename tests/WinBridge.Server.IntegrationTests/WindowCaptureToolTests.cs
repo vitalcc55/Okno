@@ -374,7 +374,8 @@ public sealed class WindowCaptureToolTests
             captureService,
             effectiveMonitorManager,
             new FakeWindowActivationService(),
-            new WindowTargetResolver(new FakeWindowManager(windows)));
+            new WindowTargetResolver(new FakeWindowManager(windows)),
+            new FakeUiAutomationService());
     }
 
     private static WindowDescriptor CreateWindow(
