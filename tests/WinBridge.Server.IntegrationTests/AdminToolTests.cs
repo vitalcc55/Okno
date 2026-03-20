@@ -36,5 +36,11 @@ public sealed class AdminToolTests
             descriptor => descriptor.Name == ToolNames.WindowsAttachWindow);
         Assert.Equal("implemented", attachDescriptor.Lifecycle);
         Assert.Equal("session_mutation", attachDescriptor.SafetyClass);
+
+        ContractToolDescriptor waitDescriptor = Assert.Single(
+            result.DeferredTools,
+            descriptor => descriptor.Name == ToolNames.WindowsWait);
+        Assert.Equal("deferred", waitDescriptor.Lifecycle);
+        Assert.Equal("os_side_effect", waitDescriptor.SafetyClass);
     }
 }

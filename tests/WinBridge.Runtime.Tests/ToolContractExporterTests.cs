@@ -83,6 +83,25 @@ public sealed class ToolContractExporterTests
         Assert.False(document.RootElement.TryGetProperty("generated_at_utc", out _));
     }
 
+    [Fact]
+    public void ExportJsonPublishesDeferredWaitAsOsSideEffect()
+    {
+        string root = CreateTempDirectory();
+        string jsonPath = Path.Combine(root, "project-interfaces.json");
+
+        ToolContractExporter.ExportJson(jsonPath);
+
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
+        JsonElement waitTool = document.RootElement
+            .GetProperty("tools")
+            .GetProperty("deferred")
+            .EnumerateArray()
+            .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsWait);
+
+        Assert.Equal("deferred", waitTool.GetProperty("lifecycle").GetString());
+        Assert.Equal("os_side_effect", waitTool.GetProperty("safety_class").GetString());
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));

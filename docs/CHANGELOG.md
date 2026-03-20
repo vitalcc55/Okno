@@ -6,6 +6,10 @@
 
 - Source-of-truth docs для следующего slice `windows.wait` выровнены между exec-plan, product spec и roadmap: V1 теперь везде описан как один публичный tool `windows.wait`, а не zoo из `wait_for_*`; target model синхронизирован как `explicit -> attached -> active` без hidden activation/auto-attach drift, summary-row roadmap больше не теряет `text appears`, а сам exec-plan честно меняет MCP annotation expectation на `ReadOnly = false`, потому что wait обязан писать diagnostics artifact.
 
+## 2026-03-20 09:16
+
+- Package A для `windows.wait` закодирован без premature rollout: добавлены typed `Wait*` contracts, `IWaitService` больше не пустой, shell resolver получил capability-specific `ResolveWaitTarget(...)` с precedence `explicit -> attached -> active` и без fallback из stale explicit/attached target, а deferred manifest/exported contract теперь честно помечает `windows.wait` как `os_side_effect`, сохраняя lifecycle `Deferred`.
+
 ## 2026-03-19 18:23
 
 - Добавлен отдельный exec-plan для следующего shipped public slice `windows.wait` в `docs/exec-plans/active/windows-wait.md`: план фиксирует V1 boundary, polling-first target model `explicit -> attached -> active`, condition matrix для `active/focus/element/text/visual`, honest status/error model, evidence contract, file-level integration map, L1/L2/L3 ladder, docs sync и rollback без преждевременного захода в `windows.uia_action` или broad `windows.input`.

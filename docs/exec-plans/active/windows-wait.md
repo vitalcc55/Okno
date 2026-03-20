@@ -2,7 +2,7 @@
 
 Статус: planned
 Создан: 2026-03-19
-Обновлён: 2026-03-19
+Обновлён: 2026-03-20
 
 ## Goal
 
@@ -41,8 +41,9 @@ Follow-up после V1, но не внутри него:
 
 ## Current repo state
 
-- `windows.wait` уже объявлен в `src/WinBridge.Runtime.Tooling/ToolNames.cs`, но остаётся `Deferred` в `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs` и публикуется как `unsupported` в `docs/generated/project-interfaces.md`.
-- В `src/WinBridge.Runtime.Waiting/IWaitService.cs` есть только пустой runtime seam без typed contract и без implementation.
+- `windows.wait` уже объявлен в `src/WinBridge.Runtime.Tooling/ToolNames.cs`, остаётся `Deferred` в `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`, публикуется как `unsupported` в `docs/generated/project-interfaces.md` и теперь честно помечен как `os_side_effect`, потому что shipped wait tool обязан писать diagnostics artifact.
+- В `src/WinBridge.Runtime.Waiting/IWaitService.cs` уже есть typed runtime seam на `WaitRequest` / `WaitResult`, но concrete polling implementation по-прежнему отсутствует.
+- В `src/WinBridge.Runtime.Windows.Shell/IWindowTargetResolver.cs` и `WindowTargetResolver.cs` уже добавлен capability-specific `ResolveWaitTarget(...)` с precedence `explicit -> attached -> active` и запретом на silent fallback из stale explicit/attached target.
 - `windows.uia_snapshot` уже shipped и задаёт precedent для public MCP shape, control-view semantics и target precedence `explicit -> attached -> active`.
 - `src/WinBridge.Runtime.Windows.Shell/WindowActivationService.cs` уже содержит polling + final live verification precedent, который можно переиспользовать как execution pattern, но не как готовую wait semantics.
 - `src/WinBridge.Server/Tools/WindowTools.cs`, `tests/WinBridge.Server.IntegrationTests/*` и `scripts/smoke.ps1` уже задают expected shape для public observe tools: handler, `structuredContent`, text block, artifact checks и smoke-required registration.
@@ -50,7 +51,7 @@ Follow-up после V1, но не внутри него:
 
 ## Official constraints
 
-- MCP tools contract требует honest `structuredContent` / `content` result shape и отдельного `isError` сигнала; `windows.wait` не должен маскировать `timeout`, `ambiguous` или `failed` под успешный observe result.
+- MCP `CallToolResult` задаёт обязательный `content`, опциональный `structuredContent` и `isError`; tool-originated errors для `windows.wait` должны возвращаться внутри result c `isError = true`, а не маскироваться под protocol-level success path.
 - `ElementFromHandle` остаётся canonical root acquisition path для window-scoped UIA checks; V1 не строится от desktop root и не делает global descendant traversal как primary path.
 - UI Automation tree имеет `raw`, `control` и `content` view; shipped V1 для `windows.wait` работает в `control view`, как и `windows.uia_snapshot`.
 - `GetFocusedElement` является authoritative API для current UI focus, но focused element может стать unavailable между poll ticks; это требует retry + revalidation policy, а не оптимистичного success.
@@ -211,7 +212,7 @@ Contract rules:
 
 ### Package A — contract + target policy
 
-Статус: `planned`
+Статус: `done`
 
 В объёме пакета:
 
@@ -220,6 +221,12 @@ Contract rules:
 - расширить shell/session resolution до `ResolveWaitTarget(...)` с precedence `explicit -> attached -> active`;
 - определить honest MCP annotations и `isError` mapping;
 - сохранить `windows.wait` в честном `Deferred/unsupported` до завершения runtime и test ladder.
+
+Фактически закрыто в репозитории:
+
+- добавлены typed `Wait*` contracts и capability-specific target resolution DTO;
+- `IWaitService` и shell seam теперь компилируются против typed wait boundary;
+- deferred contract для `windows.wait` остаётся честным `unsupported`, а manifest safety class синхронизирован с artifact-writing side effect.
 
 Критерий завершения:
 
@@ -296,7 +303,7 @@ Contract rules:
 Обязательные сценарии:
 
 - `WindowTools.Wait(...)` возвращает `CallToolResult` с `structuredContent` и одним text block;
-- annotations отражают real behavior: read-only, non-destructive, non-idempotent, open-world;
+- annotations отражают real behavior: `readOnly=false`, `destructive=false`, `idempotent=false`, `openWorld=true`;
 - `tools/list`, `okno.contract` и exporter не расходятся с lifecycle `windows.wait`;
 - attached-session path и explicit target path ведут себя так же, как в runtime policy;
 - non-success statuses дают `isError = true` и не маскируются под обычный text payload.
@@ -350,7 +357,9 @@ Generated docs обновляются только после фактическ
 - [x] Evidence contract требует отдельный JSON artifact path.
 - [x] L1/L2/L3 ladder и docs sync перечислены отдельно.
 - [x] Rollback для `focus_is` и `visual_changed` описан явно.
-- [ ] Package A реализован.
+- [x] Typed wait contracts и `ResolveWaitTarget(...)` оформлены в коде без premature runtime rollout.
+- [x] Deferred contract для `windows.wait` остаётся `unsupported`, а manifest safety class выровнен под artifact-writing side effect.
+- [x] Package A реализован.
 - [ ] Package B реализован.
 - [ ] Package C реализован.
 - [ ] Package D реализован.
