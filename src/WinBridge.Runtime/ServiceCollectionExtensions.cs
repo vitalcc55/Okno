@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
+using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
@@ -25,6 +26,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(WindowActivationOptions.Default);
         services.AddSingleton<IWindowActivationPlatform, Win32WindowActivationPlatform>();
         services.AddSingleton<IWindowActivationService, WindowActivationService>();
+        services.AddSingleton(WaitOptions.Default);
+        services.AddSingleton<IWaitService, PollingWaitService>();
         services.AddSingleton<RuntimeInfo>();
 
         return services;

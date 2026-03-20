@@ -5,7 +5,7 @@ namespace WinBridge.Runtime.Waiting;
 public interface IWaitService
 {
     Task<WaitResult> WaitAsync(
-        WindowDescriptor targetWindow,
+        WaitTargetResolution target,
         WaitRequest request,
         CancellationToken cancellationToken);
 }

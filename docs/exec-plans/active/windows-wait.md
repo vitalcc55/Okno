@@ -235,7 +235,7 @@ Contract rules:
 
 ### Package B — polling engine + core probes
 
-Статус: `planned`
+Статус: `done`
 
 В объёме пакета:
 
@@ -249,6 +249,14 @@ Contract rules:
 
 - core conditions проходят L1 и не имеют silent fallback path;
 - `timeout`/`ambiguous`/`failed` различаются по честным причинам, а не по удобству реализации.
+
+Фактически закрыто в репозитории:
+
+- `PollingWaitService` добавлен как единственный V1 execution path для runtime-only `windows.wait`;
+- закрыты `active_window_matches`, `element_exists`, `element_gone`, `text_appears` без public handler rollout;
+- wait boundary теперь пишет JSON evidence artifact в `artifacts/diagnostics/<run_id>/wait/` и capability-specific runtime audit event `wait.runtime.completed`;
+- UIA slice получил минимальный live wait probe seam за process-isolated worker boundary с явным per-probe timeout budget от `PollingWaitService`, `ElementFromHandle`, `ControlViewCondition`, selector search и canonical text fallback `ValuePattern -> TextPattern -> Name`, а late runtime failures больше не маскируются под `timeout`;
+- lifecycle `windows.wait` по-прежнему остаётся `Deferred/unsupported`, а Package C/D не затронуты.
 
 ### Package C — focus + visual hardening
 
@@ -360,7 +368,7 @@ Generated docs обновляются только после фактическ
 - [x] Typed wait contracts и `ResolveWaitTarget(...)` оформлены в коде без premature runtime rollout.
 - [x] Deferred contract для `windows.wait` остаётся `unsupported`, а manifest safety class выровнен под artifact-writing side effect.
 - [x] Package A реализован.
-- [ ] Package B реализован.
+- [x] Package B реализован.
 - [ ] Package C реализован.
 - [ ] Package D реализован.
 - [ ] `windows.wait` переведён в `Implemented` и подтверждён smoke.

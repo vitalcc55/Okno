@@ -2,5 +2,6 @@ namespace WinBridge.Runtime.Contracts;
 
 public sealed record WaitRequest(
     string Condition,
-    string? Selector = null,
+    WaitElementSelector? Selector = null,
+    string? ExpectedText = null,
     int TimeoutMs = WaitDefaults.TimeoutMs);

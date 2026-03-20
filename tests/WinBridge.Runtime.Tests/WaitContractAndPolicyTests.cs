@@ -12,6 +12,7 @@ public sealed class WaitContractAndPolicyTests
 
         Assert.Equal(WaitConditionValues.ElementExists, request.Condition);
         Assert.Null(request.Selector);
+        Assert.Null(request.ExpectedText);
         Assert.Equal(WaitDefaults.TimeoutMs, request.TimeoutMs);
     }
 
@@ -25,7 +26,48 @@ public sealed class WaitContractAndPolicyTests
         Assert.Equal(WaitDefaults.TimeoutMs, result.TimeoutMs);
         Assert.Equal(0, result.ElapsedMs);
         Assert.Equal(0, result.AttemptCount);
+        Assert.Null(result.TargetSource);
+        Assert.Null(result.TargetFailureCode);
         Assert.Null(result.Reason);
+        Assert.Null(result.Window);
+        Assert.Null(result.MatchedElement);
+        Assert.Null(result.LastObserved);
+        Assert.Null(result.ArtifactPath);
+    }
+
+    [Fact]
+    public void WaitRequestValidatorRejectsUiConditionsWithoutSelector()
+    {
+        bool isValid = WaitRequestValidator.TryValidate(
+            new WaitRequest(WaitConditionValues.ElementExists),
+            out string? reason);
+
+        Assert.False(isValid);
+        Assert.Contains("selector", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WaitRequestValidatorRejectsTextAppearsWithoutExpectedText()
+    {
+        WaitRequest request = new(
+            WaitConditionValues.TextAppears,
+            new WaitElementSelector(AutomationId: "SearchBox"));
+
+        bool isValid = WaitRequestValidator.TryValidate(request, out string? reason);
+
+        Assert.False(isValid);
+        Assert.Contains("expectedText", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WaitRequestValidatorRejectsPackageCConditionsForPackageB()
+    {
+        bool isValid = WaitRequestValidator.TryValidate(
+            new WaitRequest(WaitConditionValues.FocusIs, new WaitElementSelector(Name: "Input")),
+            out string? reason);
+
+        Assert.False(isValid);
+        Assert.Contains("Package B", reason, StringComparison.Ordinal);
     }
 
     [Fact]
