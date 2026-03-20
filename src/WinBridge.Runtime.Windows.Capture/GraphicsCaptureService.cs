@@ -20,7 +20,7 @@ namespace WinBridge.Runtime.Windows.Capture;
 
 public sealed class GraphicsCaptureService(
     AuditLogOptions auditLogOptions,
-    IMonitorManager monitorManager) : ICaptureService
+    IMonitorManager monitorManager) : ICaptureService, IWaitVisualProbe
 {
     private const int GraphicsCaptureBufferCount = 1;
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
@@ -83,6 +83,118 @@ public sealed class GraphicsCaptureService(
         }
     }
 
+    public async Task<WaitVisualFrame> CaptureVisualAsync(
+        WindowDescriptor targetWindow,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetWindow);
+
+        CaptureTarget target = new(CaptureScope.Window, targetWindow);
+        try
+        {
+            CaptureResolvedTarget resolvedTarget = ResolveTarget(target);
+            CaptureBackend backend = CaptureBackendSelector.Select(target.Scope, GraphicsCaptureSession.IsSupported());
+            if (backend == CaptureBackend.Unsupported)
+            {
+                throw new CaptureOperationException("Windows Graphics Capture недоступен в текущей сессии.");
+            }
+
+            WaitVisualFrame execution = await CaptureVisualFrameAsync(
+                target,
+                resolvedTarget,
+                backend,
+                cancellationToken).ConfigureAwait(false);
+            return execution;
+        }
+        catch (CaptureOperationException)
+        {
+            throw;
+        }
+        catch (COMException exception)
+        {
+            throw new CaptureOperationException("Windows отказала в получении визуального wait baseline для выбранного окна.", exception);
+        }
+    }
+
+    private async Task<WaitVisualFrame> CaptureVisualFrameAsync(
+        CaptureTarget request,
+        CaptureResolvedTarget resolvedTarget,
+        CaptureBackend backend,
+        CancellationToken cancellationToken)
+    {
+        if (backend == CaptureBackend.DesktopGdiFallback)
+        {
+            throw new CaptureOperationException("Visual wait probe не поддерживает desktop-scoped fallback path.");
+        }
+
+        using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(WindowsGraphicsCaptureTimeout);
+
+        try
+        {
+            WgcCaptureOutcome outcome = await CaptureSoftwareBitmapAsync(
+                resolvedTarget,
+                cancellationToken,
+                timeoutSource.Token).ConfigureAwait(false);
+            CaptureResolvedTarget authoritativeTarget = BuildAuthoritativeWgcTarget(
+                request,
+                resolvedTarget,
+                outcome.AcceptedContentSize);
+            try
+            {
+                WindowDescriptor authoritativeWindow = authoritativeTarget.Window
+                    ?? throw new CaptureOperationException("Runtime не смог материализовать authoritative window capture target.");
+                return new WaitVisualFrame(
+                    authoritativeWindow,
+                    outcome.Bitmap.PixelWidth,
+                    outcome.Bitmap.PixelHeight,
+                    outcome.Bitmap.PixelWidth * 4,
+                    CopySoftwareBitmapBytes(outcome.Bitmap));
+            }
+            finally
+            {
+                outcome.Bitmap.Dispose();
+            }
+        }
+        catch (WgcAcquisitionException exception)
+        {
+            throw new CaptureOperationException(exception.Message, exception);
+        }
+    }
+
+    public async Task WriteVisualArtifactAsync(
+        WaitVisualFrame frame,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        try
+        {
+            string? directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            byte[] pngBytes = EncodePng(frame.PixelWidth, frame.PixelHeight, frame.RowStride, frame.PixelBytes);
+            await File.WriteAllBytesAsync(path, pngBytes, cancellationToken).ConfigureAwait(false);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw new CaptureOperationException("Runtime не смог записать visual wait artifact на диск.", exception);
+        }
+        catch (IOException exception)
+        {
+            throw new CaptureOperationException("Runtime не смог записать visual wait artifact на диск.", exception);
+        }
+        catch (ExternalException exception)
+        {
+            throw new CaptureOperationException("Runtime не смог закодировать visual wait artifact в PNG.", exception);
+        }
+    }
+
     private async Task<CaptureExecutionResult> CaptureRasterizedAsync(
         CaptureTarget request,
         CaptureResolvedTarget resolvedTarget,
@@ -113,7 +225,10 @@ public sealed class GraphicsCaptureService(
                 byte[] pngBytes = await EncodePngAsync(outcome.Bitmap).ConfigureAwait(false);
                 return new(
                     authoritativeTarget,
-                    new RasterizedCapture(pngBytes, outcome.Bitmap.PixelWidth, outcome.Bitmap.PixelHeight));
+                    new RasterizedCapture(
+                        pngBytes,
+                        outcome.Bitmap.PixelWidth,
+                        outcome.Bitmap.PixelHeight));
             }
             finally
             {
@@ -375,6 +490,52 @@ public sealed class GraphicsCaptureService(
         reader.ReadBytes(bytes);
         return bytes;
     }
+
+    private static byte[] EncodePng(int pixelWidth, int pixelHeight, int rowStride, byte[] pixelBytes)
+    {
+        using Bitmap bitmap = new(pixelWidth, pixelHeight, PixelFormat.Format32bppArgb);
+        System.Drawing.Rectangle rectangle = new(0, 0, pixelWidth, pixelHeight);
+        BitmapData data = bitmap.LockBits(rectangle, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            int sourceStride = rowStride;
+            int targetStride = Math.Abs(data.Stride);
+            int rowLength = pixelWidth * 4;
+
+            for (int row = 0; row < pixelHeight; row++)
+            {
+                int sourceOffset = row * sourceStride;
+                IntPtr destination = data.Stride >= 0
+                    ? IntPtr.Add(data.Scan0, row * data.Stride)
+                    : IntPtr.Add(data.Scan0, (pixelHeight - 1 - row) * targetStride);
+                Marshal.Copy(pixelBytes, sourceOffset, destination, rowLength);
+            }
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+
+        using MemoryStream stream = new();
+        bitmap.Save(stream, ImageFormat.Png);
+        return stream.ToArray();
+    }
+
+    private static byte[] CopySoftwareBitmapBytes(SoftwareBitmap softwareBitmap)
+    {
+        int byteCount = softwareBitmap.PixelWidth * softwareBitmap.PixelHeight * 4;
+        global::Windows.Storage.Streams.Buffer buffer = new((uint)byteCount)
+        {
+            Length = (uint)byteCount,
+        };
+        softwareBitmap.CopyToBuffer(buffer);
+
+        using DataReader reader = DataReader.FromBuffer(buffer);
+        byte[] bytes = new byte[byteCount];
+        reader.ReadBytes(bytes);
+        return bytes;
+    }
+
 
     private CaptureResolvedTarget BuildAuthoritativeWgcTarget(
         CaptureTarget request,

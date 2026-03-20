@@ -39,17 +39,12 @@ public static class WaitRequestValidator
 
         if (string.Equals(request.Condition, WaitConditionValues.ElementExists, StringComparison.Ordinal)
             || string.Equals(request.Condition, WaitConditionValues.ElementGone, StringComparison.Ordinal)
-            || string.Equals(request.Condition, WaitConditionValues.TextAppears, StringComparison.Ordinal))
+            || string.Equals(request.Condition, WaitConditionValues.TextAppears, StringComparison.Ordinal)
+            || string.Equals(request.Condition, WaitConditionValues.FocusIs, StringComparison.Ordinal)
+            || string.Equals(request.Condition, WaitConditionValues.VisualChanged, StringComparison.Ordinal))
         {
             reason = null;
             return true;
-        }
-
-        if (string.Equals(request.Condition, WaitConditionValues.FocusIs, StringComparison.Ordinal)
-            || string.Equals(request.Condition, WaitConditionValues.VisualChanged, StringComparison.Ordinal))
-        {
-            reason = $"Условие wait '{request.Condition}' пока не поддерживается в Package B.";
-            return false;
         }
 
         reason = $"Условие wait '{request.Condition}' не поддерживается.";
@@ -65,5 +60,6 @@ public static class WaitRequestValidator
     private static bool RequiresSelector(string condition) =>
         string.Equals(condition, WaitConditionValues.ElementExists, StringComparison.Ordinal)
         || string.Equals(condition, WaitConditionValues.ElementGone, StringComparison.Ordinal)
-        || string.Equals(condition, WaitConditionValues.TextAppears, StringComparison.Ordinal);
+        || string.Equals(condition, WaitConditionValues.TextAppears, StringComparison.Ordinal)
+        || string.Equals(condition, WaitConditionValues.FocusIs, StringComparison.Ordinal);
 }

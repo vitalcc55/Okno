@@ -3,6 +3,7 @@ using System.Text.Json;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Waiting;
+using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Runtime.Windows.UIA;
 
@@ -241,6 +242,332 @@ public sealed class PollingWaitServiceTests
     }
 
     [Fact]
+    public async Task WaitAsyncReturnsDoneForStableFocusedElement()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-focus");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6071, isForeground: false);
+        UiaElementSnapshot focusedElement = CreateElement("rid:1.2;path:0/1")
+            with
+            {
+                AutomationId = "SearchBox",
+                ControlType = "edit",
+                HasKeyboardFocus = true,
+            };
+        SequenceWaitProbe probe = new(
+        [
+            new UiAutomationWaitProbeResult
+            {
+                Window = CreateObservedWindow(targetWindow),
+                Matches = [focusedElement],
+            },
+            new UiAutomationWaitProbeResult
+            {
+                Window = CreateObservedWindow(targetWindow),
+                Matches = [focusedElement],
+            },
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            probe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(
+                WaitConditionValues.FocusIs,
+                new WaitElementSelector(AutomationId: "SearchBox", ControlType: "edit"),
+                TimeoutMs: 50),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.Equal(2, result.AttemptCount);
+        Assert.Equal(focusedElement.ElementId, result.MatchedElement?.ElementId);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsTimeoutWhenFocusedElementDoesNotStabilize()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-focus-timeout");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6072, isForeground: false);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1)));
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(
+                WaitConditionValues.FocusIs,
+                new WaitElementSelector(AutomationId: "SearchBox"),
+                TimeoutMs: 15),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Timeout, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.Null(result.MatchedElement);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsFailedForFocusProbeRuntimeFailure()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-focus-failed");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6073, isForeground: false);
+        SequenceWaitProbe probe = new(
+        [
+            new UiAutomationWaitProbeResult
+            {
+                Reason = "focus provider failure",
+                FailureStage = "worker_process",
+            },
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            probe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(
+                WaitConditionValues.FocusIs,
+                new WaitElementSelector(AutomationId: "SearchBox"),
+                TimeoutMs: 50),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Failed, result.Status);
+        Assert.Equal("focus provider failure", result.Reason);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsDoneForVisualChangedAfterStableRecheck()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6074, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            visualProbe: visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 200),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.Equal(3, result.AttemptCount);
+        Assert.NotNull(result.LastObserved?.VisualBaselineArtifactPath);
+        Assert.NotNull(result.LastObserved?.VisualCurrentArtifactPath);
+        Assert.True(File.Exists(result.LastObserved!.VisualBaselineArtifactPath!));
+        Assert.True(File.Exists(result.LastObserved.VisualCurrentArtifactPath!));
+        Assert.Equal(2, visualProbe.WrittenArtifactPaths.Count);
+    }
+
+    [Fact]
+    public async Task WaitAsyncWaitsForConfiguredPollIntervalBeforeVisualConfirmationRecheck()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-gap");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 60741, isForeground: false);
+        WaitOptions waitOptions = new(TimeSpan.FromMilliseconds(20));
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            waitOptions,
+            visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 200),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.True(visualProbe.CaptureTimestamps.Count >= 3);
+        Assert.True(
+            visualProbe.CaptureTimestamps[2] - visualProbe.CaptureTimestamps[1] >= TimeSpan.FromMilliseconds(15),
+            "Visual confirmation recheck должен происходить после normal poll gap, а не сразу на том же cadence.");
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsTimeoutForVisualNoiseBelowThreshold()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-timeout");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6075, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 15),
+            CreateVisualFrame(targetWindow, changedCells: 15),
+        ],
+        fallbackFrame: CreateVisualFrame(targetWindow, changedCells: 15));
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 100),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Timeout, result.Status);
+        Assert.NotNull(result.LastObserved?.VisualBaselineArtifactPath);
+        Assert.Null(result.LastObserved?.VisualCurrentArtifactPath);
+        Assert.Single(visualProbe.WrittenArtifactPaths);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsFailedWhenVisualProbeFailsAfterBaseline()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-failed");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6076, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+        ],
+        fallbackFailure: new CaptureOperationException("visual probe failure"));
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 15),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Failed, result.Status);
+        Assert.Equal("visual probe failure", result.Reason);
+        Assert.NotNull(result.LastObserved?.VisualBaselineArtifactPath);
+        Assert.Null(result.LastObserved?.VisualCurrentArtifactPath);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsFailedWhenVisualArtifactWriteThrowsIoError()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-artifact-io");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 60761, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+        ],
+        writeFailures:
+        [
+            new UnauthorizedAccessException("visual artifact denied"),
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 50),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Failed, result.Status);
+        Assert.Equal("Runtime не смог записать visual wait artifact на диск.", result.Reason);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsTimeoutWhenBaselineVisualMaterializationExceedsRemainingBudget()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-baseline-timeout");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 607611, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+        ],
+        writeDelays:
+        [
+            TimeSpan.FromMilliseconds(500),
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 200),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Timeout, result.Status);
+        Assert.Equal(1, visualProbe.CanceledWriteCount);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsTimeoutWhenFinalVisualMaterializationExceedsRemainingBudget()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-materialization-timeout");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 60762, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+        ],
+        writeDelays:
+        [
+            TimeSpan.Zero,
+            TimeSpan.FromMilliseconds(120),
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 80),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Timeout, result.Status);
+    }
+
+    [Fact]
     public async Task WaitAsyncReturnsTimeoutWhenConditionDoesNotStabilize()
     {
         string root = CreateTempDirectory();
@@ -364,17 +691,19 @@ public sealed class PollingWaitServiceTests
         IWindowManager windowManager,
         IWindowTargetResolver windowTargetResolver,
         IUiAutomationWaitProbe probe,
-        WaitOptions? waitOptions = null)
+        WaitOptions? waitOptions = null,
+        IWaitVisualProbe? visualProbe = null)
     {
         AuditLog auditLog = new(options, TimeProvider.System);
         return new PollingWaitService(
             windowManager,
             windowTargetResolver,
             probe,
+            visualProbe ?? new SequenceVisualProbe([CreateVisualFrame(CreateWindow(hwnd: 499, isForeground: false), changedCells: 0)]),
             auditLog,
             options,
             TimeProvider.System,
-            waitOptions ?? new WaitOptions(TimeSpan.Zero));
+            waitOptions ?? new WaitOptions(TimeSpan.FromMilliseconds(1)));
     }
 
     private static WaitTargetResolution CreateTarget(
@@ -436,6 +765,35 @@ public sealed class PollingWaitServiceTests
             IsEnabled = true,
             Children = [],
         };
+
+    private static WaitVisualFrame CreateVisualFrame(WindowDescriptor window, int changedCells)
+    {
+        const int pixelWidth = 16;
+        const int pixelHeight = 16;
+        const int rowStride = pixelWidth * 4;
+        byte[] pixelBytes = new byte[rowStride * pixelHeight];
+
+        for (int y = 0; y < pixelHeight; y++)
+        {
+            int rowOffset = y * rowStride;
+            for (int x = 0; x < pixelWidth; x++)
+            {
+                int offset = rowOffset + (x * 4);
+                byte value = (byte)((y * pixelWidth) + x < changedCells ? 65 : 50);
+                pixelBytes[offset] = value;
+                pixelBytes[offset + 1] = value;
+                pixelBytes[offset + 2] = value;
+                pixelBytes[offset + 3] = 255;
+            }
+        }
+
+        return new WaitVisualFrame(
+            window with { Bounds = new Bounds(0, 0, pixelWidth, pixelHeight) },
+            pixelWidth,
+            pixelHeight,
+            rowStride,
+            pixelBytes);
+    }
 
     private static AuditLogOptions CreateAuditLogOptions(string root, string runId) =>
         new(
@@ -585,6 +943,75 @@ public sealed class PollingWaitServiceTests
                     DateTimeOffset.UtcNow.AddSeconds(1),
                     TimedOut: false,
                     DiagnosticArtifactPath: null));
+    }
+
+    private sealed class SequenceVisualProbe(
+        IReadOnlyList<WaitVisualFrame> frames,
+        WaitVisualFrame? fallbackFrame = null,
+        CaptureOperationException? fallbackFailure = null,
+        IReadOnlyList<TimeSpan>? writeDelays = null,
+        IReadOnlyList<Exception>? writeFailures = null) : IWaitVisualProbe
+    {
+        private readonly Queue<WaitVisualFrame> _frames = new(frames);
+        private readonly WaitVisualFrame _fallbackFrame = fallbackFrame ?? frames[^1];
+        private readonly CaptureOperationException? _fallbackFailure = fallbackFailure;
+        private readonly Queue<TimeSpan> _writeDelays = writeDelays is null ? new Queue<TimeSpan>() : new Queue<TimeSpan>(writeDelays);
+        private readonly Queue<Exception> _writeFailures = writeFailures is null ? new Queue<Exception>() : new Queue<Exception>(writeFailures);
+
+        public List<DateTimeOffset> CaptureTimestamps { get; } = [];
+        public int CanceledWriteCount { get; private set; }
+        public List<string> WrittenArtifactPaths { get; } = [];
+
+        public Task<WaitVisualFrame> CaptureVisualAsync(
+            WindowDescriptor targetWindow,
+            CancellationToken cancellationToken)
+        {
+            CaptureTimestamps.Add(DateTimeOffset.UtcNow);
+            if (_frames.Count > 0)
+            {
+                return Task.FromResult(_frames.Dequeue());
+            }
+
+            if (_fallbackFailure is not null)
+            {
+                throw _fallbackFailure;
+            }
+
+            return Task.FromResult(_fallbackFrame);
+        }
+
+        public async Task WriteVisualArtifactAsync(
+            WaitVisualFrame frame,
+            string path,
+            CancellationToken cancellationToken)
+        {
+            if (_writeDelays.Count > 0)
+            {
+                try
+                {
+                    await Task.Delay(_writeDelays.Dequeue(), cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    CanceledWriteCount++;
+                    throw;
+                }
+            }
+
+            if (_writeFailures.Count > 0)
+            {
+                throw _writeFailures.Dequeue();
+            }
+
+            WrittenArtifactPaths.Add(path);
+            string? directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            await File.WriteAllBytesAsync(path, [137, 80, 78, 71], cancellationToken);
+        }
     }
 
     private sealed class FakeWindowTargetResolver(Func<WindowDescriptor, WindowDescriptor?> resolver) : IWindowTargetResolver

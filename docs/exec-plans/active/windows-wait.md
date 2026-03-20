@@ -260,7 +260,7 @@ Contract rules:
 
 ### Package C — focus + visual hardening
 
-Статус: `planned`
+Статус: `done`
 
 В объёме пакета:
 
@@ -271,8 +271,17 @@ Contract rules:
 
 Критерий завершения:
 
-- high-variance conditions имеют воспроизводимую policy и проходят минимум L1/L2;
+- high-variance conditions имеют воспроизводимую runtime policy, закрыты L1 тестами и не дают drift на затронутых shared capture/contract boundaries;
 - при нестабильности lifecycle не переключается в `Implemented`.
+
+Фактически закрыто в репозитории:
+
+- `focus_is` добавлен в runtime wait path поверх authoritative focused-element probe с process-isolated worker boundary, exact selector match только по текущему focused element, revalidation к window root через `ElementFromHandle(hwnd)`, bounded retry policy на transient unavailable focus state и корректной control-view parent lineage metadata;
+- `visual_changed` добавлен в runtime wait path через window-scoped capture-backed compare без per-tick PNG bloat: visual probe больше не кодирует PNG и не тащит raw frame в обычный `windows.capture`, baseline и final PNG materialization теперь проходят через один общий remaining-budget write path, per-tick сравнение идёт только в памяти, а raw baseline frame больше не удерживается между poll-итерациями;
+- threshold/noise semantics зафиксированы в коде и тестах: grayscale grid `16x16`, per-cell luma delta `>= 12`, geometry-change shortcut, effective success threshold вычисляется от populated cells с базовым ratio `16/256`, `WaitOptions` валидирует строго положительный poll interval, а `done` подтверждается только после гарантированного положительного confirmation gap и второго подряд candidate against the same baseline;
+- evidence contract расширен ровно до runtime-only visual fields в wait artifact (`visual_difference_ratio`, `visual_difference_threshold`, `visual_baseline_artifact_path`, `visual_current_artifact_path`) без смены `wait.runtime.completed` event schema;
+- visual artifact write path теперь целиком нормализует filesystem/encode failures в доменный `failed` result, а late UIA probe downgrade снова опирается на host-side completion timestamp вместо worker-internal completion time;
+- lifecycle `windows.wait` по-прежнему остаётся `Deferred/unsupported`, Package D не затронут.
 
 ### Package D — server rollout + smoke + docs sync
 
@@ -369,6 +378,6 @@ Generated docs обновляются только после фактическ
 - [x] Deferred contract для `windows.wait` остаётся `unsupported`, а manifest safety class выровнен под artifact-writing side effect.
 - [x] Package A реализован.
 - [x] Package B реализован.
-- [ ] Package C реализован.
+- [x] Package C реализован.
 - [ ] Package D реализован.
 - [ ] `windows.wait` переведён в `Implemented` и подтверждён smoke.

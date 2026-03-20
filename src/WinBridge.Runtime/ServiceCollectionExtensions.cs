@@ -20,7 +20,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(sp => new SessionContext(sp.GetRequiredService<AuditLogOptions>().RunId));
         services.AddSingleton<ISessionManager, InMemorySessionManager>();
         services.AddSingleton<IMonitorManager, Win32MonitorManager>();
-        services.AddSingleton<ICaptureService, GraphicsCaptureService>();
+        services.AddSingleton<GraphicsCaptureService>();
+        services.AddSingleton<ICaptureService>(sp => sp.GetRequiredService<GraphicsCaptureService>());
+        services.AddSingleton<IWaitVisualProbe>(sp => sp.GetRequiredService<GraphicsCaptureService>());
         services.AddSingleton<IWindowManager, Win32WindowManager>();
         services.AddSingleton<IWindowTargetResolver, WindowTargetResolver>();
         services.AddSingleton(WindowActivationOptions.Default);

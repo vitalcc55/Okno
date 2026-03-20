@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-20 17:15
+
+- Package C для `windows.wait` закрыт как runtime-only hardening без premature public rollout: `focus_is` теперь подтверждается только через authoritative focused-element path с retry/revalidation только для действительно transient `ElementNotAvailable`-класса ошибок, exact selector match внутри resolved window и корректной immediate-parent lineage metadata, `visual_changed` использует window-scoped raw-only visual probe с гарантированным положительным confirmation gap и noise policy на `16x16` grayscale grid (`per-cell delta >= 12`, populated-cell scaled threshold, geometry-change shortcut) без per-tick PNG bloat, без лишних raw allocations в обычном `windows.capture` и без удержания raw baseline frame между poll-итерациями, `WaitOptions` больше не допускает non-positive polling cadence, baseline и final visual artifact write path теперь используют общий remaining-budget helper и целиком нормализуют filesystem/encode failures в доменный `failed`, process-isolated UIA wait probe разделяет host completion и worker completion timestamps для корректного timeout enforcement, а DI/runtime tests закрепляют новый visual probe seam при сохранении lifecycle `windows.wait` в `Deferred/unsupported`.
+
 ## 2026-03-20 15:29
 
 - Follow-up hardening закрепил ownership timeout и evidence contract на правильных границах: `PollingWaitService` теперь явно передаёт worker boundary remaining budget на каждый UIA probe и повторно классифицирует просроченный probe result как `timeout` по execution metadata, process-isolated wait probe больше не наследует скрытый snapshot-centric 3s cap, а worker-level `diagnostic_artifact_path` больше не теряется и попадает в wait observation / wait artifact / runtime audit trail.

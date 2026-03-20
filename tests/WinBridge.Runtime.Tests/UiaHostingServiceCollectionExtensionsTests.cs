@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Waiting;
+using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.UIA;
 using WinBridge.Runtime.Windows.Shell;
 
@@ -46,9 +47,11 @@ public sealed class UiaHostingServiceCollectionExtensionsTests
 
         IWaitService waitService = provider.GetRequiredService<IWaitService>();
         IUiAutomationWaitProbe waitProbe = provider.GetRequiredService<IUiAutomationWaitProbe>();
+        IWaitVisualProbe visualProbe = provider.GetRequiredService<IWaitVisualProbe>();
 
         Assert.IsType<PollingWaitService>(waitService);
         Assert.IsType<ProcessIsolatedUiAutomationWaitProbe>(waitProbe);
+        Assert.IsType<GraphicsCaptureService>(visualProbe);
     }
 
     private static string CreateTempDirectory()

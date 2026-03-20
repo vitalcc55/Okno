@@ -1,6 +1,7 @@
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Windows.UIA;
+using System.Text.Json;
 
 namespace WinBridge.Runtime.Tests;
 
@@ -85,6 +86,62 @@ public sealed class ProcessIsolatedUiAutomationWaitProbeTests
 
         Assert.Equal(diagnosticArtifactPath, result.DiagnosticArtifactPath);
         Assert.Equal(diagnosticArtifactPath, result.Result.DiagnosticArtifactPath);
+    }
+
+    [Fact]
+    public async Task ProbeAsyncUsesHostCompletedAtUtcAndPreservesWorkerCompletedAtUtcSeparately()
+    {
+        DateTimeOffset workerCompletedAtUtc = new(2026, 3, 20, 12, 30, 45, TimeSpan.Zero);
+        DateTimeOffset hostCompletedAtUtc = workerCompletedAtUtc.AddMilliseconds(250);
+        UiAutomationWaitProbeExecutionResult executionPayload = new(
+            new UiAutomationWaitProbeResult
+            {
+                Window = new ObservedWindowDescriptor(42, Title: "Calculator"),
+                        Matches =
+                [
+                    new UiaElementSnapshot
+                    {
+                        ElementId = "rid:1.2;path:0/0",
+                        Name = "SearchBox",
+                        AutomationId = "SearchBox",
+                        ControlType = "edit",
+                        ControlTypeId = 50004,
+                        IsControlElement = true,
+                        IsContentElement = true,
+                        IsEnabled = true,
+                        HasKeyboardFocus = true,
+                        Children = [],
+                    },
+                ],
+            },
+            workerCompletedAtUtc,
+            TimedOut: false,
+            DiagnosticArtifactPath: null);
+        RecordingWorkerProcessRunner runner = new(
+            new UiAutomationWorkerProcessResult(
+                Success: true,
+                Reason: null,
+                FailureStage: null,
+                CapturedAtUtc: DateTimeOffset.UtcNow,
+                CompletedAtUtc: hostCompletedAtUtc,
+                Stdout: JsonSerializer.Serialize(executionPayload),
+                Stderr: null,
+                DiagnosticArtifactPath: null));
+        ProcessIsolatedUiAutomationWaitProbe probe = new(runner);
+
+        UiAutomationWaitProbeExecutionResult result = await probe.ProbeAsync(
+            CreateWindow(),
+            new WaitRequest(
+                WaitConditionValues.FocusIs,
+                new WaitElementSelector(AutomationId: "SearchBox"),
+                TimeoutMs: 3000),
+            TimeSpan.FromSeconds(3),
+            CancellationToken.None);
+
+        Assert.Equal(hostCompletedAtUtc, result.CompletedAtUtc);
+        Assert.Equal(workerCompletedAtUtc, result.WorkerCompletedAtUtc);
+        Assert.False(result.TimedOut);
+        Assert.Equal("rid:1.2;path:0/0", result.Result.Matches.Single().ElementId);
     }
 
     private static WindowDescriptor CreateWindow() =>

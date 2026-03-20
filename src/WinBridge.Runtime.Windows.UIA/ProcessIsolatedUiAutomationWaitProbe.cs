@@ -90,18 +90,29 @@ public sealed class ProcessIsolatedUiAutomationWaitProbe : IUiAutomationWaitProb
 
         try
         {
-            UiAutomationWaitProbeResult? result = JsonSerializer.Deserialize<UiAutomationWaitProbeResult>(execution.Stdout ?? string.Empty, JsonOptions);
-            UiAutomationWaitProbeResult materialized = result ?? new UiAutomationWaitProbeResult
+            UiAutomationWaitProbeExecutionResult? result = JsonSerializer.Deserialize<UiAutomationWaitProbeExecutionResult>(execution.Stdout ?? string.Empty, JsonOptions);
+            UiAutomationWaitProbeExecutionResult materialized = result ?? new UiAutomationWaitProbeExecutionResult(
+                new UiAutomationWaitProbeResult
+                {
+                    Reason = "UIA worker process вернул пустой wait probe payload.",
+                    FailureStage = UiaSnapshotFailureStageValues.WorkerProcess,
+                    DiagnosticArtifactPath = execution.DiagnosticArtifactPath,
+                },
+                execution.CompletedAtUtc,
+                TimedOut: false,
+                DiagnosticArtifactPath: execution.DiagnosticArtifactPath);
+            UiAutomationWaitProbeResult materializedResult = materialized.Result ?? new UiAutomationWaitProbeResult
             {
                 Reason = "UIA worker process вернул пустой wait probe payload.",
                 FailureStage = UiaSnapshotFailureStageValues.WorkerProcess,
                 DiagnosticArtifactPath = execution.DiagnosticArtifactPath,
             };
             return new UiAutomationWaitProbeExecutionResult(
-                materialized with { DiagnosticArtifactPath = materialized.DiagnosticArtifactPath ?? execution.DiagnosticArtifactPath },
+                materializedResult with { DiagnosticArtifactPath = materializedResult.DiagnosticArtifactPath ?? materialized.DiagnosticArtifactPath ?? execution.DiagnosticArtifactPath },
                 execution.CompletedAtUtc,
-                TimedOut: false,
-                DiagnosticArtifactPath: execution.DiagnosticArtifactPath);
+                TimedOut: materialized.TimedOut,
+                DiagnosticArtifactPath: materialized.DiagnosticArtifactPath ?? execution.DiagnosticArtifactPath,
+                WorkerCompletedAtUtc: materialized.WorkerCompletedAtUtc ?? materialized.CompletedAtUtc);
         }
         catch (JsonException)
         {

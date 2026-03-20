@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\WinBridge.Runtime.Contracts\WinBridge.Runtime.Contracts.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Diagnostics\WinBridge.Runtime.Diagnostics.csproj" />
+    <ProjectReference Include="..\WinBridge.Runtime.Windows.Capture\WinBridge.Runtime.Windows.Capture.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.UIA\WinBridge.Runtime.Windows.UIA.csproj" />
   </ItemGroup>

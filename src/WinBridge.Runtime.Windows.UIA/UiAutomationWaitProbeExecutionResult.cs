@@ -4,4 +4,5 @@ public sealed record UiAutomationWaitProbeExecutionResult(
     UiAutomationWaitProbeResult Result,
     DateTimeOffset CompletedAtUtc,
     bool TimedOut = false,
-    string? DiagnosticArtifactPath = null);
+    string? DiagnosticArtifactPath = null,
+    DateTimeOffset? WorkerCompletedAtUtc = null);

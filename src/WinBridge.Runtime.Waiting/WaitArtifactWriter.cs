@@ -88,4 +88,8 @@ internal sealed record WaitAttemptSummary(
     string? MatchedElementId = null,
     string? MatchedTextSource = null,
     string? DiagnosticArtifactPath = null,
-    string? Detail = null);
+    string? Detail = null,
+    double? VisualDifferenceRatio = null,
+    double? VisualDifferenceThreshold = null,
+    string? VisualBaselineArtifactPath = null,
+    string? VisualCurrentArtifactPath = null);

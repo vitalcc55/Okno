@@ -1,4 +1,5 @@
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Runtime.Tests;
@@ -60,14 +61,25 @@ public sealed class WaitContractAndPolicyTests
     }
 
     [Fact]
-    public void WaitRequestValidatorRejectsPackageCConditionsForPackageB()
+    public void WaitRequestValidatorRequiresSelectorForFocusIs()
     {
         bool isValid = WaitRequestValidator.TryValidate(
-            new WaitRequest(WaitConditionValues.FocusIs, new WaitElementSelector(Name: "Input")),
+            new WaitRequest(WaitConditionValues.FocusIs),
             out string? reason);
 
         Assert.False(isValid);
-        Assert.Contains("Package B", reason, StringComparison.Ordinal);
+        Assert.Contains("selector", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WaitRequestValidatorAcceptsVisualChangedWithoutSelector()
+    {
+        bool isValid = WaitRequestValidator.TryValidate(
+            new WaitRequest(WaitConditionValues.VisualChanged),
+            out string? reason);
+
+        Assert.True(isValid);
+        Assert.Null(reason);
     }
 
     [Fact]
@@ -88,6 +100,13 @@ public sealed class WaitContractAndPolicyTests
         Assert.Equal("text_appears", WaitConditionValues.TextAppears);
         Assert.Equal("visual_changed", WaitConditionValues.VisualChanged);
         Assert.Equal("focus_is", WaitConditionValues.FocusIs);
+    }
+
+    [Fact]
+    public void WaitOptionsRejectsNonPositivePollInterval()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new WaitOptions(TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new WaitOptions(TimeSpan.FromMilliseconds(-1)));
     }
 
     [Fact]
