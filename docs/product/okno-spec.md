@@ -250,12 +250,17 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 
 ### Для V1 это MUST HAVE, не nice-to-have
 
-Нужны отдельные механизмы ожидания:
-- `wait_for_window`
-- `wait_for_element`
-- `wait_for_text`
-- `wait_for_visual_change`
-- `wait_for_focus`
+Для V1 нужен один публичный tool ожидания: `windows.wait`.
+
+Он должен закрывать условия:
+- active window matches;
+- element exists;
+- element gone;
+- text appears;
+- visual changed;
+- focus is.
+
+Отдельный zoo из `wait_for_*` tools в V1 не нужен: это должны быть condition/mode внутри одного wait tool.
 
 ### Минимальная реализация проверки
 
@@ -263,6 +268,8 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - по заголовку/активному окну;
 - по изменению изображения;
 - по повторному capture.
+- с target policy `explicit -> attached -> active`;
+- без hidden activation fallback.
 
 ---
 
@@ -429,6 +436,12 @@ Invariant:
 - `until`
 - `selector/condition`
 - `timeout_ms`
+- optional explicit target (`hwnd`) при необходимости;
+
+Target policy:
+- `explicit -> attached -> active`
+- без silent fallback из stale explicit/attached target;
+- без hidden activation fallback.
 
 Поддержать условия:
 - active window matches;
