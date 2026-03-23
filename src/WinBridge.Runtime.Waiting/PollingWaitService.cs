@@ -33,62 +33,66 @@ public sealed class PollingWaitService(
         long startTimestamp = timeProvider.GetTimestamp();
         DateTimeOffset startedAtUtc = timeProvider.GetUtcNow();
         List<WaitAttemptSummary> attempts = [];
-
-        if (!WaitRequestValidator.TryValidate(request, out string? validationReason))
-        {
-            return FinalizeResult(
-                request,
-                target,
-                attempts,
-                startedAtUtc,
-                new WaitResult(
-                    Status: WaitStatusValues.Failed,
-                    Condition: request.Condition,
-                    TargetSource: target.Source,
-                    TargetFailureCode: target.FailureCode,
-                    Reason: validationReason,
-                    TimeoutMs: request.TimeoutMs,
-                    ElapsedMs: GetElapsedMs(startTimestamp),
-                    AttemptCount: 0),
-                failureStage: "request_validation");
-        }
-
-        if (target.Window is null)
-        {
-            string failureCode = target.FailureCode ?? WaitTargetFailureValues.MissingTarget;
-            return FinalizeResult(
-                request,
-                target,
-                attempts,
-                startedAtUtc,
-                new WaitResult(
-                    Status: WaitStatusValues.Failed,
-                    Condition: request.Condition,
-                    TargetSource: target.Source,
-                    TargetFailureCode: failureCode,
-                    Reason: CreateTargetFailureReason(failureCode),
-                    TimeoutMs: request.TimeoutMs,
-                    ElapsedMs: GetElapsedMs(startTimestamp),
-                    AttemptCount: 0),
-                failureStage: "target_resolution");
-        }
-
-        WindowDescriptor expectedWindow = target.Window;
         WaitProbeSnapshot? lastProbe = null;
-        WaitVisualState? visualState = null;
+        WindowDescriptor? lastResolvedWindow = target.Window;
         int attemptCount = 0;
-        DateTimeOffset deadlineUtc = startedAtUtc + TimeSpan.FromMilliseconds(request.TimeoutMs);
 
-        while (true)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (!WaitRequestValidator.TryValidate(request, out string? validationReason))
+            {
+                return FinalizeResult(
+                    request,
+                    target,
+                    attempts,
+                    startedAtUtc,
+                    new WaitResult(
+                        Status: WaitStatusValues.Failed,
+                        Condition: request.Condition,
+                        TargetSource: target.Source,
+                        TargetFailureCode: target.FailureCode,
+                        Reason: validationReason,
+                        TimeoutMs: request.TimeoutMs,
+                        ElapsedMs: GetElapsedMs(startTimestamp),
+                        AttemptCount: 0),
+                    failureStage: "request_validation");
+            }
 
-            WaitProbeSnapshot probe = await ProbeOnceAsync(expectedWindow, target.Source, request, deadlineUtc, visualState, cancellationToken).ConfigureAwait(false);
-            expectedWindow = probe.ResolvedTargetWindow ?? expectedWindow;
-            visualState = probe.VisualState ?? visualState;
-            lastProbe = probe;
-            attemptCount++;
-            attempts.Add(CreateAttemptSummary(attemptCount, probe));
+            if (target.Window is null)
+            {
+                string failureCode = target.FailureCode ?? WaitTargetFailureValues.MissingTarget;
+                return FinalizeResult(
+                    request,
+                    target,
+                    attempts,
+                    startedAtUtc,
+                    new WaitResult(
+                        Status: CreateTargetResolutionStatus(failureCode),
+                        Condition: request.Condition,
+                        TargetSource: target.Source,
+                        TargetFailureCode: failureCode,
+                        Reason: CreateTargetFailureReason(failureCode),
+                        TimeoutMs: request.TimeoutMs,
+                        ElapsedMs: GetElapsedMs(startTimestamp),
+                        AttemptCount: 0),
+                    failureStage: "target_resolution");
+            }
+
+            WindowDescriptor expectedWindow = target.Window;
+            WaitVisualState? visualState = null;
+            DateTimeOffset deadlineUtc = startedAtUtc + TimeSpan.FromMilliseconds(request.TimeoutMs);
+
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                WaitProbeSnapshot probe = await ProbeOnceAsync(expectedWindow, target.Source, request, deadlineUtc, visualState, cancellationToken).ConfigureAwait(false);
+                expectedWindow = probe.ResolvedTargetWindow ?? expectedWindow;
+                lastResolvedWindow = probe.ResolvedTargetWindow ?? lastResolvedWindow;
+                visualState = probe.VisualState ?? visualState;
+                lastProbe = probe;
+                attemptCount++;
+                attempts.Add(CreateAttemptSummary(attemptCount, probe));
 
             if (probe.Outcome == WaitProbeOutcome.TimedOut)
             {
@@ -251,8 +255,29 @@ public sealed class PollingWaitService(
                 continue;
             }
 
-            TimeSpan delay = remaining < options.PollInterval ? remaining : options.PollInterval;
-            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                TimeSpan delay = remaining < options.PollInterval ? remaining : options.PollInterval;
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            WaitResult failedResult = new(
+                Status: WaitStatusValues.Failed,
+                Condition: request.Condition,
+                TargetSource: target.Source,
+                TargetFailureCode: lastProbe?.TargetFailureCode ?? target.FailureCode,
+                Reason: "Runtime не смог завершить wait request.",
+                Window: lastProbe?.Window ?? (lastResolvedWindow is null ? null : ToObservedWindow(lastResolvedWindow)),
+                MatchedElement: lastProbe?.MatchedElement,
+                LastObserved: lastProbe?.Observation,
+                TimeoutMs: request.TimeoutMs,
+                ElapsedMs: GetElapsedMs(startTimestamp),
+                AttemptCount: attemptCount);
+            return FinalizeResult(request, target, attempts, startedAtUtc, failedResult, failureStage: "runtime_unhandled", failureException: exception);
         }
     }
 
@@ -871,13 +896,15 @@ public sealed class PollingWaitService(
         IReadOnlyList<WaitAttemptSummary> attempts,
         DateTimeOffset startedAtUtc,
         WaitResult result,
-        string? failureStage = null)
+        string? failureStage = null,
+        Exception? failureException = null)
     {
+        WaitFailureDiagnostics? failureDiagnostics = CreateFailureDiagnostics(failureStage, failureException);
         try
         {
-            string artifactPath = _artifactWriter.Write(request, target, options, attempts, result, startedAtUtc);
+            string artifactPath = _artifactWriter.Write(request, target, options, attempts, result, startedAtUtc, failureDiagnostics);
             WaitResult materialized = result with { ArtifactPath = artifactPath };
-            RecordRuntimeEvent(materialized, failureStage);
+            RecordRuntimeEvent(materialized, failureDiagnostics);
             return materialized;
         }
         catch (WaitArtifactException exception)
@@ -888,12 +915,12 @@ public sealed class PollingWaitService(
                 Reason = exception.Message,
                 ArtifactPath = null,
             };
-            RecordRuntimeEvent(artifactFailure, "artifact_write");
+            RecordRuntimeEvent(artifactFailure, CreateFailureDiagnostics("artifact_write", exception.InnerException ?? exception));
             return artifactFailure;
         }
     }
 
-    private void RecordRuntimeEvent(WaitResult result, string? failureStage)
+    private void RecordRuntimeEvent(WaitResult result, WaitFailureDiagnostics? failureDiagnostics)
     {
         string severity = result.Status == WaitStatusValues.Done ? "info" : "warning";
         string message = result.Status == WaitStatusValues.Done
@@ -915,11 +942,26 @@ public sealed class PollingWaitService(
                 ["attempt_count"] = result.AttemptCount.ToString(CultureInfo.InvariantCulture),
                 ["elapsed_ms"] = result.ElapsedMs.ToString(CultureInfo.InvariantCulture),
                 ["artifact_path"] = result.ArtifactPath,
-                ["failure_stage"] = failureStage,
+                ["failure_stage"] = failureDiagnostics?.FailureStage,
+                ["exception_type"] = failureDiagnostics?.ExceptionType,
+                ["exception_message"] = failureDiagnostics?.ExceptionMessage,
                 ["matched_element_id"] = result.MatchedElement?.ElementId,
                 ["matched_text_source"] = result.LastObserved?.MatchedTextSource,
                 ["diagnostic_artifact_path"] = result.LastObserved?.DiagnosticArtifactPath,
             });
+    }
+
+    private static WaitFailureDiagnostics? CreateFailureDiagnostics(string? failureStage, Exception? failureException)
+    {
+        if (string.IsNullOrWhiteSpace(failureStage) && failureException is null)
+        {
+            return null;
+        }
+
+        return new WaitFailureDiagnostics(
+            FailureStage: failureStage,
+            ExceptionType: failureException?.GetType().FullName,
+            ExceptionMessage: failureException?.Message);
     }
 
     private WaitResult CreateNonSuccessResult(
@@ -1062,6 +1104,11 @@ public sealed class PollingWaitService(
             WaitTargetFailureValues.AmbiguousActiveTarget => "Foreground window для wait неоднозначен: найдено несколько live top-level candidates.",
             _ => "Runtime wait не смог разрешить целевой target.",
         };
+
+    private static string CreateTargetResolutionStatus(string failureCode) =>
+        string.Equals(failureCode, WaitTargetFailureValues.AmbiguousActiveTarget, StringComparison.Ordinal)
+            ? WaitStatusValues.Ambiguous
+            : WaitStatusValues.Failed;
 
     private static string CreateTimeoutReason(string condition) =>
         $"Условие wait '{condition}' не стабилизировалось до истечения timeout.";

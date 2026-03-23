@@ -21,6 +21,9 @@ namespace WinBridgeSmoke
     public static class User32
     {
         [DllImport("user32.dll")]
+        public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
         public static extern bool ShowWindowAsync(IntPtr hwnd, int nCmdShow);
 
         [DllImport("user32.dll")]
@@ -29,6 +32,13 @@ namespace WinBridgeSmoke
 }
 '@
 }
+
+$wmAppArmElementGone = 0x8001
+$wmAppPrepareFocus = 0x8002
+$waitTimeoutForegroundMs = 1500
+$waitTimeoutSemanticUiMs = 3000
+$waitTimeoutElementGoneMs = 5000
+$waitTimeoutVisualMs = 6000
 
 function Send-Json {
     param(
@@ -372,6 +382,68 @@ function Wait-ForSuccessfulWindowCapture {
     throw "Helper window did not become capturable after activation in time. Last capture reason: $lastReason"
 }
 
+function Invoke-WaitToolCall {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [string] $Condition,
+        [hashtable] $Selector,
+        [string] $ExpectedText,
+        [object] $Hwnd,
+        [int] $TimeoutMs = 3000,
+        [Parameter(Mandatory)]
+        [string] $RequestName
+    )
+
+    $arguments = @{
+        condition = $Condition
+        timeoutMs = $TimeoutMs
+    }
+
+    if ($null -ne $Selector -and $Selector.Count -gt 0) {
+        $arguments.selector = $Selector
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedText)) {
+        $arguments.expectedText = $ExpectedText
+    }
+
+    if ($null -ne $Hwnd) {
+        $arguments.hwnd = [int64]$Hwnd
+    }
+
+    $toolCall = Invoke-ToolCall -Process $Process -Name 'windows.wait' -Arguments $arguments -RequestName $RequestName
+    return [PSCustomObject]@{
+        Id = $toolCall.Id
+        RawRequest = $toolCall.RawRequest
+        RawResponse = $toolCall.RawResponse
+        Json = $toolCall.Json
+        Payload = $toolCall.Json.result.structuredContent
+    }
+}
+
+function Assert-WaitSuccess {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ToolCall,
+        [Parameter(Mandatory)]
+        [string] $Condition
+    )
+
+    $result = $ToolCall.Json.result
+    Assert-Condition -Condition (-not [bool]$result.isError) -Message "windows.wait($Condition) returned isError=true."
+    Assert-Condition -Condition (@($result.content).Count -eq 1) -Message "windows.wait($Condition) must return exactly one text content block."
+    Assert-Condition -Condition ($result.content[0].type -eq 'text') -Message "windows.wait($Condition) content block must be text-only."
+
+    $payload = $result.structuredContent
+    Assert-Condition -Condition ([string]$payload.status -eq 'done') -Message "windows.wait($Condition) returned status '$($payload.status)' instead of 'done'."
+    Assert-Condition -Condition ([string]$payload.condition -eq $Condition) -Message "windows.wait($Condition) payload condition drifted to '$($payload.condition)'."
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$payload.artifactPath)) -Message "windows.wait($Condition) did not return artifactPath."
+    Assert-Condition -Condition (Test-Path $payload.artifactPath) -Message "windows.wait($Condition) artifact '$($payload.artifactPath)' was not created."
+    return $payload
+}
+
 function Wait-ForSemanticUiaSnapshot {
     param(
         [Parameter(Mandatory)]
@@ -418,6 +490,20 @@ function Minimize-Window {
     )
 
     return [WinBridgeSmoke.User32]::ShowWindowAsync([IntPtr]::new($Hwnd), 6)
+}
+
+function Send-HelperCommand {
+    param(
+        [Parameter(Mandatory)]
+        [int64] $Hwnd,
+        [Parameter(Mandatory)]
+        [uint32] $Message,
+        [Parameter(Mandatory)]
+        [string] $Description
+    )
+
+    $posted = [WinBridgeSmoke.User32]::PostMessage([IntPtr]::new($Hwnd), $Message, [IntPtr]::Zero, [IntPtr]::Zero)
+    Assert-Condition -Condition $posted -Message "Smoke helper command '$Description' was not delivered."
 }
 
 function Test-IsIconic {
@@ -539,6 +625,13 @@ try {
     $activatePayload = $null
     $helperCapturePayload = $null
     $helperCaptureImage = $null
+    $activeWaitPayload = $null
+    $focusWaitPayload = $null
+    $elementWaitPayload = $null
+    $transientExistsWaitPayload = $null
+    $textWaitPayload = $null
+    $elementGoneWaitPayload = $null
+    $visualWaitPayload = $null
 
     $attachCall = Invoke-ToolCall -Process $process -Name 'windows.attach_window' -Arguments @{ hwnd = $helperHwnd } -RequestName 'windows.attach_window'
     $rawAttachRequest = $attachCall.RawRequest
@@ -646,6 +739,72 @@ try {
     Assert-Condition -Condition ([long]$helperCapturePayload.hwnd -eq $helperHwnd) -Message 'Helper capture metadata hwnd does not match helper window.'
     Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($helperCaptureImage.data)) -Message 'Helper capture image block does not contain PNG data.'
 
+    $activeWaitCall = Invoke-WaitToolCall -Process $process -Condition 'active_window_matches' -TimeoutMs $waitTimeoutForegroundMs -RequestName 'windows.wait(active_window_matches)'
+    $rawActiveWaitRequest = $activeWaitCall.RawRequest
+    $activeWaitResponse = [PSCustomObject]@{
+        Raw = $activeWaitCall.RawResponse
+        Json = $activeWaitCall.Json
+    }
+    $activeWaitPayload = Assert-WaitSuccess -ToolCall $activeWaitCall -Condition 'active_window_matches'
+    Assert-Condition -Condition ([bool]$activeWaitPayload.lastObserved.targetIsForeground) -Message 'active_window_matches must confirm foreground=true in lastObserved.'
+
+    Send-HelperCommand -Hwnd $helperHwnd -Message $wmAppPrepareFocus -Description 'prepare_focus'
+    $focusWaitCall = Invoke-WaitToolCall -Process $process -Condition 'focus_is' -Selector @{ name = 'Run semantic smoke'; controlType = 'button' } -TimeoutMs $waitTimeoutSemanticUiMs -RequestName 'windows.wait(focus_is)'
+    $rawFocusWaitRequest = $focusWaitCall.RawRequest
+    $focusWaitResponse = [PSCustomObject]@{
+        Raw = $focusWaitCall.RawResponse
+        Json = $focusWaitCall.Json
+    }
+    $focusWaitPayload = Assert-WaitSuccess -ToolCall $focusWaitCall -Condition 'focus_is'
+    Assert-Condition -Condition ([string]$focusWaitPayload.matchedElement.controlType -eq 'button') -Message 'focus_is did not resolve the expected focused helper button.'
+
+    $elementWaitCall = Invoke-WaitToolCall -Process $process -Condition 'element_exists' -Selector @{ name = 'Run semantic smoke'; controlType = 'button' } -TimeoutMs $waitTimeoutSemanticUiMs -RequestName 'windows.wait(element_exists)'
+    $rawElementWaitRequest = $elementWaitCall.RawRequest
+    $elementWaitResponse = [PSCustomObject]@{
+        Raw = $elementWaitCall.RawResponse
+        Json = $elementWaitCall.Json
+    }
+    $elementWaitPayload = Assert-WaitSuccess -ToolCall $elementWaitCall -Condition 'element_exists'
+    Assert-Condition -Condition ([string]$elementWaitPayload.matchedElement.name -eq 'Run semantic smoke') -Message 'element_exists did not resolve the expected helper button.'
+
+    Send-HelperCommand -Hwnd $helperHwnd -Message $wmAppArmElementGone -Description 'arm_element_gone'
+    $transientExistsWaitCall = Invoke-WaitToolCall -Process $process -Condition 'element_exists' -Selector @{ name = 'Transient wait target'; controlType = 'button' } -TimeoutMs $waitTimeoutSemanticUiMs -RequestName 'windows.wait(element_exists transient precondition)'
+    $rawTransientExistsWaitRequest = $transientExistsWaitCall.RawRequest
+    $transientExistsWaitResponse = [PSCustomObject]@{
+        Raw = $transientExistsWaitCall.RawResponse
+        Json = $transientExistsWaitCall.Json
+    }
+    $transientExistsWaitPayload = Assert-WaitSuccess -ToolCall $transientExistsWaitCall -Condition 'element_exists'
+    Assert-Condition -Condition ([string]$transientExistsWaitPayload.matchedElement.name -eq 'Transient wait target') -Message 'Transient precondition did not observe the expected helper button before element_gone.'
+
+    $elementGoneWaitCall = Invoke-WaitToolCall -Process $process -Condition 'element_gone' -Selector @{ name = 'Transient wait target'; controlType = 'button' } -TimeoutMs $waitTimeoutElementGoneMs -RequestName 'windows.wait(element_gone)'
+    $rawElementGoneWaitRequest = $elementGoneWaitCall.RawRequest
+    $elementGoneWaitResponse = [PSCustomObject]@{
+        Raw = $elementGoneWaitCall.RawResponse
+        Json = $elementGoneWaitCall.Json
+    }
+    $elementGoneWaitPayload = Assert-WaitSuccess -ToolCall $elementGoneWaitCall -Condition 'element_gone'
+    Assert-Condition -Condition ($null -eq $elementGoneWaitPayload.matchedElement) -Message 'element_gone must complete without matchedElement in final payload.'
+
+    $textWaitCall = Invoke-WaitToolCall -Process $process -Condition 'text_appears' -Selector @{ name = 'Smoke query input'; controlType = 'edit' } -ExpectedText 'semantic text' -TimeoutMs $waitTimeoutSemanticUiMs -RequestName 'windows.wait(text_appears)'
+    $rawTextWaitRequest = $textWaitCall.RawRequest
+    $textWaitResponse = [PSCustomObject]@{
+        Raw = $textWaitCall.RawResponse
+        Json = $textWaitCall.Json
+    }
+    $textWaitPayload = Assert-WaitSuccess -ToolCall $textWaitCall -Condition 'text_appears'
+    Assert-Condition -Condition (@('value_pattern', 'text_pattern', 'name') -contains [string]$textWaitPayload.lastObserved.matchedTextSource) -Message 'text_appears did not report a canonical matchedTextSource.'
+
+    $visualWaitCall = Invoke-WaitToolCall -Process $process -Condition 'visual_changed' -TimeoutMs $waitTimeoutVisualMs -RequestName 'windows.wait(visual_changed)'
+    $rawVisualWaitRequest = $visualWaitCall.RawRequest
+    $visualWaitResponse = [PSCustomObject]@{
+        Raw = $visualWaitCall.RawResponse
+        Json = $visualWaitCall.Json
+    }
+    $visualWaitPayload = Assert-WaitSuccess -ToolCall $visualWaitCall -Condition 'visual_changed'
+    Assert-Condition -Condition (Test-Path $visualWaitPayload.lastObserved.visualBaselineArtifactPath) -Message "visual_changed baseline artifact '$($visualWaitPayload.lastObserved.visualBaselineArtifactPath)' was not created."
+    Assert-Condition -Condition (Test-Path $visualWaitPayload.lastObserved.visualCurrentArtifactPath) -Message "visual_changed current artifact '$($visualWaitPayload.lastObserved.visualCurrentArtifactPath)' was not created."
+
     $attachedHwnd = $null
     if ($null -ne $attachedWindow) {
         $attachedHwnd = $attachedWindow.attachedWindow.window.hwnd
@@ -679,6 +838,13 @@ try {
         }
         helper_activate = $activatePayload
         helper_capture = $helperCapturePayload
+        wait_active_window_matches = $activeWaitPayload
+        wait_focus_is = $focusWaitPayload
+        wait_element_exists = $elementWaitPayload
+        wait_transient_precondition = $transientExistsWaitPayload
+        wait_element_gone = $elementGoneWaitPayload
+        wait_text_appears = $textWaitPayload
+        wait_visual_changed = $visualWaitPayload
         raw_requests = [ordered]@{
             initialize = $rawInitializeRequest
             list_tools = $rawListRequest
@@ -692,6 +858,13 @@ try {
             capture = $rawCaptureRequest
             activate_window = $rawActivateRequest
             helper_window_capture = $rawHelperCaptureRequest
+            wait_active_window_matches = $rawActiveWaitRequest
+            wait_focus_is = $rawFocusWaitRequest
+            wait_element_exists = $rawElementWaitRequest
+            wait_transient_precondition = $rawTransientExistsWaitRequest
+            wait_element_gone = $rawElementGoneWaitRequest
+            wait_text_appears = $rawTextWaitRequest
+            wait_visual_changed = $rawVisualWaitRequest
         }
         raw_responses = [ordered]@{
             initialize = $initializeResponse.Raw
@@ -706,6 +879,13 @@ try {
             capture = $captureResponse.Raw
             activate_window = $activateResponse.Raw
             helper_window_capture = $helperCaptureResponse.Raw
+            wait_active_window_matches = $activeWaitResponse.Raw
+            wait_focus_is = $focusWaitResponse.Raw
+            wait_element_exists = $elementWaitResponse.Raw
+            wait_transient_precondition = $transientExistsWaitResponse.Raw
+            wait_element_gone = $elementGoneWaitResponse.Raw
+            wait_text_appears = $textWaitResponse.Raw
+            wait_visual_changed = $visualWaitResponse.Raw
         }
         stderr = $stderr
     }
@@ -732,6 +912,13 @@ try {
         "- helper_hwnd: $helperHwnd",
         "- helper_activation_status: $($activatePayload.status)",
         "- helper_capture_artifact: $($helperCapturePayload.artifactPath)",
+        "- wait_active_window_matches_artifact: $($activeWaitPayload.artifactPath)",
+        "- wait_focus_is_artifact: $($focusWaitPayload.artifactPath)",
+        "- wait_element_exists_artifact: $($elementWaitPayload.artifactPath)",
+        "- wait_transient_precondition_artifact: $($transientExistsWaitPayload.artifactPath)",
+        "- wait_element_gone_artifact: $($elementGoneWaitPayload.artifactPath)",
+        "- wait_text_appears_artifact: $($textWaitPayload.artifactPath)",
+        "- wait_visual_changed_artifact: $($visualWaitPayload.artifactPath)",
         "- audit_dir: $($healthPayload.artifactsDirectory)",
         "- report: $reportPath"
     ) -join [Environment]::NewLine

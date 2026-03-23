@@ -117,6 +117,27 @@ public sealed class PollingWaitServiceTests
     }
 
     [Fact]
+    public async Task WaitAsyncReturnsAmbiguousWhenTargetResolutionIsAmbiguousActive()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-target-ambiguous");
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([]),
+            new FakeWindowTargetResolver(_ => throw new NotSupportedException("Should not resolve live identity for missing target.")),
+            new SequenceWaitProbe());
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(window: null, source: null, failureCode: WaitTargetFailureValues.AmbiguousActiveTarget),
+            new WaitRequest(WaitConditionValues.ActiveWindowMatches, TimeoutMs: 50),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Ambiguous, result.Status);
+        Assert.Equal(WaitTargetFailureValues.AmbiguousActiveTarget, result.TargetFailureCode);
+        Assert.NotNull(result.ArtifactPath);
+    }
+
+    [Fact]
     public async Task WaitAsyncReturnsDoneForElementGoneAfterStableRecheck()
     {
         string root = CreateTempDirectory();
@@ -463,7 +484,7 @@ public sealed class PollingWaitServiceTests
 
         WaitResult result = await service.WaitAsync(
             CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
-            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 15),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 50),
             CancellationToken.None);
 
         Assert.Equal(WaitStatusValues.Failed, result.Status);
@@ -878,6 +899,44 @@ public sealed class PollingWaitServiceTests
         Assert.Equal("worker_process", result.LastObserved?.Detail is null ? null : "worker_process");
     }
 
+    [Fact]
+    public async Task WaitAsyncReturnsFailedWithArtifactWhenProbeThrowsUnexpectedException()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-unhandled-probe");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 615, isForeground: false);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new ThrowingWaitProbe());
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(
+                WaitConditionValues.ElementExists,
+                new WaitElementSelector(AutomationId: "SearchBox"),
+                TimeoutMs: 50),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Failed, result.Status);
+        Assert.Equal("Runtime не смог завершить wait request.", result.Reason);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
+
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        JsonElement failureDiagnostics = artifact.RootElement.GetProperty("failure_diagnostics");
+        Assert.Equal("runtime_unhandled", failureDiagnostics.GetProperty("failure_stage").GetString());
+        Assert.Equal(typeof(InvalidOperationException).FullName, failureDiagnostics.GetProperty("exception_type").GetString());
+        Assert.Equal("secret probe failure", failureDiagnostics.GetProperty("exception_message").GetString());
+
+        string[] eventLines = await File.ReadAllLinesAsync(options.EventsPath);
+        Assert.Single(eventLines);
+        Assert.Contains("\"failure_stage\":\"runtime_unhandled\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"exception_type\":\"System.InvalidOperationException\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"exception_message\":\"secret probe failure\"", eventLines[0], StringComparison.Ordinal);
+    }
+
     private sealed class SequenceWaitProbe(IReadOnlyList<UiAutomationWaitProbeResult>? results = null) : IUiAutomationWaitProbe
     {
         private readonly Queue<UiAutomationWaitProbeResult> _results = results is null
@@ -943,6 +1002,16 @@ public sealed class PollingWaitServiceTests
                     DateTimeOffset.UtcNow.AddSeconds(1),
                     TimedOut: false,
                     DiagnosticArtifactPath: null));
+    }
+
+    private sealed class ThrowingWaitProbe : IUiAutomationWaitProbe
+    {
+        public Task<UiAutomationWaitProbeExecutionResult> ProbeAsync(
+            WindowDescriptor targetWindow,
+            WaitRequest request,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("secret probe failure");
     }
 
     private sealed class SequenceVisualProbe(

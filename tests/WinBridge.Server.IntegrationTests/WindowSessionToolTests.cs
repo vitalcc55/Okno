@@ -356,7 +356,8 @@ public sealed class WindowSessionToolTests
             new FakeMonitorManager(monitors),
             activationService ?? new FakeWindowActivationService(),
             new WindowTargetResolver(windowManager),
-            new FakeUiAutomationService());
+            new FakeUiAutomationService(),
+            new FakeWaitService());
 
         return new TestContext(tools, sessionManager);
     }

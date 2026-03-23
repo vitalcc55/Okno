@@ -1,8 +1,8 @@
 # ExecPlan: windows.wait
 
-Статус: planned
+Статус: done
 Создан: 2026-03-19
-Обновлён: 2026-03-20
+Обновлён: 2026-03-23
 
 ## Goal
 
@@ -41,8 +41,8 @@ Follow-up после V1, но не внутри него:
 
 ## Current repo state
 
-- `windows.wait` уже объявлен в `src/WinBridge.Runtime.Tooling/ToolNames.cs`, остаётся `Deferred` в `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`, публикуется как `unsupported` в `docs/generated/project-interfaces.md` и теперь честно помечен как `os_side_effect`, потому что shipped wait tool обязан писать diagnostics artifact.
-- В `src/WinBridge.Runtime.Waiting/IWaitService.cs` уже есть typed runtime seam на `WaitRequest` / `WaitResult`, но concrete polling implementation по-прежнему отсутствует.
+- `windows.wait` уже реализован как public tool в `src/WinBridge.Server/Tools/WindowTools.cs`, опубликован в `tools/list` и переведён в `Implemented` + `SmokeRequired` в `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`.
+- `src/WinBridge.Runtime.Waiting/IWaitService.cs` и `PollingWaitService` являются единственным shipped V1 execution path для `windows.wait`; public handler больше не использует deferred stub и не держит legacy naming.
 - В `src/WinBridge.Runtime.Windows.Shell/IWindowTargetResolver.cs` и `WindowTargetResolver.cs` уже добавлен capability-specific `ResolveWaitTarget(...)` с precedence `explicit -> attached -> active` и запретом на silent fallback из stale explicit/attached target.
 - `windows.uia_snapshot` уже shipped и задаёт precedent для public MCP shape, control-view semantics и target precedence `explicit -> attached -> active`.
 - `src/WinBridge.Runtime.Windows.Shell/WindowActivationService.cs` уже содержит polling + final live verification precedent, который можно переиспользовать как execution pattern, но не как готовую wait semantics.
@@ -285,7 +285,7 @@ Contract rules:
 
 ### Package D — server rollout + smoke + docs sync
 
-Статус: `planned`
+Статус: `done`
 
 В объёме пакета:
 
@@ -297,6 +297,16 @@ Contract rules:
 Критерий завершения:
 
 - `windows.wait` доступен через `tools/list`, проходит integration/smoke и не расходится с generated/docs truth.
+
+Фактически закрыто в репозитории:
+
+- `WindowTools.Wait(...)` заменил legacy deferred stub и теперь публикует final public schema `condition + selector + expectedText + hwnd + timeoutMs` без compatibility shim вокруг `until`;
+- public handler резолвит target только через existing `ResolveWaitTarget(...)`, вызывает canonical `IWaitService` и возвращает прямой `WaitResult` как `structuredContent` + один `TextContentBlock`;
+- `status -> isError` выровнен на MCP boundary: только `done` идёт с `isError = false`, а `timeout`, `ambiguous` и `failed` возвращаются как tool-level errors внутри `CallToolResult`;
+- `ToolContractManifest`, `okno.contract`, exporter и `tools/list` больше не расходятся: `windows.wait` переведён в `Implemented`, включён в `SmokeRequired` и публикуется с final annotations;
+- добавлены L2 integration tests на public handler, tools/list schema/annotations, sanitization и target policy handoff;
+- `scripts/smoke.ps1` теперь реально гоняет `windows.wait` по `active_window_matches`, `element_exists`, `element_gone`, `text_appears`, `focus_is` и `visual_changed`, а `WinBridge.SmokeWindowHost` получил deterministic focus/visual fixture без hidden activation tricks;
+- generated docs, source-of-truth docs и `docs/CHANGELOG.md` синхронизированы по фактическому shipped state.
 
 ## Test ladder
 
@@ -375,9 +385,9 @@ Generated docs обновляются только после фактическ
 - [x] L1/L2/L3 ladder и docs sync перечислены отдельно.
 - [x] Rollback для `focus_is` и `visual_changed` описан явно.
 - [x] Typed wait contracts и `ResolveWaitTarget(...)` оформлены в коде без premature runtime rollout.
-- [x] Deferred contract для `windows.wait` остаётся `unsupported`, а manifest safety class выровнен под artifact-writing side effect.
+- [x] Public contract `windows.wait` переведён в `Implemented`, а manifest safety class выровнен под artifact-writing side effect.
 - [x] Package A реализован.
 - [x] Package B реализован.
 - [x] Package C реализован.
-- [ ] Package D реализован.
-- [ ] `windows.wait` переведён в `Implemented` и подтверждён smoke.
+- [x] Package D реализован.
+- [x] `windows.wait` переведён в `Implemented` и подтверждён smoke.

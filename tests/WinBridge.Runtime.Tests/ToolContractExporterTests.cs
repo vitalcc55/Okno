@@ -49,6 +49,12 @@ public sealed class ToolContractExporterTests
         Assert.Contains(
             "artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json",
             document.Artifacts);
+        Assert.Contains(
+            "artifacts/diagnostics/<run_id>/wait/<wait_id>.json",
+            document.Artifacts);
+        Assert.Contains(
+            "artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png",
+            document.Artifacts);
     }
 
     [Fact]
@@ -84,7 +90,7 @@ public sealed class ToolContractExporterTests
     }
 
     [Fact]
-    public void ExportJsonPublishesDeferredWaitAsOsSideEffect()
+    public void ExportJsonPublishesImplementedWaitAsOsSideEffect()
     {
         string root = CreateTempDirectory();
         string jsonPath = Path.Combine(root, "project-interfaces.json");
@@ -94,12 +100,13 @@ public sealed class ToolContractExporterTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
         JsonElement waitTool = document.RootElement
             .GetProperty("tools")
-            .GetProperty("deferred")
+            .GetProperty("implemented")
             .EnumerateArray()
             .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsWait);
 
-        Assert.Equal("deferred", waitTool.GetProperty("lifecycle").GetString());
+        Assert.Equal("implemented", waitTool.GetProperty("lifecycle").GetString());
         Assert.Equal("os_side_effect", waitTool.GetProperty("safety_class").GetString());
+        Assert.True(waitTool.GetProperty("smoke_required").GetBoolean());
     }
 
     private static string CreateTempDirectory()

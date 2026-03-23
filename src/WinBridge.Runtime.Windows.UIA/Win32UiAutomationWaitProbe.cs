@@ -128,9 +128,9 @@ internal sealed class Win32UiAutomationWaitProbe : IUiAutomationWaitProbe
                 MatchedTextSource = matches.Count == 1 ? matchedTextSource : null,
             };
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException)
         {
-            return Failed(exception.Message);
+            return Failed("UI Automation не смогла материализовать wait probe для выбранного hwnd.");
         }
         catch (ElementNotAvailableException)
         {

@@ -31,6 +31,13 @@ public static class WaitRequestValidator
             return false;
         }
 
+        if (!string.Equals(request.Condition, WaitConditionValues.TextAppears, StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(request.ExpectedText))
+        {
+            reason = "Параметр expectedText поддерживается только для condition 'text_appears'.";
+            return false;
+        }
+
         if (string.Equals(request.Condition, WaitConditionValues.ActiveWindowMatches, StringComparison.Ordinal))
         {
             reason = null;

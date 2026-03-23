@@ -61,6 +61,20 @@ public sealed class WaitContractAndPolicyTests
     }
 
     [Fact]
+    public void WaitRequestValidatorRejectsExpectedTextForNonTextAppearsCondition()
+    {
+        WaitRequest request = new(
+            WaitConditionValues.FocusIs,
+            new WaitElementSelector(AutomationId: "SearchBox"),
+            ExpectedText: "Ready");
+
+        bool isValid = WaitRequestValidator.TryValidate(request, out string? reason);
+
+        Assert.False(isValid);
+        Assert.Contains("expectedText", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void WaitRequestValidatorRequiresSelectorForFocusIs()
     {
         bool isValid = WaitRequestValidator.TryValidate(

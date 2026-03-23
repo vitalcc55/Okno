@@ -78,14 +78,15 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
-    public void WindowsWaitRemainsDeferredWithOsSideEffectSafetyClass()
+    public void WindowsWaitIsImplementedAndSmokeRequired()
     {
         ToolDescriptor descriptor = Assert.Single(
-            ToolContractManifest.Deferred,
+            ToolContractManifest.Implemented,
             item => item.Name == ToolNames.WindowsWait);
 
-        Assert.Equal(ToolLifecycle.Deferred, descriptor.Lifecycle);
+        Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
         Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
-        Assert.DoesNotContain(ToolNames.WindowsWait, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.Contains(ToolNames.WindowsWait, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsWait);
     }
 }

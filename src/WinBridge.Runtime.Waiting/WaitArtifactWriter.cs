@@ -24,7 +24,8 @@ internal sealed class WaitArtifactWriter(AuditLogOptions auditLogOptions)
         WaitOptions options,
         IReadOnlyList<WaitAttemptSummary> attempts,
         WaitResult result,
-        DateTimeOffset capturedAtUtc)
+        DateTimeOffset capturedAtUtc,
+        WaitFailureDiagnostics? failureDiagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(target);
@@ -51,7 +52,8 @@ internal sealed class WaitArtifactWriter(AuditLogOptions auditLogOptions)
                 PollSettings: new WaitPollSettings(result.TimeoutMs, (int)Math.Round(options.PollInterval.TotalMilliseconds, MidpointRounding.AwayFromZero)),
                 Attempts: attempts,
                 Result: result with { ArtifactPath = path },
-                CapturedAtUtc: capturedAtUtc);
+                CapturedAtUtc: capturedAtUtc,
+                FailureDiagnostics: failureDiagnostics);
             string document = JsonSerializer.Serialize(payload, JsonOptions);
             File.WriteAllText(path, document, FileEncoding);
             return path;
@@ -73,11 +75,17 @@ internal sealed record WaitArtifactPayload(
     WaitPollSettings PollSettings,
     IReadOnlyList<WaitAttemptSummary> Attempts,
     WaitResult Result,
-    DateTimeOffset CapturedAtUtc);
+    DateTimeOffset CapturedAtUtc,
+    WaitFailureDiagnostics? FailureDiagnostics = null);
 
 internal sealed record WaitPollSettings(
     int TimeoutMs,
     int PollIntervalMs);
+
+internal sealed record WaitFailureDiagnostics(
+    string? FailureStage = null,
+    string? ExceptionType = null,
+    string? ExceptionMessage = null);
 
 internal sealed record WaitAttemptSummary(
     int Attempt,

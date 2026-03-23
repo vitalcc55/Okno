@@ -38,9 +38,9 @@ public sealed class AdminToolTests
         Assert.Equal("session_mutation", attachDescriptor.SafetyClass);
 
         ContractToolDescriptor waitDescriptor = Assert.Single(
-            result.DeferredTools,
+            result.ImplementedTools,
             descriptor => descriptor.Name == ToolNames.WindowsWait);
-        Assert.Equal("deferred", waitDescriptor.Lifecycle);
+        Assert.Equal("implemented", waitDescriptor.Lifecycle);
         Assert.Equal("os_side_effect", waitDescriptor.SafetyClass);
     }
 }

@@ -359,7 +359,8 @@ public sealed class WindowUiaSnapshotToolTests
                 new FakeMonitorManager(),
                 new FakeWindowActivationService(),
                 new WindowTargetResolver(windowManager),
-                uiAutomationService),
+                uiAutomationService,
+                new FakeWaitService()),
             options.EventsPath);
     }
 

@@ -433,10 +433,11 @@ Invariant:
 
 ### `windows.wait`
 Аргументы:
-- `until`
-- `selector/condition`
-- `timeout_ms`
-- optional explicit target (`hwnd`) при необходимости;
+- `condition`
+- nested `selector` object с полями `name`, `automationId`, `controlType` при необходимости;
+- optional `expectedText` для `text_appears`;
+- optional explicit target (`hwnd`);
+- `timeoutMs`.
 
 Target policy:
 - `explicit -> attached -> active`
@@ -453,6 +454,9 @@ Target policy:
 
 Результат:
 - `done | timeout | ambiguous | failed`
+- `structuredContent` + один `TextContentBlock`, без image block;
+- `artifactPath` для JSON evidence в diagnostics run directory;
+- для `visual_changed` referenced baseline/current PNG artifacts в `lastObserved`.
 
 ---
 

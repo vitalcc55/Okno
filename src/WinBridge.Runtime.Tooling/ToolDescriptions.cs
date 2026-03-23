@@ -32,4 +32,11 @@ public static class ToolDescriptions
     public const string UiaSnapshotHwndParameter = "Явный HWND для UIA snapshot. Если передан, имеет приоритет над attached и active target. Stale или invalid explicit hwnd не fallback-ится и даёт targetFailureCode=stale_explicit_target.";
     public const string UiaSnapshotDepthParameter = "Максимальная глубина обхода control view. Значение должно быть >= 0. По умолчанию используется канонический UIA snapshot depth.";
     public const string UiaSnapshotMaxNodesParameter = "Максимальный node budget для materialized subtree. Значение должно быть в диапазоне 1..1024. При достижении budget result честно помечает truncated и nodeBudgetBoundaryReached.";
+
+    public const string WindowsWaitTool = "Ждёт наступления live condition для explicit, attached или active окна. Public contract совпадает с runtime wait model: condition + nested selector + expectedText + hwnd + timeoutMs, а result возвращает structured wait payload без image block.";
+    public const string WaitConditionParameter = "Тип wait condition. Поддерживаются: active_window_matches, element_exists, element_gone, text_appears, visual_changed, focus_is.";
+    public const string WaitSelectorParameter = "Nested selector для element/text/focus waits. Передавай object с полями name, automationId и/или controlType. Для active_window_matches и visual_changed selector не нужен.";
+    public const string WaitExpectedTextParameter = "Ожидаемый текст для condition text_appears. Для остальных conditions должен быть пустым.";
+    public const string WaitHwndParameter = "Явный HWND target. Если передан, имеет приоритет над attached и active target. Stale или invalid explicit hwnd не fallback-ится и даёт targetFailureCode=stale_explicit_target.";
+    public const string WaitTimeoutMsParameter = "Максимальное время ожидания в миллисекундах. Значение должно быть > 0. По умолчанию используется wait timeout V1.";
 }
