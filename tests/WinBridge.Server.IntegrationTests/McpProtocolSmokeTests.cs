@@ -17,6 +17,124 @@ public sealed class McpProtocolSmokeTests
     private const int SwMinimize = 6;
 
     [Fact]
+    public async Task ToolsListPublishesWindowsWaitWithFinalSchemaAndAnnotations()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument toolsResponse = await session.SendRequestAsync(
+                "tools/list",
+                new { },
+                "tools/list");
+            JsonElement waitDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsWait);
+
+            Assert.False(string.IsNullOrWhiteSpace(waitDescriptor.GetProperty("description").GetString()));
+            JsonElement annotations = waitDescriptor.GetProperty("annotations");
+            Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
+
+            JsonElement properties = waitDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            Assert.False(properties.TryGetProperty("until", out _));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("condition").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("selector").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("expectedText").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("hwnd").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("timeoutMs").GetProperty("description").GetString()));
+            JsonElement selectorType = properties.GetProperty("selector").GetProperty("type");
+            Assert.Contains("object", selectorType.EnumerateArray().Select(item => item.GetString()));
+            JsonElement selectorProperties = properties.GetProperty("selector").GetProperty("properties");
+            Assert.True(selectorProperties.TryGetProperty("name", out _));
+            Assert.True(selectorProperties.TryGetProperty("automationId", out _));
+            Assert.True(selectorProperties.TryGetProperty("controlType", out _));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
+    public async Task WindowsWaitRejectsExpectedTextForNonTextAppearsThroughStdio()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument waitResponse = await session.CallToolAsync(
+                ToolNames.WindowsWait,
+                new
+                {
+                    condition = WaitConditionValues.FocusIs,
+                    selector = new
+                    {
+                        automationId = "SearchBox",
+                    },
+                    expectedText = "Ready",
+                    timeoutMs = 500,
+                });
+
+            JsonElement result = waitResponse.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("isError").GetBoolean());
+            JsonElement payload = result.GetProperty("structuredContent");
+            Assert.Equal(WaitStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.Contains("expectedText", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
     public async Task InitializeAndValidateCoreOknoToolsThroughStdio()
     {
         using Process process = StartServer();

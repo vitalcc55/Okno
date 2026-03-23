@@ -1,6 +1,8 @@
 # Stack Inventory
 
-## Репозиторий на 2026-03-19
+> Generated file. Refreshed by `scripts/refresh-generated-docs.ps1`.
+
+## Текущий срез репозитория
 
 `Okno` больше не пустой spec-only репозиторий. Текущий bootstrap закрепляет boring baseline для Windows-native MCP runtime.
 
@@ -20,17 +22,18 @@
 | Runtime diagnostics | `src/WinBridge.Runtime.Diagnostics` | `net8.0-windows10.0.19041.0` | Работает |
 | Runtime session | `src/WinBridge.Runtime.Session` | `net8.0-windows10.0.19041.0` | Работает |
 | Windows shell | `src/WinBridge.Runtime.Windows.Shell` | `net8.0-windows10.0.19041.0` | Работает |
-| Windows UIA slice | `src/WinBridge.Runtime.Windows.UIA`, `src/WinBridge.Runtime.Windows.UIA.Hosting`, `src/WinBridge.Runtime.Windows.UIA.Worker` | `net8.0-windows10.0.19041.0` | Работает |
-| Future capability seams | `src/WinBridge.Runtime.Windows.Input`, `src/WinBridge.Runtime.Windows.Clipboard`, `src/WinBridge.Runtime.Waiting` | `net8.0-windows10.0.19041.0` | Подготовлены |
-| MCP host | `src/WinBridge.Server` | `net8.0-windows10.0.19041.0`, `ModelContextProtocol 1.1.0` | Работает |
+| Windows UIA slice | `src/WinBridge.Runtime.Windows.UIA, src/WinBridge.Runtime.Windows.UIA.Hosting, src/WinBridge.Runtime.Windows.UIA.Worker` | `net8.0-windows10.0.19041.0` | Работает |
+| Public wait slice | `src/WinBridge.Runtime.Waiting` | `net8.0-windows10.0.19041.0` | Работает |
+| Future capability seams | `src/WinBridge.Runtime.Windows.Input, src/WinBridge.Runtime.Windows.Clipboard` | `net8.0-windows10.0.19041.0` | Подготовлены |
+| MCP host | `src/WinBridge.Server` | `net8.0-windows10.0.19041.0, ModelContextProtocol 1.1.0` | Работает |
 | Unit tests | `tests/WinBridge.Runtime.Tests` | `xUnit` | Работает |
-| Integration smoke | `tests/WinBridge.Server.IntegrationTests` | `xUnit` + raw stdio JSON-RPC | Работает |
-| Dev control plane | `scripts/*.ps1` | PowerShell | Работает |
-| Repo memory | `AGENTS.md`, `docs/` | Markdown | Работает |
+| Integration smoke | `tests/WinBridge.Server.IntegrationTests` | `xUnit + raw stdio JSON-RPC` | Работает |
+| Dev control plane | `scripts/*.ps1` | `PowerShell` | Работает |
+| Repo memory | `AGENTS.md, docs/` | `Markdown` | Работает |
 
 ## Package/build/tooling map
 
-- SDK pin: `global.json` -> `8.0.401`
+- `global.json` -> SDK 8.0.401
 - Central package versions: `Directory.Packages.props`
 - Build/analyzer baseline: `Directory.Build.props`
 - Formatting/style baseline: `.editorconfig`
@@ -41,5 +44,5 @@
 
 - Docker/Compose/devcontainer
 - HTTP transport как рабочий delivery mode
-- input/clipboard/wait production implementations
+- input/clipboard production implementations
 - external observability backend

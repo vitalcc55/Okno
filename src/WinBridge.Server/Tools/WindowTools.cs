@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -11,6 +12,7 @@ using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
+using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
@@ -33,6 +35,8 @@ public sealed class WindowTools
     private readonly IMonitorManager _monitorManager;
     private readonly ISessionManager _sessionManager;
     private readonly IUiAutomationService _uiAutomationService;
+    private readonly IWaitService _waitService;
+    private readonly WaitResultMaterializer _waitResultMaterializer;
     private readonly IWindowActivationService _windowActivationService;
     private readonly IWindowManager _windowManager;
     private readonly IWindowTargetResolver _windowTargetResolver;
@@ -45,13 +49,17 @@ public sealed class WindowTools
         IMonitorManager monitorManager,
         IWindowActivationService windowActivationService,
         IWindowTargetResolver windowTargetResolver,
-        IUiAutomationService uiAutomationService)
+        IUiAutomationService uiAutomationService,
+        IWaitService waitService,
+        WaitResultMaterializer waitResultMaterializer)
     {
         _auditLog = auditLog;
         _captureService = captureService;
         _monitorManager = monitorManager;
         _sessionManager = sessionManager;
         _uiAutomationService = uiAutomationService;
+        _waitService = waitService;
+        _waitResultMaterializer = waitResultMaterializer;
         _windowActivationService = windowActivationService;
         _windowManager = windowManager;
         _windowTargetResolver = windowTargetResolver;
@@ -508,9 +516,84 @@ public sealed class WindowTools
     public DeferredToolResult UiaAction(string elementId, string action, string? value = null) =>
         Deferred(ToolNames.WindowsUiaAction);
 
-    [McpServerTool(Name = ToolNames.WindowsWait)]
-    public DeferredToolResult Wait(string until, string? selector = null, int timeoutMs = 3000) =>
-        Deferred(ToolNames.WindowsWait);
+    [Description(ToolDescriptions.WindowsWaitTool)]
+    [McpServerTool(
+        Name = ToolNames.WindowsWait,
+        ReadOnly = false,
+        Destructive = false,
+        Idempotent = false,
+        OpenWorld = true,
+        UseStructuredContent = true)]
+    public Task<CallToolResult> Wait(
+        [Description(ToolDescriptions.WaitConditionParameter)]
+        string condition,
+        [Description(ToolDescriptions.WaitSelectorParameter)]
+        WaitElementSelector? selector = null,
+        [Description(ToolDescriptions.WaitExpectedTextParameter)]
+        string? expectedText = null,
+        [Description(ToolDescriptions.WaitHwndParameter)]
+        long? hwnd = null,
+        [Description(ToolDescriptions.WaitTimeoutMsParameter)]
+        int timeoutMs = WaitDefaults.TimeoutMs,
+        CancellationToken cancellationToken = default) =>
+        RuntimeToolExecution.RunAsync(
+            _auditLog,
+            _sessionManager.GetSnapshot(),
+            ToolNames.WindowsWait,
+            new { condition, selector, expectedText, hwnd, timeoutMs },
+            async invocation =>
+            {
+                long startTimestamp = Stopwatch.GetTimestamp();
+                DateTimeOffset startedAtUtc = DateTimeOffset.UtcNow;
+                WaitRequest request = new(condition, selector, expectedText, timeoutMs);
+                WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
+                WaitTargetResolution resolution = new();
+
+                try
+                {
+                    resolution = _windowTargetResolver.ResolveWaitTarget(hwnd, attachedWindow);
+                    WaitResult runtimeResult = await _waitService
+                        .WaitAsync(resolution, request, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    invocation.Complete(
+                        runtimeResult.Status,
+                        runtimeResult.Status == WaitStatusValues.Done
+                            ? "Wait condition подтверждён."
+                            : runtimeResult.Reason ?? "Wait condition завершился без success.",
+                        runtimeResult.Window?.Hwnd ?? resolution.Window?.Hwnd ?? hwnd ?? attachedWindow?.Hwnd,
+                        CreateWaitAuditData(condition, hwnd, resolution, runtimeResult));
+                    return CreateToolResult(runtimeResult, isError: WaitStatusIsToolError(runtimeResult.Status));
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    const string reason = "Server не смог завершить wait request.";
+                    WaitResult failedResult = _waitResultMaterializer.MaterializeTerminalFailure(
+                        request: request,
+                        target: resolution,
+                        startedAtUtc: startedAtUtc,
+                        result: new WaitResult(
+                            Status: WaitStatusValues.Failed,
+                            Condition: condition,
+                            TargetSource: resolution.Source,
+                            TargetFailureCode: resolution.FailureCode,
+                            Reason: reason,
+                            TimeoutMs: timeoutMs,
+                            ElapsedMs: (int)Math.Round(Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds, MidpointRounding.AwayFromZero)),
+                        failureStage: "tool_boundary_unhandled",
+                        failureException: exception);
+                    invocation.CompleteSanitizedFailure(
+                        reason,
+                        exception,
+                        hwnd ?? resolution.Window?.Hwnd ?? attachedWindow?.Hwnd,
+                        CreateUnexpectedWaitFailureAuditData(condition, hwnd, timeoutMs, resolution));
+                    return CreateToolResult(failedResult, isError: true);
+                }
+            });
 
     private DeferredToolResult Deferred(string toolName)
         => RuntimeToolExecution.Run(
@@ -586,8 +669,43 @@ public sealed class WindowTools
     private static bool ActivateStatusIsToolError(string status) =>
         status is "failed" or "ambiguous";
 
+    private static bool WaitStatusIsToolError(string status) =>
+        !string.Equals(status, WaitStatusValues.Done, StringComparison.Ordinal);
+
     private static bool UiaSnapshotStatusIsToolError(string status) =>
         !string.Equals(status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal);
+
+    private static Dictionary<string, string?> CreateWaitAuditData(
+        string condition,
+        long? requestedHwnd,
+        WaitTargetResolution resolution,
+        WaitResult result) =>
+        new()
+        {
+            ["condition"] = condition,
+            ["requested_hwnd"] = requestedHwnd?.ToString(CultureInfo.InvariantCulture),
+            ["target_source"] = result.TargetSource ?? resolution.Source,
+            ["target_failure_code"] = result.TargetFailureCode ?? resolution.FailureCode,
+            ["timeout_ms"] = result.TimeoutMs.ToString(CultureInfo.InvariantCulture),
+            ["elapsed_ms"] = result.ElapsedMs.ToString(CultureInfo.InvariantCulture),
+            ["attempt_count"] = result.AttemptCount.ToString(CultureInfo.InvariantCulture),
+            ["artifact_path"] = result.ArtifactPath,
+        };
+
+    private static Dictionary<string, string?> CreateUnexpectedWaitFailureAuditData(
+        string condition,
+        long? requestedHwnd,
+        int timeoutMs,
+        WaitTargetResolution resolution) =>
+        new()
+        {
+            ["condition"] = condition,
+            ["requested_hwnd"] = requestedHwnd?.ToString(CultureInfo.InvariantCulture),
+            ["timeout_ms"] = timeoutMs.ToString(CultureInfo.InvariantCulture),
+            ["target_source"] = resolution.Source,
+            ["target_failure_code"] = resolution.FailureCode,
+            ["unexpected_server_failure"] = bool.TrueString,
+        };
 
     private static UiaSnapshotRequest CreateUiaSnapshotRequest(int depth, int maxNodes) =>
         new()

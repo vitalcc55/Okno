@@ -76,4 +76,17 @@ public sealed class ToolContractManifestTests
         Assert.Contains(ToolNames.WindowsUiaSnapshot, ToolContractManifest.SmokeRequiredToolNames);
         Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsUiaSnapshot);
     }
+
+    [Fact]
+    public void WindowsWaitIsImplementedAndSmokeRequired()
+    {
+        ToolDescriptor descriptor = Assert.Single(
+            ToolContractManifest.Implemented,
+            item => item.Name == ToolNames.WindowsWait);
+
+        Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
+        Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
+        Assert.Contains(ToolNames.WindowsWait, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsWait);
+    }
 }

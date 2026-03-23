@@ -1,5 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using WinBridge.Runtime;
 using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Waiting;
+using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.UIA;
 using WinBridge.Runtime.Windows.Shell;
 
@@ -29,6 +32,26 @@ public sealed class UiaHostingServiceCollectionExtensionsTests
         Assert.Equal("Tests", options.EnvironmentName);
         Assert.StartsWith(Path.Combine(root, "artifacts", "diagnostics"), options.RunDirectory, StringComparison.OrdinalIgnoreCase);
         Assert.Null(provider.GetService<IWindowTargetResolver>());
+    }
+
+    [Fact]
+    public void CombinedRuntimeAndUiaRegistrationResolvesWaitService()
+    {
+        string root = CreateTempDirectory();
+        ServiceCollection services = new();
+
+        services.AddWinBridgeRuntime(root, "Tests");
+        services.AddWinBridgeRuntimeWindowsUia(root, "Tests");
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        IWaitService waitService = provider.GetRequiredService<IWaitService>();
+        IUiAutomationWaitProbe waitProbe = provider.GetRequiredService<IUiAutomationWaitProbe>();
+        IWaitVisualProbe visualProbe = provider.GetRequiredService<IWaitVisualProbe>();
+
+        Assert.IsType<PollingWaitService>(waitService);
+        Assert.IsType<ProcessIsolatedUiAutomationWaitProbe>(waitProbe);
+        Assert.IsType<GraphicsCaptureService>(visualProbe);
     }
 
     private static string CreateTempDirectory()

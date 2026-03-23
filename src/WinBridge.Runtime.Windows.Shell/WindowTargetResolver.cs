@@ -30,41 +30,21 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
     public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow)
     {
         IReadOnlyList<WindowDescriptor> liveWindows = windowManager.ListWindows(includeInvisible: true);
+        TargetResolutionCore resolution = ResolveCapabilityTargetCore(explicitHwnd, attachedWindow, liveWindows);
+        return new(
+            resolution.Window,
+            MapUiaSnapshotTargetSource(resolution.Source),
+            MapUiaSnapshotTargetFailureCode(resolution.FailureCode));
+    }
 
-        if (explicitHwnd is long hwnd)
-        {
-            if (hwnd <= 0)
-            {
-                return new(FailureCode: UiaSnapshotTargetFailureValues.StaleExplicitTarget);
-            }
-
-            WindowDescriptor? explicitWindow = ResolveExplicitOrAttachedWindowCore(hwnd, attachedWindow: null, liveWindows);
-            return explicitWindow is null
-                ? new(FailureCode: UiaSnapshotTargetFailureValues.StaleExplicitTarget)
-                : new(explicitWindow, UiaSnapshotTargetSourceValues.Explicit, FailureCode: null);
-        }
-
-        if (attachedWindow is not null)
-        {
-            WindowDescriptor? resolvedAttachedWindow = ResolveExplicitOrAttachedWindowCore(explicitHwnd: null, attachedWindow, liveWindows);
-            return resolvedAttachedWindow is null
-                ? new(FailureCode: UiaSnapshotTargetFailureValues.StaleAttachedTarget)
-                : new(resolvedAttachedWindow, UiaSnapshotTargetSourceValues.Attached, FailureCode: null);
-        }
-
-        WindowDescriptor[] activeCandidates = liveWindows
-            .Where(candidate => candidate.IsForeground)
-            .GroupBy(candidate => candidate.Hwnd)
-            .Select(group => group.First())
-            .Take(2)
-            .ToArray();
-
-        return activeCandidates.Length switch
-        {
-            0 => new(FailureCode: UiaSnapshotTargetFailureValues.MissingTarget),
-            1 => new(activeCandidates[0], UiaSnapshotTargetSourceValues.Active, FailureCode: null),
-            _ => new(FailureCode: UiaSnapshotTargetFailureValues.AmbiguousActiveTarget),
-        };
+    public WaitTargetResolution ResolveWaitTarget(long? explicitHwnd, WindowDescriptor? attachedWindow)
+    {
+        IReadOnlyList<WindowDescriptor> liveWindows = windowManager.ListWindows(includeInvisible: true);
+        TargetResolutionCore resolution = ResolveCapabilityTargetCore(explicitHwnd, attachedWindow, liveWindows);
+        return new(
+            resolution.Window,
+            MapWaitTargetSource(resolution.Source),
+            MapWaitTargetFailureCode(resolution.FailureCode));
     }
 
     private static WindowDescriptor? ResolveExplicitOrAttachedWindowCore(
@@ -94,5 +74,104 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
         }
 
         return WindowIdentityValidator.MatchesStableIdentity(liveCandidate, attachedWindow) ? liveCandidate : null;
+    }
+
+    private static TargetResolutionCore ResolveCapabilityTargetCore(
+        long? explicitHwnd,
+        WindowDescriptor? attachedWindow,
+        IReadOnlyList<WindowDescriptor> liveWindows)
+    {
+        if (explicitHwnd is long hwnd)
+        {
+            if (hwnd <= 0)
+            {
+                return new(FailureCode: TargetResolutionFailureCode.StaleExplicitTarget);
+            }
+
+            WindowDescriptor? explicitWindow = ResolveExplicitOrAttachedWindowCore(hwnd, attachedWindow: null, liveWindows);
+            return explicitWindow is null
+                ? new(FailureCode: TargetResolutionFailureCode.StaleExplicitTarget)
+                : new(explicitWindow, TargetResolutionSource.Explicit);
+        }
+
+        if (attachedWindow is not null)
+        {
+            WindowDescriptor? resolvedAttachedWindow = ResolveExplicitOrAttachedWindowCore(explicitHwnd: null, attachedWindow, liveWindows);
+            return resolvedAttachedWindow is null
+                ? new(FailureCode: TargetResolutionFailureCode.StaleAttachedTarget)
+                : new(resolvedAttachedWindow, TargetResolutionSource.Attached);
+        }
+
+        WindowDescriptor[] activeCandidates = liveWindows
+            .Where(candidate => candidate.IsForeground)
+            .GroupBy(candidate => candidate.Hwnd)
+            .Select(group => group.First())
+            .Take(2)
+            .ToArray();
+
+        return activeCandidates.Length switch
+        {
+            0 => new(FailureCode: TargetResolutionFailureCode.MissingTarget),
+            1 => new(activeCandidates[0], TargetResolutionSource.Active),
+            _ => new(FailureCode: TargetResolutionFailureCode.AmbiguousActiveTarget),
+        };
+    }
+
+    private static string? MapUiaSnapshotTargetSource(TargetResolutionSource? source) =>
+        source switch
+        {
+            TargetResolutionSource.Explicit => UiaSnapshotTargetSourceValues.Explicit,
+            TargetResolutionSource.Attached => UiaSnapshotTargetSourceValues.Attached,
+            TargetResolutionSource.Active => UiaSnapshotTargetSourceValues.Active,
+            _ => null,
+        };
+
+    private static string? MapUiaSnapshotTargetFailureCode(TargetResolutionFailureCode? failureCode) =>
+        failureCode switch
+        {
+            TargetResolutionFailureCode.MissingTarget => UiaSnapshotTargetFailureValues.MissingTarget,
+            TargetResolutionFailureCode.StaleExplicitTarget => UiaSnapshotTargetFailureValues.StaleExplicitTarget,
+            TargetResolutionFailureCode.StaleAttachedTarget => UiaSnapshotTargetFailureValues.StaleAttachedTarget,
+            TargetResolutionFailureCode.AmbiguousActiveTarget => UiaSnapshotTargetFailureValues.AmbiguousActiveTarget,
+            _ => null,
+        };
+
+    private static string? MapWaitTargetSource(TargetResolutionSource? source) =>
+        source switch
+        {
+            TargetResolutionSource.Explicit => WaitTargetSourceValues.Explicit,
+            TargetResolutionSource.Attached => WaitTargetSourceValues.Attached,
+            TargetResolutionSource.Active => WaitTargetSourceValues.Active,
+            _ => null,
+        };
+
+    private static string? MapWaitTargetFailureCode(TargetResolutionFailureCode? failureCode) =>
+        failureCode switch
+        {
+            TargetResolutionFailureCode.MissingTarget => WaitTargetFailureValues.MissingTarget,
+            TargetResolutionFailureCode.StaleExplicitTarget => WaitTargetFailureValues.StaleExplicitTarget,
+            TargetResolutionFailureCode.StaleAttachedTarget => WaitTargetFailureValues.StaleAttachedTarget,
+            TargetResolutionFailureCode.AmbiguousActiveTarget => WaitTargetFailureValues.AmbiguousActiveTarget,
+            _ => null,
+        };
+
+    private readonly record struct TargetResolutionCore(
+        WindowDescriptor? Window = null,
+        TargetResolutionSource? Source = null,
+        TargetResolutionFailureCode? FailureCode = null);
+
+    private enum TargetResolutionSource
+    {
+        Explicit,
+        Attached,
+        Active,
+    }
+
+    private enum TargetResolutionFailureCode
+    {
+        MissingTarget,
+        StaleExplicitTarget,
+        StaleAttachedTarget,
+        AmbiguousActiveTarget,
     }
 }

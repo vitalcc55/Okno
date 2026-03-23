@@ -35,6 +35,7 @@
 | `windows.focus_window` | `os_side_effect` | Запрашивает foreground focus для explicit hwnd или attached window. В отличие от activate_window не делает restore и не подтверждает usability final-state. |
 | `windows.capture` | `os_side_effect` | Выполняет capture выбранной цели и возвращает PNG + structured metadata. При scope=window target выбирается как explicit hwnd или attached window. При scope=desktop target выбирается как explicit monitorId, explicit hwnd, attached window или primary monitor. Все bounds и pixel sizes выражены в physical_pixels. |
 | `windows.uia_snapshot` | `read_only` | Возвращает UIA snapshot выбранного окна в control view. Target policy: explicit hwnd -> attached window -> active foreground top-level window. Tool не активирует окно скрыто и возвращает structured metadata + text payload без image block. |
+| `windows.wait` | `os_side_effect` | Ждёт наступления live condition для explicit, attached или active окна. Public contract совпадает с runtime wait model: condition + nested selector + expectedText + hwnd + timeoutMs, а result возвращает structured wait payload без image block. |
 
 ### Deferred but declared
 
@@ -44,7 +45,6 @@
 | `windows.clipboard_set` | `unsupported` | roadmap stage 4 |
 | `windows.input` | `unsupported` | roadmap stage 5 |
 | `windows.uia_action` | `unsupported` | roadmap stage 7 |
-| `windows.wait` | `unsupported` | roadmap stage 8 |
 
 ## Script interfaces
 
@@ -64,5 +64,7 @@
 - `artifacts/diagnostics/<run_id>/summary.md`
 - `artifacts/diagnostics/<run_id>/captures/<capture_id>.png`
 - `artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json`
+- `artifacts/diagnostics/<run_id>/wait/<wait_id>.json`
+- `artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png`
 - `artifacts/smoke/<run_id>/report.json`
 - `artifacts/smoke/<run_id>/summary.md`

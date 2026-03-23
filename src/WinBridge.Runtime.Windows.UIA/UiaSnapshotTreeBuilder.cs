@@ -55,7 +55,7 @@ internal static class UiaSnapshotTreeBuilder
             RealizedDepth = Math.Max(RealizedDepth, depth);
 
             UiaSnapshotNodeData data = node.GetData();
-            string elementId = CreateElementId(data.RuntimeId, path);
+            string elementId = UiaElementIdBuilder.Create(data.RuntimeId, path);
             List<UiaElementSnapshot> children = [];
 
             if (depth >= maxDepth)
@@ -133,15 +133,5 @@ internal static class UiaSnapshotTreeBuilder
                 NativeWindowHandle = data.NativeWindowHandle,
                 Children = children,
             };
-
-        private static string CreateElementId(int[]? runtimeId, string path)
-        {
-            if (runtimeId is { Length: > 0 })
-            {
-                return "rid:" + string.Join(".", runtimeId);
-            }
-
-            return "path:" + path;
-        }
     }
 }

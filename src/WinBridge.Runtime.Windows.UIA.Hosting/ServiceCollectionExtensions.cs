@@ -16,6 +16,7 @@ public static class ServiceCollectionExtensions
 
         services.AddWinBridgeRuntimeDiagnostics(contentRootPath, environmentName);
         services.AddSingleton<IUiAutomationService, Win32UiAutomationService>();
+        services.AddSingleton<IUiAutomationWaitProbe, ProcessIsolatedUiAutomationWaitProbe>();
         return services;
     }
 }

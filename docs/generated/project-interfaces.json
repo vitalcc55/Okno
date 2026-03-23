@@ -113,6 +113,16 @@
         "planned_phase": null,
         "suggested_alternative": null,
         "smoke_required": true
+      },
+      {
+        "name": "windows.wait",
+        "capability": "windows.wait",
+        "lifecycle": "implemented",
+        "safety_class": "os_side_effect",
+        "summary": "\u0416\u0434\u0451\u0442 \u043D\u0430\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u044F live condition \u0434\u043B\u044F explicit, attached \u0438\u043B\u0438 active \u043E\u043A\u043D\u0430. Public contract \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 runtime wait model: condition \u002B nested selector \u002B expectedText \u002B hwnd \u002B timeoutMs, \u0430 result \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 structured wait payload \u0431\u0435\u0437 image block.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true
       }
     ],
     "deferred": [
@@ -155,16 +165,6 @@
         "planned_phase": "roadmap stage 7",
         "suggested_alternative": "Semantic UIA actions \u0437\u0430\u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u043F\u043E\u0441\u043B\u0435 snapshot layer.",
         "smoke_required": false
-      },
-      {
-        "name": "windows.wait",
-        "capability": "windows.wait",
-        "lifecycle": "deferred",
-        "safety_class": "read_only",
-        "summary": "\u0416\u0434\u0451\u0442 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F \u0443\u0441\u043B\u043E\u0432\u0438\u044F \u0438 \u0432\u0435\u0440\u0438\u0444\u0438\u0446\u0438\u0440\u0443\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F.",
-        "planned_phase": "roadmap stage 8",
-        "suggested_alternative": "Wait/verify contract \u0431\u0443\u0434\u0435\u0442 \u0440\u0435\u0430\u043B\u0438\u0437\u043E\u0432\u0430\u043D \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u043C \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u043C.",
-        "smoke_required": false
       }
     ],
     "implemented_names": [
@@ -177,7 +177,8 @@
       "windows.activate_window",
       "windows.focus_window",
       "windows.capture",
-      "windows.uia_snapshot"
+      "windows.uia_snapshot",
+      "windows.wait"
     ],
     "smoke_required_names": [
       "okno.health",
@@ -187,14 +188,14 @@
       "windows.attach_window",
       "windows.activate_window",
       "windows.capture",
-      "windows.uia_snapshot"
+      "windows.uia_snapshot",
+      "windows.wait"
     ],
     "deferred_phase_map": {
       "windows.clipboard_get": "roadmap stage 4",
       "windows.clipboard_set": "roadmap stage 4",
       "windows.input": "roadmap stage 5",
-      "windows.uia_action": "roadmap stage 7",
-      "windows.wait": "roadmap stage 8"
+      "windows.uia_action": "roadmap stage 7"
     }
   },
   "scripts": [
@@ -213,6 +214,8 @@
     "artifacts/diagnostics/\u003Crun_id\u003E/summary.md",
     "artifacts/diagnostics/\u003Crun_id\u003E/captures/\u003Ccapture_id\u003E.png",
     "artifacts/diagnostics/\u003Crun_id\u003E/uia/\u003Csnapshot_id\u003E.json",
+    "artifacts/diagnostics/\u003Crun_id\u003E/wait/\u003Cwait_id\u003E.json",
+    "artifacts/diagnostics/\u003Crun_id\u003E/wait/visual/\u003Cvisual_wait_artifact\u003E.png",
     "artifacts/smoke/\u003Crun_id\u003E/report.json",
     "artifacts/smoke/\u003Crun_id\u003E/summary.md"
   ]

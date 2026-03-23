@@ -4,6 +4,7 @@ using System.Text.Json;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
+using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
@@ -348,6 +349,7 @@ public sealed class WindowSessionToolTests
         }
 
         FakeWindowManager windowManager = new(windows, titlePatternsThatTimeout, focusResults);
+        WaitResultMaterializer waitResultMaterializer = new(auditLog, options, WaitOptions.Default);
         WindowTools tools = new(
             auditLog,
             sessionManager,
@@ -356,7 +358,9 @@ public sealed class WindowSessionToolTests
             new FakeMonitorManager(monitors),
             activationService ?? new FakeWindowActivationService(),
             new WindowTargetResolver(windowManager),
-            new FakeUiAutomationService());
+            new FakeUiAutomationService(),
+            new FakeWaitService(),
+            waitResultMaterializer);
 
         return new TestContext(tools, sessionManager);
     }

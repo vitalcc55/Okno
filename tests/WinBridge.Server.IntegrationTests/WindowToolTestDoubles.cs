@@ -1,5 +1,6 @@
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Runtime.Windows.UIA;
 
@@ -127,5 +128,32 @@ internal sealed class FakeUiAutomationService(
         }
 
         return handler(targetWindow, request, cancellationToken);
+    }
+}
+
+internal sealed class FakeWaitService(
+    Func<WaitTargetResolution, WaitRequest, CancellationToken, Task<WaitResult>>? handler = null) : IWaitService
+{
+    public int Calls { get; private set; }
+
+    public WaitTargetResolution? LastTarget { get; private set; }
+
+    public WaitRequest? LastRequest { get; private set; }
+
+    public Task<WaitResult> WaitAsync(
+        WaitTargetResolution target,
+        WaitRequest request,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastTarget = target;
+        LastRequest = request;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("Wait service не должен вызываться в этом тесте.");
+        }
+
+        return handler(target, request, cancellationToken);
     }
 }

@@ -11,13 +11,27 @@ JsonSerializerOptions jsonOptions = new()
 };
 
 string payload = await Console.In.ReadToEndAsync();
-UiaSnapshotWorkerInvocation invocation = JsonSerializer.Deserialize<UiaSnapshotWorkerInvocation>(payload, jsonOptions)
+UiAutomationWorkerInvocation invocation = JsonSerializer.Deserialize<UiAutomationWorkerInvocation>(payload, jsonOptions)
     ?? throw new InvalidOperationException("UIA worker не получил корректный invocation payload.");
 
-Win32UiAutomationBackend backend = new(TimeProvider.System);
-UiaSnapshotBackendResult result = await backend.CaptureAsync(
-    invocation.TargetWindow,
-    invocation.Request,
-    CancellationToken.None).ConfigureAwait(false);
+object result = invocation.Operation switch
+{
+    UiAutomationWorkerOperationValues.Snapshot when invocation.SnapshotRequest is not null =>
+        await new Win32UiAutomationBackend(TimeProvider.System)
+            .CaptureAsync(
+                invocation.TargetWindow,
+                invocation.SnapshotRequest,
+                CancellationToken.None)
+            .ConfigureAwait(false),
+    UiAutomationWorkerOperationValues.WaitProbe when invocation.WaitProbeRequest is not null =>
+        await new Win32UiAutomationWaitProbe()
+            .ProbeAsync(
+                invocation.TargetWindow,
+                invocation.WaitProbeRequest,
+                Timeout.InfiniteTimeSpan,
+                CancellationToken.None)
+            .ConfigureAwait(false),
+    _ => throw new InvalidOperationException("UIA worker получил unsupported operation payload."),
+};
 
 await Console.Out.WriteAsync(JsonSerializer.Serialize(result, jsonOptions)).ConfigureAwait(false);

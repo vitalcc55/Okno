@@ -2,6 +2,59 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-23 13:07
+
+- Review-driven hardening для shipped `windows.wait` закрыл подтверждённые семантические дыры без смены публичной schema: UIA multi-match classification теперь condition-specific (`element_exists` требует identity-overlap между candidate и recheck, `element_gone` продолжает polling пока matches остаются, `text_appears` считает только text-qualified candidates, а ambiguous result больше не публикует произвольный `matchedElement`), late UIA downgrade использует `WorkerCompletedAtUtc`, wait-specific visual probe больше не наследует скрытый `3s` capture cap и репортит effective threshold/evidence-path честно, а tool-boundary unexpected failures в `WindowTools.Wait(...)` теперь проходят через тот же canonical wait artifact + `wait.runtime.completed`, а не через голый sanitized handler path; новые runtime/integration tests закрепляют эти контракты регрессионно.
+
+## 2026-03-23 10:02
+
+- В локальный `AGENTS.md` добавлен точечный operational guardrail для verification loop: в этом репозитории нельзя параллелить `dotnet build/test`, `scripts/smoke.ps1`, `scripts/refresh-generated-docs.ps1`, `scripts/ci.ps1` и `scripts/codex/verify.ps1` в одном worktree, потому что они делят `bin/obj`, локальные runtime/fixture процессы и generated artifacts; canonical порядок для smoke/docs refresh теперь закреплён явно как строго последовательный.
+- Review-driven hardening для `windows.wait` довёл internal diagnostics path и L3 smoke до архитектурно честного состояния: controlled helper commands теперь делают `element_gone` smoke-предусловие невакуумным, `focus_is` переставлен сразу за первый authoritative `active_window_matches` вместо позднего OS-dependent foreground restore path, UIA-based smoke waits используют отдельный semantic budget для mandatory recheck, `stack-inventory` генерируется из текущего repo/tooling state без захардкоженной snapshot-date, а canonical runtime path для `runtime_unhandled` failures сохраняет `exception_type` / `exception_message` во внутреннем wait artifact и `wait.runtime.completed`, тогда как для `artifact_write` эти diagnostics остаются только в runtime event, не раскрывая детали в публичный MCP `WaitResult`.
+
+## 2026-03-23 08:59
+
+- Package D для `windows.wait` закрыт как direct public rollout без сохранения legacy stub: `WindowTools.Wait(...)` теперь публикует final MCP schema `condition + selector + expectedText + hwnd + timeoutMs`, напрямую вызывает canonical `IWaitService` через existing `ResolveWaitTarget(...)`, возвращает runtime `WaitResult` как `structuredContent` + один `TextContentBlock` и строго маппит `isError` так, что только `done` остаётся success-path; `windows.wait` переведён в `Implemented` и `SmokeRequired`, `okno.contract` / exporter / tools-list больше не расходятся по lifecycle, `WinBridge.SmokeWindowHost` получил deterministic focus target и geometry-backed visual heartbeat для shipped `focus_is` / `visual_changed`, `scripts/smoke.ps1` теперь реально проверяет все public wait conditions с artifact assertions, а generated/manual docs и bootstrap status синхронизированы по фактическому shipped state.
+
+## 2026-03-20 17:15
+
+- Package C для `windows.wait` закрыт как runtime-only hardening без premature public rollout: `focus_is` теперь подтверждается только через authoritative focused-element path с retry/revalidation только для действительно transient `ElementNotAvailable`-класса ошибок, exact selector match внутри resolved window и корректной immediate-parent lineage metadata, `visual_changed` использует window-scoped raw-only visual probe с гарантированным положительным confirmation gap и noise policy на `16x16` grayscale grid (`per-cell delta >= 12`, populated-cell scaled threshold, geometry-change shortcut) без per-tick PNG bloat, без лишних raw allocations в обычном `windows.capture` и без удержания raw baseline frame между poll-итерациями, `WaitOptions` больше не допускает non-positive polling cadence, baseline и final visual artifact write path теперь используют общий remaining-budget helper и целиком нормализуют filesystem/encode failures в доменный `failed`, process-isolated UIA wait probe разделяет host completion и worker completion timestamps для корректного timeout enforcement, а DI/runtime tests закрепляют новый visual probe seam при сохранении lifecycle `windows.wait` в `Deferred/unsupported`.
+
+## 2026-03-20 15:29
+
+- Follow-up hardening закрепил ownership timeout и evidence contract на правильных границах: `PollingWaitService` теперь явно передаёт worker boundary remaining budget на каждый UIA probe и повторно классифицирует просроченный probe result как `timeout` по execution metadata, process-isolated wait probe больше не наследует скрытый snapshot-centric 3s cap, а worker-level `diagnostic_artifact_path` больше не теряется и попадает в wait observation / wait artifact / runtime audit trail.
+
+## 2026-03-20 15:50
+
+- Финальная review-driven правка для Package B убрала смешение deadline и failure semantics в `PollingWaitService`: service теперь сначала строит семантический outcome UIA probe (`failed` / `ambiguous` / `pending` / `candidate` / `timeout`) и только потом понижает просроченный результат до `timeout` для success-like веток, поэтому late `worker_process` и другие runtime failures больше не маскируются под `timeout`, а существующий red-test на delayed failure фиксирует этот контракт регрессионно.
+
+## 2026-03-20 15:29
+
+- Follow-up hardening закрепил ownership timeout и evidence contract на правильных границах: `PollingWaitService` теперь явно передаёт worker boundary remaining budget на каждый UIA probe и повторно классифицирует просроченный probe result как `timeout` по execution metadata, process-isolated wait probe больше не наследует скрытый snapshot-centric 3s cap, а worker-level `diagnostic_artifact_path` больше не теряется и попадает в wait observation / wait artifact / runtime audit trail.
+
+## 2026-03-20 14:43
+
+- Review-driven доработка execution boundary довела timeout hardening до архитектурно честного состояния: UIA wait probe больше не остаётся внутрипроцессным cooperative-only MTA path, а исполняется через process-isolated worker boundary, общий по launch/timeout/kill semantics с существующим isolated UIA slice; это убирает расхождение между reported `timeout` и фактическим завершением blocked UIA/COM execution unit.
+
+## 2026-03-20 14:12
+
+- Review-driven hardening для Package B убрал три реальные P1-дыры в `windows.wait`: UIA-backed probes теперь bounded оставшимся `timeoutMs` через отдельную deadline policy на execution boundary, `active_window_matches` подтверждает именно resolved top-level `HWND`, а `text_appears` требует тот же `matched_text_source` на финальном recheck; для всех трёх случаев добавлены red-first runtime tests, чтобы regression path был доказуемо закрыт.
+
+## 2026-03-20 11:14
+
+- Package B для `windows.wait` закрыт как runtime-only slice без premature public rollout: wait contracts перешли на typed selector + expectedText shape, `PollingWaitService` добавил bounded poll loop с final same-source revalidation и честным разделением `done` / `timeout` / `ambiguous` / `failed`, `Windows.UIA` получил минимальный live wait probe seam для `active_window_matches`, `element_exists`, `element_gone` и `text_appears`, а diagnostics слой теперь пишет отдельный JSON artifact в `artifacts/diagnostics/<run_id>/wait/` и runtime audit event `wait.runtime.completed`, сохраняя `windows.wait` в lifecycle `Deferred/unsupported` до Package D.
+
+## 2026-03-20 09:16
+
+- Package A для `windows.wait` закодирован без premature rollout: добавлены typed `Wait*` contracts, `IWaitService` больше не пустой, shell resolver получил capability-specific `ResolveWaitTarget(...)` с precedence `explicit -> attached -> active` и без fallback из stale explicit/attached target, а deferred manifest/exported contract теперь честно помечает `windows.wait` как `os_side_effect`, сохраняя lifecycle `Deferred`.
+
+## 2026-03-20 08:30
+
+- Source-of-truth docs для следующего slice `windows.wait` выровнены между exec-plan, product spec и roadmap: V1 теперь везде описан как один публичный tool `windows.wait`, а не zoo из `wait_for_*`; target model синхронизирован как `explicit -> attached -> active` без hidden activation/auto-attach drift, summary-row roadmap больше не теряет `text appears`, а сам exec-plan честно меняет MCP annotation expectation на `ReadOnly = false`, потому что wait обязан писать diagnostics artifact.
+
+## 2026-03-19 18:23
+
+- Добавлен отдельный exec-plan для следующего shipped public slice `windows.wait` в `docs/exec-plans/active/windows-wait.md`: план фиксирует V1 boundary, polling-first target model `explicit -> attached -> active`, condition matrix для `active/focus/element/text/visual`, honest status/error model, evidence contract, file-level integration map, L1/L2/L3 ladder, docs sync и rollback без преждевременного захода в `windows.uia_action` или broad `windows.input`.
+
 ## 2026-03-19 14:34
 
 - Финальный branch-аудит по `windows.uia_snapshot` добрал остаточный doc drift вне основного rollout-контура: `architecture/index`, `architecture/layers`, `product/okno-roadmap`, `generated/stack-inventory` и `generated/stack-research` больше не описывают UIA как future seam/deferred path там, где текущий код уже публикует shipped public `windows.uia_snapshot`.

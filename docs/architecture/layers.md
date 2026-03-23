@@ -12,7 +12,8 @@
 | `src/WinBridge.Runtime.Windows.Shell` | Enum/find/focus/activate top-level windows | Реализуется в bootstrap | Не владеет monitor inventory и не включает UIA/capture/input/clipboard/wait |
 | `src/WinBridge.Runtime.Windows.Capture` | window/desktop monitor capture, PNG encoding, capture artifacts | Реализован первый observe slice | `WGC` как основной path, native fallback без смены MCP contract и без hidden restore |
 | `src/WinBridge.Runtime.Windows.UIA` + hosting/worker companion | public `windows.uia_snapshot`, UIA runtime/evidence path, isolated worker boundary | Реализован semantic observe slice | Public MCP handler опирается на runtime service, а worker sidecar ограничивает timeout/process-failure boundary |
-| future capability projects | `Input` / `Clipboard` / `Waiting` interfaces | Подготовлены как seams | Без fake implementations до реальной потребности |
+| `src/WinBridge.Runtime.Waiting` | public `windows.wait`, runtime evidence path, polling wait orchestration | Реализован shipped wait slice | Public MCP handler опирается на canonical runtime service и не держит legacy deferred stub |
+| future capability projects | `Input` / `Clipboard` interfaces | Подготовлены как seams | Без fake implementations до реальной потребности |
 | `Diagnostics artifacts` | JSONL audit, summary, smoke evidence | Реализуется в bootstrap | Артефакты воспроизводимы через scripts |
 
 ## Инварианты bootstrap

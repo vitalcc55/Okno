@@ -45,7 +45,7 @@ public sealed class ProcessIsolatedUiAutomationBackendTests
         AuditLogOptions options = CreateAuditLogOptions(root, "run-uia-worker-stderr");
         ProcessIsolatedUiAutomationBackend backend = new(
             TimeProvider.System,
-            new UiAutomationExecutionOptions(TimeSpan.FromSeconds(1)),
+            new UiAutomationExecutionOptions(TimeSpan.FromSeconds(5)),
             workerExecutablePath: "powershell.exe",
             workerArguments: "-NoLogo -NoProfile -Command [Console]::Error.WriteLine('C:\\secret\\stack trace'); exit 1",
             diagnosticAuditLogOptions: options);

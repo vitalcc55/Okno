@@ -4,9 +4,14 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <ProjectReference Include="..\WinBridge.Runtime.Diagnostics\WinBridge.Runtime.Diagnostics.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Session\WinBridge.Runtime.Session.csproj" />
+    <ProjectReference Include="..\WinBridge.Runtime.Waiting\WinBridge.Runtime.Waiting.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.Capture\WinBridge.Runtime.Windows.Capture.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.Display\WinBridge.Runtime.Windows.Display.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
   </ItemGroup>
 
 </Project>

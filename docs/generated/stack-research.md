@@ -67,7 +67,7 @@
 ### Где проект соответствует
 
 - Capture и UIA в текущем репозитории уже реализованы и подтверждаются build/test/smoke.
-- Deferred state сохраняется только у следующих slices: input, clipboard, wait и semantic actions.
+- Deferred state сохраняется только у следующих slices: input, clipboard и semantic actions.
 
 ## 4. Observability
 
