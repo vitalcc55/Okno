@@ -83,7 +83,7 @@ public sealed class GraphicsCaptureService(
         }
     }
 
-    public async Task<WaitVisualFrame> CaptureVisualAsync(
+    public async Task<WaitVisualSample> CaptureVisualSampleAsync(
         WindowDescriptor targetWindow,
         CancellationToken cancellationToken)
     {
@@ -99,7 +99,7 @@ public sealed class GraphicsCaptureService(
                 throw new CaptureOperationException("Windows Graphics Capture недоступен в текущей сессии.");
             }
 
-            WaitVisualFrame execution = await CaptureVisualFrameAsync(
+            WaitVisualSample execution = await CaptureVisualSampleAsync(
                 target,
                 resolvedTarget,
                 backend,
@@ -116,7 +116,7 @@ public sealed class GraphicsCaptureService(
         }
     }
 
-    private async Task<WaitVisualFrame> CaptureVisualFrameAsync(
+    private async Task<WaitVisualSample> CaptureVisualSampleAsync(
         CaptureTarget request,
         CaptureResolvedTarget resolvedTarget,
         CaptureBackend backend,
@@ -137,20 +137,26 @@ public sealed class GraphicsCaptureService(
                 request,
                 resolvedTarget,
                 outcome.AcceptedContentSize);
+            SoftwareBitmap? bitmap = outcome.Bitmap;
             try
             {
                 WindowDescriptor authoritativeWindow = authoritativeTarget.Window
                     ?? throw new CaptureOperationException("Runtime не смог материализовать authoritative window capture target.");
-                return new WaitVisualFrame(
+                WaitVisualComparisonData comparisonData = WaitVisualComparisonDataBuilder.CreateFromSoftwareBitmap(bitmap, cancellationToken);
+                WaitVisualEvidenceFrame evidenceFrame = new SoftwareBitmapWaitVisualEvidenceFrame(
+                    authoritativeWindow,
+                    bitmap);
+                bitmap = null;
+                return new WaitVisualSample(
                     authoritativeWindow,
                     outcome.Bitmap.PixelWidth,
                     outcome.Bitmap.PixelHeight,
-                    outcome.Bitmap.PixelWidth * 4,
-                    CopySoftwareBitmapBytes(outcome.Bitmap));
+                    comparisonData,
+                    evidenceFrame);
             }
             finally
             {
-                outcome.Bitmap.Dispose();
+                bitmap?.Dispose();
             }
         }
         catch (WgcAcquisitionException exception)
@@ -159,8 +165,8 @@ public sealed class GraphicsCaptureService(
         }
     }
 
-    public async Task WriteVisualArtifactAsync(
-        WaitVisualFrame frame,
+    public async Task WriteVisualEvidenceAsync(
+        WaitVisualEvidenceFrame frame,
         string path,
         CancellationToken cancellationToken)
     {
@@ -169,13 +175,18 @@ public sealed class GraphicsCaptureService(
 
         try
         {
+            if (frame is not SoftwareBitmapWaitVisualEvidenceFrame softwareBitmapFrame)
+            {
+                throw new CaptureOperationException("Runtime получил неподдерживаемый visual evidence frame.");
+            }
+
             string? directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrWhiteSpace(directory))
             {
                 Directory.CreateDirectory(directory);
             }
 
-            byte[] pngBytes = EncodePng(frame.PixelWidth, frame.PixelHeight, frame.RowStride, frame.PixelBytes);
+            byte[] pngBytes = await EncodePngAsync(softwareBitmapFrame.GetBitmap(), cancellationToken).ConfigureAwait(false);
             await File.WriteAllBytesAsync(path, pngBytes, cancellationToken).ConfigureAwait(false);
         }
         catch (UnauthorizedAccessException exception)
@@ -219,7 +230,7 @@ public sealed class GraphicsCaptureService(
                 outcome.AcceptedContentSize);
             try
             {
-                byte[] pngBytes = await EncodePngAsync(outcome.Bitmap).ConfigureAwait(false);
+                byte[] pngBytes = await EncodePngAsync(outcome.Bitmap, cancellationToken).ConfigureAwait(false);
                 return new(
                     authoritativeTarget,
                     new RasterizedCapture(
@@ -468,12 +479,12 @@ public sealed class GraphicsCaptureService(
         }
     }
 
-    private static async Task<byte[]> EncodePngAsync(SoftwareBitmap softwareBitmap)
+    private static async Task<byte[]> EncodePngAsync(SoftwareBitmap softwareBitmap, CancellationToken cancellationToken)
     {
         using InMemoryRandomAccessStream stream = new();
-        BitmapEncoder encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+        BitmapEncoder encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream).AsTask(cancellationToken);
         encoder.SetSoftwareBitmap(softwareBitmap);
-        await encoder.FlushAsync();
+        await encoder.FlushAsync().AsTask(cancellationToken);
 
         ulong size = stream.Size;
         if (size > int.MaxValue)
@@ -482,53 +493,8 @@ public sealed class GraphicsCaptureService(
         }
 
         using DataReader reader = new(stream.GetInputStreamAt(0));
-        await reader.LoadAsync((uint)size);
+        await reader.LoadAsync((uint)size).AsTask(cancellationToken);
         byte[] bytes = new byte[(int)size];
-        reader.ReadBytes(bytes);
-        return bytes;
-    }
-
-    private static byte[] EncodePng(int pixelWidth, int pixelHeight, int rowStride, byte[] pixelBytes)
-    {
-        using Bitmap bitmap = new(pixelWidth, pixelHeight, PixelFormat.Format32bppArgb);
-        System.Drawing.Rectangle rectangle = new(0, 0, pixelWidth, pixelHeight);
-        BitmapData data = bitmap.LockBits(rectangle, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-        try
-        {
-            int sourceStride = rowStride;
-            int targetStride = Math.Abs(data.Stride);
-            int rowLength = pixelWidth * 4;
-
-            for (int row = 0; row < pixelHeight; row++)
-            {
-                int sourceOffset = row * sourceStride;
-                IntPtr destination = data.Stride >= 0
-                    ? IntPtr.Add(data.Scan0, row * data.Stride)
-                    : IntPtr.Add(data.Scan0, (pixelHeight - 1 - row) * targetStride);
-                Marshal.Copy(pixelBytes, sourceOffset, destination, rowLength);
-            }
-        }
-        finally
-        {
-            bitmap.UnlockBits(data);
-        }
-
-        using MemoryStream stream = new();
-        bitmap.Save(stream, ImageFormat.Png);
-        return stream.ToArray();
-    }
-
-    private static byte[] CopySoftwareBitmapBytes(SoftwareBitmap softwareBitmap)
-    {
-        int byteCount = softwareBitmap.PixelWidth * softwareBitmap.PixelHeight * 4;
-        global::Windows.Storage.Streams.Buffer buffer = new((uint)byteCount)
-        {
-            Length = (uint)byteCount,
-        };
-        softwareBitmap.CopyToBuffer(buffer);
-
-        using DataReader reader = DataReader.FromBuffer(buffer);
-        byte[] bytes = new byte[byteCount];
         reader.ReadBytes(bytes);
         return bytes;
     }
@@ -915,4 +881,20 @@ public sealed class GraphicsCaptureService(
         byte[] PngBytes,
         int PixelWidth,
         int PixelHeight);
+
+    private sealed class SoftwareBitmapWaitVisualEvidenceFrame(
+        WindowDescriptor window,
+        SoftwareBitmap bitmap) : WaitVisualEvidenceFrame(window, bitmap.PixelWidth, bitmap.PixelHeight)
+    {
+        private SoftwareBitmap? _bitmap = bitmap;
+
+        public SoftwareBitmap GetBitmap() =>
+            _bitmap ?? throw new ObjectDisposedException(nameof(SoftwareBitmapWaitVisualEvidenceFrame));
+
+        protected override void DisposeCore()
+        {
+            _bitmap?.Dispose();
+            _bitmap = null;
+        }
+    }
 }

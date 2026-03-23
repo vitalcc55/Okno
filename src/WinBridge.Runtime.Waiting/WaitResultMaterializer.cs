@@ -86,6 +86,9 @@ public sealed class WaitResultMaterializer(
                 ["matched_element_id"] = result.MatchedElement?.ElementId,
                 ["matched_text_source"] = result.LastObserved?.MatchedTextSource,
                 ["diagnostic_artifact_path"] = result.LastObserved?.DiagnosticArtifactPath,
+                ["visual_evidence_status"] = result.LastObserved?.VisualEvidenceStatus,
+                ["visual_baseline_artifact_path"] = result.LastObserved?.VisualBaselineArtifactPath,
+                ["visual_current_artifact_path"] = result.LastObserved?.VisualCurrentArtifactPath,
             });
     }
 

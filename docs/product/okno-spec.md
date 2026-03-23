@@ -456,7 +456,7 @@ Target policy:
 - `done | timeout | ambiguous | failed`
 - `structuredContent` + один `TextContentBlock`, без image block;
 - `artifactPath` для JSON evidence в diagnostics run directory;
-- для `visual_changed` referenced baseline/current PNG artifacts в `lastObserved`.
+- для `visual_changed` `lastObserved.visualEvidenceStatus` сообщает итог evidence stage (`materialized | timeout | failed | skipped`), а `visualBaselineArtifactPath` / `visualCurrentArtifactPath` остаются optional referenced PNG artifacts.
 
 ---
 

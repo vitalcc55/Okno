@@ -4,12 +4,12 @@ namespace WinBridge.Runtime.Windows.Capture;
 
 public interface IWaitVisualProbe
 {
-    Task<WaitVisualFrame> CaptureVisualAsync(
+    Task<WaitVisualSample> CaptureVisualSampleAsync(
         WindowDescriptor targetWindow,
         CancellationToken cancellationToken);
 
-    Task WriteVisualArtifactAsync(
-        WaitVisualFrame frame,
+    Task WriteVisualEvidenceAsync(
+        WaitVisualEvidenceFrame frame,
         string path,
         CancellationToken cancellationToken);
 }
