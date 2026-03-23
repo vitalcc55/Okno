@@ -99,5 +99,6 @@ internal sealed record WaitAttemptSummary(
     string? Detail = null,
     double? VisualDifferenceRatio = null,
     double? VisualDifferenceThreshold = null,
+    string? VisualEvidenceStatus = null,
     string? VisualBaselineArtifactPath = null,
     string? VisualCurrentArtifactPath = null);

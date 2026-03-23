@@ -117,10 +117,29 @@ public sealed class WaitContractAndPolicyTests
     }
 
     [Fact]
+    public void WaitVisualEvidenceStatusValuesExposeExpectedLiterals()
+    {
+        Assert.Equal("materialized", WaitVisualEvidenceStatusValues.Materialized);
+        Assert.Equal("timeout", WaitVisualEvidenceStatusValues.Timeout);
+        Assert.Equal("failed", WaitVisualEvidenceStatusValues.Failed);
+        Assert.Equal("skipped", WaitVisualEvidenceStatusValues.Skipped);
+    }
+
+    [Fact]
     public void WaitOptionsRejectsNonPositivePollInterval()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new WaitOptions(TimeSpan.Zero));
         Assert.Throws<ArgumentOutOfRangeException>(() => new WaitOptions(TimeSpan.FromMilliseconds(-1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new WaitOptions(TimeSpan.FromMilliseconds(1), TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new WaitOptions(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(-1)));
+    }
+
+    [Fact]
+    public void WaitOptionsUseExpectedVisualEvidenceBudgetDefault()
+    {
+        WaitOptions options = new(TimeSpan.FromMilliseconds(10));
+
+        Assert.Equal(TimeSpan.FromMilliseconds(250), options.VisualEvidenceBudget);
     }
 
     [Fact]

@@ -86,6 +86,28 @@ public sealed class WindowWaitToolTests
         Assert.Equal(WaitTargetSourceValues.Active, waitService.LastTarget?.Source);
     }
 
+    [Fact]
+    public async Task WaitPublishesVisualEvidenceStatusAsFlatLastObservedField()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        FakeWaitService waitService = new((target, request, _) => Task.FromResult(CreateVisualDoneResult(target, request)));
+        WindowTools tools = CreateTools(
+            windows: [attachedWindow],
+            attachedWindow: attachedWindow,
+            waitService: waitService);
+
+        CallToolResult result = await tools.Wait(
+            condition: WaitConditionValues.VisualChanged,
+            timeoutMs: 1200);
+
+        Assert.False(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        JsonElement lastObserved = payload.GetProperty("lastObserved");
+        Assert.Equal(WaitVisualEvidenceStatusValues.Timeout, lastObserved.GetProperty("visualEvidenceStatus").GetString());
+        Assert.False(lastObserved.TryGetProperty("visualBaselineArtifactPath", out _));
+        Assert.False(lastObserved.TryGetProperty("visualCurrentArtifactPath", out _));
+    }
+
     [Theory]
     [InlineData(WaitStatusValues.Timeout, true)]
     [InlineData(WaitStatusValues.Ambiguous, true)]
@@ -294,6 +316,26 @@ public sealed class WindowWaitToolTests
             TimeoutMs: request.TimeoutMs,
             ElapsedMs: 100,
             AttemptCount: 2);
+    }
+
+    private static WaitResult CreateVisualDoneResult(WaitTargetResolution target, WaitRequest request)
+    {
+        WindowDescriptor targetWindow = target.Window ?? CreateWindow(hwnd: 909, title: "Fallback", isForeground: true);
+        ObservedWindowDescriptor observedWindow = CreateObservedWindow(targetWindow);
+        return new WaitResult(
+            Status: WaitStatusValues.Done,
+            Condition: request.Condition,
+            TargetSource: target.Source,
+            Window: observedWindow,
+            LastObserved: new WaitObservation(
+                Detail: "Визуальное изменение подтверждено.",
+                VisualDifferenceRatio: 0.25,
+                VisualDifferenceThreshold: 0.0625,
+                VisualEvidenceStatus: WaitVisualEvidenceStatusValues.Timeout),
+            ArtifactPath: @"C:\artifacts\wait.json",
+            TimeoutMs: request.TimeoutMs,
+            ElapsedMs: 100,
+            AttemptCount: 3);
     }
 
     private static WindowDescriptor CreateWindow(

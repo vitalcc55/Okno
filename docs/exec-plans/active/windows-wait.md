@@ -278,10 +278,10 @@ Contract rules:
 Фактически закрыто в репозитории:
 
 - `focus_is` добавлен в runtime wait path поверх authoritative focused-element probe с process-isolated worker boundary, exact selector match только по текущему focused element, revalidation к window root через `ElementFromHandle(hwnd)`, bounded retry policy на transient unavailable focus state и корректной control-view parent lineage metadata;
-- `visual_changed` добавлен в runtime wait path через window-scoped capture-backed compare без per-tick PNG bloat: visual probe больше не кодирует PNG и не тащит raw frame в обычный `windows.capture`, baseline и final PNG materialization теперь проходят через один общий remaining-budget write path, per-tick сравнение идёт только в памяти, а raw baseline frame больше не удерживается между poll-итерациями;
+- `visual_changed` добавлен в runtime wait path через window-scoped capture-backed compare без per-tick PNG bloat: visual probe больше не кодирует PNG и не тащит raw frame в orchestration contract, baseline фиксируется как domain state, comparison data materialize-ится только внутри visual probe, а baseline/current PNG materialization вынесена в отдельный best-effort evidence stage после подтверждённого change;
 - threshold/noise semantics зафиксированы в коде и тестах: grayscale grid `16x16`, per-cell luma delta `>= 12`, geometry-change shortcut, effective success threshold вычисляется от populated cells с базовым ratio `16/256`, `WaitOptions` валидирует строго положительный poll interval, а `done` подтверждается только после гарантированного положительного confirmation gap и второго подряд candidate against the same baseline;
-- evidence contract расширен ровно до runtime-only visual fields в wait artifact (`visual_difference_ratio`, `visual_difference_threshold`, `visual_baseline_artifact_path`, `visual_current_artifact_path`) без смены `wait.runtime.completed` event schema;
-- visual artifact write path теперь целиком нормализует filesystem/encode failures в доменный `failed` result, late UIA probe downgrade опирается на worker-side completion timestamp, wait-specific visual probe больше не наследует скрытый `3s` capture cap, `visual_difference_threshold` репортит effective comparison threshold, а late-written current PNG path не теряется на timeout path;
+- evidence contract расширен ровно до runtime-only visual fields в wait artifact (`visual_difference_ratio`, `visual_difference_threshold`, `visual_evidence_status`, `visual_baseline_artifact_path`, `visual_current_artifact_path`) без nested payload reshaping;
+- visual evidence stage теперь живёт на отдельном short budget `min(timeoutMs, VisualEvidenceBudgetMs)` и больше не понижает уже подтверждённый `done` до `timeout` или `failed`; late UIA probe downgrade по-прежнему опирается на worker-side completion timestamp, wait-specific visual probe не наследует скрытый `3s` capture cap, а optional PNG paths репортятся только если best-effort materialization успел завершиться;
 - lifecycle `windows.wait` по-прежнему остаётся `Deferred/unsupported`, Package D не затронут.
 
 ### Package D — server rollout + smoke + docs sync
@@ -322,7 +322,7 @@ Contract rules:
 - `element_exists` и `element_gone` на stable и ambiguous selector;
 - `text_appears` с `Name`, `ValuePattern` и provider fallback;
 - `focus_is` c retry/revalidation при unavailable focused element;
-- `visual_changed` с threshold policy, noisy-change suppression и honest timeout;
+- `visual_changed` с threshold policy, noisy-change suppression, честным detection timeout и отдельной evidence-budget semantics;
 - evidence builder и artifact naming;
 - `status -> isError` mapping.
 
@@ -344,7 +344,7 @@ Contract rules:
 - подтвердить `element_exists` и `text_appears` на детерминированных helper controls;
 - подтвердить `focus_is` на control, который helper явно переводит в focus;
 - подтвердить `visual_changed` на helper window с предсказуемым visual transition;
-- проверить creation JSON artifact и referenced capture artifacts;
+- проверить creation JSON artifact и, если `visualEvidenceStatus = materialized`, referenced capture artifacts;
 - подтвердить, что `windows.wait` не требует hidden activation и не ломает `STDIO` transport.
 
 ## Docs sync

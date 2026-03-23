@@ -479,6 +479,7 @@ public sealed class PollingWaitServiceTests
 
         Assert.Equal(WaitStatusValues.Done, result.Status);
         Assert.Equal(3, result.AttemptCount);
+        Assert.Equal(WaitVisualEvidenceStatusValues.Materialized, result.LastObserved?.VisualEvidenceStatus);
         Assert.NotNull(result.LastObserved?.VisualBaselineArtifactPath);
         Assert.NotNull(result.LastObserved?.VisualCurrentArtifactPath);
         Assert.True(File.Exists(result.LastObserved!.VisualBaselineArtifactPath!));
@@ -546,9 +547,10 @@ public sealed class PollingWaitServiceTests
             CancellationToken.None);
 
         Assert.Equal(WaitStatusValues.Timeout, result.Status);
-        Assert.NotNull(result.LastObserved?.VisualBaselineArtifactPath);
+        Assert.Equal(WaitVisualEvidenceStatusValues.Skipped, result.LastObserved?.VisualEvidenceStatus);
+        Assert.Null(result.LastObserved?.VisualBaselineArtifactPath);
         Assert.Null(result.LastObserved?.VisualCurrentArtifactPath);
-        Assert.Single(visualProbe.WrittenArtifactPaths);
+        Assert.Empty(visualProbe.WrittenArtifactPaths);
     }
 
     [Fact]
@@ -577,12 +579,13 @@ public sealed class PollingWaitServiceTests
 
         Assert.Equal(WaitStatusValues.Failed, result.Status);
         Assert.Equal("visual probe failure", result.Reason);
-        Assert.NotNull(result.LastObserved?.VisualBaselineArtifactPath);
+        Assert.Equal(WaitVisualEvidenceStatusValues.Skipped, result.LastObserved?.VisualEvidenceStatus);
+        Assert.Null(result.LastObserved?.VisualBaselineArtifactPath);
         Assert.Null(result.LastObserved?.VisualCurrentArtifactPath);
     }
 
     [Fact]
-    public async Task WaitAsyncReturnsFailedWhenVisualArtifactWriteThrowsIoError()
+    public async Task WaitAsyncReturnsDoneWhenVisualEvidenceWriteThrowsIoError()
     {
         string root = CreateTempDirectory();
         AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-artifact-io");
@@ -590,6 +593,8 @@ public sealed class PollingWaitServiceTests
         SequenceVisualProbe visualProbe = new(
         [
             CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+            CreateVisualFrame(targetWindow, changedCells: 16),
         ],
         writeFailures:
         [
@@ -608,12 +613,14 @@ public sealed class PollingWaitServiceTests
             new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 50),
             CancellationToken.None);
 
-        Assert.Equal(WaitStatusValues.Failed, result.Status);
-        Assert.Equal("Runtime не смог записать visual wait artifact на диск.", result.Reason);
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.Equal(WaitVisualEvidenceStatusValues.Failed, result.LastObserved?.VisualEvidenceStatus);
+        Assert.Null(result.LastObserved?.VisualBaselineArtifactPath);
+        Assert.Null(result.LastObserved?.VisualCurrentArtifactPath);
     }
 
     [Fact]
-    public async Task WaitAsyncReturnsTimeoutWhenBaselineVisualMaterializationExceedsRemainingBudget()
+    public async Task WaitAsyncReturnsDoneWhenVisualEvidenceBudgetExpires()
     {
         string root = CreateTempDirectory();
         AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-baseline-timeout");
@@ -621,6 +628,8 @@ public sealed class PollingWaitServiceTests
         SequenceVisualProbe visualProbe = new(
         [
             CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+            CreateVisualFrame(targetWindow, changedCells: 16),
         ],
         writeDelays:
         [
@@ -631,7 +640,7 @@ public sealed class PollingWaitServiceTests
             new FakeWindowManager([targetWindow]),
             new FakeWindowTargetResolver(_ => targetWindow),
             new SequenceWaitProbe(),
-            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            new WaitOptions(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(50)),
             visualProbe);
 
         WaitResult result = await service.WaitAsync(
@@ -639,12 +648,50 @@ public sealed class PollingWaitServiceTests
             new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 200),
             CancellationToken.None);
 
-        Assert.Equal(WaitStatusValues.Timeout, result.Status);
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.Equal(WaitVisualEvidenceStatusValues.Timeout, result.LastObserved?.VisualEvidenceStatus);
+        Assert.Null(result.LastObserved?.VisualBaselineArtifactPath);
+        Assert.Null(result.LastObserved?.VisualCurrentArtifactPath);
         Assert.Equal(1, visualProbe.CanceledWriteCount);
     }
 
     [Fact]
-    public async Task WaitAsyncReturnsTimeoutWhenFinalVisualMaterializationExceedsRemainingBudget()
+    public async Task WaitAsyncDowngradesLateVisualEvidenceCompletionToTimeout()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-late-write-timeout");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 607613, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+        ],
+        uncancelableWriteDelays:
+        [
+            TimeSpan.FromMilliseconds(80),
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(20)),
+            visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 200),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.Equal(WaitVisualEvidenceStatusValues.Timeout, result.LastObserved?.VisualEvidenceStatus);
+        Assert.NotNull(result.LastObserved?.VisualBaselineArtifactPath);
+        Assert.Null(result.LastObserved?.VisualCurrentArtifactPath);
+    }
+
+    [Fact]
+    public async Task WaitAsyncDoesNotRequireVisualArtifactPathsForDoneStatus()
     {
         string root = CreateTempDirectory();
         AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-materialization-timeout");
@@ -665,7 +712,7 @@ public sealed class PollingWaitServiceTests
             new FakeWindowManager([targetWindow]),
             new FakeWindowTargetResolver(_ => targetWindow),
             new SequenceWaitProbe(),
-            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            new WaitOptions(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(50)),
             visualProbe);
 
         WaitResult result = await service.WaitAsync(
@@ -673,7 +720,9 @@ public sealed class PollingWaitServiceTests
             new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 80),
             CancellationToken.None);
 
-        Assert.Equal(WaitStatusValues.Timeout, result.Status);
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.Equal(WaitVisualEvidenceStatusValues.Timeout, result.LastObserved?.VisualEvidenceStatus);
+        Assert.Null(result.LastObserved?.VisualCurrentArtifactPath);
     }
 
     [Fact]
@@ -877,7 +926,7 @@ public sealed class PollingWaitServiceTests
             Children = [],
         };
 
-    private static WaitVisualFrame CreateVisualFrame(WindowDescriptor window, int changedCells)
+    private static WaitVisualSample CreateVisualFrame(WindowDescriptor window, int changedCells)
     {
         const int pixelWidth = 16;
         const int pixelHeight = 16;
@@ -898,12 +947,17 @@ public sealed class PollingWaitServiceTests
             }
         }
 
-        return new WaitVisualFrame(
-            window with { Bounds = new Bounds(0, 0, pixelWidth, pixelHeight) },
+        WindowDescriptor visualWindow = window with { Bounds = new Bounds(0, 0, pixelWidth, pixelHeight) };
+        return new WaitVisualSample(
+            visualWindow,
             pixelWidth,
             pixelHeight,
-            rowStride,
-            pixelBytes);
+            WaitVisualComparisonDataBuilder.CreateFromBgra32Pixels(
+                pixelWidth,
+                pixelHeight,
+                rowStride,
+                pixelBytes),
+            new TestWaitVisualEvidenceFrame(visualWindow, pixelWidth, pixelHeight));
     }
 
     private static AuditLogOptions CreateAuditLogOptions(string root, string runId) =>
@@ -1171,23 +1225,25 @@ public sealed class PollingWaitServiceTests
     }
 
     private sealed class SequenceVisualProbe(
-        IReadOnlyList<WaitVisualFrame> frames,
-        WaitVisualFrame? fallbackFrame = null,
+        IReadOnlyList<WaitVisualSample> frames,
+        WaitVisualSample? fallbackFrame = null,
         CaptureOperationException? fallbackFailure = null,
         IReadOnlyList<TimeSpan>? writeDelays = null,
+        IReadOnlyList<TimeSpan>? uncancelableWriteDelays = null,
         IReadOnlyList<Exception>? writeFailures = null) : IWaitVisualProbe
     {
-        private readonly Queue<WaitVisualFrame> _frames = new(frames);
-        private readonly WaitVisualFrame _fallbackFrame = fallbackFrame ?? frames[^1];
+        private readonly Queue<WaitVisualSample> _frames = new(frames);
+        private readonly WaitVisualSample _fallbackFrame = fallbackFrame ?? frames[^1];
         private readonly CaptureOperationException? _fallbackFailure = fallbackFailure;
         private readonly Queue<TimeSpan> _writeDelays = writeDelays is null ? new Queue<TimeSpan>() : new Queue<TimeSpan>(writeDelays);
+        private readonly Queue<TimeSpan> _uncancelableWriteDelays = uncancelableWriteDelays is null ? new Queue<TimeSpan>() : new Queue<TimeSpan>(uncancelableWriteDelays);
         private readonly Queue<Exception> _writeFailures = writeFailures is null ? new Queue<Exception>() : new Queue<Exception>(writeFailures);
 
         public List<DateTimeOffset> CaptureTimestamps { get; } = [];
         public int CanceledWriteCount { get; private set; }
         public List<string> WrittenArtifactPaths { get; } = [];
 
-        public Task<WaitVisualFrame> CaptureVisualAsync(
+        public Task<WaitVisualSample> CaptureVisualSampleAsync(
             WindowDescriptor targetWindow,
             CancellationToken cancellationToken)
         {
@@ -1205,11 +1261,18 @@ public sealed class PollingWaitServiceTests
             return Task.FromResult(_fallbackFrame);
         }
 
-        public async Task WriteVisualArtifactAsync(
-            WaitVisualFrame frame,
+        public async Task WriteVisualEvidenceAsync(
+            WaitVisualEvidenceFrame frame,
             string path,
             CancellationToken cancellationToken)
         {
+            bool ignoreWriteCancellation = false;
+            if (_uncancelableWriteDelays.Count > 0)
+            {
+                await Task.Delay(_uncancelableWriteDelays.Dequeue(), CancellationToken.None);
+                ignoreWriteCancellation = true;
+            }
+
             if (_writeDelays.Count > 0)
             {
                 try
@@ -1235,7 +1298,20 @@ public sealed class PollingWaitServiceTests
                 Directory.CreateDirectory(directory);
             }
 
-            await File.WriteAllBytesAsync(path, [137, 80, 78, 71], cancellationToken);
+            await File.WriteAllBytesAsync(
+                path,
+                [137, 80, 78, 71],
+                ignoreWriteCancellation ? CancellationToken.None : cancellationToken);
+        }
+    }
+
+    private sealed class TestWaitVisualEvidenceFrame(
+        WindowDescriptor window,
+        int pixelWidth,
+        int pixelHeight) : WaitVisualEvidenceFrame(window, pixelWidth, pixelHeight)
+    {
+        protected override void DisposeCore()
+        {
         }
     }
 

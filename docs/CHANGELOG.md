@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-23 15:27
+
+- `visual_changed` переведён на целевую модель `detection + best-effort evidence`: public flat contract теперь публикует `lastObserved.visualEvidenceStatus` (`materialized | timeout | failed | skipped`), baseline/current PNG paths стали optional и больше не определяют success-path, visual probe разбит на lightweight comparison sample и отдельный evidence frame, compare path materialize-ит fingerprint только внутри visual probe через direct `LockBuffer`/`IMemoryBufferByteAccess` path с официальным WinRT ABI contract без copy-based fallback в latency-sensitive poll loop, PNG evidence кодируется через WinRT `BitmapEncoder` c budget-aware async bridge, orchestration теперь делает wall-clock post-budget downgrade для late evidence completion, а `wait.runtime.completed` дополнительно пишет visual baseline/current artifact paths вместе со статусом evidence; runtime/integration tests, smoke и source-of-truth docs синхронизированы с новой semantics.
+
 ## 2026-03-23 13:07
 
 - Review-driven hardening для shipped `windows.wait` закрыл подтверждённые семантические дыры без смены публичной schema: UIA multi-match classification теперь condition-specific (`element_exists` требует identity-overlap между candidate и recheck, `element_gone` продолжает polling пока matches остаются, `text_appears` считает только text-qualified candidates, а ambiguous result больше не публикует произвольный `matchedElement`), late UIA downgrade использует `WorkerCompletedAtUtc`, wait-specific visual probe больше не наследует скрытый `3s` capture cap и репортит effective threshold/evidence-path честно, а tool-boundary unexpected failures в `WindowTools.Wait(...)` теперь проходят через тот же canonical wait artifact + `wait.runtime.completed`, а не через голый sanitized handler path; новые runtime/integration tests закрепляют эти контракты регрессионно.

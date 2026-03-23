@@ -802,8 +802,22 @@ try {
         Json = $visualWaitCall.Json
     }
     $visualWaitPayload = Assert-WaitSuccess -ToolCall $visualWaitCall -Condition 'visual_changed'
-    Assert-Condition -Condition (Test-Path $visualWaitPayload.lastObserved.visualBaselineArtifactPath) -Message "visual_changed baseline artifact '$($visualWaitPayload.lastObserved.visualBaselineArtifactPath)' was not created."
-    Assert-Condition -Condition (Test-Path $visualWaitPayload.lastObserved.visualCurrentArtifactPath) -Message "visual_changed current artifact '$($visualWaitPayload.lastObserved.visualCurrentArtifactPath)' was not created."
+    $visualEvidenceStatus = [string]$visualWaitPayload.lastObserved.visualEvidenceStatus
+    Assert-Condition -Condition (@('materialized', 'timeout', 'failed', 'skipped') -contains $visualEvidenceStatus) -Message "visual_changed returned unexpected visualEvidenceStatus '$visualEvidenceStatus'."
+    $visualBaselineArtifactPath = [string]$visualWaitPayload.lastObserved.visualBaselineArtifactPath
+    $visualCurrentArtifactPath = [string]$visualWaitPayload.lastObserved.visualCurrentArtifactPath
+    if ($visualEvidenceStatus -eq 'materialized') {
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($visualBaselineArtifactPath)) -Message 'visual_changed did not return baseline artifact path for materialized evidence.'
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($visualCurrentArtifactPath)) -Message 'visual_changed did not return current artifact path for materialized evidence.'
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($visualBaselineArtifactPath)) {
+        Assert-Condition -Condition (Test-Path $visualBaselineArtifactPath) -Message "visual_changed baseline artifact '$visualBaselineArtifactPath' was not created."
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($visualCurrentArtifactPath)) {
+        Assert-Condition -Condition (Test-Path $visualCurrentArtifactPath) -Message "visual_changed current artifact '$visualCurrentArtifactPath' was not created."
+    }
 
     $attachedHwnd = $null
     if ($null -ne $attachedWindow) {

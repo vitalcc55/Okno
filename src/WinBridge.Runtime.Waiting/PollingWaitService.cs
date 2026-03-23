@@ -35,6 +35,7 @@ public sealed class PollingWaitService(
         WaitProbeSnapshot? lastProbe = null;
         WindowDescriptor? lastResolvedWindow = target.Window;
         int attemptCount = 0;
+        WaitVisualState? visualState = null;
 
         try
         {
@@ -78,7 +79,6 @@ public sealed class PollingWaitService(
             }
 
             WindowDescriptor expectedWindow = target.Window;
-            WaitVisualState? visualState = null;
             DateTimeOffset deadlineUtc = startedAtUtc + TimeSpan.FromMilliseconds(request.TimeoutMs);
 
             while (true)
@@ -93,166 +93,145 @@ public sealed class PollingWaitService(
                 attemptCount++;
                 attempts.Add(CreateAttemptSummary(attemptCount, probe));
 
-            if (probe.Outcome == WaitProbeOutcome.TimedOut)
-            {
-                return FinalizeResult(
-                    request,
-                    target,
-                    attempts,
-                    startedAtUtc,
-                    CreateTimeoutResult(request, target.Source, probe, startTimestamp, attemptCount));
-            }
-
-            if (probe.Outcome == WaitProbeOutcome.Failed)
-            {
-                return FinalizeResult(
-                    request,
-                    target,
-                    attempts,
-                    startedAtUtc,
-                    CreateNonSuccessResult(WaitStatusValues.Failed, request, target.Source, probe.TargetFailureCode, probe, startTimestamp, attemptCount),
-                    failureStage: "probe_runtime");
-            }
-
-            if (probe.Outcome == WaitProbeOutcome.Ambiguous)
-            {
-                return FinalizeResult(
-                    request,
-                    target,
-                    attempts,
-                    startedAtUtc,
-                    CreateNonSuccessResult(WaitStatusValues.Ambiguous, request, target.Source, probe.TargetFailureCode, probe, startTimestamp, attemptCount));
-            }
-
-            if (probe.Outcome == WaitProbeOutcome.Candidate)
-            {
-                if (string.Equals(request.Condition, WaitConditionValues.VisualChanged, StringComparison.Ordinal))
-                {
-                    TimeSpan remainingBeforeRecheck = deadlineUtc - timeProvider.GetUtcNow();
-                    if (remainingBeforeRecheck > TimeSpan.Zero)
-                    {
-                        TimeSpan confirmationDelay = remainingBeforeRecheck < options.PollInterval
-                            ? remainingBeforeRecheck
-                            : options.PollInterval;
-                        await Task.Delay(confirmationDelay, cancellationToken).ConfigureAwait(false);
-                    }
-                }
-
-                WaitProbeSnapshot recheck = await ProbeOnceAsync(expectedWindow, target.Source, request, deadlineUtc, visualState, cancellationToken).ConfigureAwait(false);
-                expectedWindow = recheck.ResolvedTargetWindow ?? expectedWindow;
-                visualState = recheck.VisualState ?? visualState;
-                lastProbe = recheck;
-                attemptCount++;
-                attempts.Add(CreateAttemptSummary(attemptCount, recheck));
-
-                if (recheck.Outcome == WaitProbeOutcome.TimedOut)
+                if (probe.Outcome == WaitProbeOutcome.TimedOut)
                 {
                     return FinalizeResult(
                         request,
                         target,
                         attempts,
                         startedAtUtc,
-                        CreateTimeoutResult(request, target.Source, recheck, startTimestamp, attemptCount));
+                        CreateTimeoutResult(request, target.Source, probe, startTimestamp, attemptCount));
                 }
 
-                if (recheck.Outcome == WaitProbeOutcome.Failed)
+                if (probe.Outcome == WaitProbeOutcome.Failed)
                 {
                     return FinalizeResult(
                         request,
                         target,
                         attempts,
                         startedAtUtc,
-                        CreateNonSuccessResult(WaitStatusValues.Failed, request, target.Source, recheck.TargetFailureCode, recheck, startTimestamp, attemptCount),
+                        CreateNonSuccessResult(WaitStatusValues.Failed, request, target.Source, probe.TargetFailureCode, probe, startTimestamp, attemptCount),
                         failureStage: "probe_runtime");
                 }
 
-                if (recheck.Outcome == WaitProbeOutcome.Ambiguous)
+                if (probe.Outcome == WaitProbeOutcome.Ambiguous)
                 {
                     return FinalizeResult(
                         request,
                         target,
                         attempts,
                         startedAtUtc,
-                        CreateNonSuccessResult(WaitStatusValues.Ambiguous, request, target.Source, recheck.TargetFailureCode, recheck, startTimestamp, attemptCount));
+                        CreateNonSuccessResult(WaitStatusValues.Ambiguous, request, target.Source, probe.TargetFailureCode, probe, startTimestamp, attemptCount));
                 }
 
-                if (recheck.Outcome == WaitProbeOutcome.Candidate && IsStableRecheck(request.Condition, probe, recheck))
+                if (probe.Outcome == WaitProbeOutcome.Candidate)
                 {
                     if (string.Equals(request.Condition, WaitConditionValues.VisualChanged, StringComparison.Ordinal))
                     {
-                        VisualArtifactMaterializationResult evidence = await MaterializeVisualSuccessEvidenceAsync(recheck, deadlineUtc, cancellationToken).ConfigureAwait(false);
-                        if (evidence.TimedOut)
+                        TimeSpan remainingBeforeRecheck = deadlineUtc - timeProvider.GetUtcNow();
+                        if (remainingBeforeRecheck > TimeSpan.Zero)
                         {
-                            WaitProbeSnapshot timeoutProbe = evidence.Probe ?? recheck;
-                            attempts[^1] = CreateAttemptSummary(attemptCount, timeoutProbe with { Outcome = WaitProbeOutcome.TimedOut });
-                            return FinalizeResult(
-                                request,
-                                target,
-                                attempts,
-                                startedAtUtc,
-                                CreateTimeoutResult(request, target.Source, timeoutProbe, startTimestamp, attemptCount));
+                            TimeSpan confirmationDelay = remainingBeforeRecheck < options.PollInterval
+                                ? remainingBeforeRecheck
+                                : options.PollInterval;
+                            await Task.Delay(confirmationDelay, cancellationToken).ConfigureAwait(false);
                         }
-
-                        if (!evidence.Success || evidence.Probe is null)
-                        {
-                            WaitProbeSnapshot artifactFailureProbe = (evidence.Probe ?? recheck) with
-                            {
-                                Outcome = WaitProbeOutcome.Failed,
-                                Reason = evidence.Reason ?? "Runtime не смог записать visual wait artifact на диск.",
-                            };
-                            attempts[^1] = CreateAttemptSummary(attemptCount, artifactFailureProbe);
-                            return FinalizeResult(
-                                request,
-                                target,
-                                attempts,
-                                startedAtUtc,
-                                CreateNonSuccessResult(WaitStatusValues.Failed, request, target.Source, artifactFailureProbe.TargetFailureCode, artifactFailureProbe, startTimestamp, attemptCount),
-                                failureStage: "visual_artifact_write");
-                        }
-
-                        recheck = evidence.Probe;
-                        lastProbe = recheck;
-                        attempts[^1] = CreateAttemptSummary(attemptCount, recheck);
                     }
 
-                    WaitResult doneResult = new(
-                        Status: WaitStatusValues.Done,
+                    WaitProbeSnapshot recheck = await ProbeOnceAsync(expectedWindow, target.Source, request, deadlineUtc, visualState, cancellationToken).ConfigureAwait(false);
+                    if (string.Equals(request.Condition, WaitConditionValues.VisualChanged, StringComparison.Ordinal))
+                    {
+                        DisposeVisualEvidenceFrame(probe.VisualEvidenceFrame);
+                    }
+
+                    expectedWindow = recheck.ResolvedTargetWindow ?? expectedWindow;
+                    visualState = recheck.VisualState ?? visualState;
+                    lastProbe = recheck;
+                    attemptCount++;
+                    attempts.Add(CreateAttemptSummary(attemptCount, recheck));
+
+                    if (recheck.Outcome == WaitProbeOutcome.TimedOut)
+                    {
+                        return FinalizeResult(
+                            request,
+                            target,
+                            attempts,
+                            startedAtUtc,
+                            CreateTimeoutResult(request, target.Source, recheck, startTimestamp, attemptCount));
+                    }
+
+                    if (recheck.Outcome == WaitProbeOutcome.Failed)
+                    {
+                        return FinalizeResult(
+                            request,
+                            target,
+                            attempts,
+                            startedAtUtc,
+                            CreateNonSuccessResult(WaitStatusValues.Failed, request, target.Source, recheck.TargetFailureCode, recheck, startTimestamp, attemptCount),
+                            failureStage: "probe_runtime");
+                    }
+
+                    if (recheck.Outcome == WaitProbeOutcome.Ambiguous)
+                    {
+                        return FinalizeResult(
+                            request,
+                            target,
+                            attempts,
+                            startedAtUtc,
+                            CreateNonSuccessResult(WaitStatusValues.Ambiguous, request, target.Source, recheck.TargetFailureCode, recheck, startTimestamp, attemptCount));
+                    }
+
+                    if (recheck.Outcome == WaitProbeOutcome.Candidate && IsStableRecheck(request.Condition, probe, recheck))
+                    {
+                        if (string.Equals(request.Condition, WaitConditionValues.VisualChanged, StringComparison.Ordinal))
+                        {
+                            recheck = await MaterializeVisualSuccessEvidenceAsync(
+                                recheck,
+                                visualState,
+                                request,
+                                cancellationToken).ConfigureAwait(false);
+                            lastProbe = recheck;
+                            attempts[^1] = CreateAttemptSummary(attemptCount, recheck);
+                        }
+
+                        WaitResult doneResult = new(
+                            Status: WaitStatusValues.Done,
+                            Condition: request.Condition,
+                            TargetSource: target.Source,
+                            TargetFailureCode: null,
+                            Reason: null,
+                            Window: recheck.Window,
+                            MatchedElement: ResolveStableMatchedElement(request.Condition, probe, recheck),
+                            LastObserved: recheck.Observation,
+                            TimeoutMs: request.TimeoutMs,
+                            ElapsedMs: GetElapsedMs(startTimestamp),
+                            AttemptCount: attemptCount);
+                        return FinalizeResult(request, target, attempts, startedAtUtc, doneResult);
+                    }
+                }
+
+                if (timeProvider.GetUtcNow() >= deadlineUtc)
+                {
+                    WaitResult timeoutResult = new(
+                        Status: WaitStatusValues.Timeout,
                         Condition: request.Condition,
                         TargetSource: target.Source,
                         TargetFailureCode: null,
-                        Reason: null,
-                        Window: recheck.Window,
-                        MatchedElement: ResolveStableMatchedElement(request.Condition, probe, recheck),
-                        LastObserved: recheck.Observation,
+                        Reason: CreateTimeoutReason(request.Condition),
+                        Window: lastProbe?.Window,
+                        MatchedElement: lastProbe?.MatchedElement,
+                        LastObserved: lastProbe?.Observation,
                         TimeoutMs: request.TimeoutMs,
                         ElapsedMs: GetElapsedMs(startTimestamp),
                         AttemptCount: attemptCount);
-                    return FinalizeResult(request, target, attempts, startedAtUtc, doneResult);
+                    return FinalizeResult(request, target, attempts, startedAtUtc, timeoutResult);
                 }
-            }
 
-            if (timeProvider.GetUtcNow() >= deadlineUtc)
-            {
-                WaitResult timeoutResult = new(
-                    Status: WaitStatusValues.Timeout,
-                    Condition: request.Condition,
-                    TargetSource: target.Source,
-                    TargetFailureCode: null,
-                    Reason: CreateTimeoutReason(request.Condition),
-                    Window: lastProbe?.Window,
-                    MatchedElement: lastProbe?.MatchedElement,
-                    LastObserved: lastProbe?.Observation,
-                    TimeoutMs: request.TimeoutMs,
-                    ElapsedMs: GetElapsedMs(startTimestamp),
-                    AttemptCount: attemptCount);
-                return FinalizeResult(request, target, attempts, startedAtUtc, timeoutResult);
-            }
-
-            TimeSpan remaining = deadlineUtc - timeProvider.GetUtcNow();
-            if (remaining <= TimeSpan.Zero)
-            {
-                continue;
-            }
+                TimeSpan remaining = deadlineUtc - timeProvider.GetUtcNow();
+                if (remaining <= TimeSpan.Zero)
+                {
+                    continue;
+                }
 
                 TimeSpan delay = remaining < options.PollInterval ? remaining : options.PollInterval;
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
@@ -277,6 +256,11 @@ public sealed class PollingWaitService(
                 ElapsedMs: GetElapsedMs(startTimestamp),
                 AttemptCount: attemptCount);
             return FinalizeResult(request, target, attempts, startedAtUtc, failedResult, failureStage: "runtime_unhandled", failureException: exception);
+        }
+        finally
+        {
+            DisposeVisualState(visualState);
+            DisposeVisualEvidenceFrame(lastProbe?.VisualEvidenceFrame);
         }
     }
 
@@ -448,12 +432,12 @@ public sealed class PollingWaitService(
                 Observation: new WaitObservation(
                     Detail: CreateTargetFailureReason(failureCode),
                     VisualDifferenceThreshold: WaitVisualComparisonPolicy.DifferenceRatioThreshold,
-                    VisualBaselineArtifactPath: visualState?.BaselineArtifactPath),
+                    VisualEvidenceStatus: WaitVisualEvidenceStatusValues.Skipped),
                 Reason: CreateTargetFailureReason(failureCode),
                 TargetFailureCode: failureCode,
                 ResolvedTargetWindow: null,
                 VisualState: visualState,
-                VisualFrame: null);
+                VisualEvidenceFrame: null);
         }
 
         WaitVisualExecutionResult probeExecution = await ExecuteVisualProbeWithinDeadlineAsync(
@@ -463,7 +447,7 @@ public sealed class PollingWaitService(
 
         if (probeExecution.TimedOut)
         {
-            return CreateVisualTimeoutSnapshot(observedAtUtc, liveTarget, visualState?.BaselineArtifactPath);
+            return CreateVisualTimeoutSnapshot(observedAtUtc, liveTarget);
         }
 
         if (!string.IsNullOrWhiteSpace(probeExecution.FailureReason))
@@ -476,58 +460,30 @@ public sealed class PollingWaitService(
                 Observation: new WaitObservation(
                     Detail: probeExecution.FailureReason,
                     VisualDifferenceThreshold: WaitVisualComparisonPolicy.DifferenceRatioThreshold,
-                    VisualBaselineArtifactPath: visualState?.BaselineArtifactPath),
+                    VisualEvidenceStatus: WaitVisualEvidenceStatusValues.Skipped),
                 Reason: probeExecution.FailureReason,
                 TargetFailureCode: null,
                 ResolvedTargetWindow: liveTarget,
                 VisualState: visualState,
-                VisualFrame: null);
+                VisualEvidenceFrame: null);
         }
 
-        WaitVisualFrame currentFrame = probeExecution.Frame!;
-        WindowDescriptor observedWindow = currentFrame.Window;
+        WaitVisualSample currentSample = probeExecution.Sample!;
+        WindowDescriptor observedWindow = currentSample.Window;
         if (probeExecution.CompletedAtUtc > deadlineUtc)
         {
-            return CreateVisualTimeoutSnapshot(observedAtUtc, observedWindow, visualState?.BaselineArtifactPath);
+            DisposeVisualEvidenceFrame(currentSample.EvidenceFrame);
+            return CreateVisualTimeoutSnapshot(observedAtUtc, observedWindow);
         }
 
         if (visualState is null)
         {
-            VisualArtifactWriteResult baselineWrite = await WriteVisualArtifactWithinDeadlineAsync(
-                currentFrame,
-                "baseline",
-                observedAtUtc,
-                deadlineUtc,
-                cancellationToken).ConfigureAwait(false);
-            if (baselineWrite.TimedOut)
-            {
-                return CreateVisualTimeoutSnapshot(observedAtUtc, observedWindow, baselineWrite.ArtifactPath);
-            }
-
-            if (!baselineWrite.Success)
-            {
-                return new WaitProbeSnapshot(
-                    Outcome: WaitProbeOutcome.Failed,
-                    ObservedAtUtc: observedAtUtc,
-                    Window: ToObservedWindow(observedWindow),
-                    MatchedElement: null,
-                    Observation: new WaitObservation(
-                        Detail: baselineWrite.Reason,
-                        VisualDifferenceThreshold: WaitVisualComparisonPolicy.DifferenceRatioThreshold),
-                    Reason: baselineWrite.Reason,
-                    TargetFailureCode: null,
-                    ResolvedTargetWindow: observedWindow,
-                    VisualState: null,
-                    VisualFrame: currentFrame);
-            }
-
-            string baselineArtifactPath = baselineWrite.ArtifactPath
-                ?? throw new InvalidOperationException("Budget-aware baseline artifact write completed without artifact path.");
             WaitVisualState nextState = new(
-                WaitVisualComparisonPolicy.CreateLumaGrid(currentFrame),
-                currentFrame.PixelWidth,
-                currentFrame.PixelHeight,
-                baselineArtifactPath);
+                currentSample.ComparisonData,
+                currentSample.PixelWidth,
+                currentSample.PixelHeight,
+                observedAtUtc,
+                currentSample.EvidenceFrame);
             return new WaitProbeSnapshot(
                 Outcome: WaitProbeOutcome.Pending,
                 ObservedAtUtc: observedAtUtc,
@@ -537,19 +493,27 @@ public sealed class PollingWaitService(
                     Detail: "Визуальный baseline зафиксирован; runtime ждёт подтверждённого изменения.",
                     VisualDifferenceRatio: 0.0,
                     VisualDifferenceThreshold: WaitVisualComparisonPolicy.DifferenceRatioThreshold,
-                    VisualBaselineArtifactPath: baselineArtifactPath),
+                    VisualEvidenceStatus: WaitVisualEvidenceStatusValues.Skipped),
                 Reason: null,
                 TargetFailureCode: null,
                 ResolvedTargetWindow: observedWindow,
                 VisualState: nextState,
-                VisualFrame: currentFrame);
+                VisualEvidenceFrame: null);
         }
 
         WaitVisualComparisonResult comparison = WaitVisualComparisonPolicy.Compare(
-            visualState.BaselineGrid,
+            visualState.BaselineComparisonData,
             visualState.BaselinePixelWidth,
             visualState.BaselinePixelHeight,
-            currentFrame);
+            currentSample);
+        WaitVisualEvidenceFrame? currentEvidenceFrame = comparison.IsCandidate
+            ? currentSample.EvidenceFrame
+            : null;
+        if (!comparison.IsCandidate)
+        {
+            DisposeVisualEvidenceFrame(currentSample.EvidenceFrame);
+        }
+
         return new WaitProbeSnapshot(
             Outcome: comparison.IsCandidate ? WaitProbeOutcome.Candidate : WaitProbeOutcome.Pending,
             ObservedAtUtc: observedAtUtc,
@@ -559,12 +523,12 @@ public sealed class PollingWaitService(
                 Detail: comparison.Detail,
                 VisualDifferenceRatio: comparison.DifferenceRatio,
                 VisualDifferenceThreshold: comparison.EffectiveThresholdRatio,
-                VisualBaselineArtifactPath: visualState.BaselineArtifactPath),
+                VisualEvidenceStatus: WaitVisualEvidenceStatusValues.Skipped),
             Reason: null,
             TargetFailureCode: null,
             ResolvedTargetWindow: observedWindow,
             VisualState: visualState,
-            VisualFrame: currentFrame);
+            VisualEvidenceFrame: currentEvidenceFrame);
     }
 
     private async Task<WaitVisualExecutionResult> ExecuteVisualProbeWithinDeadlineAsync(
@@ -578,7 +542,7 @@ public sealed class PollingWaitService(
             out CancellationTokenSource? probeCancellation))
         {
             return new WaitVisualExecutionResult(
-                Frame: null,
+                Sample: null,
                 CompletedAtUtc: timeProvider.GetUtcNow(),
                 TimedOut: true,
                 FailureReason: null);
@@ -588,11 +552,11 @@ public sealed class PollingWaitService(
         {
             try
             {
-                WaitVisualFrame frame = await waitVisualProbe
-                    .CaptureVisualAsync(liveTarget, probeCancellation!.Token)
+                WaitVisualSample sample = await waitVisualProbe
+                    .CaptureVisualSampleAsync(liveTarget, probeCancellation!.Token)
                     .ConfigureAwait(false);
                 return new WaitVisualExecutionResult(
-                    Frame: frame,
+                    Sample: sample,
                     CompletedAtUtc: timeProvider.GetUtcNow(),
                     TimedOut: false,
                     FailureReason: null);
@@ -600,7 +564,7 @@ public sealed class PollingWaitService(
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && probeCancellation!.IsCancellationRequested)
             {
                 return new WaitVisualExecutionResult(
-                    Frame: null,
+                    Sample: null,
                     CompletedAtUtc: timeProvider.GetUtcNow(),
                     TimedOut: true,
                     FailureReason: null);
@@ -608,7 +572,7 @@ public sealed class PollingWaitService(
             catch (CaptureOperationException exception)
             {
                 return new WaitVisualExecutionResult(
-                    Frame: null,
+                    Sample: null,
                     CompletedAtUtc: timeProvider.GetUtcNow(),
                     TimedOut: false,
                     FailureReason: exception.Message);
@@ -617,7 +581,7 @@ public sealed class PollingWaitService(
     }
 
     private async Task<string> WriteVisualArtifactAsync(
-        WaitVisualFrame frame,
+        WaitVisualEvidenceFrame frame,
         string phase,
         DateTimeOffset capturedAtUtc,
         CancellationToken cancellationToken)
@@ -630,7 +594,7 @@ public sealed class PollingWaitService(
                     phase,
                     frame.Window.Hwnd.ToString(CultureInfo.InvariantCulture),
                     capturedAtUtc.UtcDateTime));
-            await waitVisualProbe.WriteVisualArtifactAsync(frame, path, cancellationToken).ConfigureAwait(false);
+            await waitVisualProbe.WriteVisualEvidenceAsync(frame, path, cancellationToken).ConfigureAwait(false);
             return path;
         }
         catch (UnauthorizedAccessException exception)
@@ -647,61 +611,128 @@ public sealed class PollingWaitService(
         }
     }
 
-    private async Task<VisualArtifactMaterializationResult> MaterializeVisualSuccessEvidenceAsync(
+    private async Task<WaitProbeSnapshot> MaterializeVisualSuccessEvidenceAsync(
         WaitProbeSnapshot probe,
-        DateTimeOffset deadlineUtc,
+        WaitVisualState? visualState,
+        WaitRequest request,
         CancellationToken cancellationToken)
     {
-        if (probe.VisualFrame is null)
+        if (visualState?.BaselineEvidenceFrame is null
+            || probe.VisualEvidenceFrame is null)
         {
-            return new(
-                Success: false,
-                TimedOut: false,
-                Probe: probe,
-                Reason: "Runtime не сохранил final visual frame для подтверждённого изменения.");
+            return probe with
+            {
+                Observation = probe.Observation with
+                {
+                    VisualEvidenceStatus = WaitVisualEvidenceStatusValues.Skipped,
+                    VisualBaselineArtifactPath = null,
+                    VisualCurrentArtifactPath = null,
+                },
+            };
         }
 
-        VisualArtifactWriteResult currentWrite = await WriteVisualArtifactWithinDeadlineAsync(
-            probe.VisualFrame,
-            "current",
-            probe.ObservedAtUtc,
-            deadlineUtc,
-            cancellationToken).ConfigureAwait(false);
-        if (currentWrite.TimedOut)
+        WaitVisualEvidenceFrame baselineEvidenceFrame = visualState.BaselineEvidenceFrame;
+        DateTimeOffset baselineObservedAtUtc = visualState.BaselineObservedAtUtc;
+
+        if (!TryCreateVisualEvidenceBudgetCancellation(
+            request,
+            cancellationToken,
+            out CancellationTokenSource? evidenceCancellation,
+            out DateTimeOffset evidenceDeadlineUtc))
         {
-            return new(
-                Success: false,
-                TimedOut: true,
-                Probe: probe with
+            return probe with
+            {
+                Observation = probe.Observation with
+                {
+                    VisualEvidenceStatus = WaitVisualEvidenceStatusValues.Skipped,
+                },
+            };
+        }
+
+        CancellationTokenSource evidenceBudgetCancellation = evidenceCancellation!;
+        using (evidenceBudgetCancellation)
+        {
+            CancellationToken evidenceBudgetToken = evidenceBudgetCancellation.Token;
+            VisualEvidenceWriteResult baselineWrite = await WriteVisualArtifactWithinBudgetAsync(
+                baselineEvidenceFrame,
+                "baseline",
+                baselineObservedAtUtc,
+                evidenceDeadlineUtc,
+                evidenceBudgetToken,
+                cancellationToken).ConfigureAwait(false);
+            if (baselineWrite.TimedOut)
+            {
+                return probe with
                 {
                     Observation = probe.Observation with
                     {
-                        Detail = "Visual artifact materialization превысил remaining timeout budget.",
+                        Detail = "PNG evidence для подтверждённого visual change превысил отдельный evidence budget.",
+                        VisualEvidenceStatus = WaitVisualEvidenceStatusValues.Timeout,
+                        VisualBaselineArtifactPath = baselineWrite.ArtifactPath,
+                        VisualCurrentArtifactPath = null,
+                    },
+                };
+            }
+
+            if (!baselineWrite.Success)
+            {
+                return probe with
+                {
+                    Observation = probe.Observation with
+                    {
+                        Detail = baselineWrite.Reason,
+                        VisualEvidenceStatus = WaitVisualEvidenceStatusValues.Failed,
+                        VisualBaselineArtifactPath = baselineWrite.ArtifactPath,
+                        VisualCurrentArtifactPath = null,
+                    },
+                };
+            }
+
+            VisualEvidenceWriteResult currentWrite = await WriteVisualArtifactWithinBudgetAsync(
+                probe.VisualEvidenceFrame,
+                "current",
+                probe.ObservedAtUtc,
+                evidenceDeadlineUtc,
+                evidenceBudgetToken,
+                cancellationToken).ConfigureAwait(false);
+            if (currentWrite.TimedOut)
+            {
+                return probe with
+                {
+                    Observation = probe.Observation with
+                    {
+                        Detail = "PNG evidence для подтверждённого visual change превысил отдельный evidence budget.",
+                        VisualEvidenceStatus = WaitVisualEvidenceStatusValues.Timeout,
+                        VisualBaselineArtifactPath = baselineWrite.ArtifactPath,
                         VisualCurrentArtifactPath = currentWrite.ArtifactPath,
                     },
-                },
-                Reason: null);
-        }
+                };
+            }
 
-        if (!currentWrite.Success)
-        {
-            return new(
-                Success: false,
-                TimedOut: false,
-                Probe: probe,
-                Reason: currentWrite.Reason);
-        }
-
-        string currentArtifactPath = currentWrite.ArtifactPath
-            ?? throw new InvalidOperationException("Budget-aware current artifact write completed without artifact path.");
-        return new(
-            Success: true,
-            TimedOut: false,
-            Probe: probe with
+            if (!currentWrite.Success)
             {
-                Observation = probe.Observation with { VisualCurrentArtifactPath = currentArtifactPath },
-            },
-            Reason: null);
+                return probe with
+                {
+                    Observation = probe.Observation with
+                    {
+                        Detail = currentWrite.Reason,
+                        VisualEvidenceStatus = WaitVisualEvidenceStatusValues.Failed,
+                        VisualBaselineArtifactPath = baselineWrite.ArtifactPath,
+                        VisualCurrentArtifactPath = currentWrite.ArtifactPath,
+                    },
+                };
+            }
+
+            return probe with
+            {
+                Observation = probe.Observation with
+                {
+                    VisualEvidenceStatus = WaitVisualEvidenceStatusValues.Materialized,
+                    VisualBaselineArtifactPath = baselineWrite.ArtifactPath,
+                    VisualCurrentArtifactPath = currentWrite.ArtifactPath,
+                },
+            };
+        }
     }
 
     private bool TryCreateRemainingBudgetCancellation(
@@ -721,65 +752,67 @@ public sealed class PollingWaitService(
         return true;
     }
 
-    private async Task<VisualArtifactWriteResult> WriteVisualArtifactWithinDeadlineAsync(
-        WaitVisualFrame frame,
+    private bool TryCreateVisualEvidenceBudgetCancellation(
+        WaitRequest request,
+        CancellationToken cancellationToken,
+        out CancellationTokenSource? budgetCancellation,
+        out DateTimeOffset budgetDeadlineUtc)
+    {
+        double budgetMilliseconds = Math.Min(request.TimeoutMs, options.VisualEvidenceBudget.TotalMilliseconds);
+        if (budgetMilliseconds <= 0)
+        {
+            budgetCancellation = null;
+            budgetDeadlineUtc = timeProvider.GetUtcNow();
+            return false;
+        }
+
+        budgetDeadlineUtc = timeProvider.GetUtcNow() + TimeSpan.FromMilliseconds(budgetMilliseconds);
+        budgetCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budgetCancellation.CancelAfter(TimeSpan.FromMilliseconds(budgetMilliseconds));
+        return true;
+    }
+
+    private async Task<VisualEvidenceWriteResult> WriteVisualArtifactWithinBudgetAsync(
+        WaitVisualEvidenceFrame frame,
         string phase,
         DateTimeOffset capturedAtUtc,
         DateTimeOffset deadlineUtc,
+        CancellationToken evidenceCancellationToken,
         CancellationToken cancellationToken)
     {
-        if (!TryCreateRemainingBudgetCancellation(
-            deadlineUtc,
-            cancellationToken,
-            out CancellationTokenSource? writeCancellation))
+        try
+        {
+            string artifactPath = await WriteVisualArtifactAsync(
+                frame,
+                phase,
+                capturedAtUtc,
+                evidenceCancellationToken).ConfigureAwait(false);
+            if (timeProvider.GetUtcNow() > deadlineUtc)
+            {
+                return new(
+                    TimedOut: true,
+                    ArtifactPath: artifactPath,
+                    Reason: null);
+            }
+
+            return new(
+                TimedOut: false,
+                ArtifactPath: artifactPath,
+                Reason: null);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && evidenceCancellationToken.IsCancellationRequested)
         {
             return new(
-                Success: false,
                 TimedOut: true,
                 ArtifactPath: null,
                 Reason: null);
         }
-
-        using (writeCancellation)
+        catch (CaptureOperationException exception)
         {
-            try
-            {
-                string artifactPath = await WriteVisualArtifactAsync(
-                    frame,
-                    phase,
-                    capturedAtUtc,
-                    writeCancellation!.Token).ConfigureAwait(false);
-                if (timeProvider.GetUtcNow() > deadlineUtc)
-                {
-                    return new(
-                        Success: false,
-                        TimedOut: true,
-                        ArtifactPath: artifactPath,
-                        Reason: null);
-                }
-
-                return new(
-                    Success: true,
-                    TimedOut: false,
-                    ArtifactPath: artifactPath,
-                    Reason: null);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && writeCancellation!.IsCancellationRequested)
-            {
-                return new(
-                    Success: false,
-                    TimedOut: true,
-                    ArtifactPath: null,
-                    Reason: null);
-            }
-            catch (CaptureOperationException exception)
-            {
-                return new(
-                    Success: false,
-                    TimedOut: false,
-                    ArtifactPath: null,
-                    Reason: exception.Message);
-            }
+            return new(
+                TimedOut: false,
+                ArtifactPath: null,
+                Reason: exception.Message);
         }
     }
 
@@ -1154,8 +1187,7 @@ public sealed class PollingWaitService(
 
     private static WaitProbeSnapshot CreateVisualTimeoutSnapshot(
         DateTimeOffset observedAtUtc,
-        WindowDescriptor liveTarget,
-        string? baselineArtifactPath) =>
+        WindowDescriptor liveTarget) =>
         new(
             Outcome: WaitProbeOutcome.TimedOut,
             ObservedAtUtc: observedAtUtc,
@@ -1164,7 +1196,7 @@ public sealed class PollingWaitService(
             Observation: new WaitObservation(
                 Detail: "Visual probe превысил оставшийся timeout текущего wait вызова.",
                 VisualDifferenceThreshold: WaitVisualComparisonPolicy.DifferenceRatioThreshold,
-                VisualBaselineArtifactPath: baselineArtifactPath),
+                VisualEvidenceStatus: WaitVisualEvidenceStatusValues.Skipped),
             Reason: null,
             TargetFailureCode: null,
             ResolvedTargetWindow: liveTarget);
@@ -1207,8 +1239,15 @@ public sealed class PollingWaitService(
             Detail: probe.Observation.Detail,
             VisualDifferenceRatio: probe.Observation.VisualDifferenceRatio,
             VisualDifferenceThreshold: probe.Observation.VisualDifferenceThreshold,
+            VisualEvidenceStatus: probe.Observation.VisualEvidenceStatus,
             VisualBaselineArtifactPath: probe.Observation.VisualBaselineArtifactPath,
             VisualCurrentArtifactPath: probe.Observation.VisualCurrentArtifactPath);
+
+    private static void DisposeVisualState(WaitVisualState? visualState) =>
+        visualState?.BaselineEvidenceFrame?.Dispose();
+
+    private static void DisposeVisualEvidenceFrame(WaitVisualEvidenceFrame? evidenceFrame) =>
+        evidenceFrame?.Dispose();
 
     private int GetElapsedMs(long startTimestamp) =>
         (int)Math.Round(timeProvider.GetElapsedTime(startTimestamp).TotalMilliseconds, MidpointRounding.AwayFromZero);
@@ -1234,28 +1273,25 @@ public sealed class PollingWaitService(
     }
 
     private sealed record WaitVisualExecutionResult(
-        WaitVisualFrame? Frame,
+        WaitVisualSample? Sample,
         DateTimeOffset CompletedAtUtc,
         bool TimedOut,
         string? FailureReason);
 
     private sealed record WaitVisualState(
-        WaitVisualGrid BaselineGrid,
+        WaitVisualComparisonData BaselineComparisonData,
         int BaselinePixelWidth,
         int BaselinePixelHeight,
-        string BaselineArtifactPath);
+        DateTimeOffset BaselineObservedAtUtc,
+        WaitVisualEvidenceFrame? BaselineEvidenceFrame);
 
-    private sealed record VisualArtifactMaterializationResult(
-        bool Success,
-        bool TimedOut,
-        WaitProbeSnapshot? Probe,
-        string? Reason);
-
-    private sealed record VisualArtifactWriteResult(
-        bool Success,
+    private sealed record VisualEvidenceWriteResult(
         bool TimedOut,
         string? ArtifactPath,
-        string? Reason);
+        string? Reason)
+    {
+        public bool Success => !TimedOut && string.IsNullOrWhiteSpace(Reason);
+    }
 
     private sealed record WaitProbeSnapshot(
         WaitProbeOutcome Outcome,
@@ -1267,7 +1303,7 @@ public sealed class PollingWaitService(
         string? TargetFailureCode,
         WindowDescriptor? ResolvedTargetWindow,
         WaitVisualState? VisualState = null,
-        WaitVisualFrame? VisualFrame = null,
+        WaitVisualEvidenceFrame? VisualEvidenceFrame = null,
         IReadOnlyList<UiaElementSnapshot>? CandidateElements = null)
     {
         public IReadOnlyList<UiaElementSnapshot> CandidateElements { get; } = CandidateElements ?? [];

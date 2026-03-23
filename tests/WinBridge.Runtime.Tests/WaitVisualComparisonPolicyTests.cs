@@ -1,15 +1,51 @@
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
+using global::Windows.Graphics.Imaging;
+using global::Windows.Storage.Streams;
 
 namespace WinBridge.Runtime.Tests;
 
 public sealed class WaitVisualComparisonPolicyTests
 {
     [Fact]
-    public void CreateLumaGridDownsamplesIntoStable16x16Grid()
+    public void MemoryBufferByteAccessUsesOfficialWinRtGuid()
     {
-        WaitVisualFrame frame = CreateFrame(
+        Assert.Equal(
+            new Guid("5B0D3235-4DBA-4D44-865E-8F1D0E4FD04D"),
+            typeof(IMemoryBufferByteAccess).GUID);
+    }
+
+    [Fact]
+    public void CreateFromSoftwareBitmapBuildsComparisonGridFromDirectPixelBuffer()
+    {
+        byte[] pixelBytes = CreatePixelBytes(
+            pixelWidth: 16,
+            pixelHeight: 16,
+            fill: (x, y) =>
+            {
+                byte value = (byte)((x + y) % 256);
+                return (value, value, value);
+            });
+        using SoftwareBitmap softwareBitmap = CreateSoftwareBitmap(16, 16, pixelBytes);
+
+        WaitVisualComparisonData comparisonData = WaitVisualComparisonDataBuilder.CreateFromSoftwareBitmap(
+            softwareBitmap,
+            CancellationToken.None);
+        WaitVisualComparisonData expected = WaitVisualComparisonDataBuilder.CreateFromBgra32Pixels(
+            16,
+            16,
+            16 * 4,
+            pixelBytes);
+
+        Assert.Equal(expected.PopulatedCellCount, comparisonData.PopulatedCellCount);
+        Assert.Equal(expected.Cells, comparisonData.Cells);
+    }
+
+    [Fact]
+    public void CreateComparisonDataDownsamplesIntoStable16x16Grid()
+    {
+        byte[] pixelBytes = CreatePixelBytes(
             pixelWidth: 32,
             pixelHeight: 32,
             fill: (x, y) =>
@@ -18,7 +54,11 @@ public sealed class WaitVisualComparisonPolicyTests
                 return (value, value, value);
             });
 
-        WaitVisualGrid grid = WaitVisualComparisonPolicy.CreateLumaGrid(frame);
+        WaitVisualComparisonData grid = WaitVisualComparisonDataBuilder.CreateFromBgra32Pixels(
+            32,
+            32,
+            32 * 4,
+            pixelBytes);
 
         Assert.Equal(WaitVisualComparisonPolicy.TotalCellCount, grid.Cells.Length);
         Assert.Equal(256, grid.PopulatedCellCount);
@@ -30,14 +70,14 @@ public sealed class WaitVisualComparisonPolicyTests
     [Fact]
     public void CompareSuppressesNoiseBelowChangedCellThreshold()
     {
-        WaitVisualFrame baseline = CreateFrame(16, 16, (_, _) => ((byte)50, (byte)50, (byte)50));
-        WaitVisualFrame current = CreateFrame(
+        WaitVisualSample baseline = CreateFrame(16, 16, (_, _) => ((byte)50, (byte)50, (byte)50));
+        WaitVisualSample current = CreateFrame(
             16,
             16,
             (x, y) => x < 15 && y == 0 ? ((byte)65, (byte)65, (byte)65) : ((byte)50, (byte)50, (byte)50));
 
         WaitVisualComparisonResult result = WaitVisualComparisonPolicy.Compare(
-            WaitVisualComparisonPolicy.CreateLumaGrid(baseline),
+            baseline.ComparisonData,
             baseline.PixelWidth,
             baseline.PixelHeight,
             current);
@@ -52,14 +92,14 @@ public sealed class WaitVisualComparisonPolicyTests
     [Fact]
     public void CompareReturnsCandidateWhenChangedCellThresholdIsMet()
     {
-        WaitVisualFrame baseline = CreateFrame(16, 16, (_, _) => ((byte)50, (byte)50, (byte)50));
-        WaitVisualFrame current = CreateFrame(
+        WaitVisualSample baseline = CreateFrame(16, 16, (_, _) => ((byte)50, (byte)50, (byte)50));
+        WaitVisualSample current = CreateFrame(
             16,
             16,
             (x, y) => x < 16 && y == 0 ? ((byte)65, (byte)65, (byte)65) : ((byte)50, (byte)50, (byte)50));
 
         WaitVisualComparisonResult result = WaitVisualComparisonPolicy.Compare(
-            WaitVisualComparisonPolicy.CreateLumaGrid(baseline),
+            baseline.ComparisonData,
             baseline.PixelWidth,
             baseline.PixelHeight,
             current);
@@ -74,11 +114,11 @@ public sealed class WaitVisualComparisonPolicyTests
     [Fact]
     public void CompareReturnsCandidateWhenPixelSizeChanges()
     {
-        WaitVisualFrame baseline = CreateFrame(16, 16, (_, _) => ((byte)50, (byte)50, (byte)50));
-        WaitVisualFrame current = CreateFrame(17, 16, (_, _) => ((byte)50, (byte)50, (byte)50));
+        WaitVisualSample baseline = CreateFrame(16, 16, (_, _) => ((byte)50, (byte)50, (byte)50));
+        WaitVisualSample current = CreateFrame(17, 16, (_, _) => ((byte)50, (byte)50, (byte)50));
 
         WaitVisualComparisonResult result = WaitVisualComparisonPolicy.Compare(
-            WaitVisualComparisonPolicy.CreateLumaGrid(baseline),
+            baseline.ComparisonData,
             baseline.PixelWidth,
             baseline.PixelHeight,
             current);
@@ -93,11 +133,11 @@ public sealed class WaitVisualComparisonPolicyTests
     [Fact]
     public void CompareReturnsCandidateWhenAllPopulatedCellsChangeInTinyWindow()
     {
-        WaitVisualFrame baseline = CreateFrame(1, 10, (_, _) => ((byte)50, (byte)50, (byte)50));
-        WaitVisualFrame current = CreateFrame(1, 10, (_, _) => ((byte)65, (byte)65, (byte)65));
+        WaitVisualSample baseline = CreateFrame(1, 10, (_, _) => ((byte)50, (byte)50, (byte)50));
+        WaitVisualSample current = CreateFrame(1, 10, (_, _) => ((byte)65, (byte)65, (byte)65));
 
         WaitVisualComparisonResult result = WaitVisualComparisonPolicy.Compare(
-            WaitVisualComparisonPolicy.CreateLumaGrid(baseline),
+            baseline.ComparisonData,
             baseline.PixelWidth,
             baseline.PixelHeight,
             current);
@@ -108,7 +148,36 @@ public sealed class WaitVisualComparisonPolicyTests
         Assert.Equal(0.1, result.EffectiveThresholdRatio);
     }
 
-    private static WaitVisualFrame CreateFrame(
+    private static WaitVisualSample CreateFrame(
+        int pixelWidth,
+        int pixelHeight,
+        Func<int, int, (byte r, byte g, byte b)> fill)
+    {
+        byte[] pixelBytes = CreatePixelBytes(pixelWidth, pixelHeight, fill);
+        WaitVisualComparisonData comparisonData = WaitVisualComparisonDataBuilder.CreateFromBgra32Pixels(
+            pixelWidth,
+            pixelHeight,
+            pixelWidth * 4,
+            pixelBytes);
+
+        return new WaitVisualSample(
+            new WindowDescriptor(
+                Hwnd: 101,
+                Title: "Visual wait window",
+                ProcessName: "okno-tests",
+                ProcessId: 42,
+                ThreadId: 84,
+                ClassName: "OknoVisualWaitWindow",
+                Bounds: new Bounds(0, 0, pixelWidth, pixelHeight),
+                IsForeground: true,
+                IsVisible: true),
+            pixelWidth,
+            pixelHeight,
+            comparisonData,
+            EvidenceFrame: null);
+    }
+
+    private static byte[] CreatePixelBytes(
         int pixelWidth,
         int pixelHeight,
         Func<int, int, (byte r, byte g, byte b)> fill)
@@ -130,20 +199,21 @@ public sealed class WaitVisualComparisonPolicyTests
             }
         }
 
-        return new WaitVisualFrame(
-            new WindowDescriptor(
-                Hwnd: 101,
-                Title: "Visual wait window",
-                ProcessName: "okno-tests",
-                ProcessId: 42,
-                ThreadId: 84,
-                ClassName: "OknoVisualWaitWindow",
-                Bounds: new Bounds(0, 0, pixelWidth, pixelHeight),
-                IsForeground: true,
-                IsVisible: true),
+        return pixelBytes;
+    }
+
+    private static SoftwareBitmap CreateSoftwareBitmap(int pixelWidth, int pixelHeight, byte[] pixelBytes)
+    {
+        IBuffer buffer = new global::Windows.Storage.Streams.Buffer((uint)pixelBytes.Length);
+        using DataWriter writer = new();
+        writer.WriteBytes(pixelBytes);
+        buffer = writer.DetachBuffer();
+
+        return SoftwareBitmap.CreateCopyFromBuffer(
+            buffer,
+            BitmapPixelFormat.Bgra8,
             pixelWidth,
             pixelHeight,
-            rowStride,
-            pixelBytes);
+            BitmapAlphaMode.Premultiplied);
     }
 }
