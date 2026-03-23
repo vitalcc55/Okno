@@ -9,6 +9,8 @@ Okno — это Windows-native MCP runtime для локальной desktop aut
 - перечисляет и выбирает окна Windows;
 - поддерживает привязку текущей сессии к окну;
 - возвращает window/desktop capture с metadata и PNG artifact;
+- возвращает semantic UIA snapshot выбранного окна в control view;
+- умеет ждать и подтверждать live UI condition вместо хрупкого `sleep`;
 - даёт MCP tool contract для агентного вызова;
 - сохраняет структурированные диагностические артефакты;
 - предоставляет локальный control plane для build/test/smoke/investigation.
@@ -22,6 +24,8 @@ Okno — это Windows-native MCP runtime для локальной desktop aut
 5. `windows.attach_window`
 6. `okno.session_state`
 7. `windows.capture`
+8. `windows.uia_snapshot`
+9. `windows.wait`
 
 ## Реализованные фичи
 
@@ -34,6 +38,10 @@ Okno — это Windows-native MCP runtime для локальной desktop aut
 | Observe current window | Получить новый visual state выбранного окна: `structuredContent`, `image/png` и локальный PNG artifact. | `windows.list_windows(...)` -> `windows.attach_window(hwnd=<target_hwnd>)` -> `windows.capture(scope="window")` |
 | Observe explicit window | Снять окно напрямую по `hwnd`, не меняя attach-контекст. | `windows.capture(scope="window", hwnd=<target_hwnd>)` |
 | Observe desktop monitor | Получить monitor-level capture для общего обзора или межоконного перехода. | `windows.capture(scope="desktop")` |
+| Observe semantic window state | Получить UIA snapshot окна в control view: controls, иерархию, `automationId`, `controlType`, focus metadata и structured payload без image block. | `windows.uia_snapshot(hwnd=<target_hwnd>)` или `windows.attach_window(hwnd=<target_hwnd>)` -> `windows.uia_snapshot()` |
+| Wait / verify live condition | Подтвердить, что окно действительно стало active, элемент появился или исчез, текст появился, focus перешёл на нужный control или visual state реально изменился. | `windows.wait(condition=\"active_window_matches\"|\"element_exists\"|\"element_gone\"|\"text_appears\"|\"focus_is\"|\"visual_changed\", ...)` |
+
+Это уже позволяет агенту строить базовую цепочку `observe -> verify -> act-ready`, а не только делать screenshot/capture.
 
 ## Стек
 
