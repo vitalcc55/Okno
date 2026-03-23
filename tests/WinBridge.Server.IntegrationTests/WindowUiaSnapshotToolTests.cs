@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
+using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Server.Tools;
@@ -350,6 +351,7 @@ public sealed class WindowUiaSnapshotToolTests
         }
 
         FakeWindowManager windowManager = new(windows);
+        WaitResultMaterializer waitResultMaterializer = new(auditLog, options, WaitOptions.Default);
         return new TestContext(
             new WindowTools(
                 auditLog,
@@ -360,7 +362,8 @@ public sealed class WindowUiaSnapshotToolTests
                 new FakeWindowActivationService(),
                 new WindowTargetResolver(windowManager),
                 uiAutomationService,
-                new FakeWaitService()),
+                new FakeWaitService(),
+                waitResultMaterializer),
             options.EventsPath);
     }
 

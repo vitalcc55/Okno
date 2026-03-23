@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
+using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Server.Tools;
@@ -163,6 +164,38 @@ public sealed class WindowWaitToolTests
         JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal(WaitStatusValues.Failed, payload.GetProperty("status").GetString());
         Assert.Equal("Server не смог завершить wait request.", payload.GetProperty("reason").GetString());
+        string artifactPath = payload.GetProperty("artifactPath").GetString()!;
+        Assert.True(File.Exists(artifactPath), $"Wait artifact '{artifactPath}' was not created.");
+
+        string[] eventLines = await File.ReadAllLinesAsync(context.EventsPath);
+        Assert.Contains(eventLines, line => line.Contains("\"event_name\":\"wait.runtime.completed\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WaitReturnsFailedToolResultWhenTargetResolutionThrowsUnexpectedException()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        FakeWaitService waitService = new((_, _, _) => throw new NotSupportedException("Wait service не должен вызываться."));
+        TestContext context = CreateContext(
+            windows: [attachedWindow],
+            attachedWindow: attachedWindow,
+            waitService: waitService,
+            windowTargetResolver: new ThrowingWindowTargetResolver(new InvalidOperationException("secret resolution failure")));
+
+        CallToolResult result = await context.Tools.Wait(
+            condition: WaitConditionValues.ActiveWindowMatches,
+            timeoutMs: 700);
+
+        Assert.True(result.IsError);
+        Assert.Equal(0, waitService.Calls);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal(WaitStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal("Server не смог завершить wait request.", payload.GetProperty("reason").GetString());
+        string artifactPath = payload.GetProperty("artifactPath").GetString()!;
+        Assert.True(File.Exists(artifactPath), $"Wait artifact '{artifactPath}' was not created.");
+
+        string[] eventLines = await File.ReadAllLinesAsync(context.EventsPath);
+        Assert.Contains(eventLines, line => line.Contains("\"event_name\":\"wait.runtime.completed\"", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -191,7 +224,8 @@ public sealed class WindowWaitToolTests
     private static TestContext CreateContext(
         IReadOnlyList<WindowDescriptor> windows,
         WindowDescriptor? attachedWindow,
-        FakeWaitService waitService)
+        FakeWaitService waitService,
+        IWindowTargetResolver? windowTargetResolver = null)
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -213,6 +247,7 @@ public sealed class WindowWaitToolTests
         }
 
         FakeWindowManager windowManager = new(windows);
+        WaitResultMaterializer waitResultMaterializer = new(auditLog, options, WaitOptions.Default);
         return new TestContext(
             new WindowTools(
                 auditLog,
@@ -221,9 +256,10 @@ public sealed class WindowWaitToolTests
                 new NoopCaptureService(),
                 new FakeMonitorManager(),
                 new FakeWindowActivationService(),
-                new WindowTargetResolver(windowManager),
+                windowTargetResolver ?? new WindowTargetResolver(windowManager),
                 new FakeUiAutomationService(),
-                waitService),
+                waitService,
+                waitResultMaterializer),
             options.EventsPath);
     }
 
@@ -317,5 +353,20 @@ public sealed class WindowWaitToolTests
         }
 
         public bool TryFocus(long hwnd) => windows.Any(window => window.Hwnd == hwnd);
+    }
+
+    private sealed class ThrowingWindowTargetResolver(Exception exception) : IWindowTargetResolver
+    {
+        public WindowDescriptor? ResolveExplicitOrAttachedWindow(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
+            throw exception;
+
+        public WindowDescriptor? ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow) =>
+            throw exception;
+
+        public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
+            throw exception;
+
+        public WaitTargetResolution ResolveWaitTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
+            throw exception;
     }
 }

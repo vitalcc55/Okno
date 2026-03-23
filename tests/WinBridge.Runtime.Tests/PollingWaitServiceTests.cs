@@ -176,13 +176,57 @@ public sealed class PollingWaitServiceTests
     }
 
     [Fact]
-    public async Task WaitAsyncReturnsAmbiguousForMultipleUiMatches()
+    public async Task WaitAsyncKeepsElementGonePendingForMultipleLiveMatches()
     {
         string root = CreateTempDirectory();
-        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-uia-ambiguous");
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-gone-multi");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6051, isForeground: false);
+        RepeatingWaitProbe probe = new(
+            new UiAutomationWaitProbeResult
+            {
+                Window = CreateObservedWindow(targetWindow),
+                Matches =
+                [
+                    CreateElement("rid:1"),
+                    CreateElement("rid:2"),
+                ],
+            });
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            probe,
+            new WaitOptions(TimeSpan.FromMilliseconds(1)));
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(
+                WaitConditionValues.ElementGone,
+                new WaitElementSelector(Name: "LoadingSpinner"),
+                TimeoutMs: 15),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Timeout, result.Status);
+        Assert.Null(result.MatchedElement);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsDoneForStableMultipleUiMatchesWhenConditionIsElementExists()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-uia-exists-multi");
         WindowDescriptor targetWindow = CreateWindow(hwnd: 606, isForeground: false);
         SequenceWaitProbe probe = new(
         [
+            new UiAutomationWaitProbeResult
+            {
+                Window = CreateObservedWindow(targetWindow),
+                Matches =
+                [
+                    CreateElement("rid:1"),
+                    CreateElement("rid:2"),
+                ],
+            },
             new UiAutomationWaitProbeResult
             {
                 Window = CreateObservedWindow(targetWindow),
@@ -207,9 +251,53 @@ public sealed class PollingWaitServiceTests
                 TimeoutMs: 50),
             CancellationToken.None);
 
-        Assert.Equal(WaitStatusValues.Ambiguous, result.Status);
-        Assert.Equal(1, result.AttemptCount);
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.Equal(2, result.AttemptCount);
         Assert.Equal(2, result.LastObserved?.MatchCount);
+        Assert.Null(result.MatchedElement);
+    }
+
+    [Fact]
+    public async Task WaitAsyncDoesNotReturnDoneForElementExistsWhenMatchesChurnWithoutOverlap()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-uia-exists-churn");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6062, isForeground: false);
+        SequenceWaitProbe probe = new(
+        [
+            new UiAutomationWaitProbeResult
+            {
+                Window = CreateObservedWindow(targetWindow),
+                Matches =
+                [
+                    CreateElement("rid:1"),
+                ],
+            },
+            new UiAutomationWaitProbeResult
+            {
+                Window = CreateObservedWindow(targetWindow),
+                Matches =
+                [
+                    CreateElement("rid:2"),
+                ],
+            },
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            probe,
+            new WaitOptions(TimeSpan.FromMilliseconds(1)));
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(
+                WaitConditionValues.ElementExists,
+                new WaitElementSelector(Name: "LoadingSpinner"),
+                TimeoutMs: 15),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Timeout, result.Status);
     }
 
     [Fact]
@@ -716,15 +804,17 @@ public sealed class PollingWaitServiceTests
         IWaitVisualProbe? visualProbe = null)
     {
         AuditLog auditLog = new(options, TimeProvider.System);
+        WaitOptions effectiveWaitOptions = waitOptions ?? new WaitOptions(TimeSpan.FromMilliseconds(1));
+        WaitResultMaterializer resultMaterializer = new(auditLog, options, effectiveWaitOptions);
         return new PollingWaitService(
             windowManager,
             windowTargetResolver,
             probe,
             visualProbe ?? new SequenceVisualProbe([CreateVisualFrame(CreateWindow(hwnd: 499, isForeground: false), changedCells: 0)]),
-            auditLog,
             options,
             TimeProvider.System,
-            waitOptions ?? new WaitOptions(TimeSpan.FromMilliseconds(1)));
+            effectiveWaitOptions,
+            resultMaterializer);
     }
 
     private static WaitTargetResolution CreateTarget(
@@ -900,6 +990,43 @@ public sealed class PollingWaitServiceTests
     }
 
     [Fact]
+    public async Task WaitAsyncUsesWorkerCompletionTimestampForLateUiAutomationDowngrade()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-worker-completed");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 616, isForeground: false);
+        UiaElementSnapshot element = CreateElement("rid:16");
+        TimestampedWaitProbe probe = new(
+            completedAtUtc: DateTimeOffset.UtcNow.AddSeconds(1),
+            workerCompletedAtUtc: DateTimeOffset.UtcNow,
+            result: new UiAutomationWaitProbeResult
+            {
+                Window = CreateObservedWindow(targetWindow),
+                Matches = [element],
+                MatchedText = "Ready to submit",
+                MatchedTextSource = "value_pattern",
+            });
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            probe,
+            new WaitOptions(TimeSpan.FromMilliseconds(1)));
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(
+                WaitConditionValues.TextAppears,
+                new WaitElementSelector(AutomationId: "SubmitButton"),
+                ExpectedText: "Ready",
+                TimeoutMs: 50),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.Equal("value_pattern", result.LastObserved?.MatchedTextSource);
+    }
+
+    [Fact]
     public async Task WaitAsyncReturnsFailedWithArtifactWhenProbeThrowsUnexpectedException()
     {
         string root = CreateTempDirectory();
@@ -1002,6 +1129,35 @@ public sealed class PollingWaitServiceTests
                     DateTimeOffset.UtcNow.AddSeconds(1),
                     TimedOut: false,
                     DiagnosticArtifactPath: null));
+    }
+
+    private sealed class RepeatingWaitProbe(UiAutomationWaitProbeResult result) : IUiAutomationWaitProbe
+    {
+        public Task<UiAutomationWaitProbeExecutionResult> ProbeAsync(
+            WindowDescriptor targetWindow,
+            WaitRequest request,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new UiAutomationWaitProbeExecutionResult(result, DateTimeOffset.UtcNow));
+    }
+
+    private sealed class TimestampedWaitProbe(
+        DateTimeOffset completedAtUtc,
+        DateTimeOffset workerCompletedAtUtc,
+        UiAutomationWaitProbeResult result) : IUiAutomationWaitProbe
+    {
+        public Task<UiAutomationWaitProbeExecutionResult> ProbeAsync(
+            WindowDescriptor targetWindow,
+            WaitRequest request,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(
+                new UiAutomationWaitProbeExecutionResult(
+                    result,
+                    completedAtUtc,
+                    TimedOut: false,
+                    DiagnosticArtifactPath: null,
+                    WorkerCompletedAtUtc: workerCompletedAtUtc));
     }
 
     private sealed class ThrowingWaitProbe : IUiAutomationWaitProbe

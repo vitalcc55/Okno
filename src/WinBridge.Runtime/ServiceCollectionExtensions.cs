@@ -29,6 +29,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWindowActivationPlatform, Win32WindowActivationPlatform>();
         services.AddSingleton<IWindowActivationService, WindowActivationService>();
         services.AddSingleton(WaitOptions.Default);
+        services.AddSingleton<WaitResultMaterializer>();
         services.AddSingleton<IWaitService, PollingWaitService>();
         services.AddSingleton<RuntimeInfo>();
 

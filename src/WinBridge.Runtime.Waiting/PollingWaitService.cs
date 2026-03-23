@@ -13,13 +13,12 @@ public sealed class PollingWaitService(
     IWindowTargetResolver windowTargetResolver,
     IUiAutomationWaitProbe uiAutomationWaitProbe,
     IWaitVisualProbe waitVisualProbe,
-    AuditLog auditLog,
     AuditLogOptions auditLogOptions,
     TimeProvider timeProvider,
-    WaitOptions options) : IWaitService
+    WaitOptions options,
+    WaitResultMaterializer resultMaterializer) : IWaitService
 {
-    private const string RuntimeCompletedEventName = "wait.runtime.completed";
-    private readonly WaitArtifactWriter _artifactWriter = new(auditLogOptions);
+    private readonly WaitResultMaterializer _resultMaterializer = resultMaterializer;
     private readonly string _visualArtifactDirectory = Path.Combine(auditLogOptions.RunDirectory, "wait", "visual");
 
     public async Task<WaitResult> WaitAsync(
@@ -223,7 +222,7 @@ public sealed class PollingWaitService(
                         TargetFailureCode: null,
                         Reason: null,
                         Window: recheck.Window,
-                        MatchedElement: recheck.MatchedElement,
+                        MatchedElement: ResolveStableMatchedElement(request.Condition, probe, recheck),
                         LastObserved: recheck.Observation,
                         TimeoutMs: request.TimeoutMs,
                         ElapsedMs: GetElapsedMs(startTimestamp),
@@ -418,7 +417,7 @@ public sealed class PollingWaitService(
             liveTarget,
             request,
             probeExecution);
-        if (probeExecution.CompletedAtUtc > deadlineUtc && ShouldDowngradeLateUiAutomationProbeToTimeout(semanticSnapshot))
+        if (probeExecution.EffectiveCompletedAtUtc > deadlineUtc && ShouldDowngradeLateUiAutomationProbeToTimeout(semanticSnapshot))
         {
             return CreateUiAutomationTimeoutSnapshot(
                 observedAtUtc,
@@ -559,7 +558,7 @@ public sealed class PollingWaitService(
             Observation: new WaitObservation(
                 Detail: comparison.Detail,
                 VisualDifferenceRatio: comparison.DifferenceRatio,
-                VisualDifferenceThreshold: WaitVisualComparisonPolicy.DifferenceRatioThreshold,
+                VisualDifferenceThreshold: comparison.EffectiveThresholdRatio,
                 VisualBaselineArtifactPath: visualState.BaselineArtifactPath),
             Reason: null,
             TargetFailureCode: null,
@@ -678,6 +677,7 @@ public sealed class PollingWaitService(
                     Observation = probe.Observation with
                     {
                         Detail = "Visual artifact materialization превысил remaining timeout budget.",
+                        VisualCurrentArtifactPath = currentWrite.ArtifactPath,
                     },
                 },
                 Reason: null);
@@ -815,7 +815,8 @@ public sealed class PollingWaitService(
         }
 
         int matchCount = probeResult.Matches.Count;
-        UiaElementSnapshot? matchedElement = matchCount > 0 ? probeResult.Matches[0] : null;
+        UiaElementSnapshot[] candidateElements = probeResult.Matches.ToArray();
+        UiaElementSnapshot? matchedElement = matchCount == 1 ? probeResult.Matches[0] : null;
         WaitObservation observation = new(
             MatchCount: matchCount,
             MatchedText: probeResult.MatchedText,
@@ -823,30 +824,18 @@ public sealed class PollingWaitService(
             DiagnosticArtifactPath: diagnosticArtifactPath,
             Detail: CreateUiObservationDetail(request.Condition, matchCount, probeResult.MatchedTextSource));
 
-        if (matchCount > 1)
-        {
-            return new WaitProbeSnapshot(
-                Outcome: WaitProbeOutcome.Ambiguous,
-                ObservedAtUtc: observedAtUtc,
-                Window: observedWindow,
-                MatchedElement: matchedElement,
-                Observation: observation,
-                Reason: "UIA selector совпал с несколькими live elements.",
-                TargetFailureCode: null,
-                ResolvedTargetWindow: liveTarget);
-        }
-
         if (string.Equals(request.Condition, WaitConditionValues.ElementExists, StringComparison.Ordinal))
         {
             return new WaitProbeSnapshot(
-                Outcome: matchCount == 1 ? WaitProbeOutcome.Candidate : WaitProbeOutcome.Pending,
+                Outcome: matchCount >= 1 ? WaitProbeOutcome.Candidate : WaitProbeOutcome.Pending,
                 ObservedAtUtc: observedAtUtc,
                 Window: observedWindow,
                 MatchedElement: matchedElement,
                 Observation: observation,
                 Reason: null,
                 TargetFailureCode: null,
-                ResolvedTargetWindow: liveTarget);
+                ResolvedTargetWindow: liveTarget,
+                CandidateElements: candidateElements);
         }
 
         if (string.Equals(request.Condition, WaitConditionValues.ElementGone, StringComparison.Ordinal))
@@ -859,11 +848,26 @@ public sealed class PollingWaitService(
                 Observation: observation,
                 Reason: null,
                 TargetFailureCode: null,
-                ResolvedTargetWindow: liveTarget);
+                ResolvedTargetWindow: liveTarget,
+                CandidateElements: candidateElements);
         }
 
         if (string.Equals(request.Condition, WaitConditionValues.FocusIs, StringComparison.Ordinal))
         {
+            if (matchCount > 1)
+            {
+                return new WaitProbeSnapshot(
+                    Outcome: WaitProbeOutcome.Ambiguous,
+                    ObservedAtUtc: observedAtUtc,
+                    Window: observedWindow,
+                    MatchedElement: null,
+                    Observation: observation,
+                    Reason: "Focused element совпал с несколькими live candidates.",
+                    TargetFailureCode: null,
+                    ResolvedTargetWindow: liveTarget,
+                    CandidateElements: candidateElements);
+            }
+
             return new WaitProbeSnapshot(
                 Outcome: matchCount == 1 ? WaitProbeOutcome.Candidate : WaitProbeOutcome.Pending,
                 ObservedAtUtc: observedAtUtc,
@@ -872,7 +876,22 @@ public sealed class PollingWaitService(
                 Observation: observation,
                 Reason: null,
                 TargetFailureCode: null,
-                ResolvedTargetWindow: liveTarget);
+                ResolvedTargetWindow: liveTarget,
+                CandidateElements: candidateElements);
+        }
+
+        if (matchCount > 1)
+        {
+            return new WaitProbeSnapshot(
+                Outcome: WaitProbeOutcome.Ambiguous,
+                ObservedAtUtc: observedAtUtc,
+                Window: observedWindow,
+                MatchedElement: null,
+                Observation: observation,
+                Reason: "UIA selector совпал с несколькими text-qualified live elements.",
+                TargetFailureCode: null,
+                ResolvedTargetWindow: liveTarget,
+                CandidateElements: candidateElements);
         }
 
         bool textMatched = matchCount == 1 && !string.IsNullOrWhiteSpace(probeResult.MatchedTextSource);
@@ -884,7 +903,8 @@ public sealed class PollingWaitService(
             Observation: observation,
             Reason: null,
             TargetFailureCode: null,
-            ResolvedTargetWindow: liveTarget);
+            ResolvedTargetWindow: liveTarget,
+            CandidateElements: candidateElements);
     }
 
     private static bool ShouldDowngradeLateUiAutomationProbeToTimeout(WaitProbeSnapshot semanticSnapshot) =>
@@ -898,71 +918,7 @@ public sealed class PollingWaitService(
         WaitResult result,
         string? failureStage = null,
         Exception? failureException = null)
-    {
-        WaitFailureDiagnostics? failureDiagnostics = CreateFailureDiagnostics(failureStage, failureException);
-        try
-        {
-            string artifactPath = _artifactWriter.Write(request, target, options, attempts, result, startedAtUtc, failureDiagnostics);
-            WaitResult materialized = result with { ArtifactPath = artifactPath };
-            RecordRuntimeEvent(materialized, failureDiagnostics);
-            return materialized;
-        }
-        catch (WaitArtifactException exception)
-        {
-            WaitResult artifactFailure = result with
-            {
-                Status = WaitStatusValues.Failed,
-                Reason = exception.Message,
-                ArtifactPath = null,
-            };
-            RecordRuntimeEvent(artifactFailure, CreateFailureDiagnostics("artifact_write", exception.InnerException ?? exception));
-            return artifactFailure;
-        }
-    }
-
-    private void RecordRuntimeEvent(WaitResult result, WaitFailureDiagnostics? failureDiagnostics)
-    {
-        string severity = result.Status == WaitStatusValues.Done ? "info" : "warning";
-        string message = result.Status == WaitStatusValues.Done
-            ? "Runtime wait condition подтверждено."
-            : result.Reason ?? "Runtime wait завершился без подтверждения condition.";
-
-        auditLog.RecordRuntimeEvent(
-            eventName: RuntimeCompletedEventName,
-            severity: severity,
-            messageHuman: message,
-            toolName: "windows.wait",
-            outcome: result.Status,
-            windowHwnd: result.Window?.Hwnd,
-            data: new Dictionary<string, string?>
-            {
-                ["condition"] = result.Condition,
-                ["target_source"] = result.TargetSource,
-                ["target_failure_code"] = result.TargetFailureCode,
-                ["attempt_count"] = result.AttemptCount.ToString(CultureInfo.InvariantCulture),
-                ["elapsed_ms"] = result.ElapsedMs.ToString(CultureInfo.InvariantCulture),
-                ["artifact_path"] = result.ArtifactPath,
-                ["failure_stage"] = failureDiagnostics?.FailureStage,
-                ["exception_type"] = failureDiagnostics?.ExceptionType,
-                ["exception_message"] = failureDiagnostics?.ExceptionMessage,
-                ["matched_element_id"] = result.MatchedElement?.ElementId,
-                ["matched_text_source"] = result.LastObserved?.MatchedTextSource,
-                ["diagnostic_artifact_path"] = result.LastObserved?.DiagnosticArtifactPath,
-            });
-    }
-
-    private static WaitFailureDiagnostics? CreateFailureDiagnostics(string? failureStage, Exception? failureException)
-    {
-        if (string.IsNullOrWhiteSpace(failureStage) && failureException is null)
-        {
-            return null;
-        }
-
-        return new WaitFailureDiagnostics(
-            FailureStage: failureStage,
-            ExceptionType: failureException?.GetType().FullName,
-            ExceptionMessage: failureException?.Message);
-    }
+        => _resultMaterializer.Materialize(request, target, attempts, startedAtUtc, result, failureStage, failureException);
 
     private WaitResult CreateNonSuccessResult(
         string status,
@@ -1042,6 +998,11 @@ public sealed class PollingWaitService(
             return true;
         }
 
+        if (string.Equals(condition, WaitConditionValues.ElementExists, StringComparison.Ordinal))
+        {
+            return TryGetStableCandidateOverlap(firstProbe, secondProbe, out _);
+        }
+
         if (firstProbe.MatchedElement is null || secondProbe.MatchedElement is null)
         {
             return false;
@@ -1055,6 +1016,52 @@ public sealed class PollingWaitService(
         }
 
         return string.Equals(firstProbe.MatchedElement.ElementId, secondProbe.MatchedElement.ElementId, StringComparison.Ordinal);
+    }
+
+    private static UiaElementSnapshot? ResolveStableMatchedElement(string condition, WaitProbeSnapshot firstProbe, WaitProbeSnapshot secondProbe)
+    {
+        if (string.Equals(condition, WaitConditionValues.ElementExists, StringComparison.Ordinal)
+            && TryGetStableCandidateOverlap(firstProbe, secondProbe, out UiaElementSnapshot? stableCandidate))
+        {
+            return stableCandidate;
+        }
+
+        return secondProbe.MatchedElement;
+    }
+
+    private static bool TryGetStableCandidateOverlap(
+        WaitProbeSnapshot firstProbe,
+        WaitProbeSnapshot secondProbe,
+        out UiaElementSnapshot? stableCandidate)
+    {
+        stableCandidate = null;
+
+        if (firstProbe.CandidateElements.Count == 0 || secondProbe.CandidateElements.Count == 0)
+        {
+            return false;
+        }
+
+        Dictionary<string, UiaElementSnapshot> secondCandidates = secondProbe.CandidateElements
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate.ElementId))
+            .ToDictionary(candidate => candidate.ElementId!, candidate => candidate, StringComparer.Ordinal);
+        List<UiaElementSnapshot> overlap = firstProbe.CandidateElements
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate.ElementId))
+            .Select(candidate => candidate.ElementId!)
+            .Where(secondCandidates.ContainsKey)
+            .Distinct(StringComparer.Ordinal)
+            .Select(elementId => secondCandidates[elementId])
+            .ToList();
+        if (overlap.Count == 0)
+        {
+            return false;
+        }
+
+        if (overlap.Count == 1)
+        {
+            stableCandidate = overlap[0];
+        }
+
+        return true;
     }
 
     private async Task<UiAutomationProbeExecutionResult> ExecuteUiAutomationProbeWithinDeadlineAsync(
@@ -1221,6 +1228,8 @@ public sealed class PollingWaitService(
     {
         public DateTimeOffset CompletedAtUtc => Result.CompletedAtUtc;
 
+        public DateTimeOffset EffectiveCompletedAtUtc => Result.WorkerCompletedAtUtc ?? Result.CompletedAtUtc;
+
         public string? DiagnosticArtifactPath => Result.DiagnosticArtifactPath;
     }
 
@@ -1258,5 +1267,9 @@ public sealed class PollingWaitService(
         string? TargetFailureCode,
         WindowDescriptor? ResolvedTargetWindow,
         WaitVisualState? VisualState = null,
-        WaitVisualFrame? VisualFrame = null);
+        WaitVisualFrame? VisualFrame = null,
+        IReadOnlyList<UiaElementSnapshot>? CandidateElements = null)
+    {
+        public IReadOnlyList<UiaElementSnapshot> CandidateElements { get; } = CandidateElements ?? [];
+    }
 }

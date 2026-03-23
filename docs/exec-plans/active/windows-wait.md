@@ -256,6 +256,7 @@ Contract rules:
 - закрыты `active_window_matches`, `element_exists`, `element_gone`, `text_appears` без public handler rollout;
 - wait boundary теперь пишет JSON evidence artifact в `artifacts/diagnostics/<run_id>/wait/` и capability-specific runtime audit event `wait.runtime.completed`;
 - UIA slice получил минимальный live wait probe seam за process-isolated worker boundary с явным per-probe timeout budget от `PollingWaitService`, `ElementFromHandle`, `ControlViewCondition`, selector search и canonical text fallback `ValuePattern -> TextPattern -> Name`, а late runtime failures больше не маскируются под `timeout`;
+- condition-specific UIA semantics больше не смешивают raw selector cardinality между разными waits: `element_exists` подтверждается только при непустом identity-overlap между candidate и recheck, `element_gone` продолжает polling пока live matches остаются, `text_appears` считает только text-qualified candidates, а ambiguous UIA outcome больше не публикует произвольный `matchedElement`;
 - lifecycle `windows.wait` по-прежнему остаётся `Deferred/unsupported`, а Package C/D не затронуты.
 
 ### Package C — focus + visual hardening
@@ -280,7 +281,7 @@ Contract rules:
 - `visual_changed` добавлен в runtime wait path через window-scoped capture-backed compare без per-tick PNG bloat: visual probe больше не кодирует PNG и не тащит raw frame в обычный `windows.capture`, baseline и final PNG materialization теперь проходят через один общий remaining-budget write path, per-tick сравнение идёт только в памяти, а raw baseline frame больше не удерживается между poll-итерациями;
 - threshold/noise semantics зафиксированы в коде и тестах: grayscale grid `16x16`, per-cell luma delta `>= 12`, geometry-change shortcut, effective success threshold вычисляется от populated cells с базовым ratio `16/256`, `WaitOptions` валидирует строго положительный poll interval, а `done` подтверждается только после гарантированного положительного confirmation gap и второго подряд candidate against the same baseline;
 - evidence contract расширен ровно до runtime-only visual fields в wait artifact (`visual_difference_ratio`, `visual_difference_threshold`, `visual_baseline_artifact_path`, `visual_current_artifact_path`) без смены `wait.runtime.completed` event schema;
-- visual artifact write path теперь целиком нормализует filesystem/encode failures в доменный `failed` result, а late UIA probe downgrade снова опирается на host-side completion timestamp вместо worker-internal completion time;
+- visual artifact write path теперь целиком нормализует filesystem/encode failures в доменный `failed` result, late UIA probe downgrade опирается на worker-side completion timestamp, wait-specific visual probe больше не наследует скрытый `3s` capture cap, `visual_difference_threshold` репортит effective comparison threshold, а late-written current PNG path не теряется на timeout path;
 - lifecycle `windows.wait` по-прежнему остаётся `Deferred/unsupported`, Package D не затронут.
 
 ### Package D — server rollout + smoke + docs sync
@@ -301,7 +302,7 @@ Contract rules:
 Фактически закрыто в репозитории:
 
 - `WindowTools.Wait(...)` заменил legacy deferred stub и теперь публикует final public schema `condition + selector + expectedText + hwnd + timeoutMs` без compatibility shim вокруг `until`;
-- public handler резолвит target только через existing `ResolveWaitTarget(...)`, вызывает canonical `IWaitService` и возвращает прямой `WaitResult` как `structuredContent` + один `TextContentBlock`;
+- public handler резолвит target только через existing `ResolveWaitTarget(...)`, а tool-boundary failures больше не обходят canonical wait evidence path: terminal `failed` outcome теперь всё равно пишет wait artifact и `wait.runtime.completed`, после чего публикуется как прямой `WaitResult` в `structuredContent` + один `TextContentBlock`;
 - `status -> isError` выровнен на MCP boundary: только `done` идёт с `isError = false`, а `timeout`, `ambiguous` и `failed` возвращаются как tool-level errors внутри `CallToolResult`;
 - `ToolContractManifest`, `okno.contract`, exporter и `tools/list` больше не расходятся: `windows.wait` переведён в `Implemented`, включён в `SmokeRequired` и публикуется с final annotations;
 - добавлены L2 integration tests на public handler, tools/list schema/annotations, sanitization и target policy handoff;

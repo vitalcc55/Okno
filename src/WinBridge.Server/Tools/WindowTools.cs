@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -35,6 +36,7 @@ public sealed class WindowTools
     private readonly ISessionManager _sessionManager;
     private readonly IUiAutomationService _uiAutomationService;
     private readonly IWaitService _waitService;
+    private readonly WaitResultMaterializer _waitResultMaterializer;
     private readonly IWindowActivationService _windowActivationService;
     private readonly IWindowManager _windowManager;
     private readonly IWindowTargetResolver _windowTargetResolver;
@@ -48,7 +50,8 @@ public sealed class WindowTools
         IWindowActivationService windowActivationService,
         IWindowTargetResolver windowTargetResolver,
         IUiAutomationService uiAutomationService,
-        IWaitService waitService)
+        IWaitService waitService,
+        WaitResultMaterializer waitResultMaterializer)
     {
         _auditLog = auditLog;
         _captureService = captureService;
@@ -56,6 +59,7 @@ public sealed class WindowTools
         _sessionManager = sessionManager;
         _uiAutomationService = uiAutomationService;
         _waitService = waitService;
+        _waitResultMaterializer = waitResultMaterializer;
         _windowActivationService = windowActivationService;
         _windowManager = windowManager;
         _windowTargetResolver = windowTargetResolver;
@@ -539,12 +543,15 @@ public sealed class WindowTools
             new { condition, selector, expectedText, hwnd, timeoutMs },
             async invocation =>
             {
+                long startTimestamp = Stopwatch.GetTimestamp();
+                DateTimeOffset startedAtUtc = DateTimeOffset.UtcNow;
                 WaitRequest request = new(condition, selector, expectedText, timeoutMs);
                 WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
-                WaitTargetResolution resolution = _windowTargetResolver.ResolveWaitTarget(hwnd, attachedWindow);
+                WaitTargetResolution resolution = new();
 
                 try
                 {
+                    resolution = _windowTargetResolver.ResolveWaitTarget(hwnd, attachedWindow);
                     WaitResult runtimeResult = await _waitService
                         .WaitAsync(resolution, request, cancellationToken)
                         .ConfigureAwait(false);
@@ -565,13 +572,20 @@ public sealed class WindowTools
                 catch (Exception exception)
                 {
                     const string reason = "Server не смог завершить wait request.";
-                    WaitResult failedResult = new(
-                        Status: WaitStatusValues.Failed,
-                        Condition: condition,
-                        TargetSource: resolution.Source,
-                        TargetFailureCode: resolution.FailureCode,
-                        Reason: reason,
-                        TimeoutMs: timeoutMs);
+                    WaitResult failedResult = _waitResultMaterializer.MaterializeTerminalFailure(
+                        request: request,
+                        target: resolution,
+                        startedAtUtc: startedAtUtc,
+                        result: new WaitResult(
+                            Status: WaitStatusValues.Failed,
+                            Condition: condition,
+                            TargetSource: resolution.Source,
+                            TargetFailureCode: resolution.FailureCode,
+                            Reason: reason,
+                            TimeoutMs: timeoutMs,
+                            ElapsedMs: (int)Math.Round(Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds, MidpointRounding.AwayFromZero)),
+                        failureStage: "tool_boundary_unhandled",
+                        failureException: exception);
                     invocation.CompleteSanitizedFailure(
                         reason,
                         exception,

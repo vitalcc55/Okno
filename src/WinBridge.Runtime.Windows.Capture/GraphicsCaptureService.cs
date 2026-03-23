@@ -127,15 +127,12 @@ public sealed class GraphicsCaptureService(
             throw new CaptureOperationException("Visual wait probe не поддерживает desktop-scoped fallback path.");
         }
 
-        using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(WindowsGraphicsCaptureTimeout);
-
         try
         {
             WgcCaptureOutcome outcome = await CaptureSoftwareBitmapAsync(
                 resolvedTarget,
                 cancellationToken,
-                timeoutSource.Token).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
             CaptureResolvedTarget authoritativeTarget = BuildAuthoritativeWgcTarget(
                 request,
                 resolvedTarget,

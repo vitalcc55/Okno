@@ -68,7 +68,9 @@ internal static class WaitVisualComparisonPolicy
             return new(
                 IsCandidate: true,
                 ChangedCellCount: TotalCellCount,
+                EffectiveThresholdCount: ChangedCellThreshold,
                 DifferenceRatio: 1.0,
+                EffectiveThresholdRatio: DifferenceRatioThreshold,
                 PixelSizeChanged: true,
                 Detail: "Размер window capture изменился относительно baseline.");
         }
@@ -95,7 +97,9 @@ internal static class WaitVisualComparisonPolicy
         return new(
             IsCandidate: isCandidate,
             ChangedCellCount: changedCellCount,
+            EffectiveThresholdCount: changedCellThreshold,
             DifferenceRatio: differenceRatio,
+            EffectiveThresholdRatio: populatedCellCount == 0 ? DifferenceRatioThreshold : (double)changedCellThreshold / populatedCellCount,
             PixelSizeChanged: false,
             Detail: detail);
     }
@@ -104,7 +108,9 @@ internal static class WaitVisualComparisonPolicy
 internal sealed record WaitVisualComparisonResult(
     bool IsCandidate,
     int ChangedCellCount,
+    int EffectiveThresholdCount,
     double DifferenceRatio,
+    double EffectiveThresholdRatio,
     bool PixelSizeChanged,
     string Detail);
 

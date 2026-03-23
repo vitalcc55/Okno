@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-23 13:07
+
+- Review-driven hardening для shipped `windows.wait` закрыл подтверждённые семантические дыры без смены публичной schema: UIA multi-match classification теперь condition-specific (`element_exists` требует identity-overlap между candidate и recheck, `element_gone` продолжает polling пока matches остаются, `text_appears` считает только text-qualified candidates, а ambiguous result больше не публикует произвольный `matchedElement`), late UIA downgrade использует `WorkerCompletedAtUtc`, wait-specific visual probe больше не наследует скрытый `3s` capture cap и репортит effective threshold/evidence-path честно, а tool-boundary unexpected failures в `WindowTools.Wait(...)` теперь проходят через тот же canonical wait artifact + `wait.runtime.completed`, а не через голый sanitized handler path; новые runtime/integration tests закрепляют эти контракты регрессионно.
+
 ## 2026-03-23 10:02
 
 - В локальный `AGENTS.md` добавлен точечный operational guardrail для verification loop: в этом репозитории нельзя параллелить `dotnet build/test`, `scripts/smoke.ps1`, `scripts/refresh-generated-docs.ps1`, `scripts/ci.ps1` и `scripts/codex/verify.ps1` в одном worktree, потому что они делят `bin/obj`, локальные runtime/fixture процессы и generated artifacts; canonical порядок для smoke/docs refresh теперь закреплён явно как строго последовательный.

@@ -64,14 +64,12 @@ internal sealed class Win32UiAutomationWaitProbe : IUiAutomationWaitProbe
                 return ProbeFocusedElement(rootNode, cacheRequest, observedWindow, request.Selector!, cancellationToken);
             }
 
-            List<UiaElementSnapshot> matches = [];
-            string? matchedText = null;
-            string? matchedTextSource = null;
+            UiAutomationWaitMatchAccumulator matches = new(request.Condition, request.ExpectedText);
 
             Stack<TraversalNode> pending = new();
             pending.Push(new(rootNode, null, 0, 0, "0"));
 
-            while (pending.Count > 0 && matches.Count < 2)
+            while (pending.Count > 0 && matches.ShouldContinueTraversal)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -82,22 +80,10 @@ internal sealed class Win32UiAutomationWaitProbe : IUiAutomationWaitProbe
                 if (SelectorMatches(data, request.Selector))
                 {
                     UiaElementSnapshot snapshot = CreateLeafSnapshot(data, elementId, current.ParentElementId, current.Depth, current.Ordinal);
-                    matches.Add(snapshot);
-
-                    if (string.Equals(request.Condition, WaitConditionValues.TextAppears, StringComparison.Ordinal)
-                        && request.ExpectedText is string expectedText)
-                    {
-                        WaitTextCandidateMatch? textMatch = UiAutomationWaitTextCandidateResolver.Match(
-                            expectedText,
-                            TryGetValueText(current.Node.Element),
-                            TryGetTextPatternText(current.Node.Element),
-                            snapshot.Name);
-                        if (textMatch is not null)
-                        {
-                            matchedText = textMatch.Text;
-                            matchedTextSource = textMatch.Source;
-                        }
-                    }
+                    matches.AddSelectorHit(
+                        snapshot,
+                        TryGetValueText(current.Node.Element),
+                        TryGetTextPatternText(current.Node.Element));
                 }
 
                 List<TraversalNode> children = [];
@@ -120,13 +106,7 @@ internal sealed class Win32UiAutomationWaitProbe : IUiAutomationWaitProbe
                 }
             }
 
-            return new UiAutomationWaitProbeResult
-            {
-                Window = observedWindow,
-                Matches = matches.ToArray(),
-                MatchedText = matches.Count == 1 ? matchedText : null,
-                MatchedTextSource = matches.Count == 1 ? matchedTextSource : null,
-            };
+            return matches.Build(observedWindow);
         }
         catch (InvalidOperationException)
         {

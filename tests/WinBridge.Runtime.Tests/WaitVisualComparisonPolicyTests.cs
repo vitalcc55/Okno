@@ -44,7 +44,9 @@ public sealed class WaitVisualComparisonPolicyTests
 
         Assert.False(result.IsCandidate);
         Assert.Equal(15, result.ChangedCellCount);
+        Assert.Equal(16, result.EffectiveThresholdCount);
         Assert.Equal(15d / WaitVisualComparisonPolicy.TotalCellCount, result.DifferenceRatio);
+        Assert.Equal(WaitVisualComparisonPolicy.DifferenceRatioThreshold, result.EffectiveThresholdRatio);
     }
 
     [Fact]
@@ -64,7 +66,9 @@ public sealed class WaitVisualComparisonPolicyTests
 
         Assert.True(result.IsCandidate);
         Assert.Equal(16, result.ChangedCellCount);
+        Assert.Equal(16, result.EffectiveThresholdCount);
         Assert.Equal(WaitVisualComparisonPolicy.DifferenceRatioThreshold, result.DifferenceRatio);
+        Assert.Equal(WaitVisualComparisonPolicy.DifferenceRatioThreshold, result.EffectiveThresholdRatio);
     }
 
     [Fact]
@@ -81,7 +85,9 @@ public sealed class WaitVisualComparisonPolicyTests
 
         Assert.True(result.IsCandidate);
         Assert.True(result.PixelSizeChanged);
+        Assert.Equal(WaitVisualComparisonPolicy.ChangedCellThreshold, result.EffectiveThresholdCount);
         Assert.Equal(1.0, result.DifferenceRatio);
+        Assert.Equal(WaitVisualComparisonPolicy.DifferenceRatioThreshold, result.EffectiveThresholdRatio);
     }
 
     [Fact]
@@ -98,6 +104,8 @@ public sealed class WaitVisualComparisonPolicyTests
 
         Assert.True(result.IsCandidate);
         Assert.Equal(1.0, result.DifferenceRatio);
+        Assert.Equal(1, result.EffectiveThresholdCount);
+        Assert.Equal(0.1, result.EffectiveThresholdRatio);
     }
 
     private static WaitVisualFrame CreateFrame(

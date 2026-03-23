@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
+using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Windows.Shell;
@@ -366,6 +367,7 @@ public sealed class WindowCaptureToolTests
         }
 
         FakeMonitorManager effectiveMonitorManager = monitorManager ?? new FakeMonitorManager();
+        WaitResultMaterializer waitResultMaterializer = new(auditLog, options, WaitOptions.Default);
 
         return new WindowTools(
             auditLog,
@@ -376,7 +378,8 @@ public sealed class WindowCaptureToolTests
             new FakeWindowActivationService(),
             new WindowTargetResolver(new FakeWindowManager(windows)),
             new FakeUiAutomationService(),
-            new FakeWaitService());
+            new FakeWaitService(),
+            waitResultMaterializer);
     }
 
     private static WindowDescriptor CreateWindow(
