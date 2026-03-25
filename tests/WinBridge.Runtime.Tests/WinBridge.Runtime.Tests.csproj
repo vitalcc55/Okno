@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.UIA.Hosting\WinBridge.Runtime.Windows.UIA.Hosting.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Contracts\WinBridge.Runtime.Contracts.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Diagnostics\WinBridge.Runtime.Diagnostics.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Guards\WinBridge.Runtime.Guards.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime\WinBridge.Runtime.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Session\WinBridge.Runtime.Session.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Tooling\WinBridge.Runtime.Tooling.csproj" />

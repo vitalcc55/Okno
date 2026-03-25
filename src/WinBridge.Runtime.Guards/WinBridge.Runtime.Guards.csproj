@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <ProjectReference Include="..\WinBridge.Runtime.Contracts\WinBridge.Runtime.Contracts.csproj" />
+    <ProjectReference Include="..\WinBridge.Runtime.Windows.Display\WinBridge.Runtime.Windows.Display.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+
+</Project>

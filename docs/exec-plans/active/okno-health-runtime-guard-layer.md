@@ -337,6 +337,12 @@ DTO invariants:
 
 - health snapshot различает `warning` и `blocked` на основе authoritative probes, а не через hardcoded prose.
 
+Текущий статус:
+
+- добавлен отдельный `WinBridge.Runtime.Guards` project с `IRuntimeGuardService`, `RuntimeGuardPolicy` и win32 probe-platform;
+- `AdminTools.Health()` переведён на guard service и больше не строит synthetic readiness snapshot вручную;
+- raw probes и mapping для `desktop_session`, `session_alignment`, `integrity`, `uiaccess` реализованы, а observe/deferred capability lists перенесены в guard-layer без rollout Package C.
+
 Особое внимание после Package A:
 
 - вынести domain/capability lists и synthetic `unknown` / `blocked` builders из `AdminTools` в единый guard source of truth;
@@ -355,6 +361,12 @@ DTO invariants:
 Критерий завершения:
 
 - `okno.health` становится machine-usable readiness snapshot, а существующие health consumers не теряют базовый summary.
+
+Особое внимание после Package B:
+
+- использовать `IRuntimeGuardService` как единственный source of truth и не возвращать synthetic mapping обратно в `AdminTools`;
+- заменить временные `assessment_not_implemented` capability-reasons для `capture`, `uia`, `wait` на probe-backed capability summaries, а не наслаивать вторую логику поверх domain statuses;
+- строить `input`, `clipboard` и `launch` summaries от domain statuses и уже существующих runtime facts консервативно, без hidden enforcement и без premature artifact/event rollout.
 
 ### Package D - tests + docs sync
 
@@ -415,7 +427,7 @@ DTO invariants:
 - [x] Для каждого domain определён authoritative probe source.
 - [x] Явно разведены `warning` и `blocked`.
 - [x] Решено, materialize-ится ли отдельный health artifact и runtime event.
-- [ ] `AdminTools.Health()` переведён на единый guard service.
+- [x] `AdminTools.Health()` переведён на единый guard service.
 - [x] `ToolDescriptions.OknoHealthTool` отражает readiness snapshot, а не старое узкое описание.
 - [ ] L1/L2/L3 test ladder покрывает domains, capability derivation и public payload.
 - [ ] Docs sync включает roadmap, observability, generated interfaces и changelog.

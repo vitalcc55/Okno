@@ -43,6 +43,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.Runtime.Windows.U
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.Runtime.Windows.UIA.Hosting", "src\WinBridge.Runtime.Windows.UIA.Hosting\WinBridge.Runtime.Windows.UIA.Hosting.csproj", "{A6F9FC6F-A3F4-4F5C-85C3-1D7C7222177C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.Runtime.Guards", "src\WinBridge.Runtime.Guards\WinBridge.Runtime.Guards.csproj", "{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -269,6 +271,18 @@ Global
 		{A6F9FC6F-A3F4-4F5C-85C3-1D7C7222177C}.Release|x64.Build.0 = Release|Any CPU
 		{A6F9FC6F-A3F4-4F5C-85C3-1D7C7222177C}.Release|x86.ActiveCfg = Release|Any CPU
 		{A6F9FC6F-A3F4-4F5C-85C3-1D7C7222177C}.Release|x86.Build.0 = Release|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Debug|x64.Build.0 = Debug|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Debug|x86.Build.0 = Debug|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Release|x64.ActiveCfg = Release|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Release|x64.Build.0 = Release|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Release|x86.ActiveCfg = Release|Any CPU
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -292,5 +306,6 @@ Global
 		{67AA2728-519B-4326-BDE7-1C3A857C6A32} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{2F94352B-359F-4293-81ED-9B7599E53C37} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{A6F9FC6F-A3F4-4F5C-85C3-1D7C7222177C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{8B87FC9F-936A-453A-B422-7E19CE1BEE2F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

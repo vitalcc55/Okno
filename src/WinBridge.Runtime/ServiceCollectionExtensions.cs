@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Guards;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
@@ -17,6 +18,7 @@ public static class ServiceCollectionExtensions
         string environmentName)
     {
         services.AddWinBridgeRuntimeDiagnostics(contentRootPath, environmentName);
+        services.AddWinBridgeRuntimeGuards();
         services.AddSingleton(sp => new SessionContext(sp.GetRequiredService<AuditLogOptions>().RunId));
         services.AddSingleton<ISessionManager, InMemorySessionManager>();
         services.AddSingleton<IMonitorManager, Win32MonitorManager>();
