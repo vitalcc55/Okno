@@ -3,7 +3,7 @@ namespace WinBridge.Runtime.Tooling;
 public static class ToolContractManifest
 {
     public static string ContractNotes { get; } =
-        "Okno bootstrap runtime экспортирует observe/window slice, public windows.uia_snapshot, public windows.wait и честные deferred action tools.";
+        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait и честные deferred action tools без hidden enforcement.";
 
     public static IReadOnlyList<ToolDescriptor> All { get; } =
         new[]

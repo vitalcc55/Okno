@@ -2,6 +2,14 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-25 11:05
+
+- `okno.health` расширен до contract-first readiness summary без runtime probes и hidden enforcement: `HealthResult` теперь публикует typed `Readiness`, `BlockedCapabilities` и `Warnings`, а live wording в `ToolDescriptions` и `ToolContractManifest` выровнен под conservative readiness/guard snapshot для shipped observe paths и ближайших deferred `input` / `clipboard` / `launch` capability.
+
+## 2026-03-23 18:52
+
+- Добавлен новый active exec-plan `okno.health + runtime guard layer`, который фиксирует следующий cross-cutting workstream после shipped `windows.uia_snapshot` и `windows.wait` как расширение существующего `okno.health`, а не как новый isolated tool slice: в плане зафиксированы boundary/non-goals, reporting-first модель readiness/guard domains, file-level integration map, official Windows/MCP constraints, delivery packages, test ladder, docs sync и implementation checklist для будущего authoritative runtime readiness snapshot.
+
 ## 2026-03-23 15:27
 
 - `visual_changed` переведён на целевую модель `detection + best-effort evidence`: public flat contract теперь публикует `lastObserved.visualEvidenceStatus` (`materialized | timeout | failed | skipped`), baseline/current PNG paths стали optional и больше не определяют success-path, visual probe разбит на lightweight comparison sample и отдельный evidence frame, compare path materialize-ит fingerprint только внутри visual probe через direct `LockBuffer`/`IMemoryBufferByteAccess` path с официальным WinRT ABI contract без copy-based fallback в latency-sensitive poll loop, PNG evidence кодируется через WinRT `BitmapEncoder` c budget-aware async bridge, orchestration теперь делает wall-clock post-budget downgrade для late evidence completion, а `wait.runtime.completed` дополнительно пишет visual baseline/current artifact paths вместе со статусом evidence; runtime/integration tests, smoke и source-of-truth docs синхронизированы с новой semantics.

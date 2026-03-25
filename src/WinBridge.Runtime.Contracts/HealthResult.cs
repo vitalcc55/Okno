@@ -10,4 +10,7 @@ public sealed record HealthResult(
     int ActiveMonitorCount,
     DisplayIdentityDiagnostics DisplayIdentity,
     IReadOnlyList<string> ImplementedTools,
-    IReadOnlyDictionary<string, string> DeferredTools);
+    IReadOnlyDictionary<string, string> DeferredTools,
+    RuntimeReadinessSnapshot Readiness,
+    IReadOnlyList<CapabilityGuardSummary> BlockedCapabilities,
+    IReadOnlyList<GuardReason> Warnings);

@@ -25,7 +25,7 @@
 
 | Tool | Safety class | Notes |
 | --- | --- | --- |
-| `okno.health` | `read_only` | Возвращает сводку состояния runtime: transport, artifacts, implemented tools, active monitor count и состояние display identity path. |
+| `okno.health` | `read_only` | Возвращает сводку состояния runtime и консервативный readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains и capability status без hidden enforcement. |
 | `okno.contract` | `read_only` | Возвращает текущий MCP contract runtime: implemented tools, deferred tools и notes без вызова side effects. |
 | `okno.session_state` | `read_only` | Возвращает текущий session snapshot, включая attached window и mode без изменения session state. |
 | `windows.list_monitors` | `read_only` | Возвращает active monitor targets текущей desktop session вместе с diagnostics display identity path. Используй перед explicit desktop capture по monitorId. |

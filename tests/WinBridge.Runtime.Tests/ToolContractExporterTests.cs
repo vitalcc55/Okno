@@ -6,6 +6,28 @@ namespace WinBridge.Runtime.Tests;
 public sealed class ToolContractExporterTests
 {
     [Fact]
+    public void CommittedProjectInterfacesStayInSyncWithExporter()
+    {
+        string root = CreateTempDirectory();
+        string jsonPath = Path.Combine(root, "project-interfaces.json");
+        string markdownPath = Path.Combine(root, "project-interfaces.md");
+
+        ToolContractExporter.ExportJson(jsonPath);
+        ToolContractExporter.ExportMarkdown(markdownPath);
+
+        string repoRoot = GetRepositoryRoot();
+        string committedJsonPath = Path.Combine(repoRoot, "docs", "generated", "project-interfaces.json");
+        string committedMarkdownPath = Path.Combine(repoRoot, "docs", "generated", "project-interfaces.md");
+
+        Assert.Equal(
+            NormalizeLineEndings(File.ReadAllText(jsonPath)),
+            NormalizeLineEndings(File.ReadAllText(committedJsonPath)));
+        Assert.Equal(
+            NormalizeLineEndings(File.ReadAllText(markdownPath)),
+            NormalizeLineEndings(File.ReadAllText(committedMarkdownPath)));
+    }
+
+    [Fact]
     public void ExportJsonContainsAllManifestTools()
     {
         string root = CreateTempDirectory();
@@ -115,4 +137,29 @@ public sealed class ToolContractExporterTests
         Directory.CreateDirectory(path);
         return path;
     }
+
+    private static string GetRepositoryRoot()
+    {
+        string? root = Environment.GetEnvironmentVariable("WINBRIDGE_REPO_ROOT");
+        if (!string.IsNullOrWhiteSpace(root))
+        {
+            return root;
+        }
+
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "WinBridge.sln")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new InvalidOperationException("Не удалось вычислить корень репозитория.");
+    }
+
+    private static string NormalizeLineEndings(string content) =>
+        content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 }

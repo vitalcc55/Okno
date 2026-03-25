@@ -2,7 +2,7 @@ namespace WinBridge.Runtime.Tooling;
 
 public static class ToolDescriptions
 {
-    public const string OknoHealthTool = "Возвращает сводку состояния runtime: transport, artifacts, implemented tools, active monitor count и состояние display identity path.";
+    public const string OknoHealthTool = "Возвращает сводку состояния runtime и консервативный readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains и capability status без hidden enforcement.";
 
     public const string OknoContractTool = "Возвращает текущий MCP contract runtime: implemented tools, deferred tools и notes без вызова side effects.";
 

@@ -19,7 +19,7 @@
         "capability": "okno.admin",
         "lifecycle": "implemented",
         "safety_class": "read_only",
-        "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0441\u0432\u043E\u0434\u043A\u0443 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F runtime: transport, artifacts, implemented tools, active monitor count \u0438 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435 display identity path.",
+        "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0441\u0432\u043E\u0434\u043A\u0443 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F runtime \u0438 \u043A\u043E\u043D\u0441\u0435\u0440\u0432\u0430\u0442\u0438\u0432\u043D\u044B\u0439 readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains \u0438 capability status \u0431\u0435\u0437 hidden enforcement.",
         "planned_phase": null,
         "suggested_alternative": null,
         "smoke_required": true
