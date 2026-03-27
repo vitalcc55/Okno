@@ -60,13 +60,13 @@ public sealed class AdminToolTests
             ],
             result.Readiness.Capabilities.Select(item => item.Capability).ToArray());
         Assert.Equal(
-            GuardStatusValues.Unknown,
+            GuardStatusValues.Ready,
             Assert.Single(result.Readiness.Capabilities, item => item.Capability == CapabilitySummaryValues.Capture).Status);
         Assert.Equal(
-            GuardStatusValues.Unknown,
+            GuardStatusValues.Degraded,
             Assert.Single(result.Readiness.Capabilities, item => item.Capability == CapabilitySummaryValues.Uia).Status);
         Assert.Equal(
-            GuardStatusValues.Unknown,
+            GuardStatusValues.Degraded,
             Assert.Single(result.Readiness.Capabilities, item => item.Capability == CapabilitySummaryValues.Wait).Status);
         Assert.Equal(
             GuardStatusValues.Blocked,
@@ -86,10 +86,20 @@ public sealed class AdminToolTests
             ],
             result.BlockedCapabilities.Select(item => item.Capability).ToArray());
 
-        GuardReason warning = Assert.Single(result.Warnings);
-        Assert.Equal(GuardReasonCodeValues.IntegrityRequiresEqualOrLowerTarget, warning.Code);
-        Assert.Equal(GuardSeverityValues.Warning, warning.Severity);
-        Assert.Equal(ReadinessDomainValues.Integrity, warning.Source);
+        Assert.Equal(
+            [
+                GuardReasonCodeValues.IntegrityRequiresEqualOrLowerTarget,
+                GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified,
+                GuardReasonCodeValues.WaitShellVisualAvailable,
+            ],
+            result.Warnings.Select(item => item.Code).ToArray());
+        Assert.Equal(
+            [
+                ReadinessDomainValues.Integrity,
+                CapabilitySummaryValues.Uia,
+                CapabilitySummaryValues.Wait,
+            ],
+            result.Warnings.Select(item => item.Source).ToArray());
     }
 
     [Fact]
@@ -184,35 +194,45 @@ public sealed class AdminToolTests
             [
                 new(
                     Capability: CapabilitySummaryValues.Capture,
-                    Status: GuardStatusValues.Unknown,
+                    Status: GuardStatusValues.Ready,
                     Reasons:
                     [
                         new(
-                            Code: GuardReasonCodeValues.AssessmentNotImplemented,
-                            Severity: GuardSeverityValues.Warning,
-                            MessageHuman: "Probe-backed capability derivation для этого capability будет добавлена в Package C; статус остаётся консервативно unknown.",
+                            Code: GuardReasonCodeValues.CaptureReady,
+                            Severity: GuardSeverityValues.Info,
+                            MessageHuman: "Runtime может честно обещать current shipped capture semantics: strong display identity и Windows Graphics Capture доступны.",
                             Source: CapabilitySummaryValues.Capture)
                     ]),
                 new(
                     Capability: CapabilitySummaryValues.Uia,
-                    Status: GuardStatusValues.Unknown,
+                    Status: GuardStatusValues.Degraded,
                     Reasons:
                     [
                         new(
-                            Code: GuardReasonCodeValues.AssessmentNotImplemented,
+                            Code: GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified,
                             Severity: GuardSeverityValues.Warning,
-                            MessageHuman: "Probe-backed capability derivation для этого capability будет добавлена в Package C; статус остаётся консервативно unknown.",
+                            MessageHuman: "Worker launch spec resolved, но runtime startability UIA boundary не подтверждена в reporting-first health path.",
+                            Source: CapabilitySummaryValues.Uia),
+                        new(
+                            Code: GuardReasonCodeValues.UiaObserveScopeLimited,
+                            Severity: GuardSeverityValues.Info,
+                            MessageHuman: "Current UIA semantics ограничены window-scoped ElementFromHandle/control-view path и не обещают cross-user Run as reachability.",
                             Source: CapabilitySummaryValues.Uia)
                     ]),
                 new(
                     Capability: CapabilitySummaryValues.Wait,
-                    Status: GuardStatusValues.Unknown,
+                    Status: GuardStatusValues.Degraded,
                     Reasons:
                     [
                         new(
-                            Code: GuardReasonCodeValues.AssessmentNotImplemented,
+                            Code: GuardReasonCodeValues.WaitShellVisualAvailable,
                             Severity: GuardSeverityValues.Warning,
-                            MessageHuman: "Probe-backed capability derivation для этого capability будет добавлена в Package C; статус остаётся консервативно unknown.",
+                            MessageHuman: "windows.wait может честно обещать active_window_matches и visual_changed.",
+                            Source: CapabilitySummaryValues.Wait),
+                        new(
+                            Code: GuardReasonCodeValues.WaitUiaBranchLaunchabilityUnverified,
+                            Severity: GuardSeverityValues.Info,
+                            MessageHuman: "UIA worker boundary только configured: launch spec resolved, но startability не подтверждена, поэтому UIA-based wait conditions не advertised как usable subset.",
                             Source: CapabilitySummaryValues.Wait)
                     ]),
                 new(
@@ -224,6 +244,11 @@ public sealed class AdminToolTests
                             Code: GuardReasonCodeValues.CapabilityNotImplemented,
                             Severity: GuardSeverityValues.Blocked,
                             MessageHuman: "Эта capability пока не реализована в текущем runtime surface и не может считаться готовой.",
+                            Source: CapabilitySummaryValues.Input),
+                        new(
+                            Code: GuardReasonCodeValues.InputIntegrityLimited,
+                            Severity: GuardSeverityValues.Blocked,
+                            MessageHuman: "Future input path ограничен текущим integrity profile. Текущий token имеет medium integrity; interaction с higher-integrity target нельзя обещать по умолчанию.",
                             Source: CapabilitySummaryValues.Input)
                     ]),
                 new(
@@ -235,6 +260,11 @@ public sealed class AdminToolTests
                             Code: GuardReasonCodeValues.CapabilityNotImplemented,
                             Severity: GuardSeverityValues.Blocked,
                             MessageHuman: "Эта capability пока не реализована в текущем runtime surface и не может считаться готовой.",
+                            Source: CapabilitySummaryValues.Clipboard),
+                        new(
+                            Code: GuardReasonCodeValues.ClipboardIntegrityLimited,
+                            Severity: GuardSeverityValues.Blocked,
+                            MessageHuman: "Clipboard path пока не должен обещать операции при неполном integrity profile. Текущий token имеет medium integrity; interaction с higher-integrity target нельзя обещать по умолчанию.",
                             Source: CapabilitySummaryValues.Clipboard)
                     ]),
                 new(
@@ -246,6 +276,11 @@ public sealed class AdminToolTests
                             Code: GuardReasonCodeValues.CapabilityNotImplemented,
                             Severity: GuardSeverityValues.Blocked,
                             MessageHuman: "Эта capability пока не реализована в текущем runtime surface и не может считаться готовой.",
+                            Source: CapabilitySummaryValues.Launch),
+                        new(
+                            Code: GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                            Severity: GuardSeverityValues.Blocked,
+                            MessageHuman: "Future launch path требует явной модели elevation/integrity boundary; текущий runtime этого ещё не гарантирует. Текущий token имеет medium integrity; interaction с higher-integrity target нельзя обещать по умолчанию.",
                             Source: CapabilitySummaryValues.Launch)
                     ]),
             ]);
@@ -260,6 +295,10 @@ public sealed class AdminToolTests
             Warnings:
             [
                 .. readiness.Domains.SelectMany(item => item.Reasons).Where(reason => reason.Severity == GuardSeverityValues.Warning),
+                .. readiness.Capabilities
+                    .Where(item => item.Status != GuardStatusValues.Blocked)
+                    .SelectMany(item => item.Reasons)
+                    .Where(reason => reason.Severity == GuardSeverityValues.Warning),
             ]);
     }
 

@@ -1,5 +1,6 @@
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Guards;
+using WinBridge.Runtime.Windows.Display;
 
 namespace WinBridge.Runtime.Tests;
 
@@ -201,25 +202,55 @@ public sealed class RuntimeGuardPolicyTests
     }
 
     [Fact]
-    public void BuildWarningsReturnsOnlyWarningSeverityReasons()
+    public void BuildWarningsReturnsDomainAndCapabilityWarningsWithoutPlaceholders()
     {
         RuntimeGuardRawFacts facts = CreateFacts();
+        ReadinessDomainStatus[] domains = RuntimeGuardPolicy.BuildDomains(facts);
         RuntimeReadinessSnapshot snapshot = new(
             CapturedAtUtc: DateTimeOffset.UtcNow,
-            Domains: RuntimeGuardPolicy.BuildDomains(facts),
-            Capabilities: RuntimeGuardPolicy.BuildCapabilities());
+            Domains: domains,
+            Capabilities: RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), domains));
 
         GuardReason[] warnings = RuntimeGuardPolicy.BuildWarnings(snapshot);
 
-        Assert.Equal(4, warnings.Length);
+        Assert.Equal(3, warnings.Length);
         Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.IntegrityRequiresEqualOrLowerTarget);
-        Assert.Equal(3, warnings.Count(item => item.Code == GuardReasonCodeValues.AssessmentNotImplemented));
+        Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified);
+        Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.WaitShellVisualAvailable);
+        Assert.DoesNotContain(warnings, item => item.Code == GuardReasonCodeValues.AssessmentNotImplemented);
+        Assert.DoesNotContain(warnings, item => item.Code == GuardReasonCodeValues.CapabilitySessionTransition && item.Source == CapabilitySummaryValues.Input);
     }
 
     [Fact]
-    public void BuildCapabilitiesKeepsObserveUnknownAndDeferredBlocked()
+    public void BuildWarningsSkipsDeferredCapabilityWarningsWhenCapabilityIsBlocked()
     {
-        CapabilityGuardSummary[] capabilities = RuntimeGuardPolicy.BuildCapabilities();
+        RuntimeGuardRawFacts facts = CreateFacts(
+            sessionAlignment: new SessionAlignmentProbeResult(
+                ProcessSessionResolved: true,
+                ProcessSessionId: 1,
+                ActiveConsoleSessionId: 0xFFFFFFFF,
+                ConnectState: SessionConnectState.Active,
+                ClientProtocolType: 0));
+        ReadinessDomainStatus[] domains = RuntimeGuardPolicy.BuildDomains(facts);
+        RuntimeReadinessSnapshot snapshot = new(
+            CapturedAtUtc: DateTimeOffset.UtcNow,
+            Domains: domains,
+            Capabilities: RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), domains));
+
+        GuardReason[] warnings = RuntimeGuardPolicy.BuildWarnings(snapshot);
+
+        Assert.DoesNotContain(warnings, item => item.Source == CapabilitySummaryValues.Input);
+        Assert.DoesNotContain(warnings, item => item.Source == CapabilitySummaryValues.Clipboard);
+        Assert.DoesNotContain(warnings, item => item.Source == CapabilitySummaryValues.Launch);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesDerivesHealthyBaselineWithoutPlaceholders()
+    {
+        CapabilityGuardSummary[] capabilities = RuntimeGuardPolicy.BuildCapabilities(
+            CreateFacts(),
+            CreateTopology(),
+            RuntimeGuardPolicy.BuildDomains(CreateFacts()));
 
         Assert.Equal(
             [
@@ -231,18 +262,27 @@ public sealed class RuntimeGuardPolicyTests
                 CapabilitySummaryValues.Launch,
             ],
             capabilities.Select(item => item.Capability).ToArray());
-        Assert.All(
-            capabilities.Where(item =>
-                item.Capability is CapabilitySummaryValues.Capture
-                    or CapabilitySummaryValues.Uia
-                    or CapabilitySummaryValues.Wait),
-            item => Assert.Equal(GuardStatusValues.Unknown, item.Status));
-        Assert.All(
-            capabilities.Where(item =>
-                item.Capability is CapabilitySummaryValues.Input
-                    or CapabilitySummaryValues.Clipboard
-                    or CapabilitySummaryValues.Launch),
-            item => Assert.Equal(GuardStatusValues.Blocked, item.Status));
+        Assert.Equal(GuardStatusValues.Ready, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Capture).Status);
+        Assert.Equal(GuardStatusValues.Degraded, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Uia).Status);
+        Assert.Equal(GuardStatusValues.Degraded, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Wait).Status);
+        Assert.Equal(GuardStatusValues.Blocked, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Input).Status);
+        Assert.Equal(GuardStatusValues.Blocked, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Clipboard).Status);
+        Assert.Equal(GuardStatusValues.Blocked, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Launch).Status);
+        Assert.Equal(
+            GuardReasonCodeValues.CaptureReady,
+            Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Capture).Reasons[0].Code);
+        Assert.Equal(
+            GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified,
+            Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Uia).Reasons[0].Code);
+        Assert.Equal(
+            GuardReasonCodeValues.WaitShellVisualAvailable,
+            Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Wait).Reasons[0].Code);
+        Assert.Contains(
+            Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Wait).Reasons,
+            item => item.Code == GuardReasonCodeValues.WaitUiaBranchLaunchabilityUnverified);
+        Assert.Equal(
+            GuardReasonCodeValues.InputIntegrityLimited,
+            Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Input).Reasons[1].Code);
         Assert.Equal(
             [
                 CapabilitySummaryValues.Input,
@@ -252,10 +292,268 @@ public sealed class RuntimeGuardPolicyTests
             RuntimeGuardPolicy.BuildBlockedCapabilities(capabilities).Select(item => item.Capability).ToArray());
     }
 
+    [Fact]
+    public void BuildCapabilitiesMarksCaptureDegradedWhenWindowsGraphicsCaptureIsUnavailable()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            capture: new CaptureCapabilityProbeResult(
+                FactResolved: true,
+                WindowsGraphicsCaptureSupported: false));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Capture);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.CaptureDesktopFallbackOnly, capability.Reasons[0].Code);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesIncludesSessionTransitionAndStructuralCaptureReasonsTogether()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            sessionAlignment: new SessionAlignmentProbeResult(
+                ProcessSessionResolved: true,
+                ProcessSessionId: 1,
+                ActiveConsoleSessionId: 0xFFFFFFFF,
+                ConnectState: SessionConnectState.Active,
+                ClientProtocolType: 0),
+            capture: new CaptureCapabilityProbeResult(
+                FactResolved: true,
+                WindowsGraphicsCaptureSupported: false));
+        DisplayTopologySnapshot topology = CreateTopology(includeMonitors: false);
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, topology, RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Capture);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.CapabilitySessionTransition);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.CaptureDesktopFallbackOnly);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.CaptureNoActiveMonitors);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesIncludesWgcAndMonitorReasonsWhenBothApply()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            capture: new CaptureCapabilityProbeResult(
+                FactResolved: true,
+                WindowsGraphicsCaptureSupported: false));
+        DisplayTopologySnapshot topology = CreateTopology(includeMonitors: false);
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, topology, RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Capture);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.CaptureDesktopFallbackOnly);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.CaptureNoActiveMonitors);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksCaptureDegradedWhenDisplayIdentityFallsBackToGdi()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts();
+        DisplayTopologySnapshot topology = CreateTopology(identityMode: DisplayIdentityModeValues.GdiFallback);
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, topology, RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Capture);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.CaptureMonitorIdentityFallback, capability.Reasons[0].Code);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksCaptureDegradedWhenNoActiveMonitorsExist()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts();
+        DisplayTopologySnapshot topology = CreateTopology(includeMonitors: false);
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, topology, RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Capture);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksUiaBlockedWhenWorkerBoundaryIsMissing()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            uia: new UiaCapabilityProbeResult(
+                FactResolved: true,
+                WorkerLaunchSpecResolved: false,
+                FailureReason: "UIA worker process не найден рядом с host output."));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Uia);
+
+        Assert.Equal(GuardStatusValues.Blocked, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.UiaWorkerUnavailable, capability.Reasons[0].Code);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesPrefersWorkerMissingOverUnknownSessionForUia()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            sessionAlignment: new SessionAlignmentProbeResult(
+                ProcessSessionResolved: false,
+                ProcessSessionId: null,
+                ActiveConsoleSessionId: 1,
+                ConnectState: null,
+                ClientProtocolType: null),
+            uia: new UiaCapabilityProbeResult(
+                FactResolved: true,
+                WorkerLaunchSpecResolved: false,
+                FailureReason: "UIA worker process не найден рядом с host output."));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Uia);
+
+        Assert.Equal(GuardStatusValues.Blocked, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.UiaWorkerUnavailable, capability.Reasons[0].Code);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksWaitDegradedWhenOnlyShellAndVisualRemain()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            uia: new UiaCapabilityProbeResult(
+                FactResolved: true,
+                WorkerLaunchSpecResolved: false,
+                FailureReason: "UIA worker process не найден рядом с host output."));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Wait);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.WaitShellVisualAvailable, capability.Reasons[0].Code);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.WaitUiaBranchUnavailable);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksWaitDegradedWhenOnlyShellRemainsIfUiaIsOnlyConfigured()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            capture: new CaptureCapabilityProbeResult(
+                FactResolved: false,
+                WindowsGraphicsCaptureSupported: false));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Wait);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.WaitShellOnlyAvailable, capability.Reasons[0].Code);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.WaitUiaBranchLaunchabilityUnverified);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.WaitVisualBranchUnknown);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksWaitDegradedWhenOnlyActiveWindowMatchRemains()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            capture: new CaptureCapabilityProbeResult(
+                FactResolved: true,
+                WindowsGraphicsCaptureSupported: false),
+            uia: new UiaCapabilityProbeResult(
+                FactResolved: true,
+                WorkerLaunchSpecResolved: false,
+                FailureReason: "UIA worker process не найден рядом с host output."));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Wait);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.WaitShellOnlyAvailable, capability.Reasons[0].Code);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.WaitUiaBranchUnavailable);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.WaitVisualBranchUnavailable);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesKeepsWaitSubsetWhenUiaFactIsUnknown()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            uia: new UiaCapabilityProbeResult(
+                FactResolved: false,
+                WorkerLaunchSpecResolved: false,
+                FailureReason: null));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Wait);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.WaitShellVisualAvailable, capability.Reasons[0].Code);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.WaitUiaBranchUnknown);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesPrefersSessionTransitionReasonForDeferredCapabilities()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            sessionAlignment: new SessionAlignmentProbeResult(
+                ProcessSessionResolved: true,
+                ProcessSessionId: 1,
+                ActiveConsoleSessionId: 0xFFFFFFFF,
+                ConnectState: SessionConnectState.Active,
+                ClientProtocolType: 0));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Input);
+
+        Assert.Equal(GuardStatusValues.Blocked, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.CapabilitySessionTransition, capability.Reasons[1].Code);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesDoesNotEmitConcreteInputBlockerWhenUiAccessIsUnknown()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            token: new TokenProbeResult(
+                IntegrityResolved: true,
+                IntegrityLevel: RuntimeIntegrityLevel.High,
+                IntegrityRid: 0x3000,
+                ElevationResolved: true,
+                IsElevated: true,
+                ElevationType: TokenElevationTypeValue.Full,
+                UiAccessResolved: false,
+                UiAccess: false));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Input);
+
+        Assert.Equal(GuardStatusValues.Blocked, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.CapabilityPrerequisitesUnknown, capability.Reasons[1].Code);
+        Assert.DoesNotContain(capability.Reasons, item => item.Code == GuardReasonCodeValues.InputUipiBarrierPresent);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesUsesIntegrityReasonBeforeUiAccessForMediumInputProfile()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts();
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Input);
+
+        Assert.Equal(GuardReasonCodeValues.InputIntegrityLimited, capability.Reasons[1].Code);
+    }
+
     private static RuntimeGuardRawFacts CreateFacts(
         DesktopSessionProbeResult? desktopSession = null,
         SessionAlignmentProbeResult? sessionAlignment = null,
-        TokenProbeResult? token = null) =>
+        TokenProbeResult? token = null,
+        CaptureCapabilityProbeResult? capture = null,
+        UiaCapabilityProbeResult? uia = null) =>
         new(
             DesktopSession: desktopSession ?? new DesktopSessionProbeResult(InputDesktopAvailable: true, ErrorCode: null),
             SessionAlignment: sessionAlignment ?? new SessionAlignmentProbeResult(
@@ -272,5 +570,44 @@ public sealed class RuntimeGuardPolicyTests
                 IsElevated: false,
                 ElevationType: TokenElevationTypeValue.Limited,
                 UiAccessResolved: true,
-                UiAccess: false));
+                UiAccess: false))
+        {
+            Capture = capture ?? new CaptureCapabilityProbeResult(
+                FactResolved: true,
+                WindowsGraphicsCaptureSupported: true),
+            Uia = uia ?? new UiaCapabilityProbeResult(
+                FactResolved: true,
+                WorkerLaunchSpecResolved: true,
+                FailureReason: null),
+        };
+
+    private static DisplayTopologySnapshot CreateTopology(
+        string identityMode = DisplayIdentityModeValues.DisplayConfigStrong,
+        bool includeMonitors = true) =>
+        new(
+            Monitors: includeMonitors
+                ? [
+                    new MonitorInfo(
+                        new MonitorDescriptor(
+                            MonitorId: "display-source:1:1",
+                            FriendlyName: "Primary",
+                            GdiDeviceName: @"\\.\DISPLAY1",
+                            Bounds: new Bounds(0, 0, 1920, 1080),
+                            WorkArea: new Bounds(0, 0, 1920, 1040),
+                            IsPrimary: true),
+                        CaptureHandle: 11,
+                        [11])
+                ]
+                : [],
+            Diagnostics: new DisplayIdentityDiagnostics(
+                IdentityMode: identityMode,
+                FailedStage: identityMode == DisplayIdentityModeValues.GdiFallback
+                    ? DisplayIdentityFailureStageValues.QueryDisplayConfig
+                    : null,
+                ErrorCode: identityMode == DisplayIdentityModeValues.GdiFallback ? 5 : null,
+                ErrorName: identityMode == DisplayIdentityModeValues.GdiFallback ? "ERROR_ACCESS_DENIED" : null,
+                MessageHuman: identityMode == DisplayIdentityModeValues.GdiFallback
+                    ? "Display identity деградировала в `gdi:` fallback."
+                    : "Strong monitor identity resolved through QueryDisplayConfig for all active desktop monitors.",
+                CapturedAtUtc: DateTimeOffset.UtcNow));
 }

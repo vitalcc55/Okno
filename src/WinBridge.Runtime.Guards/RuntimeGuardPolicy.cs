@@ -1,24 +1,12 @@
 using System.Globalization;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Windows.Display;
 
 namespace WinBridge.Runtime.Guards;
 
 internal static class RuntimeGuardPolicy
 {
     private const uint InvalidSessionId = 0xFFFFFFFF;
-    private static readonly string[] ObserveCapabilities =
-    [
-        CapabilitySummaryValues.Capture,
-        CapabilitySummaryValues.Uia,
-        CapabilitySummaryValues.Wait,
-    ];
-
-    private static readonly string[] DeferredCapabilities =
-    [
-        CapabilitySummaryValues.Input,
-        CapabilitySummaryValues.Clipboard,
-        CapabilitySummaryValues.Launch,
-    ];
 
     public static ReadinessDomainStatus[] BuildDomains(RuntimeGuardRawFacts facts) =>
     [
@@ -28,11 +16,26 @@ internal static class RuntimeGuardPolicy
         BuildUiAccess(facts.Token),
     ];
 
-    public static CapabilityGuardSummary[] BuildCapabilities() =>
-    [
-        .. ObserveCapabilities.Select(CreateUnknownCapability),
-        .. DeferredCapabilities.Select(CreateBlockedCapability),
-    ];
+    public static CapabilityGuardSummary[] BuildCapabilities(
+        RuntimeGuardRawFacts facts,
+        DisplayTopologySnapshot topology,
+        IReadOnlyList<ReadinessDomainStatus> domains)
+    {
+        ReadinessDomainStatus desktopSession = GetDomain(domains, ReadinessDomainValues.DesktopSession);
+        ReadinessDomainStatus sessionAlignment = GetDomain(domains, ReadinessDomainValues.SessionAlignment);
+        ReadinessDomainStatus integrity = GetDomain(domains, ReadinessDomainValues.Integrity);
+        ReadinessDomainStatus uiAccess = GetDomain(domains, ReadinessDomainValues.UiAccess);
+
+        return
+        [
+            BuildCapture(facts, topology, desktopSession, sessionAlignment),
+            BuildUia(facts, desktopSession, sessionAlignment),
+            BuildWait(facts, desktopSession, sessionAlignment),
+            BuildInput(desktopSession, sessionAlignment, integrity, uiAccess),
+            BuildClipboard(desktopSession, sessionAlignment, integrity),
+            BuildLaunch(desktopSession, sessionAlignment, integrity),
+        ];
+    }
 
     public static CapabilityGuardSummary[] BuildBlockedCapabilities(IEnumerable<CapabilityGuardSummary> capabilities) =>
         capabilities
@@ -42,7 +45,10 @@ internal static class RuntimeGuardPolicy
     public static GuardReason[] BuildWarnings(RuntimeReadinessSnapshot snapshot) =>
         snapshot.Domains
             .SelectMany(domain => domain.Reasons)
-            .Concat(snapshot.Capabilities.SelectMany(capability => capability.Reasons))
+            .Concat(
+                snapshot.Capabilities
+                    .Where(capability => !string.Equals(capability.Status, GuardStatusValues.Blocked, StringComparison.Ordinal))
+                    .SelectMany(capability => capability.Reasons))
             .Where(reason => string.Equals(reason.Severity, GuardSeverityValues.Warning, StringComparison.Ordinal))
             .ToArray();
 
@@ -308,31 +314,684 @@ internal static class RuntimeGuardPolicy
             ]);
     }
 
-    private static CapabilityGuardSummary CreateUnknownCapability(string capability) =>
-        new(
-            Capability: capability,
-            Status: GuardStatusValues.Unknown,
+    private static CapabilityGuardSummary BuildCapture(
+        RuntimeGuardRawFacts facts,
+        DisplayTopologySnapshot topology,
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment)
+    {
+        GuardReason? sessionBlocker = CreateSessionBlockedReason(
+            CapabilitySummaryValues.Capture,
+            desktopSession,
+            sessionAlignment,
+            "Capture observe path нельзя обещать без usable interactive desktop/session.");
+        if (sessionBlocker is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Capture,
+                Status: GuardStatusValues.Blocked,
+                Reasons: [sessionBlocker]);
+        }
+
+        GuardReason? unknownReason = CreatePrerequisitesUnknownReason(
+            CapabilitySummaryValues.Capture,
+            desktopSession,
+            sessionAlignment,
+            facts.Capture.FactResolved,
+            "Runtime не смог подтвердить prerequisites для capture readiness.");
+        if (unknownReason is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Capture,
+                Status: GuardStatusValues.Unknown,
+                Reasons: [unknownReason]);
+        }
+
+        List<GuardReason> degradedReasons = [];
+        if (IsDegraded(desktopSession) || IsDegraded(sessionAlignment))
+        {
+            degradedReasons.Add(
+                CreateReason(
+                    GuardReasonCodeValues.CapabilitySessionTransition,
+                    GuardSeverityValues.Warning,
+                    CapabilitySummaryValues.Capture,
+                    BuildTransitionMessage(
+                        "Capture observe path видит transition-state среды и остаётся только conservative degraded.",
+                        desktopSession,
+                        sessionAlignment)));
+        }
+
+        if (!facts.Capture.WindowsGraphicsCaptureSupported)
+        {
+            degradedReasons.Add(
+                CreateReason(
+                    GuardReasonCodeValues.CaptureDesktopFallbackOnly,
+                    GuardSeverityValues.Warning,
+                    CapabilitySummaryValues.Capture,
+                    "Windows Graphics Capture недоступен; window capture path и visual wait path не считаются готовыми, а desktop path остаётся только fallback."));
+        }
+
+        if (topology.Monitors.Count == 0)
+        {
+            degradedReasons.Add(
+                CreateReason(
+                    GuardReasonCodeValues.CaptureNoActiveMonitors,
+                    GuardSeverityValues.Warning,
+                    CapabilitySummaryValues.Capture,
+                    "В текущем topology snapshot нет активных monitor targets; desktop capture scope нельзя считать fully ready."));
+        }
+
+        if (string.Equals(topology.Diagnostics.IdentityMode, DisplayIdentityModeValues.GdiFallback, StringComparison.Ordinal))
+        {
+            degradedReasons.Add(
+                CreateReason(
+                    GuardReasonCodeValues.CaptureMonitorIdentityFallback,
+                    GuardSeverityValues.Warning,
+                    CapabilitySummaryValues.Capture,
+                    "Capture path остаётся рабочим, но monitor identity деградировала в gdi fallback; explicit desktop targeting следует считать менее надёжным."));
+        }
+
+        if (degradedReasons.Count > 0)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Capture,
+                Status: GuardStatusValues.Degraded,
+                Reasons: degradedReasons);
+        }
+
+        return new(
+            Capability: CapabilitySummaryValues.Capture,
+            Status: GuardStatusValues.Ready,
             Reasons:
             [
                 CreateReason(
-                    GuardReasonCodeValues.AssessmentNotImplemented,
-                    GuardSeverityValues.Warning,
-                    capability,
-                    "Probe-backed capability derivation для этого capability будет добавлена в Package C; статус остаётся консервативно unknown.")
+                    GuardReasonCodeValues.CaptureReady,
+                    GuardSeverityValues.Info,
+                    CapabilitySummaryValues.Capture,
+                    "Runtime может честно обещать current shipped capture semantics: strong display identity и Windows Graphics Capture доступны.")
             ]);
+    }
 
-    private static CapabilityGuardSummary CreateBlockedCapability(string capability) =>
-        new(
+    private static CapabilityGuardSummary BuildUia(
+        RuntimeGuardRawFacts facts,
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment)
+    {
+        UiaBoundaryState uiaBoundaryState = GetUiaBoundaryState(facts.Uia);
+
+        GuardReason? sessionBlocker = CreateSessionBlockedReason(
+            CapabilitySummaryValues.Uia,
+            desktopSession,
+            sessionAlignment,
+            "UIA observe path нельзя обещать без usable interactive desktop/session.");
+        if (sessionBlocker is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Uia,
+                Status: GuardStatusValues.Blocked,
+                Reasons: [sessionBlocker]);
+        }
+
+        if (uiaBoundaryState == UiaBoundaryState.Unavailable)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Uia,
+                Status: GuardStatusValues.Blocked,
+                Reasons:
+                [
+                    CreateReason(
+                        GuardReasonCodeValues.UiaWorkerUnavailable,
+                        GuardSeverityValues.Blocked,
+                        CapabilitySummaryValues.Uia,
+                        facts.Uia.FailureReason ?? "UIA worker boundary недоступна, поэтому observe path нельзя считать готовым.")
+                ]);
+        }
+
+        GuardReason? unknownReason = CreatePrerequisitesUnknownReason(
+            CapabilitySummaryValues.Uia,
+            desktopSession,
+            sessionAlignment,
+            uiaBoundaryState != UiaBoundaryState.Unknown,
+            "Runtime не смог подтвердить prerequisites для UIA observe path.");
+        if (unknownReason is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Uia,
+                Status: GuardStatusValues.Unknown,
+                Reasons: [unknownReason]);
+        }
+
+        List<GuardReason> degradedReasons = [];
+        if (IsDegraded(desktopSession) || IsDegraded(sessionAlignment))
+        {
+            degradedReasons.Add(
+                CreateReason(
+                    GuardReasonCodeValues.CapabilitySessionTransition,
+                    GuardSeverityValues.Warning,
+                    CapabilitySummaryValues.Uia,
+                    BuildTransitionMessage(
+                        "UIA worker boundary доступна, но текущая session остаётся transitional и observe path нельзя считать fully stable.",
+                        desktopSession,
+                        sessionAlignment)));
+        }
+
+        degradedReasons.Add(
+            CreateReason(
+                GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified,
+                GuardSeverityValues.Warning,
+                CapabilitySummaryValues.Uia,
+                "Worker launch spec resolved, но runtime startability UIA boundary не подтверждена в reporting-first health path."));
+        degradedReasons.Add(
+            CreateReason(
+                GuardReasonCodeValues.UiaObserveScopeLimited,
+                GuardSeverityValues.Info,
+                CapabilitySummaryValues.Uia,
+                "Current UIA semantics ограничены window-scoped ElementFromHandle/control-view path и не обещают cross-user Run as reachability."));
+
+        return new(
+            Capability: CapabilitySummaryValues.Uia,
+            Status: GuardStatusValues.Degraded,
+            Reasons: degradedReasons);
+    }
+
+    private static CapabilityGuardSummary BuildWait(
+        RuntimeGuardRawFacts facts,
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment)
+    {
+        UiaBoundaryState uiaBoundaryState = GetUiaBoundaryState(facts.Uia);
+
+        GuardReason? sessionBlocker = CreateSessionBlockedReason(
+            CapabilitySummaryValues.Wait,
+            desktopSession,
+            sessionAlignment,
+            "windows.wait нельзя обещать без usable interactive desktop/session.");
+        if (sessionBlocker is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Wait,
+                Status: GuardStatusValues.Blocked,
+                Reasons: [sessionBlocker]);
+        }
+
+        GuardReason? domainUnknownReason = CreatePrerequisitesUnknownReason(
+            CapabilitySummaryValues.Wait,
+            desktopSession,
+            sessionAlignment,
+            true,
+            "Runtime не смог подтвердить prerequisite facts для composed wait path.");
+        if (domainUnknownReason is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Wait,
+                Status: GuardStatusValues.Unknown,
+                Reasons: [domainUnknownReason]);
+        }
+
+        bool sessionTransition = IsDegraded(desktopSession) || IsDegraded(sessionAlignment);
+        WaitBranchState visualState = facts.Capture.FactResolved
+            ? (facts.Capture.WindowsGraphicsCaptureSupported ? WaitBranchState.Available : WaitBranchState.Unavailable)
+            : WaitBranchState.Unknown;
+
+        List<GuardReason> reasons = [];
+        string summaryCode;
+        string summaryMessage;
+
+        if (visualState == WaitBranchState.Available)
+        {
+            summaryCode = GuardReasonCodeValues.WaitShellVisualAvailable;
+            summaryMessage = "windows.wait может честно обещать active_window_matches и visual_changed.";
+        }
+        else
+        {
+            summaryCode = GuardReasonCodeValues.WaitShellOnlyAvailable;
+            summaryMessage = "windows.wait сейчас можно честно обещать только для active_window_matches.";
+        }
+
+        reasons.Add(
+            CreateReason(
+                summaryCode,
+                GuardSeverityValues.Warning,
+                CapabilitySummaryValues.Wait,
+                AppendSessionTransitionDetail(summaryMessage, sessionTransition, desktopSession, sessionAlignment)));
+
+        AddUiaWaitBranchReason(
+            reasons,
+            CapabilitySummaryValues.Wait,
+            uiaBoundaryState,
+            unverifiedCode: GuardReasonCodeValues.WaitUiaBranchLaunchabilityUnverified,
+            unverifiedMessage: "UIA worker boundary только configured: launch spec resolved, но startability не подтверждена, поэтому UIA-based wait conditions не advertised как usable subset.",
+            unknownCode: GuardReasonCodeValues.WaitUiaBranchUnknown,
+            unknownMessage: "UIA prerequisites для wait пока не подтверждены.",
+            unavailableCode: GuardReasonCodeValues.WaitUiaBranchUnavailable,
+            unavailableMessage: "UIA-based conditions сейчас нельзя обещать.");
+        AddWaitBranchReason(
+            reasons,
+            CapabilitySummaryValues.Wait,
+            visualState,
+            unknownCode: GuardReasonCodeValues.WaitVisualBranchUnknown,
+            unknownMessage: "Visual prerequisites для wait пока не подтверждены.",
+            unavailableCode: GuardReasonCodeValues.WaitVisualBranchUnavailable,
+            unavailableMessage: "Condition visual_changed сейчас нельзя обещать.");
+
+        return new(
+            Capability: CapabilitySummaryValues.Wait,
+            Status: GuardStatusValues.Degraded,
+            Reasons: reasons);
+    }
+
+    private static CapabilityGuardSummary BuildInput(
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment,
+        ReadinessDomainStatus integrity,
+        ReadinessDomainStatus uiAccess)
+    {
+        GuardReason? environmentBlocker = CreateSessionEnvironmentReason(
+            CapabilitySummaryValues.Input,
+            desktopSession,
+            sessionAlignment,
+            "Future input path дополнительно упирается в unusable interactive desktop/session.");
+        environmentBlocker ??= CreateCapabilityPrerequisiteUnknownReason(
+            CapabilitySummaryValues.Input,
+            integrity,
+            "Future input path не смог подтвердить integrity prerequisites.");
+        environmentBlocker ??= CreateCapabilityPrerequisiteUnknownReason(
+            CapabilitySummaryValues.Input,
+            uiAccess,
+            "Future input path не смог подтвердить uiAccess prerequisites.");
+        environmentBlocker ??= CreateCapabilityConstraintReason(
+            CapabilitySummaryValues.Input,
+            integrity,
+            GuardReasonCodeValues.InputIntegrityLimited,
+            "Future input path ограничен текущим integrity profile.");
+        environmentBlocker ??= CreateCapabilityConstraintReason(
+            CapabilitySummaryValues.Input,
+            uiAccess,
+            GuardReasonCodeValues.InputUipiBarrierPresent,
+            "Future input path не может обещать higher-integrity interaction без uiAccess.");
+
+        return CreateDeferredBlockedCapability(CapabilitySummaryValues.Input, environmentBlocker);
+    }
+
+    private static CapabilityGuardSummary BuildClipboard(
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment,
+        ReadinessDomainStatus integrity)
+    {
+        GuardReason? environmentBlocker = CreateSessionEnvironmentReason(
+            CapabilitySummaryValues.Clipboard,
+            desktopSession,
+            sessionAlignment,
+            "Future clipboard path требует usable interactive desktop/session.");
+        environmentBlocker ??= CreateCapabilityPrerequisiteUnknownReason(
+            CapabilitySummaryValues.Clipboard,
+            integrity,
+            "Clipboard path не смог подтвердить integrity prerequisites.");
+        environmentBlocker ??= CreateCapabilityConstraintReason(
+            CapabilitySummaryValues.Clipboard,
+            integrity,
+            GuardReasonCodeValues.ClipboardIntegrityLimited,
+            "Clipboard path пока не должен обещать операции при неполном integrity profile.");
+
+        return CreateDeferredBlockedCapability(CapabilitySummaryValues.Clipboard, environmentBlocker);
+    }
+
+    private static CapabilityGuardSummary BuildLaunch(
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment,
+        ReadinessDomainStatus integrity)
+    {
+        GuardReason? environmentBlocker = CreateSessionEnvironmentReason(
+            CapabilitySummaryValues.Launch,
+            desktopSession,
+            sessionAlignment,
+            "Future launch path нельзя обещать без usable interactive desktop/session.");
+        environmentBlocker ??= CreateCapabilityPrerequisiteUnknownReason(
+            CapabilitySummaryValues.Launch,
+            integrity,
+            "Future launch path не смог подтвердить integrity prerequisites.");
+        environmentBlocker ??= CreateCapabilityConstraintReason(
+            CapabilitySummaryValues.Launch,
+            integrity,
+            GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+            "Future launch path требует явной модели elevation/integrity boundary; текущий runtime этого ещё не гарантирует.");
+
+        return CreateDeferredBlockedCapability(CapabilitySummaryValues.Launch, environmentBlocker);
+    }
+
+    private static CapabilityGuardSummary CreateDeferredBlockedCapability(string capability, GuardReason? extraReason)
+    {
+        List<GuardReason> reasons =
+        [
+            CreateReason(
+                GuardReasonCodeValues.CapabilityNotImplemented,
+                GuardSeverityValues.Blocked,
+                capability,
+                "Эта capability пока не реализована в текущем runtime surface и не может считаться готовой.")
+        ];
+
+        if (extraReason is not null)
+        {
+            reasons.Add(extraReason);
+        }
+
+        return new(
             Capability: capability,
             Status: GuardStatusValues.Blocked,
-            Reasons:
-            [
+            Reasons: reasons);
+    }
+
+    private static GuardReason? CreateSessionBlockedReason(
+        string capability,
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment,
+        string prefix)
+    {
+        if (IsBlocked(sessionAlignment))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilitySessionBlocked,
+                GuardSeverityValues.Blocked,
+                capability,
+                prefix + " " + FirstReasonMessage(sessionAlignment));
+        }
+
+        if (IsBlocked(desktopSession))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilitySessionBlocked,
+                GuardSeverityValues.Blocked,
+                capability,
+                prefix + " " + FirstReasonMessage(desktopSession));
+        }
+
+        return null;
+    }
+
+    private static GuardReason? CreateSessionEnvironmentReason(
+        string capability,
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment,
+        string prefix)
+    {
+        if (IsBlocked(sessionAlignment))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilitySessionBlocked,
+                GuardSeverityValues.Blocked,
+                capability,
+                prefix + " " + FirstReasonMessage(sessionAlignment));
+        }
+
+        if (IsBlocked(desktopSession))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilitySessionBlocked,
+                GuardSeverityValues.Blocked,
+                capability,
+                prefix + " " + FirstReasonMessage(desktopSession));
+        }
+
+        if (IsDegraded(sessionAlignment))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilitySessionTransition,
+                GuardSeverityValues.Warning,
+                capability,
+                prefix + " " + FirstReasonMessage(sessionAlignment));
+        }
+
+        if (IsDegraded(desktopSession))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilitySessionTransition,
+                GuardSeverityValues.Warning,
+                capability,
+                prefix + " " + FirstReasonMessage(desktopSession));
+        }
+
+        if (IsUnknown(sessionAlignment))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilityPrerequisitesUnknown,
+                GuardSeverityValues.Warning,
+                capability,
+                prefix + " " + FirstReasonMessage(sessionAlignment));
+        }
+
+        if (IsUnknown(desktopSession))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilityPrerequisitesUnknown,
+                GuardSeverityValues.Warning,
+                capability,
+                prefix + " " + FirstReasonMessage(desktopSession));
+        }
+
+        return null;
+    }
+
+    private static GuardReason? CreatePrerequisitesUnknownReason(
+        string capability,
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment,
+        bool runtimeFactsResolved,
+        string prefix)
+    {
+        if (IsUnknown(sessionAlignment))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilityPrerequisitesUnknown,
+                GuardSeverityValues.Warning,
+                capability,
+                prefix + " " + FirstReasonMessage(sessionAlignment));
+        }
+
+        if (IsUnknown(desktopSession))
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilityPrerequisitesUnknown,
+                GuardSeverityValues.Warning,
+                capability,
+                prefix + " " + FirstReasonMessage(desktopSession));
+        }
+
+        if (!runtimeFactsResolved)
+        {
+            return CreateReason(
+                GuardReasonCodeValues.CapabilityPrerequisitesUnknown,
+                GuardSeverityValues.Warning,
+                capability,
+                prefix);
+        }
+
+        return null;
+    }
+
+    private static GuardReason? CreateCapabilityPrerequisiteUnknownReason(
+        string capability,
+        ReadinessDomainStatus domain,
+        string prefix)
+    {
+        if (!IsUnknown(domain))
+        {
+            return null;
+        }
+
+        return CreateReason(
+            GuardReasonCodeValues.CapabilityPrerequisitesUnknown,
+            GuardSeverityValues.Warning,
+            capability,
+            prefix + " " + FirstReasonMessage(domain));
+    }
+
+    private static GuardReason? CreateCapabilityConstraintReason(
+        string capability,
+        ReadinessDomainStatus domain,
+        string code,
+        string prefix)
+    {
+        if (!IsBlocked(domain) && !IsDegraded(domain))
+        {
+            return null;
+        }
+
+        return CreateReason(
+            code,
+            GuardSeverityValues.Blocked,
+            capability,
+            prefix + " " + FirstReasonMessage(domain));
+    }
+
+    private static void AddUiaWaitBranchReason(
+        List<GuardReason> reasons,
+        string capability,
+        UiaBoundaryState branchState,
+        string unverifiedCode,
+        string unverifiedMessage,
+        string unknownCode,
+        string unknownMessage,
+        string unavailableCode,
+        string unavailableMessage)
+    {
+        if (branchState == UiaBoundaryState.Unknown)
+        {
+            reasons.Add(
                 CreateReason(
-                    GuardReasonCodeValues.CapabilityNotImplemented,
-                    GuardSeverityValues.Blocked,
+                    unknownCode,
+                    GuardSeverityValues.Warning,
                     capability,
-                    "Эта capability пока не реализована в текущем runtime surface и не может считаться готовой.")
-            ]);
+                    unknownMessage));
+            return;
+        }
+
+        if (branchState == UiaBoundaryState.Unavailable)
+        {
+            reasons.Add(
+                CreateReason(
+                    unavailableCode,
+                    GuardSeverityValues.Warning,
+                    capability,
+                    unavailableMessage));
+            return;
+        }
+
+        reasons.Add(
+            CreateReason(
+                unverifiedCode,
+                GuardSeverityValues.Info,
+                capability,
+                unverifiedMessage));
+    }
+
+    private static void AddWaitBranchReason(
+        List<GuardReason> reasons,
+        string capability,
+        WaitBranchState branchState,
+        string unknownCode,
+        string unknownMessage,
+        string unavailableCode,
+        string unavailableMessage)
+    {
+        if (branchState == WaitBranchState.Unknown)
+        {
+            reasons.Add(
+                CreateReason(
+                    unknownCode,
+                    GuardSeverityValues.Warning,
+                    capability,
+                    unknownMessage));
+            return;
+        }
+
+        if (branchState == WaitBranchState.Unavailable)
+        {
+            reasons.Add(
+                CreateReason(
+                    unavailableCode,
+                    GuardSeverityValues.Warning,
+                    capability,
+                    unavailableMessage));
+        }
+    }
+
+    private static string AppendSessionTransitionDetail(
+        string message,
+        bool sessionTransition,
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment)
+    {
+        if (!sessionTransition)
+        {
+            return message;
+        }
+
+        return message + " " + BuildTransitionMessage(
+            "Текущая session уже reported как degraded.",
+            desktopSession,
+            sessionAlignment);
+    }
+
+    private static string BuildTransitionMessage(
+        string prefix,
+        ReadinessDomainStatus desktopSession,
+        ReadinessDomainStatus sessionAlignment)
+    {
+        if (IsDegraded(sessionAlignment))
+        {
+            return prefix + " " + FirstReasonMessage(sessionAlignment);
+        }
+
+        if (IsDegraded(desktopSession))
+        {
+            return prefix + " " + FirstReasonMessage(desktopSession);
+        }
+
+        return prefix;
+    }
+
+    private static string FirstReasonMessage(ReadinessDomainStatus domain) =>
+        domain.Reasons.Count == 0
+            ? "Runtime не предоставил detail по этому domain."
+            : domain.Reasons[0].MessageHuman;
+
+    private static ReadinessDomainStatus GetDomain(IReadOnlyList<ReadinessDomainStatus> domains, string domain) =>
+        domains.First(item => string.Equals(item.Domain, domain, StringComparison.Ordinal));
+
+    private static bool IsBlocked(ReadinessDomainStatus domain) =>
+        string.Equals(domain.Status, GuardStatusValues.Blocked, StringComparison.Ordinal);
+
+    private static bool IsUnknown(ReadinessDomainStatus domain) =>
+        string.Equals(domain.Status, GuardStatusValues.Unknown, StringComparison.Ordinal);
+
+    private static bool IsDegraded(ReadinessDomainStatus domain) =>
+        string.Equals(domain.Status, GuardStatusValues.Degraded, StringComparison.Ordinal);
+
+    private static UiaBoundaryState GetUiaBoundaryState(UiaCapabilityProbeResult facts)
+    {
+        if (!facts.FactResolved)
+        {
+            return UiaBoundaryState.Unknown;
+        }
+
+        return facts.WorkerLaunchSpecResolved
+            ? UiaBoundaryState.ConfiguredUnverified
+            : UiaBoundaryState.Unavailable;
+    }
+
+    private enum WaitBranchState
+    {
+        Available,
+        Unavailable,
+        Unknown,
+    }
+
+    private enum UiaBoundaryState
+    {
+        ConfiguredUnverified,
+        Unavailable,
+        Unknown,
+    }
 
     private static GuardReason CreateReason(
         string code,

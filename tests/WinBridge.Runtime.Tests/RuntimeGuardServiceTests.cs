@@ -7,7 +7,7 @@ namespace WinBridge.Runtime.Tests;
 public sealed class RuntimeGuardServiceTests
 {
     [Fact]
-    public void GetSnapshotUsesExistingTopologyAndPackageBCapabilityBoundary()
+    public void GetSnapshotUsesExistingTopologyAndCapabilityDerivation()
     {
         DisplayTopologySnapshot topology = new(
             Monitors:
@@ -52,6 +52,13 @@ public sealed class RuntimeGuardServiceTests
         RuntimeGuardService service = new(
             new FakeMonitorManager(topology),
             new FakeRuntimeGuardPlatform(facts),
+            new FakeCaptureGuardFactSource(new CaptureCapabilityProbeResult(
+                FactResolved: true,
+                WindowsGraphicsCaptureSupported: true)),
+            new FakeUiaGuardFactSource(new UiaCapabilityProbeResult(
+                FactResolved: true,
+                WorkerLaunchSpecResolved: true,
+                FailureReason: null)),
             TimeProvider.System);
 
         RuntimeGuardAssessment snapshot = service.GetSnapshot();
@@ -61,9 +68,9 @@ public sealed class RuntimeGuardServiceTests
         Assert.Equal(4, snapshot.Readiness.Domains.Count);
         Assert.Equal(
             [
-                GuardStatusValues.Unknown,
-                GuardStatusValues.Unknown,
-                GuardStatusValues.Unknown,
+                GuardStatusValues.Ready,
+                GuardStatusValues.Degraded,
+                GuardStatusValues.Degraded,
                 GuardStatusValues.Blocked,
                 GuardStatusValues.Blocked,
                 GuardStatusValues.Blocked,
@@ -71,11 +78,16 @@ public sealed class RuntimeGuardServiceTests
             snapshot.Readiness.Capabilities.Select(item => item.Status).ToArray());
         Assert.Equal(
             [
-                CapabilitySummaryValues.Capture,
                 CapabilitySummaryValues.Uia,
                 CapabilitySummaryValues.Wait,
             ],
             snapshot.Warnings.Select(item => item.Source).ToArray());
+        Assert.Equal(
+            [
+                GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified,
+                GuardReasonCodeValues.WaitShellVisualAvailable,
+            ],
+            snapshot.Warnings.Select(item => item.Code).ToArray());
         Assert.Equal(
             [
                 CapabilitySummaryValues.Input,
@@ -88,6 +100,16 @@ public sealed class RuntimeGuardServiceTests
     private sealed class FakeRuntimeGuardPlatform(RuntimeGuardRawFacts facts) : IRuntimeGuardPlatform
     {
         public RuntimeGuardRawFacts Probe() => facts;
+    }
+
+    private sealed class FakeCaptureGuardFactSource(CaptureCapabilityProbeResult facts) : ICaptureGuardFactSource
+    {
+        public CaptureCapabilityProbeResult GetFacts() => facts;
+    }
+
+    private sealed class FakeUiaGuardFactSource(UiaCapabilityProbeResult facts) : IUiaGuardFactSource
+    {
+        public UiaCapabilityProbeResult GetFacts() => facts;
     }
 
     private sealed class FakeMonitorManager(DisplayTopologySnapshot topology) : IMonitorManager

@@ -1,0 +1,26 @@
+{
+  "name": "okno",
+  "version": "0.1.0",
+  "description": "Repo-local Codex plugin for working on the Okno Windows-native MCP runtime.",
+  "author": {
+    "name": "OpenClaw"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Okno",
+    "shortDescription": "Repo-local workflows for the Okno Windows-native MCP runtime",
+    "longDescription": "Use the Okno repo-local plugin to run smoke checks, inspect diagnostics artifacts, and work safely with the existing Okno MCP runtime without replacing the current config.toml setup.",
+    "developerName": "OpenClaw",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Проверь текущий Okno runtime и собери smoke evidence",
+      "Разбери последний failure в Okno diagnostics artifacts"
+    ]
+  }
+}

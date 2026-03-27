@@ -12,6 +12,7 @@
   "runtime_projects": [
     "src/WinBridge.Runtime.Contracts",
     "src/WinBridge.Runtime.Diagnostics",
+    "src/WinBridge.Runtime.Guards",
     "src/WinBridge.Runtime.Session",
     "src/WinBridge.Runtime.Tooling",
     "src/WinBridge.Runtime.Waiting",

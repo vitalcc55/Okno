@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "okno": {
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "C:\\Users\\v.vlasov\\Desktop\\OpenClaw\\tools\\winbridge\\scripts\\codex\\run-okno-mcp.ps1"
+      ],
+      "cwd": "C:\\Users\\v.vlasov\\Desktop\\OpenClaw\\tools\\winbridge"
+    }
+  }
+}

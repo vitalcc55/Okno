@@ -89,6 +89,16 @@ powershell -ExecutionPolicy Bypass -File scripts/ci.ps1
 powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 ```
 
+## Codex plugin
+
+В репозитории есть repo-local Codex plugin под продуктовым именем `Okno`:
+
+- marketplace: `.agents/plugins/marketplace.json`
+- plugin root: `plugins/okno/`
+- plugin MCP: `plugins/okno/.mcp.json`
+
+Этот plugin добавляет repo-local MCP identity `okno` и bundled skill surface, не переписывая legacy home-level `windows` server в локальном Codex config.
+
 ## Где читать дальше
 
 - [docs/product/index.md](docs/product/index.md)

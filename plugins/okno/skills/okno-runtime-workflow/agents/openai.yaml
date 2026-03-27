@@ -1,0 +1,12 @@
+interface:
+  display_name: "Okno Runtime Workflow"
+  short_description: "Verify, smoke и diagnostics workflow поверх текущего Okno MCP"
+  brand_color: "#0F766E"
+  default_prompt: "Проверь текущий Okno runtime и собери smoke evidence"
+policy:
+  allow_implicit_invocation: false
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "okno"
+      description: "Plugin-local Okno MCP runtime from this repo-local plugin"

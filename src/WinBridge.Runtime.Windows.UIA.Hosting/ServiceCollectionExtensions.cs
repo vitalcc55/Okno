@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Guards;
 
 namespace WinBridge.Runtime.Windows.UIA;
 
@@ -17,6 +18,7 @@ public static class ServiceCollectionExtensions
         services.AddWinBridgeRuntimeDiagnostics(contentRootPath, environmentName);
         services.AddSingleton<IUiAutomationService, Win32UiAutomationService>();
         services.AddSingleton<IUiAutomationWaitProbe, ProcessIsolatedUiAutomationWaitProbe>();
+        services.AddSingleton<IUiaGuardFactSource, UiaWorkerGuardFactSource>();
         return services;
     }
 }

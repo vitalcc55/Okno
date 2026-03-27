@@ -368,6 +368,12 @@ DTO invariants:
 - заменить временные `assessment_not_implemented` capability-reasons для `capture`, `uia`, `wait` на probe-backed capability summaries, а не наслаивать вторую логику поверх domain statuses;
 - строить `input`, `clipboard` и `launch` summaries от domain statuses и уже существующих runtime facts консервативно, без hidden enforcement и без premature artifact/event rollout.
 
+Статус по факту `2026-03-26`:
+
+- capability derivation для `capture`, `uia`, `wait`, `input`, `clipboard`, `launch` переведён на runtime facts и domain statuses внутри guard layer;
+- `okno.health` продолжает читать только `IRuntimeGuardService`, а `Warnings` / `BlockedCapabilities` больше не опираются на observe-placeholders;
+- узкие L1/L2 tests для runtime guard и `AdminTools` добавлены, но bundled checklist `L1/L2/L3` ниже не закрывается до полного Package D.
+
 ### Package D - tests + docs sync
 
 Что входит:
@@ -380,6 +386,12 @@ DTO invariants:
 Критерий завершения:
 
 - runtime, docs и smoke expectations синхронизированы и не расходятся по public health semantics.
+
+Особое внимание после Package C:
+
+- закрывать docs/test wave именно по `okno.health + runtime guard layer`: roadmap, observability, generated interfaces, smoke и checklist, а не считать sidecar README/plugin апдейты эквивалентом полного docs sync;
+- финальная verification wave должна подтверждать текущую capability derivation из guard-layer, а не прежний placeholder baseline;
+- если рядом идут plugin/runtime packaging изменения, не смешивать их с критерием завершения этого workstream и не подменять ими L3/health-docs evidence.
 
 ## Test ladder
 

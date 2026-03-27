@@ -3,7 +3,17 @@ namespace WinBridge.Runtime.Guards;
 internal sealed record RuntimeGuardRawFacts(
     DesktopSessionProbeResult DesktopSession,
     SessionAlignmentProbeResult SessionAlignment,
-    TokenProbeResult Token);
+    TokenProbeResult Token)
+{
+    public CaptureCapabilityProbeResult Capture { get; init; } = new(
+        FactResolved: false,
+        WindowsGraphicsCaptureSupported: false);
+
+    public UiaCapabilityProbeResult Uia { get; init; } = new(
+        FactResolved: false,
+        WorkerLaunchSpecResolved: false,
+        FailureReason: null);
+}
 
 internal sealed record DesktopSessionProbeResult(
     bool InputDesktopAvailable,

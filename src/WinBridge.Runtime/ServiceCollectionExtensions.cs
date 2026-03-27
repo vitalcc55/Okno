@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddWinBridgeRuntimeDiagnostics(contentRootPath, environmentName);
         services.AddWinBridgeRuntimeGuards();
+        services.AddSingleton<ICaptureGuardFactSource, GraphicsCaptureGuardFactSource>();
         services.AddSingleton(sp => new SessionContext(sp.GetRequiredService<AuditLogOptions>().RunId));
         services.AddSingleton<ISessionManager, InMemorySessionManager>();
         services.AddSingleton<IMonitorManager, Win32MonitorManager>();
