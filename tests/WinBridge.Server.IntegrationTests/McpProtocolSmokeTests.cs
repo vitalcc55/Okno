@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Server.IntegrationTests;
@@ -10,6 +11,46 @@ namespace WinBridge.Server.IntegrationTests;
 public sealed class McpProtocolSmokeTests
 {
     private static readonly string[] AttachSuccessStates = { "done", "already_attached" };
+    private static readonly string[] ExpectedHealthDomains =
+    [
+        ReadinessDomainValues.DesktopSession,
+        ReadinessDomainValues.SessionAlignment,
+        ReadinessDomainValues.Integrity,
+        ReadinessDomainValues.UiAccess,
+    ];
+
+    private static readonly string[] ExpectedHealthCapabilities =
+    [
+        CapabilitySummaryValues.Capture,
+        CapabilitySummaryValues.Uia,
+        CapabilitySummaryValues.Wait,
+        CapabilitySummaryValues.Input,
+        CapabilitySummaryValues.Clipboard,
+        CapabilitySummaryValues.Launch,
+    ];
+
+    private static readonly HashSet<string> AllowedGuardStatuses =
+    [
+        GuardStatusValues.Ready,
+        GuardStatusValues.Degraded,
+        GuardStatusValues.Blocked,
+        GuardStatusValues.Unknown,
+    ];
+    private static readonly HashSet<string> AllowedDisplayIdentityModes =
+    [
+        DisplayIdentityModeValues.DisplayConfigStrong,
+        DisplayIdentityModeValues.GdiFallback,
+    ];
+
+    private static readonly HashSet<string> AllowedDisplayIdentityFailureStages =
+    [
+        DisplayIdentityFailureStageValues.CoverageGap,
+        DisplayIdentityFailureStageValues.GetMonitorInfo,
+        DisplayIdentityFailureStageValues.GetBufferSizes,
+        DisplayIdentityFailureStageValues.QueryDisplayConfig,
+        DisplayIdentityFailureStageValues.GetSourceName,
+        DisplayIdentityFailureStageValues.GetTargetName,
+    ];
     private const int ProcessPerMonitorDpiAware = 2;
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan ProcessExitTimeout = TimeSpan.FromSeconds(5);
@@ -230,12 +271,19 @@ public sealed class McpProtocolSmokeTests
             Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("depth").GetProperty("description").GetString()));
             Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("maxNodes").GetProperty("description").GetString()));
 
+            JsonElement healthDescriptor = tools.EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.OknoHealth);
+            string healthDescription = healthDescriptor.GetProperty("description").GetString()!;
+            Assert.Equal(ToolDescriptions.OknoHealthTool, healthDescription);
+
             using JsonDocument healthResponse = await session.CallToolAsync(ToolNames.OknoHealth, new { });
+            JsonElement healthResult = healthResponse.RootElement.GetProperty("result");
+            Assert.False(healthResult.TryGetProperty("isError", out JsonElement healthIsError) && healthIsError.GetBoolean());
             using JsonDocument healthPayload = JsonDocument.Parse(GetToolTextPayload(healthResponse));
             JsonElement healthRoot = healthPayload.RootElement;
             Assert.Equal("Okno", healthRoot.GetProperty("service").GetString());
-            Assert.True(healthRoot.GetProperty("activeMonitorCount").GetInt32() > 0);
-            Assert.False(string.IsNullOrWhiteSpace(healthRoot.GetProperty("displayIdentity").GetProperty("identityMode").GetString()));
+            AssertHealthTopLevelContract(healthRoot);
+            AssertHealthReadinessShape(healthRoot);
 
             using JsonDocument monitorsResponse = await session.CallToolAsync(ToolNames.WindowsListMonitors, new { });
             using JsonDocument monitorsPayload = JsonDocument.Parse(GetToolTextPayload(monitorsResponse));
@@ -243,6 +291,10 @@ public sealed class McpProtocolSmokeTests
             int monitorCount = monitorsRoot.GetProperty("count").GetInt32();
             Assert.True(monitorCount > 0, "Smoke contract requires at least one active monitor.");
             Assert.False(string.IsNullOrWhiteSpace(monitorsRoot.GetProperty("diagnostics").GetProperty("identityMode").GetString()));
+            Assert.Equal(monitorCount, healthRoot.GetProperty("activeMonitorCount").GetInt32());
+            Assert.Equal(
+                monitorsRoot.GetProperty("diagnostics").GetProperty("identityMode").GetString(),
+                healthRoot.GetProperty("displayIdentity").GetProperty("identityMode").GetString());
             string primaryMonitorId = monitorsRoot.GetProperty("monitors")[0].GetProperty("monitorId").GetString()!;
             long helperHwnd = await WaitForMainWindowAsync(helperProcess);
 
@@ -714,6 +766,180 @@ public sealed class McpProtocolSmokeTests
 
         match = default;
         return false;
+    }
+
+    private static void AssertHealthReadinessShape(JsonElement healthRoot)
+    {
+        JsonElement readiness = healthRoot.GetProperty("readiness");
+        Assert.Equal(ExpectedHealthDomains, readiness.GetProperty("domains").EnumerateArray().Select(item => item.GetProperty("domain").GetString()).ToArray());
+        Assert.Equal(ExpectedHealthCapabilities, readiness.GetProperty("capabilities").EnumerateArray().Select(item => item.GetProperty("capability").GetString()).ToArray());
+        Assert.False(string.IsNullOrWhiteSpace(readiness.GetProperty("capturedAtUtc").GetString()));
+
+        foreach (JsonElement domain in readiness.GetProperty("domains").EnumerateArray())
+        {
+            string? status = domain.GetProperty("status").GetString();
+            Assert.NotNull(status);
+            Assert.Contains(status, AllowedGuardStatuses);
+            AssertReasonList(domain.GetProperty("reasons"), domain.GetProperty("domain").GetString()!, ExpectedHealthDomains);
+        }
+
+        foreach (JsonElement capability in readiness.GetProperty("capabilities").EnumerateArray())
+        {
+            string? status = capability.GetProperty("status").GetString();
+            Assert.NotNull(status);
+            Assert.Contains(status, AllowedGuardStatuses);
+            AssertReasonList(capability.GetProperty("reasons"), capability.GetProperty("capability").GetString()!, ExpectedHealthCapabilities);
+        }
+
+        foreach (JsonElement blockedCapability in healthRoot.GetProperty("blockedCapabilities").EnumerateArray())
+        {
+            Assert.Equal(GuardStatusValues.Blocked, blockedCapability.GetProperty("status").GetString());
+            string capabilityName = blockedCapability.GetProperty("capability").GetString()!;
+            Assert.Contains(capabilityName, ExpectedHealthCapabilities);
+            AssertReasonList(blockedCapability.GetProperty("reasons"), capabilityName, ExpectedHealthCapabilities);
+        }
+
+        AssertBlockedCapabilityProjection(readiness, healthRoot.GetProperty("blockedCapabilities"));
+        AssertWarningProjection(readiness, healthRoot.GetProperty("warnings"));
+    }
+
+    private static void AssertHealthTopLevelContract(JsonElement healthRoot)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(healthRoot.GetProperty("version").GetString()));
+        Assert.Equal("stdio", healthRoot.GetProperty("transport").GetString());
+        Assert.Equal(AuditConstants.SchemaVersion, healthRoot.GetProperty("auditSchemaVersion").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(healthRoot.GetProperty("runId").GetString()));
+
+        string artifactsDirectory = healthRoot.GetProperty("artifactsDirectory").GetString()!;
+        Assert.False(string.IsNullOrWhiteSpace(artifactsDirectory));
+        Assert.True(Directory.Exists(artifactsDirectory), $"Health artifacts directory '{artifactsDirectory}' was not created.");
+
+        Assert.True(healthRoot.GetProperty("activeMonitorCount").GetInt32() > 0);
+        AssertDisplayIdentityContract(healthRoot.GetProperty("displayIdentity"));
+        Assert.False(healthRoot.TryGetProperty("artifactPath", out _));
+
+        Assert.Equal(
+            ToolContractManifest.ImplementedNames,
+            healthRoot.GetProperty("implementedTools").EnumerateArray().Select(item => item.GetString()!).ToArray());
+
+        Dictionary<string, string> deferredTools = healthRoot.GetProperty("deferredTools")
+            .EnumerateObject()
+            .ToDictionary(property => property.Name, property => property.Value.GetString()!, StringComparer.Ordinal);
+        Assert.Equal(ToolContractManifest.DeferredPhaseMap.Count, deferredTools.Count);
+        foreach ((string toolName, string plannedPhase) in ToolContractManifest.DeferredPhaseMap)
+        {
+            Assert.True(deferredTools.TryGetValue(toolName, out string? actualPhase), $"Health deferredTools is missing '{toolName}'.");
+            Assert.Equal(plannedPhase, actualPhase);
+        }
+    }
+
+    private static void AssertBlockedCapabilityProjection(JsonElement readiness, JsonElement blockedCapabilities)
+    {
+        JsonElement[] expected = [.. readiness.GetProperty("capabilities").EnumerateArray()
+            .Where(item => string.Equals(item.GetProperty("status").GetString(), GuardStatusValues.Blocked, StringComparison.Ordinal))];
+        JsonElement[] actual = [.. blockedCapabilities.EnumerateArray()];
+
+        Assert.Equal(
+            expected.Select(item => item.GetProperty("capability").GetString()).ToArray(),
+            actual.Select(item => item.GetProperty("capability").GetString()).ToArray());
+
+        foreach (JsonElement expectedCapability in expected)
+        {
+            string capabilityName = expectedCapability.GetProperty("capability").GetString()!;
+            JsonElement actualCapability = actual.Single(item => item.GetProperty("capability").GetString() == capabilityName);
+            Assert.Equal(GuardStatusValues.Blocked, actualCapability.GetProperty("status").GetString());
+            Assert.Equal(
+                GetReasonSignatures(expectedCapability.GetProperty("reasons")),
+                GetReasonSignatures(actualCapability.GetProperty("reasons")));
+        }
+    }
+
+    private static void AssertWarningProjection(JsonElement readiness, JsonElement warnings)
+    {
+        JsonElement[] expected = [..
+            readiness.GetProperty("domains").EnumerateArray().SelectMany(item => GetWarningReasons(item.GetProperty("reasons"))),
+            .. readiness.GetProperty("capabilities").EnumerateArray()
+                .Where(item => !string.Equals(item.GetProperty("status").GetString(), GuardStatusValues.Blocked, StringComparison.Ordinal))
+                .SelectMany(item => GetWarningReasons(item.GetProperty("reasons")))];
+
+        JsonElement[] actual = [.. warnings.EnumerateArray()];
+        Assert.Equal(GetReasonSignatures(expected), GetReasonSignatures(actual));
+    }
+
+    private static void AssertDisplayIdentityContract(JsonElement displayIdentity)
+    {
+        string identityMode = displayIdentity.GetProperty("identityMode").GetString()!;
+        Assert.Contains(identityMode, AllowedDisplayIdentityModes);
+        Assert.False(string.IsNullOrWhiteSpace(displayIdentity.GetProperty("messageHuman").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(displayIdentity.GetProperty("capturedAtUtc").GetString()));
+
+        bool hasFailedStage = displayIdentity.TryGetProperty("failedStage", out JsonElement failedStageElement)
+            && failedStageElement.ValueKind != JsonValueKind.Null;
+        bool hasErrorCode = displayIdentity.TryGetProperty("errorCode", out JsonElement errorCodeElement)
+            && errorCodeElement.ValueKind != JsonValueKind.Null;
+        bool hasErrorName = displayIdentity.TryGetProperty("errorName", out JsonElement errorNameElement)
+            && errorNameElement.ValueKind != JsonValueKind.Null;
+
+        if (!hasFailedStage)
+        {
+            Assert.False(hasErrorCode);
+            Assert.False(hasErrorName);
+            return;
+        }
+
+        string failedStage = failedStageElement.GetString()!;
+        Assert.Contains(failedStage, AllowedDisplayIdentityFailureStages);
+        if (string.Equals(failedStage, DisplayIdentityFailureStageValues.CoverageGap, StringComparison.Ordinal))
+        {
+            Assert.False(hasErrorCode);
+            Assert.False(hasErrorName);
+            return;
+        }
+
+        Assert.True(hasErrorCode, $"Display identity stage '{failedStage}' must publish errorCode.");
+        Assert.True(hasErrorName, $"Display identity stage '{failedStage}' must publish errorName.");
+        if (hasErrorName)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(errorNameElement.GetString()));
+        }
+    }
+
+    private static string[] GetReasonSignatures(JsonElement reasons) =>
+        [.. reasons.EnumerateArray().Select(GetReasonSignature)];
+
+    private static string[] GetReasonSignatures(IEnumerable<JsonElement> reasons) =>
+        [.. reasons.Select(GetReasonSignature)];
+
+    private static IEnumerable<JsonElement> GetWarningReasons(JsonElement reasons) =>
+        reasons.EnumerateArray()
+            .Where(item => string.Equals(item.GetProperty("severity").GetString(), GuardSeverityValues.Warning, StringComparison.Ordinal));
+
+    private static string GetReasonSignature(JsonElement reason) =>
+        string.Join(
+            "\u001F",
+            reason.GetProperty("source").GetString(),
+            reason.GetProperty("code").GetString(),
+            reason.GetProperty("severity").GetString(),
+            reason.GetProperty("messageHuman").GetString());
+
+    private static void AssertReasonList(JsonElement reasons, string expectedSource, IEnumerable<string> allowedSources)
+    {
+        JsonElement[] items = [.. reasons.EnumerateArray()];
+        Assert.NotEmpty(items);
+
+        foreach (JsonElement reason in items)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(reason.GetProperty("code").GetString()));
+            Assert.Contains(reason.GetProperty("severity").GetString(), new[]
+            {
+                GuardSeverityValues.Info,
+                GuardSeverityValues.Warning,
+                GuardSeverityValues.Blocked,
+            });
+            Assert.Equal(expectedSource, reason.GetProperty("source").GetString());
+            Assert.Contains(reason.GetProperty("source").GetString(), allowedSources);
+            Assert.False(string.IsNullOrWhiteSpace(reason.GetProperty("messageHuman").GetString()));
+        }
     }
 
     private static Task<JsonDocument> CallToolAsync(

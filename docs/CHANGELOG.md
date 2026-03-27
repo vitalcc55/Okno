@@ -8,6 +8,12 @@
 - Plugin теперь публикует отдельный MCP server `okno`, который запускает уже собранный `Okno.Server.dll` через repo-owned launcher, не переписывая legacy home-level `windows` server.
 - В корневом `README.md` обновлён раздел про repo-local Codex plugin и закреплено, что user-facing plugin surface использует продуктовое имя `Okno`, а repo-local MCP identity — `okno`.
 
+## 2026-03-27 13:28
+
+- Package D для `okno.health + runtime guard layer` закрыт как verification/docs sync wave без расширения runtime surface: raw MCP integration теперь валидирует legacy top-level summary contract и canonical projection `blockedCapabilities` / `warnings` на live MCP boundary, а `scripts/smoke.ps1` дополнительно закрепляет отсутствие выдуманного `artifactPath`, отсутствие dedicated health runtime event beyond generic `tool.invocation.*` и раннюю materialization health evidence.
+- Smoke harness теперь materialize-ит health evidence в `artifacts/smoke/<run_id>/report.json` и `summary.md` сразу после успешного `okno.health`, а затем обновляет эти артефакты финальным full-run report, поэтому downstream failure больше не оставляет readiness investigation совсем без следа.
+- Source-of-truth docs выровнены под фактический reporting-first rollout: roadmap больше не держит health workstream в `запланировано`, `README` и `architecture/index` описывают `okno.health` как public readiness/guard summary, `observability` явно фиксирует отсутствие dedicated health artifact/event как текущую contract boundary, а exec-plan Package D закрыт по фактическим verification/docs результатам без подмены evidence соседним repo-local plugin surface.
+
 ## 2026-03-25 11:05
 
 - `okno.health` расширен до contract-first readiness summary без runtime probes и hidden enforcement: `HealthResult` теперь публикует typed `Readiness`, `BlockedCapabilities` и `Warnings`, а live wording в `ToolDescriptions` и `ToolContractManifest` выровнен под conservative readiness/guard snapshot для shipped observe paths и ближайших deferred `input` / `clipboard` / `launch` capability.

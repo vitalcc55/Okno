@@ -5,6 +5,8 @@ Set-Location $repoRoot
 
 $runId = Get-Date -Format 'yyyyMMddTHHmmssfff'
 $artifactRoot = Join-Path $repoRoot "artifacts\\smoke\\$runId"
+$reportPath = Join-Path $artifactRoot 'report.json'
+$summaryPath = Join-Path $artifactRoot 'summary.md'
 $serverDll = Join-Path $repoRoot 'src\WinBridge.Server\bin\Debug\net8.0-windows10.0.19041.0\Okno.Server.dll'
 $helperExe = Join-Path $repoRoot 'tests\WinBridge.SmokeWindowHost\bin\Debug\net8.0-windows10.0.19041.0\WinBridge.SmokeWindowHost.exe'
 $contractPath = Join-Path $artifactRoot 'project-interfaces.json'
@@ -39,6 +41,13 @@ $waitTimeoutForegroundMs = 1500
 $waitTimeoutSemanticUiMs = 3000
 $waitTimeoutElementGoneMs = 5000
 $waitTimeoutVisualMs = 6000
+$expectedHealthDomains = @('desktop_session', 'session_alignment', 'integrity', 'uiaccess')
+$expectedHealthCapabilities = @('capture', 'uia', 'wait', 'input', 'clipboard', 'launch')
+$allowedGuardStatuses = @('ready', 'degraded', 'blocked', 'unknown')
+$allowedGuardSeverities = @('info', 'warning', 'blocked')
+$expectedAuditSchemaVersion = '1.0.0'
+$allowedDisplayIdentityModes = @('display_config_strong', 'gdi_fallback')
+$allowedDisplayIdentityFailureStages = @('display_config_coverage_gap', 'get_monitor_info', 'get_buffer_sizes', 'query_display_config', 'get_source_name', 'get_target_name')
 
 function Send-Json {
     param(
@@ -148,6 +157,311 @@ function Get-RequiredToolNames {
     )
 
     return @($Manifest.tools.smoke_required_names)
+}
+
+function Join-ContractValues {
+    param(
+        [Parameter(Mandatory)]
+        [object[]] $Values
+    )
+
+    return [string]::Join(',', @($Values | ForEach-Object { [string]$_ }))
+}
+
+function Get-HealthStatusDigest {
+    param(
+        [Parameter(Mandatory)]
+        [object[]] $Items,
+        [Parameter(Mandatory)]
+        [string] $NameProperty
+    )
+
+    return (@(
+            $Items | ForEach-Object {
+                $name = [string]$_.PSObject.Properties[$NameProperty].Value
+                $status = [string]$_.status
+                "$name=$status"
+            }) -join ', ')
+}
+
+function Get-HealthReasonSignature {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Reason
+    )
+
+    return [string]::Join(
+        [string][char]31,
+        @(
+            [string]$Reason.source,
+            [string]$Reason.code,
+            [string]$Reason.severity,
+            [string]$Reason.messageHuman
+        ))
+}
+
+function Get-HealthReasonSignatures {
+    param(
+        [Parameter(Mandatory)]
+        [object[]] $Reasons
+    )
+
+    return @($Reasons | ForEach-Object { Get-HealthReasonSignature -Reason $_ })
+}
+
+function Get-ContractMapSignatures {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Map
+    )
+
+    return @(
+        $Map.PSObject.Properties |
+            Sort-Object Name |
+            ForEach-Object { '{0}={1}' -f [string]$_.Name, [string]$_.Value })
+}
+
+function Get-HealthBlockedProjection {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Payload
+    )
+
+    return @($Payload.readiness.capabilities | Where-Object { [string]$_.status -eq 'blocked' })
+}
+
+function Get-HealthWarningProjection {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Payload
+    )
+
+    $domainWarnings = @(
+        $Payload.readiness.domains |
+            ForEach-Object { @($_.reasons) } |
+            Where-Object { [string]$_.severity -eq 'warning' })
+    $capabilityWarnings = @(
+        $Payload.readiness.capabilities |
+            Where-Object { [string]$_.status -ne 'blocked' } |
+            ForEach-Object { @($_.reasons) } |
+            Where-Object { [string]$_.severity -eq 'warning' })
+
+    return @($domainWarnings + $capabilityWarnings)
+}
+
+function Assert-ReasonList {
+    param(
+        [Parameter(Mandatory)]
+        [object[]] $Reasons,
+        [Parameter(Mandatory)]
+        [string] $ExpectedSource
+    )
+
+    Assert-Condition -Condition ($Reasons.Count -gt 0) -Message "Health contract for '$ExpectedSource' must contain at least one reason."
+    foreach ($reason in $Reasons) {
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$reason.code)) -Message "Health reason for '$ExpectedSource' is missing code."
+        Assert-Condition -Condition ($allowedGuardSeverities -contains [string]$reason.severity) -Message "Health reason for '$ExpectedSource' returned unexpected severity '$($reason.severity)'."
+        Assert-Condition -Condition ([string]$reason.source -eq $ExpectedSource) -Message "Health reason for '$ExpectedSource' returned unexpected source '$($reason.source)'."
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$reason.messageHuman)) -Message "Health reason for '$ExpectedSource' is missing human message."
+    }
+}
+
+function Assert-HealthTopLevelContract {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Payload,
+        [Parameter(Mandatory)]
+        [object] $Manifest
+    )
+
+    Assert-Condition -Condition ($Payload.service -eq 'Okno') -Message "Health payload returned unexpected service name '$($Payload.service)'."
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$Payload.version)) -Message 'Health payload did not return version.'
+    Assert-Condition -Condition ([string]$Payload.transport -eq [string]$Manifest.transport.kind) -Message "Health payload returned unexpected transport '$($Payload.transport)'."
+    Assert-Condition -Condition ([string]$Payload.auditSchemaVersion -eq $expectedAuditSchemaVersion) -Message "Health payload returned unexpected auditSchemaVersion '$($Payload.auditSchemaVersion)'."
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$Payload.runId)) -Message 'Health payload did not return runId.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$Payload.artifactsDirectory)) -Message 'Health payload did not return artifactsDirectory.'
+    Assert-Condition -Condition (Test-Path ([string]$Payload.artifactsDirectory)) -Message "Health artifacts directory '$($Payload.artifactsDirectory)' does not exist."
+    Assert-Condition -Condition ($Payload.activeMonitorCount -gt 0) -Message 'Health payload reported non-positive activeMonitorCount.'
+    Assert-DisplayIdentityContract -DisplayIdentity $Payload.displayIdentity
+    Assert-Condition -Condition (-not ($Payload.PSObject.Properties.Name -contains 'artifactPath')) -Message 'Health payload unexpectedly advertises artifactPath although no dedicated health artifact is materialized.'
+
+    $implementedTools = @($Payload.implementedTools | ForEach-Object { [string]$_ })
+    $expectedImplementedTools = @($Manifest.tools.implemented_names | ForEach-Object { [string]$_ })
+    Assert-Condition -Condition ((Join-ContractValues -Values $implementedTools) -eq (Join-ContractValues -Values $expectedImplementedTools)) -Message 'Health implementedTools diverge from current manifest.'
+
+    $deferredToolSignatures = Get-ContractMapSignatures -Map $Payload.deferredTools
+    $expectedDeferredToolSignatures = Get-ContractMapSignatures -Map $Manifest.tools.deferred_phase_map
+    Assert-Condition -Condition ((Join-ContractValues -Values $deferredToolSignatures) -eq (Join-ContractValues -Values $expectedDeferredToolSignatures)) -Message 'Health deferredTools diverge from current manifest.'
+}
+
+function Assert-DisplayIdentityContract {
+    param(
+        [Parameter(Mandatory)]
+        [object] $DisplayIdentity
+    )
+
+    Assert-Condition -Condition ($allowedDisplayIdentityModes -contains [string]$DisplayIdentity.identityMode) -Message "Health payload returned unexpected displayIdentity.identityMode '$($DisplayIdentity.identityMode)'."
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$DisplayIdentity.messageHuman)) -Message 'Health payload did not return displayIdentity.messageHuman.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$DisplayIdentity.capturedAtUtc)) -Message 'Health payload did not return displayIdentity.capturedAtUtc.'
+
+    $hasFailedStage = ($DisplayIdentity.PSObject.Properties.Name -contains 'failedStage') -and ($null -ne $DisplayIdentity.failedStage)
+    $hasErrorCode = ($DisplayIdentity.PSObject.Properties.Name -contains 'errorCode') -and ($null -ne $DisplayIdentity.errorCode)
+    $hasErrorName = ($DisplayIdentity.PSObject.Properties.Name -contains 'errorName') -and ($null -ne $DisplayIdentity.errorName)
+
+    if (-not $hasFailedStage) {
+        Assert-Condition -Condition (-not $hasErrorCode) -Message 'Health displayIdentity returned errorCode without failedStage.'
+        Assert-Condition -Condition (-not $hasErrorName) -Message 'Health displayIdentity returned errorName without failedStage.'
+        return
+    }
+
+    Assert-Condition -Condition ($allowedDisplayIdentityFailureStages -contains [string]$DisplayIdentity.failedStage) -Message "Health payload returned unexpected displayIdentity.failedStage '$($DisplayIdentity.failedStage)'."
+    if ([string]$DisplayIdentity.failedStage -eq 'display_config_coverage_gap') {
+        Assert-Condition -Condition (-not $hasErrorCode) -Message 'Health displayIdentity returned errorCode for display_config_coverage_gap.'
+        Assert-Condition -Condition (-not $hasErrorName) -Message 'Health displayIdentity returned errorName for display_config_coverage_gap.'
+        return
+    }
+
+    Assert-Condition -Condition $hasErrorCode -Message "Health displayIdentity stage '$($DisplayIdentity.failedStage)' must publish errorCode."
+    Assert-Condition -Condition $hasErrorName -Message "Health displayIdentity stage '$($DisplayIdentity.failedStage)' must publish errorName."
+    if ($hasErrorName) {
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$DisplayIdentity.errorName)) -Message 'Health displayIdentity returned empty errorName.'
+    }
+}
+
+function Assert-HealthTopologyConsistency {
+    param(
+        [Parameter(Mandatory)]
+        [object] $HealthPayload,
+        [Parameter(Mandatory)]
+        [object] $MonitorsPayload
+    )
+
+    Assert-Condition -Condition ([int]$HealthPayload.activeMonitorCount -eq [int]$MonitorsPayload.count) -Message 'Health activeMonitorCount diverges from windows.list_monitors count.'
+    Assert-Condition -Condition ([string]$HealthPayload.displayIdentity.identityMode -eq [string]$MonitorsPayload.diagnostics.identityMode) -Message 'Health displayIdentity.identityMode diverges from windows.list_monitors diagnostics.identityMode.'
+}
+
+function Assert-BlockedCapabilitiesProjection {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Payload
+    )
+
+    $expectedBlockedCapabilities = @(Get-HealthBlockedProjection -Payload $Payload)
+    $actualBlockedCapabilities = @($Payload.blockedCapabilities)
+    $expectedNames = @($expectedBlockedCapabilities | ForEach-Object { [string]$_.capability })
+    $actualNames = @($actualBlockedCapabilities | ForEach-Object { [string]$_.capability })
+
+    Assert-Condition -Condition ((Join-ContractValues -Values $actualNames) -eq (Join-ContractValues -Values $expectedNames)) -Message "Health blockedCapabilities do not match readiness blocked subset: '$((Join-ContractValues -Values $actualNames))'."
+
+    foreach ($expectedCapability in $expectedBlockedCapabilities) {
+        $capabilityName = [string]$expectedCapability.capability
+        $actualCapability = @($actualBlockedCapabilities | Where-Object { [string]$_.capability -eq $capabilityName })
+        Assert-Condition -Condition ($actualCapability.Count -eq 1) -Message "Health blockedCapabilities projection for '$capabilityName' is missing or duplicated."
+        Assert-Condition -Condition ([string]$actualCapability[0].status -eq 'blocked') -Message "Health blockedCapabilities projection for '$capabilityName' returned non-blocked status '$($actualCapability[0].status)'."
+        Assert-Condition -Condition ((Join-ContractValues -Values (Get-HealthReasonSignatures -Reasons @($actualCapability[0].reasons))) -eq (Join-ContractValues -Values (Get-HealthReasonSignatures -Reasons @($expectedCapability.reasons)))) -Message "Health blockedCapabilities reasons diverge from readiness projection for '$capabilityName'."
+    }
+}
+
+function Assert-WarningsProjection {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Payload
+    )
+
+    $expectedWarnings = @(Get-HealthWarningProjection -Payload $Payload)
+    $actualWarnings = @($Payload.warnings)
+    Assert-Condition -Condition ((Join-ContractValues -Values (Get-HealthReasonSignatures -Reasons $actualWarnings)) -eq (Join-ContractValues -Values (Get-HealthReasonSignatures -Reasons $expectedWarnings))) -Message 'Health warnings do not mirror warning projection from readiness snapshot.'
+}
+
+function Assert-HealthPayload {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ToolCall,
+        [Parameter(Mandatory)]
+        [object] $Payload,
+        [Parameter(Mandatory)]
+        [object] $Manifest
+    )
+
+    Assert-Condition -Condition (-not [bool]$ToolCall.Json.result.isError) -Message 'okno.health returned isError=true despite successful snapshot construction.'
+    Assert-HealthTopLevelContract -Payload $Payload -Manifest $Manifest
+    Assert-Condition -Condition ($Payload.PSObject.Properties.Name -contains 'readiness') -Message 'Health payload is missing readiness snapshot.'
+    Assert-Condition -Condition ($Payload.PSObject.Properties.Name -contains 'blockedCapabilities') -Message 'Health payload is missing blockedCapabilities.'
+    Assert-Condition -Condition ($Payload.PSObject.Properties.Name -contains 'warnings') -Message 'Health payload is missing warnings.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$Payload.readiness.capturedAtUtc)) -Message 'Health readiness snapshot is missing capturedAtUtc.'
+
+    $domainNames = @($Payload.readiness.domains | ForEach-Object { [string]$_.domain })
+    $capabilityNames = @($Payload.readiness.capabilities | ForEach-Object { [string]$_.capability })
+    Assert-Condition -Condition ((Join-ContractValues -Values $domainNames) -eq (Join-ContractValues -Values $expectedHealthDomains)) -Message "Health domains differ from canonical contract: '$((Join-ContractValues -Values $domainNames))'."
+    Assert-Condition -Condition ((Join-ContractValues -Values $capabilityNames) -eq (Join-ContractValues -Values $expectedHealthCapabilities)) -Message "Health capabilities differ from canonical contract: '$((Join-ContractValues -Values $capabilityNames))'."
+
+    foreach ($domain in @($Payload.readiness.domains)) {
+        $domainName = [string]$domain.domain
+        Assert-Condition -Condition ($allowedGuardStatuses -contains [string]$domain.status) -Message "Health domain '$domainName' returned unexpected status '$($domain.status)'."
+        Assert-ReasonList -Reasons @($domain.reasons) -ExpectedSource $domainName
+    }
+
+    foreach ($capability in @($Payload.readiness.capabilities)) {
+        $capabilityName = [string]$capability.capability
+        Assert-Condition -Condition ($allowedGuardStatuses -contains [string]$capability.status) -Message "Health capability '$capabilityName' returned unexpected status '$($capability.status)'."
+        Assert-ReasonList -Reasons @($capability.reasons) -ExpectedSource $capabilityName
+    }
+
+    $knownWarningSources = @($expectedHealthDomains + $expectedHealthCapabilities)
+    foreach ($warning in @($Payload.warnings)) {
+        Assert-Condition -Condition ([string]$warning.severity -eq 'warning') -Message "Health warnings list returned non-warning severity '$($warning.severity)'."
+        Assert-Condition -Condition ($knownWarningSources -contains [string]$warning.source) -Message "Health warnings list returned unknown source '$($warning.source)'."
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$warning.code)) -Message "Health warnings list contains warning without code."
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$warning.messageHuman)) -Message "Health warnings list contains warning without message."
+    }
+
+    Assert-BlockedCapabilitiesProjection -Payload $Payload
+    Assert-WarningsProjection -Payload $Payload
+}
+
+function Assert-HealthObservabilityContract {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Payload
+    )
+
+    $eventsPath = Join-Path ([string]$Payload.artifactsDirectory) 'events.jsonl'
+    Assert-Condition -Condition (Test-Path $eventsPath) -Message "Health observability contract expected events file '$eventsPath'."
+
+    $allRunEvents = @(
+        Get-Content $eventsPath |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { $_ | ConvertFrom-Json })
+
+    $healthEvents = @(
+        $allRunEvents |
+            Where-Object { [string]$_.tool_name -eq 'okno.health' })
+
+    $genericHealthEvents = @($healthEvents | ForEach-Object { [string]$_.event_name })
+    Assert-Condition -Condition ($genericHealthEvents -contains 'tool.invocation.started') -Message 'Health observability contract is missing generic tool.invocation.started event.'
+    Assert-Condition -Condition ($genericHealthEvents -contains 'tool.invocation.completed') -Message 'Health observability contract is missing generic tool.invocation.completed event.'
+
+    $unexpectedHealthEvents = @(
+        $allRunEvents |
+            Where-Object {
+                $eventName = [string]$_.event_name
+                ($eventName -like 'health.*') -or ($eventName -like 'guard.runtime.*')
+            })
+
+    Assert-Condition -Condition ($unexpectedHealthEvents.Count -eq 0) -Message 'Health observability contract unexpectedly materialized dedicated runtime events.'
+}
+
+function Write-SmokeArtifacts {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Report,
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string[]] $SummaryLines
+    )
+
+    $Report | ConvertTo-Json -Depth 20 | Set-Content -Path $reportPath -Encoding utf8
+    ($SummaryLines -join [Environment]::NewLine) | Set-Content -Path $summaryPath -Encoding utf8
 }
 
 function Find-UiaNodes {
@@ -579,7 +893,49 @@ try {
         Json = $healthCall.Json
     }
     $healthPayload = $healthCall.Payload
-    Assert-Condition -Condition ($healthPayload.service -eq 'Okno') -Message "Health payload returned unexpected service name '$($healthPayload.service)'."
+    Assert-HealthPayload -ToolCall $healthCall -Payload $healthPayload -Manifest $manifest
+
+    Write-SmokeArtifacts -Report ([ordered]@{
+            run_id = $runId
+            initialized_protocol = $initializeResponse.Json.result.protocolVersion
+            server_name = $initializeResponse.Json.result.serverInfo.name
+            tool_contract = $manifest
+            declared_tools = @($listResponse.Json.result.tools | ForEach-Object { $_.name })
+            health = $healthPayload
+            health_digest = [ordered]@{
+                domain_statuses = Get-HealthStatusDigest -Items @($healthPayload.readiness.domains) -NameProperty 'domain'
+                capability_statuses = Get-HealthStatusDigest -Items @($healthPayload.readiness.capabilities) -NameProperty 'capability'
+                blocked_capabilities = @($healthPayload.blockedCapabilities | ForEach-Object { [string]$_.capability })
+                warning_codes = @($healthPayload.warnings | ForEach-Object { [string]$_.code })
+                artifact_materialized = $false
+                dedicated_runtime_event_validation = 'pending'
+            }
+            raw_requests = [ordered]@{
+                initialize = $rawInitializeRequest
+                list_tools = $rawListRequest
+                health = $rawHealthRequest
+            }
+            raw_responses = [ordered]@{
+                initialize = $initializeResponse.Raw
+                list_tools = $listResponse.Raw
+                health = $healthResponse.Raw
+            }
+            status = 'partial_after_health'
+        }) -SummaryLines @(
+            '# Okno smoke summary',
+            '',
+            "- run_id: $runId",
+            "- server: $($initializeResponse.Json.result.serverInfo.name)",
+            "- protocol: $($initializeResponse.Json.result.protocolVersion)",
+            "- declared_tools: $(@($listResponse.Json.result.tools).Count)",
+            "- health_domains: $(Get-HealthStatusDigest -Items @($healthPayload.readiness.domains) -NameProperty 'domain')",
+            "- health_capabilities: $(Get-HealthStatusDigest -Items @($healthPayload.readiness.capabilities) -NameProperty 'capability')",
+            "- health_blocked_capabilities: $((@($healthPayload.blockedCapabilities | ForEach-Object { [string]$_.capability }) -join ', '))",
+            "- health_warning_codes: $((@($healthPayload.warnings | ForEach-Object { [string]$_.code }) -join ', '))",
+            "- health_artifact: not_materialized",
+            "- health_event: pending_final_validation",
+            "- status: partial_after_health",
+            "- report: $reportPath")
 
     $monitorsCall = Invoke-ToolCall -Process $process -Name 'windows.list_monitors' -Arguments @{} -RequestName 'windows.list_monitors'
     $rawMonitorsRequest = $monitorsCall.RawRequest
@@ -589,6 +945,7 @@ try {
     }
     $monitorsPayload = $monitorsCall.Payload
     Assert-Condition -Condition ($monitorsPayload.count -gt 0) -Message 'Smoke requires at least one active monitor.'
+    Assert-HealthTopologyConsistency -HealthPayload $healthPayload -MonitorsPayload $monitorsPayload
     $primaryMonitorId = [string]$monitorsPayload.monitors[0].monitorId
 
     $visibleWindowResult = Wait-ForVisibleHelperWindow -Process $process -HelperHwnd $helperHwnd
@@ -831,6 +1188,7 @@ try {
     }
 
     $stderr = $process.StandardError.ReadToEnd()
+    Assert-HealthObservabilityContract -Payload $healthPayload
 
     $report = [ordered]@{
         run_id = $runId
@@ -839,6 +1197,14 @@ try {
         tool_contract = $manifest
         declared_tools = @($listResponse.Json.result.tools | ForEach-Object { $_.name })
         health = $healthPayload
+        health_digest = [ordered]@{
+            domain_statuses = Get-HealthStatusDigest -Items @($healthPayload.readiness.domains) -NameProperty 'domain'
+            capability_statuses = Get-HealthStatusDigest -Items @($healthPayload.readiness.capabilities) -NameProperty 'capability'
+            blocked_capabilities = @($healthPayload.blockedCapabilities | ForEach-Object { [string]$_.capability })
+            warning_codes = @($healthPayload.warnings | ForEach-Object { [string]$_.code })
+            artifact_materialized = $false
+            dedicated_runtime_event_validation = 'verified_absent'
+        }
         monitors = $monitorsPayload
         windows = $windowsPayload
         attached_window = $attachedWindow
@@ -904,18 +1270,19 @@ try {
         stderr = $stderr
     }
 
-    $reportPath = Join-Path $artifactRoot 'report.json'
-    $summaryPath = Join-Path $artifactRoot 'summary.md'
-
-    $report | ConvertTo-Json -Depth 20 | Set-Content -Path $reportPath -Encoding utf8
-
-    $summary = @(
+    $summaryLines = @(
         '# Okno smoke summary',
         '',
         "- run_id: $runId",
         "- server: $($initializeResponse.Json.result.serverInfo.name)",
         "- protocol: $($initializeResponse.Json.result.protocolVersion)",
         "- declared_tools: $(@($listResponse.Json.result.tools).Count)",
+        "- health_domains: $(Get-HealthStatusDigest -Items @($healthPayload.readiness.domains) -NameProperty 'domain')",
+        "- health_capabilities: $(Get-HealthStatusDigest -Items @($healthPayload.readiness.capabilities) -NameProperty 'capability')",
+        "- health_blocked_capabilities: $((@($healthPayload.blockedCapabilities | ForEach-Object { [string]$_.capability }) -join ', '))",
+        "- health_warning_codes: $((@($healthPayload.warnings | ForEach-Object { [string]$_.code }) -join ', '))",
+        "- health_artifact: not_materialized",
+        "- health_event: not_materialized",
         "- monitor_count: $($monitorsPayload.count)",
         "- desktop_monitor_id: $primaryMonitorId",
         "- visible_windows: $($windowsPayload.count)",
@@ -935,9 +1302,9 @@ try {
         "- wait_visual_changed_artifact: $($visualWaitPayload.artifactPath)",
         "- audit_dir: $($healthPayload.artifactsDirectory)",
         "- report: $reportPath"
-    ) -join [Environment]::NewLine
+    )
 
-    $summary | Set-Content -Path $summaryPath -Encoding utf8
+    Write-SmokeArtifacts -Report $report -SummaryLines $summaryLines
 
     Get-Content $summaryPath
 }

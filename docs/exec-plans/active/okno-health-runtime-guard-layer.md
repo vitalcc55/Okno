@@ -1,6 +1,6 @@
 # ExecPlan: okno.health + runtime guard layer
 
-Статус: in_progress
+Статус: done
 Создан: 2026-03-23
 Обновлён: 2026-03-25
 
@@ -393,6 +393,12 @@ DTO invariants:
 - финальная verification wave должна подтверждать текущую capability derivation из guard-layer, а не прежний placeholder baseline;
 - если рядом идут plugin/runtime packaging изменения, не смешивать их с критерием завершения этого workstream и не подменять ими L3/health-docs evidence.
 
+Статус по факту `2026-03-27`:
+
+- L1/L2 coverage закрыта без расширения runtime policy: `RuntimeGuardPolicyTests`, `RuntimeGuardServiceTests`, `AdminToolTests`, `ToolContractExporterTests` и raw MCP smoke test закрепляют canonical top-level contract, domain/capability shape и отсутствие health-specific placeholder drift.
+- L3 smoke больше не ограничивается `service == Okno`: `scripts/smoke.ps1` валидирует top-level summary contract, readiness snapshot shape, canonical projection `warnings` / `blockedCapabilities`, а также отдельно фиксирует, что dedicated health artifact/event в текущем reporting-first rollout не materialized.
+- Docs sync закрыт только по health workstream: roadmap, `README`, `architecture/index`, `observability`, `CHANGELOG` и checklist выровнены по фактической semantics `okno.health`; sidecar plugin surface не используется как замена health evidence.
+
 ## Test ladder
 
 ### L1 - contract and policy tests
@@ -441,6 +447,6 @@ DTO invariants:
 - [x] Решено, materialize-ится ли отдельный health artifact и runtime event.
 - [x] `AdminTools.Health()` переведён на единый guard service.
 - [x] `ToolDescriptions.OknoHealthTool` отражает readiness snapshot, а не старое узкое описание.
-- [ ] L1/L2/L3 test ladder покрывает domains, capability derivation и public payload.
-- [ ] Docs sync включает roadmap, observability, generated interfaces и changelog.
+- [x] L1/L2/L3 test ladder покрывает domains, capability derivation и public payload.
+- [x] Docs sync включает roadmap, observability, generated interfaces и changelog.
 - [x] В первой поставке нет скрытого enforcement для already shipped tools.

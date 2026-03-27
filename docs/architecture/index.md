@@ -11,6 +11,7 @@ Product-ready delivery target на текущем этапе только оди
 - `Host boundary`: MCP server, transport, tool registration, capability negotiation.
 - `Runtime composition root`: тонкий `WinBridge.Runtime`, который собирает DI и не держит service implementation внутри себя.
 - `Tooling`: `ToolNames` + `ToolContractManifest` + exporter как единый source of truth для tool contract.
+- `Runtime guard layer`: conservative reporting-first readiness baseline для `okno.health`, который публикует domain/capability snapshot и не вводит hidden enforcement для уже shipped observe tools.
 - `Runtime services`: session, diagnostics и shell-window logic в отдельных проектах.
 - `Windows integration`: `Windows.Shell`, `Windows.Capture`, shipped `windows.uia_snapshot` и shipped `windows.wait` уже реализованы сейчас; `windows.input` и `windows.clipboard_*` остаются следующими seams.
 - `Diagnostics`: structured audit artifacts, human-readable summary, smoke harness, runbooks.
