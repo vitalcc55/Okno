@@ -16,6 +16,8 @@ public static class GuardReasonCodeValues
     public const string CapabilitySessionTransition = "capability_session_transition";
     public const string InputDesktopUnavailable = "input_desktop_unavailable";
     public const string InputDesktopAvailable = "input_desktop_available";
+    public const string InputDesktopIdentityUnknown = "input_desktop_identity_unknown";
+    public const string InputDesktopNonDefault = "input_desktop_non_default";
     public const string SessionNotInteractive = "session_not_interactive";
     public const string SessionQueryFailed = "session_query_failed";
     public const string ActiveConsoleUnavailable = "active_console_unavailable";

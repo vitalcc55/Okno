@@ -14,6 +14,10 @@
 - Smoke harness теперь materialize-ит health evidence в `artifacts/smoke/<run_id>/report.json` и `summary.md` сразу после успешного `okno.health`, а затем обновляет эти артефакты финальным full-run report, поэтому downstream failure больше не оставляет readiness investigation совсем без следа.
 - Source-of-truth docs выровнены под фактический reporting-first rollout: roadmap больше не держит health workstream в `запланировано`, `README` и `architecture/index` описывают `okno.health` как public readiness/guard summary, `observability` явно фиксирует отсутствие dedicated health artifact/event как текущую contract boundary, а exec-plan Package D закрыт по фактическим verification/docs результатам без подмены evidence соседним repo-local plugin surface.
 
+## 2026-03-30 11:40
+
+- Review-driven hardening устранил несколько реальных root-cause проблем без возврата legacy/shim paths: plugin-local MCP manifest `plugins/okno/.mcp.json` больше не хранит machine-specific absolute paths и стартует через `powershell -NoProfile -NonInteractive`, launcher перенесён в plugin root как переносимая repo-local indirection, bundled skill теперь явно требует запуск repo control-plane команд из корня репозитория, а runtime guard desktop probe стал identity-aware — `Win32RuntimeGuardPlatform` теперь различает non-`Default` input desktop и policy больше не рекламирует live GUI observe paths как usable в non-active session. Дополнительно `launch` blocked summary всегда публикует intrinsic `launch_elevation_boundary_unconfirmed`, даже в otherwise healthy environment, а unit tests закрепляют эти contract edges.
+
 ## 2026-03-25 11:05
 
 - `okno.health` расширен до contract-first readiness summary без runtime probes и hidden enforcement: `HealthResult` теперь публикует typed `Readiness`, `BlockedCapabilities` и `Warnings`, а live wording в `ToolDescriptions` и `ToolContractManifest` выровнен под conservative readiness/guard snapshot для shipped observe paths и ближайших deferred `input` / `clipboard` / `launch` capability.

@@ -7,6 +7,7 @@ internal sealed class Win32RuntimeGuardPlatform : IRuntimeGuardPlatform
 {
     private const int WtsCurrentSession = -1;
     private const uint DesktopReadObjects = 0x0001;
+    private const int UoiName = 2;
     private const uint TokenQuery = 0x0008;
     private const int ErrorInsufficientBuffer = 122;
     private const int SecurityMandatoryLowRid = 0x00001000;
@@ -25,12 +26,21 @@ internal sealed class Win32RuntimeGuardPlatform : IRuntimeGuardPlatform
         IntPtr desktop = OpenInputDesktop(0, false, DesktopReadObjects);
         if (desktop == IntPtr.Zero)
         {
-            return new DesktopSessionProbeResult(InputDesktopAvailable: false, ErrorCode: Marshal.GetLastWin32Error());
+            return new DesktopSessionProbeResult(
+                InputDesktopAvailable: false,
+                ErrorCode: Marshal.GetLastWin32Error(),
+                DesktopNameResolved: false,
+                DesktopName: null);
         }
 
         try
         {
-            return new DesktopSessionProbeResult(InputDesktopAvailable: true, ErrorCode: null);
+            bool desktopNameResolved = TryGetUserObjectName(desktop, out string? desktopName);
+            return new DesktopSessionProbeResult(
+                InputDesktopAvailable: true,
+                ErrorCode: null,
+                DesktopNameResolved: desktopNameResolved,
+                DesktopName: desktopNameResolved ? desktopName : null);
         }
         finally
         {
@@ -241,6 +251,32 @@ internal sealed class Win32RuntimeGuardPlatform : IRuntimeGuardPlatform
         return true;
     }
 
+    private static bool TryGetUserObjectName(IntPtr userObjectHandle, out string? name)
+    {
+        name = null;
+        _ = GetUserObjectInformation(userObjectHandle, UoiName, IntPtr.Zero, 0, out int requiredLength);
+        if (requiredLength <= 0 || Marshal.GetLastWin32Error() != ErrorInsufficientBuffer)
+        {
+            return false;
+        }
+
+        IntPtr buffer = Marshal.AllocHGlobal(requiredLength);
+        try
+        {
+            if (!GetUserObjectInformation(userObjectHandle, UoiName, buffer, requiredLength, out _))
+            {
+                return false;
+            }
+
+            name = Marshal.PtrToStringUni(buffer);
+            return !string.IsNullOrWhiteSpace(name);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
     private static RuntimeIntegrityLevel MapIntegrityLevel(int rid)
     {
         if (rid < SecurityMandatoryLowRid)
@@ -271,6 +307,14 @@ internal sealed class Win32RuntimeGuardPlatform : IRuntimeGuardPlatform
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool CloseDesktop(IntPtr hDesktop);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetUserObjectInformation(
+        IntPtr hObj,
+        int nIndex,
+        IntPtr pvInfo,
+        int nLength,
+        out int lpnLengthNeeded);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool ProcessIdToSessionId(uint dwProcessId, out uint pSessionId);

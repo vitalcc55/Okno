@@ -16,7 +16,7 @@
 1. Прочитать repo README и подтвердить product naming.
 2. Добавить repo marketplace `.agents/plugins/marketplace.json`.
 3. Создать plugin `plugins/okno/.codex-plugin/plugin.json`.
-4. Добавить plugin-level `.mcp.json` и repo-owned launcher для `Okno.Server`.
+4. Добавить plugin-level `.mcp.json` и plugin-local launcher для `Okno.Server`.
 5. Добавить bundled workflow-skill без дублирования существующего smoke skill по имени.
 6. Обновить repo docs и changelog.
 7. Проверить JSON structure и diff без изменения runtime config.

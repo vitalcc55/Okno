@@ -17,7 +17,9 @@ internal sealed record RuntimeGuardRawFacts(
 
 internal sealed record DesktopSessionProbeResult(
     bool InputDesktopAvailable,
-    int? ErrorCode);
+    int? ErrorCode,
+    bool DesktopNameResolved,
+    string? DesktopName);
 
 internal sealed record SessionAlignmentProbeResult(
     bool ProcessSessionResolved,

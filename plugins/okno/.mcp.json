@@ -3,12 +3,14 @@
     "okno": {
       "command": "powershell",
       "args": [
+        "-NoProfile",
+        "-NonInteractive",
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "C:\\Users\\v.vlasov\\Desktop\\OpenClaw\\tools\\winbridge\\scripts\\codex\\run-okno-mcp.ps1"
+        ".\\run-okno-mcp.ps1"
       ],
-      "cwd": "C:\\Users\\v.vlasov\\Desktop\\OpenClaw\\tools\\winbridge"
+      "cwd": "."
     }
   }
 }

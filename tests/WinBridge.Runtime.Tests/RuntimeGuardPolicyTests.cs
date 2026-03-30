@@ -10,7 +10,11 @@ public sealed class RuntimeGuardPolicyTests
     public void BuildDomainsMarksDesktopSessionBlockedWhenInputDesktopUnavailable()
     {
         RuntimeGuardRawFacts facts = CreateFacts(
-            desktopSession: new DesktopSessionProbeResult(InputDesktopAvailable: false, ErrorCode: 5));
+            desktopSession: new DesktopSessionProbeResult(
+                InputDesktopAvailable: false,
+                ErrorCode: 5,
+                DesktopNameResolved: false,
+                DesktopName: null));
 
         ReadinessDomainStatus domain = Assert.Single(
             RuntimeGuardPolicy.BuildDomains(facts),
@@ -23,7 +27,7 @@ public sealed class RuntimeGuardPolicyTests
     }
 
     [Fact]
-    public void BuildDomainsMarksDesktopSessionDegradedWhenSessionDisconnected()
+    public void BuildDomainsMarksDesktopSessionBlockedWhenSessionDisconnected()
     {
         RuntimeGuardRawFacts facts = CreateFacts(
             sessionAlignment: new SessionAlignmentProbeResult(
@@ -37,9 +41,49 @@ public sealed class RuntimeGuardPolicyTests
             RuntimeGuardPolicy.BuildDomains(facts),
             item => item.Domain == ReadinessDomainValues.DesktopSession);
 
-        Assert.Equal(GuardStatusValues.Degraded, domain.Status);
+        Assert.Equal(GuardStatusValues.Blocked, domain.Status);
         GuardReason reason = Assert.Single(domain.Reasons);
         Assert.Equal(GuardReasonCodeValues.SessionNotInteractive, reason.Code);
+        Assert.Equal(GuardSeverityValues.Blocked, reason.Severity);
+    }
+
+    [Fact]
+    public void BuildDomainsMarksDesktopSessionBlockedWhenInputDesktopIsNotDefault()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            desktopSession: new DesktopSessionProbeResult(
+                InputDesktopAvailable: true,
+                ErrorCode: null,
+                DesktopNameResolved: true,
+                DesktopName: "Winlogon"));
+
+        ReadinessDomainStatus domain = Assert.Single(
+            RuntimeGuardPolicy.BuildDomains(facts),
+            item => item.Domain == ReadinessDomainValues.DesktopSession);
+
+        Assert.Equal(GuardStatusValues.Blocked, domain.Status);
+        GuardReason reason = Assert.Single(domain.Reasons);
+        Assert.Equal(GuardReasonCodeValues.InputDesktopNonDefault, reason.Code);
+        Assert.Equal(GuardSeverityValues.Blocked, reason.Severity);
+    }
+
+    [Fact]
+    public void BuildDomainsMarksDesktopSessionUnknownWhenInputDesktopNameCannotBeResolved()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            desktopSession: new DesktopSessionProbeResult(
+                InputDesktopAvailable: true,
+                ErrorCode: null,
+                DesktopNameResolved: false,
+                DesktopName: null));
+
+        ReadinessDomainStatus domain = Assert.Single(
+            RuntimeGuardPolicy.BuildDomains(facts),
+            item => item.Domain == ReadinessDomainValues.DesktopSession);
+
+        Assert.Equal(GuardStatusValues.Unknown, domain.Status);
+        GuardReason reason = Assert.Single(domain.Reasons);
+        Assert.Equal(GuardReasonCodeValues.InputDesktopIdentityUnknown, reason.Code);
         Assert.Equal(GuardSeverityValues.Warning, reason.Severity);
     }
 
@@ -548,6 +592,28 @@ public sealed class RuntimeGuardPolicyTests
         Assert.Equal(GuardReasonCodeValues.InputIntegrityLimited, capability.Reasons[1].Code);
     }
 
+    [Fact]
+    public void BuildCapabilitiesAlwaysIncludesLaunchBoundaryWhenEnvironmentLooksReady()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            token: new TokenProbeResult(
+                IntegrityResolved: true,
+                IntegrityLevel: RuntimeIntegrityLevel.High,
+                IntegrityRid: 0x3000,
+                ElevationResolved: true,
+                IsElevated: true,
+                ElevationType: TokenElevationTypeValue.Full,
+                UiAccessResolved: true,
+                UiAccess: true));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Launch);
+
+        Assert.Equal(GuardStatusValues.Blocked, capability.Status);
+        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed);
+    }
+
     private static RuntimeGuardRawFacts CreateFacts(
         DesktopSessionProbeResult? desktopSession = null,
         SessionAlignmentProbeResult? sessionAlignment = null,
@@ -555,7 +621,11 @@ public sealed class RuntimeGuardPolicyTests
         CaptureCapabilityProbeResult? capture = null,
         UiaCapabilityProbeResult? uia = null) =>
         new(
-            DesktopSession: desktopSession ?? new DesktopSessionProbeResult(InputDesktopAvailable: true, ErrorCode: null),
+            DesktopSession: desktopSession ?? new DesktopSessionProbeResult(
+                InputDesktopAvailable: true,
+                ErrorCode: null,
+                DesktopNameResolved: true,
+                DesktopName: "Default"),
             SessionAlignment: sessionAlignment ?? new SessionAlignmentProbeResult(
                 ProcessSessionResolved: true,
                 ProcessSessionId: 1,

@@ -69,6 +69,39 @@ internal static class RuntimeGuardPolicy
                 ]);
         }
 
+        if (!facts.DesktopSession.DesktopNameResolved || string.IsNullOrWhiteSpace(facts.DesktopSession.DesktopName))
+        {
+            return new(
+                Domain: ReadinessDomainValues.DesktopSession,
+                Status: GuardStatusValues.Unknown,
+                Reasons:
+                [
+                    CreateReason(
+                        GuardReasonCodeValues.InputDesktopIdentityUnknown,
+                        GuardSeverityValues.Warning,
+                        ReadinessDomainValues.DesktopSession,
+                        "Runtime открыл input desktop, но не смог определить его имя; usable automation surface нельзя подтвердить.")
+                ]);
+        }
+
+        if (!string.Equals(facts.DesktopSession.DesktopName, "Default", StringComparison.Ordinal))
+        {
+            return new(
+                Domain: ReadinessDomainValues.DesktopSession,
+                Status: GuardStatusValues.Blocked,
+                Reasons:
+                [
+                    CreateReason(
+                        GuardReasonCodeValues.InputDesktopNonDefault,
+                        GuardSeverityValues.Blocked,
+                        ReadinessDomainValues.DesktopSession,
+                        string.Format(
+                            CultureInfo.InvariantCulture,
+                            "Текущий input desktop = '{0}', а не 'Default'; live GUI automation path нельзя считать доступным.",
+                            facts.DesktopSession.DesktopName))
+                ]);
+        }
+
         if (facts.SessionAlignment.ActiveConsoleSessionId == InvalidSessionId)
         {
             return new(
@@ -106,12 +139,12 @@ internal static class RuntimeGuardPolicy
         {
             return new(
                 Domain: ReadinessDomainValues.DesktopSession,
-                Status: GuardStatusValues.Degraded,
+                Status: GuardStatusValues.Blocked,
                 Reasons:
                 [
                     CreateReason(
                         GuardReasonCodeValues.SessionNotInteractive,
-                        GuardSeverityValues.Warning,
+                        GuardSeverityValues.Blocked,
                         ReadinessDomainValues.DesktopSession,
                         $"Input desktop открыт, но текущая session не находится в active interactive state ({ToContractValue(connectState)}).")
                 ]);
@@ -142,7 +175,7 @@ internal static class RuntimeGuardPolicy
                     GuardReasonCodeValues.InputDesktopAvailable,
                     GuardSeverityValues.Info,
                     ReadinessDomainValues.DesktopSession,
-                    "Runtime успешно открыл input desktop текущей interactive session.")
+                    "Runtime успешно открыл input desktop 'Default' текущей interactive session.")
             ]);
     }
 
@@ -641,6 +674,15 @@ internal static class RuntimeGuardPolicy
         ReadinessDomainStatus sessionAlignment,
         ReadinessDomainStatus integrity)
     {
+        List<GuardReason> extraReasons =
+        [
+            CreateReason(
+                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                GuardSeverityValues.Blocked,
+                CapabilitySummaryValues.Launch,
+                "Future launch path требует явной модели elevation/integrity boundary; текущий runtime этого ещё не гарантирует.")
+        ];
+
         GuardReason? environmentBlocker = CreateSessionEnvironmentReason(
             CapabilitySummaryValues.Launch,
             desktopSession,
@@ -650,16 +692,15 @@ internal static class RuntimeGuardPolicy
             CapabilitySummaryValues.Launch,
             integrity,
             "Future launch path не смог подтвердить integrity prerequisites.");
-        environmentBlocker ??= CreateCapabilityConstraintReason(
-            CapabilitySummaryValues.Launch,
-            integrity,
-            GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-            "Future launch path требует явной модели elevation/integrity boundary; текущий runtime этого ещё не гарантирует.");
+        if (environmentBlocker is not null)
+        {
+            extraReasons.Add(environmentBlocker);
+        }
 
-        return CreateDeferredBlockedCapability(CapabilitySummaryValues.Launch, environmentBlocker);
+        return CreateDeferredBlockedCapability(CapabilitySummaryValues.Launch, extraReasons);
     }
 
-    private static CapabilityGuardSummary CreateDeferredBlockedCapability(string capability, GuardReason? extraReason)
+    private static CapabilityGuardSummary CreateDeferredBlockedCapability(string capability, IEnumerable<GuardReason> extraReasons)
     {
         List<GuardReason> reasons =
         [
@@ -670,15 +711,22 @@ internal static class RuntimeGuardPolicy
                 "Эта capability пока не реализована в текущем runtime surface и не может считаться готовой.")
         ];
 
-        if (extraReason is not null)
-        {
-            reasons.Add(extraReason);
-        }
-
+        reasons.AddRange(extraReasons);
         return new(
             Capability: capability,
             Status: GuardStatusValues.Blocked,
             Reasons: reasons);
+    }
+
+    private static CapabilityGuardSummary CreateDeferredBlockedCapability(string capability, GuardReason? extraReason)
+    {
+        List<GuardReason> extraReasons = [];
+        if (extraReason is not null)
+        {
+            extraReasons.Add(extraReason);
+        }
+
+        return CreateDeferredBlockedCapability(capability, extraReasons);
     }
 
     private static GuardReason? CreateSessionBlockedReason(

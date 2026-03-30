@@ -32,7 +32,11 @@ public sealed class RuntimeGuardServiceTests
                 CapturedAtUtc: DateTimeOffset.UtcNow));
 
         RuntimeGuardRawFacts facts = new(
-            DesktopSession: new DesktopSessionProbeResult(InputDesktopAvailable: true, ErrorCode: null),
+            DesktopSession: new DesktopSessionProbeResult(
+                InputDesktopAvailable: true,
+                ErrorCode: null,
+                DesktopNameResolved: true,
+                DesktopName: "Default"),
             SessionAlignment: new SessionAlignmentProbeResult(
                 ProcessSessionResolved: true,
                 ProcessSessionId: 1,
