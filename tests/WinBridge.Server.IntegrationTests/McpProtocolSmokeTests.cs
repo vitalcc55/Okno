@@ -123,6 +123,73 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
+    public async Task OknoContractPublishesDeferredExecutionPolicyWithSnakeCaseDescriptorFields()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument contractResponse = await session.CallToolAsync(ToolNames.OknoContract, new { });
+            using JsonDocument contractPayload = JsonDocument.Parse(GetToolTextPayload(contractResponse));
+            JsonElement implementedDescriptor = contractPayload.RootElement
+                .GetProperty("implementedTools")
+                .EnumerateArray()
+                .Single(item => item.GetProperty("name").GetString() == ToolNames.OknoContract);
+            JsonElement inputDescriptor = contractPayload.RootElement
+                .GetProperty("deferredTools")
+                .EnumerateArray()
+                .Single(item => item.GetProperty("name").GetString() == ToolNames.WindowsInput);
+
+            Assert.True(implementedDescriptor.TryGetProperty("planned_phase", out JsonElement implementedPlannedPhase));
+            Assert.Equal(JsonValueKind.Null, implementedPlannedPhase.ValueKind);
+            Assert.True(implementedDescriptor.TryGetProperty("suggested_alternative", out JsonElement implementedSuggestedAlternative));
+            Assert.Equal(JsonValueKind.Null, implementedSuggestedAlternative.ValueKind);
+            Assert.True(implementedDescriptor.TryGetProperty("execution_policy", out JsonElement implementedExecutionPolicy));
+            Assert.Equal(JsonValueKind.Null, implementedExecutionPolicy.ValueKind);
+            Assert.False(implementedDescriptor.TryGetProperty("plannedPhase", out _));
+            Assert.False(implementedDescriptor.TryGetProperty("suggestedAlternative", out _));
+            Assert.False(implementedDescriptor.TryGetProperty("executionPolicy", out _));
+            Assert.Equal("roadmap stage 5", inputDescriptor.GetProperty("planned_phase").GetString());
+            Assert.False(inputDescriptor.TryGetProperty("plannedPhase", out _));
+            Assert.Equal("os_side_effect", inputDescriptor.GetProperty("safety_class").GetString());
+            Assert.False(inputDescriptor.TryGetProperty("safetyClass", out _));
+            Assert.True(inputDescriptor.TryGetProperty("execution_policy", out JsonElement executionPolicy));
+            Assert.False(inputDescriptor.TryGetProperty("executionPolicy", out _));
+            Assert.Equal("input", executionPolicy.GetProperty("policy_group").GetString());
+            Assert.False(executionPolicy.TryGetProperty("policyGroup", out _));
+            Assert.Equal("destructive", executionPolicy.GetProperty("risk_level").GetString());
+            Assert.False(executionPolicy.TryGetProperty("riskLevel", out _));
+            Assert.False(executionPolicy.GetProperty("supports_dry_run").GetBoolean());
+            Assert.False(executionPolicy.TryGetProperty("supportsDryRun", out _));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
     public async Task WindowsWaitRejectsExpectedTextForNonTextAppearsThroughStdio()
     {
         using Process process = StartServer();

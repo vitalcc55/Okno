@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-30 11:03
+
+- Закрыт `Package A` из [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md) без захода в runtime gate/redaction rollout: в `WinBridge.Runtime.Tooling` добавлен typed `execution_policy` metadata layer для deferred action tools, `ToolDescriptor`/`ContractToolDescriptor` и общий export path (`okno.contract` + generated `project-interfaces`) теперь публикуют nested policy fields в canonical snake_case, а manifest заранее хранит internal-only presets для future `windows.launch_process` и `windows.open_target` без premature publication новых public tool names. В том же цикле обновлены узкие unit/integration tests на manifest/export alignment и literal set, а shipped behavior существующих tools и `okno.health` остались без изменения.
+
 ## 2026-03-30 10:20
 
 - Добавлен новый active exec-plan [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md), который фиксирует следующий policy-first workstream после shipped reporting-first guard layer: canonical tooling metadata для future action tools, единый execution gate с `allowed / blocked / needs_confirmation / dry_run_only`, redaction-first diagnostics model, file-level integration map, official constraints, delivery packages, verification ladder и implementation checklist для follow-up `windows.launch_process`.

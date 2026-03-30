@@ -1,9 +1,14 @@
+using WinBridge.Runtime.Contracts;
+
 namespace WinBridge.Runtime.Tooling;
 
 public static class ToolContractManifest
 {
+    private const string WindowsLaunchProcess = "windows.launch_process";
+    private const string WindowsOpenTarget = "windows.open_target";
+
     public static string ContractNotes { get; } =
-        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait и честные deferred action tools без hidden enforcement.";
+        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait и честные deferred action tools без hidden enforcement; okno.contract публикует execution_policy metadata только для уже объявленных deferred tools.";
 
     public static IReadOnlyList<ToolDescriptor> All { get; } =
         new[]
@@ -19,10 +24,29 @@ public static class ToolContractManifest
             new ToolDescriptor(ToolNames.WindowsCapture, "windows.capture", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.WindowsCaptureTool, null, null, true),
             new ToolDescriptor(ToolNames.WindowsUiaSnapshot, "windows.uia", ToolLifecycle.Implemented, ToolSafetyClass.ReadOnly, ToolDescriptions.WindowsUiaSnapshotTool, null, null, true),
             new ToolDescriptor(ToolNames.WindowsWait, "windows.wait", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.WindowsWaitTool, null, null, true),
-            new ToolDescriptor(ToolNames.WindowsClipboardGet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.ReadOnly, "Читает текущее содержимое clipboard.", "roadmap stage 4", "Clipboard path будет добавлен после skeleton runtime.", false),
-            new ToolDescriptor(ToolNames.WindowsClipboardSet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Записывает новое содержимое в clipboard.", "roadmap stage 4", "До clipboard-сервиса используй безопасные stub calls.", false),
-            new ToolDescriptor(ToolNames.WindowsInput, "windows.input", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Выполняет низкоуровневую последовательность input-действий.", "roadmap stage 5", "Low-level input вводится только после capture/text path.", false),
-            new ToolDescriptor(ToolNames.WindowsUiaAction, "windows.uia", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Выполняет semantic UIA action по element id.", "roadmap stage 7", "Semantic UIA actions запланированы после snapshot layer.", false),
+            new ToolDescriptor(ToolNames.WindowsClipboardGet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.ReadOnly, "Читает текущее содержимое clipboard.", "roadmap stage 4", "Clipboard path будет добавлен после skeleton runtime.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.Clipboard, ToolExecutionRiskLevel.Medium, CapabilitySummaryValues.Clipboard, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.ClipboardPayload)),
+            new ToolDescriptor(ToolNames.WindowsClipboardSet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Записывает новое содержимое в clipboard.", "roadmap stage 4", "До clipboard-сервиса используй безопасные stub calls.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.Clipboard, ToolExecutionRiskLevel.High, CapabilitySummaryValues.Clipboard, supportsDryRun: true, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.ClipboardPayload)),
+            new ToolDescriptor(ToolNames.WindowsInput, "windows.input", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Выполняет низкоуровневую последовательность input-действий.", "roadmap stage 5", "Low-level input вводится только после capture/text path.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.Input, ToolExecutionRiskLevel.Destructive, CapabilitySummaryValues.Input, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.TextPayload)),
+            new ToolDescriptor(ToolNames.WindowsUiaAction, "windows.uia", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Выполняет semantic UIA action по element id.", "roadmap stage 7", "Semantic UIA actions запланированы после snapshot layer.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.UiaAction, ToolExecutionRiskLevel.High, CapabilitySummaryValues.Uia, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.TargetMetadata)),
+        };
+
+    internal static IReadOnlyDictionary<string, ToolExecutionPolicyDescriptor> FutureLaunchFamilyPolicyPresets { get; } =
+        new Dictionary<string, ToolExecutionPolicyDescriptor>(StringComparer.Ordinal)
+        {
+            [WindowsLaunchProcess] = CreateExecutionPolicy(
+                ToolExecutionPolicyGroup.Launch,
+                ToolExecutionRiskLevel.High,
+                CapabilitySummaryValues.Launch,
+                supportsDryRun: true,
+                ToolExecutionConfirmationMode.Required,
+                ToolExecutionRedactionClass.LaunchPayload),
+            [WindowsOpenTarget] = CreateExecutionPolicy(
+                ToolExecutionPolicyGroup.Launch,
+                ToolExecutionRiskLevel.Medium,
+                CapabilitySummaryValues.Launch,
+                supportsDryRun: true,
+                ToolExecutionConfirmationMode.Required,
+                ToolExecutionRedactionClass.LaunchPayload),
         };
 
     public static IReadOnlyList<ToolDescriptor> Implemented { get; } =
@@ -39,4 +63,19 @@ public static class ToolContractManifest
 
     public static IReadOnlyDictionary<string, string> DeferredPhaseMap { get; } =
         Deferred.ToDictionary(descriptor => descriptor.Name, descriptor => descriptor.PlannedPhase!, StringComparer.Ordinal);
+
+    private static ToolExecutionPolicyDescriptor CreateExecutionPolicy(
+        ToolExecutionPolicyGroup policyGroup,
+        ToolExecutionRiskLevel riskLevel,
+        string guardCapability,
+        bool supportsDryRun,
+        ToolExecutionConfirmationMode confirmationMode,
+        ToolExecutionRedactionClass redactionClass) =>
+        new(
+            PolicyGroup: policyGroup,
+            RiskLevel: riskLevel,
+            GuardCapability: guardCapability,
+            SupportsDryRun: supportsDryRun,
+            ConfirmationMode: confirmationMode,
+            RedactionClass: redactionClass);
 }

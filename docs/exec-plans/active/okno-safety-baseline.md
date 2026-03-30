@@ -444,23 +444,23 @@ Decision:
 
 ## Implementation Checklist
 
-- [ ] Добавить новый exec-policy descriptor в `src/WinBridge.Runtime.Tooling/`.
-- [ ] Расширить `src/WinBridge.Runtime.Tooling/ToolDescriptor.cs` полем `ExecutionPolicy`.
-- [ ] Расширить `src/WinBridge.Runtime.Contracts/ContractToolDescriptor.cs` exported policy fields.
-- [ ] Обновить `src/WinBridge.Runtime.Tooling/ContractToolDescriptorFactory.cs` для policy export.
-- [ ] Обновить `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs` и заполнить metadata для deferred action descriptors.
-- [ ] Зафиксировать policy presets для future `launch` family без premature publication новых tool names.
+- [x] Добавить новый exec-policy descriptor в `src/WinBridge.Runtime.Tooling/`.
+- [x] Расширить `src/WinBridge.Runtime.Tooling/ToolDescriptor.cs` полем `ExecutionPolicy`.
+- [x] Расширить `src/WinBridge.Runtime.Contracts/ContractToolDescriptor.cs` exported policy fields.
+- [x] Обновить `src/WinBridge.Runtime.Tooling/ContractToolDescriptorFactory.cs` для policy export.
+- [x] Обновить `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs` и заполнить metadata для deferred action descriptors.
+- [x] Зафиксировать policy presets для future `launch` family без premature publication новых tool names.
 - [ ] Добавить `IToolExecutionGate` и `ToolExecutionDecision` в `src/WinBridge.Runtime.Guards/`.
 - [ ] Подключить gate к existing `RuntimeGuardAssessment`, не создавая новый probe stack.
 - [ ] Добавить gated overload в `src/WinBridge.Runtime.Diagnostics/ToolExecution.cs`.
 - [ ] Добавить tool-aware redaction service в `src/WinBridge.Runtime.Diagnostics/`.
 - [ ] Перевести `src/WinBridge.Runtime.Diagnostics/AuditLog.cs` на sanitized request/result summaries.
-- [ ] Обновить `src/WinBridge.Server/Tools/AdminTools.cs`, чтобы safety metadata было видно в `okno.health` и/или `okno.contract`.
-- [ ] Подтвердить, что `src/WinBridge.Server/Tools/WindowTools.cs` не меняет shipped behavior в этом workstream.
-- [ ] Добавить L1 tests для manifest/export alignment.
+- [x] Сделать safety metadata видимым через `okno.contract` без раздувания `okno.health`.
+- [x] Подтвердить, что `src/WinBridge.Server/Tools/WindowTools.cs` не меняет shipped behavior в этом workstream.
+- [x] Добавить L1 tests для manifest/export alignment.
 - [ ] Добавить L1 tests для gate decision matrix.
 - [ ] Добавить L1 tests для redaction markers и отсутствия raw payload leakage.
 - [ ] Добавить L2 integration test на synthetic gated action boundary.
 - [ ] Обновить `docs/architecture/capability-design-policy.md` и `docs/architecture/observability.md`.
-- [ ] После реализации прогнать `scripts/refresh-generated-docs.ps1` и синхронизировать generated docs.
+- [x] После реализации прогнать `scripts/refresh-generated-docs.ps1` и синхронизировать generated docs.
 - [ ] Перед закрытием workstream ответить на контрольный вопрос: “можно ли теперь строить `windows.launch_process` без новой safety-логики внутри launch?”

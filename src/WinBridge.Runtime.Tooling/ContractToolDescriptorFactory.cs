@@ -14,7 +14,19 @@ public static class ContractToolDescriptorFactory
             Summary: descriptor.Summary,
             PlannedPhase: descriptor.PlannedPhase,
             SuggestedAlternative: descriptor.SuggestedAlternative,
-            SmokeRequired: descriptor.SmokeRequired);
+            SmokeRequired: descriptor.SmokeRequired,
+            ExecutionPolicy: ToContractDescriptor(descriptor.ExecutionPolicy));
+
+    private static ContractToolExecutionPolicyDescriptor? ToContractDescriptor(ToolExecutionPolicyDescriptor? descriptor) =>
+        descriptor is null
+            ? null
+            : new ContractToolExecutionPolicyDescriptor(
+                PolicyGroup: ToContractLiteral(descriptor.PolicyGroup),
+                RiskLevel: ToContractLiteral(descriptor.RiskLevel),
+                GuardCapability: descriptor.GuardCapability,
+                SupportsDryRun: descriptor.SupportsDryRun,
+                ConfirmationMode: ToContractLiteral(descriptor.ConfirmationMode),
+                RedactionClass: ToContractLiteral(descriptor.RedactionClass));
 
     private static string ToContractLiteral<TEnum>(TEnum value)
         where TEnum : struct, Enum =>

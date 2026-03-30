@@ -23,28 +23,28 @@
 
 ### Implemented now
 
-| Tool | Safety class | Notes |
-| --- | --- | --- |
-| `okno.health` | `read_only` | Возвращает сводку состояния runtime и консервативный readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains и capability status без hidden enforcement. |
-| `okno.contract` | `read_only` | Возвращает текущий MCP contract runtime: implemented tools, deferred tools и notes без вызова side effects. |
-| `okno.session_state` | `read_only` | Возвращает текущий session snapshot, включая attached window и mode без изменения session state. |
-| `windows.list_monitors` | `read_only` | Возвращает active monitor targets текущей desktop session вместе с diagnostics display identity path. Используй перед explicit desktop capture по monitorId. |
-| `windows.list_windows` | `read_only` | Возвращает live inventory top-level окон. По умолчанию показывает видимые рабочие окна; includeInvisible=true добавляет invisible и untitled windows для diagnostics и target resolution. |
-| `windows.attach_window` | `session_mutation` | Выбирает live window target и прикрепляет его к текущей сессии. Attach требует стабильной identity окна, а не только совпавшего заголовка. |
-| `windows.activate_window` | `os_side_effect` | Делает attached window usable target: при необходимости restore, затем попытка foreground focus и обязательная final live-state verification. Status done означает подтверждённый foreground usable state, а не просто попытку активации. |
-| `windows.focus_window` | `os_side_effect` | Запрашивает foreground focus для explicit hwnd или attached window. В отличие от activate_window не делает restore и не подтверждает usability final-state. |
-| `windows.capture` | `os_side_effect` | Выполняет capture выбранной цели и возвращает PNG + structured metadata. При scope=window target выбирается как explicit hwnd или attached window. При scope=desktop target выбирается как explicit monitorId, explicit hwnd, attached window или primary monitor. Все bounds и pixel sizes выражены в physical_pixels. |
-| `windows.uia_snapshot` | `read_only` | Возвращает UIA snapshot выбранного окна в control view. Target policy: explicit hwnd -> attached window -> active foreground top-level window. Tool не активирует окно скрыто и возвращает structured metadata + text payload без image block. |
-| `windows.wait` | `os_side_effect` | Ждёт наступления live condition для explicit, attached или active окна. Public contract совпадает с runtime wait model: condition + nested selector + expectedText + hwnd + timeoutMs, а result возвращает structured wait payload без image block. |
+| Tool | Safety class | Policy | Notes |
+| --- | --- | --- | --- |
+| `okno.health` | `read_only` | — | Возвращает сводку состояния runtime и консервативный readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains и capability status без hidden enforcement. |
+| `okno.contract` | `read_only` | — | Возвращает текущий MCP contract runtime: implemented tools, deferred tools, execution_policy metadata для declared deferred tools и notes без вызова side effects. |
+| `okno.session_state` | `read_only` | — | Возвращает текущий session snapshot, включая attached window и mode без изменения session state. |
+| `windows.list_monitors` | `read_only` | — | Возвращает active monitor targets текущей desktop session вместе с diagnostics display identity path. Используй перед explicit desktop capture по monitorId. |
+| `windows.list_windows` | `read_only` | — | Возвращает live inventory top-level окон. По умолчанию показывает видимые рабочие окна; includeInvisible=true добавляет invisible и untitled windows для diagnostics и target resolution. |
+| `windows.attach_window` | `session_mutation` | — | Выбирает live window target и прикрепляет его к текущей сессии. Attach требует стабильной identity окна, а не только совпавшего заголовка. |
+| `windows.activate_window` | `os_side_effect` | — | Делает attached window usable target: при необходимости restore, затем попытка foreground focus и обязательная final live-state verification. Status done означает подтверждённый foreground usable state, а не просто попытку активации. |
+| `windows.focus_window` | `os_side_effect` | — | Запрашивает foreground focus для explicit hwnd или attached window. В отличие от activate_window не делает restore и не подтверждает usability final-state. |
+| `windows.capture` | `os_side_effect` | — | Выполняет capture выбранной цели и возвращает PNG + structured metadata. При scope=window target выбирается как explicit hwnd или attached window. При scope=desktop target выбирается как explicit monitorId, explicit hwnd, attached window или primary monitor. Все bounds и pixel sizes выражены в physical_pixels. |
+| `windows.uia_snapshot` | `read_only` | — | Возвращает UIA snapshot выбранного окна в control view. Target policy: explicit hwnd -> attached window -> active foreground top-level window. Tool не активирует окно скрыто и возвращает structured metadata + text payload без image block. |
+| `windows.wait` | `os_side_effect` | — | Ждёт наступления live condition для explicit, attached или active окна. Public contract совпадает с runtime wait model: condition + nested selector + expectedText + hwnd + timeoutMs, а result возвращает structured wait payload без image block. |
 
 ### Deferred but declared
 
-| Tool | Current outcome | Planned phase |
-| --- | --- | --- |
-| `windows.clipboard_get` | `unsupported` | roadmap stage 4 |
-| `windows.clipboard_set` | `unsupported` | roadmap stage 4 |
-| `windows.input` | `unsupported` | roadmap stage 5 |
-| `windows.uia_action` | `unsupported` | roadmap stage 7 |
+| Tool | Current outcome | Planned phase | Policy |
+| --- | --- | --- | --- |
+| `windows.clipboard_get` | `unsupported` | roadmap stage 4 | `policy_group=clipboard; risk_level=medium; guard_capability=clipboard; supports_dry_run=false; confirmation_mode=required; redaction_class=clipboard_payload` |
+| `windows.clipboard_set` | `unsupported` | roadmap stage 4 | `policy_group=clipboard; risk_level=high; guard_capability=clipboard; supports_dry_run=true; confirmation_mode=required; redaction_class=clipboard_payload` |
+| `windows.input` | `unsupported` | roadmap stage 5 | `policy_group=input; risk_level=destructive; guard_capability=input; supports_dry_run=false; confirmation_mode=required; redaction_class=text_payload` |
+| `windows.uia_action` | `unsupported` | roadmap stage 7 | `policy_group=uia_action; risk_level=high; guard_capability=uia; supports_dry_run=false; confirmation_mode=required; redaction_class=target_metadata` |
 
 ## Script interfaces
 

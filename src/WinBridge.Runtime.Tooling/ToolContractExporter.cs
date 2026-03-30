@@ -91,23 +91,23 @@ public static class ToolContractExporter
         builder.AppendLine();
         builder.AppendLine("### Implemented now");
         builder.AppendLine();
-        builder.AppendLine("| Tool | Safety class | Notes |");
-        builder.AppendLine("| --- | --- | --- |");
+        builder.AppendLine("| Tool | Safety class | Policy | Notes |");
+        builder.AppendLine("| --- | --- | --- | --- |");
 
         foreach (ContractToolDescriptor descriptor in document.Tools.Implemented)
         {
-            builder.AppendLine("| `" + descriptor.Name + "` | `" + descriptor.SafetyClass + "` | " + descriptor.Summary + " |");
+            builder.AppendLine("| `" + descriptor.Name + "` | `" + descriptor.SafetyClass + "` | " + FormatExecutionPolicy(descriptor.ExecutionPolicy) + " | " + descriptor.Summary + " |");
         }
 
         builder.AppendLine();
         builder.AppendLine("### Deferred but declared");
         builder.AppendLine();
-        builder.AppendLine("| Tool | Current outcome | Planned phase |");
-        builder.AppendLine("| --- | --- | --- |");
+        builder.AppendLine("| Tool | Current outcome | Planned phase | Policy |");
+        builder.AppendLine("| --- | --- | --- | --- |");
 
         foreach (ContractToolDescriptor descriptor in document.Tools.Deferred)
         {
-            builder.AppendLine("| `" + descriptor.Name + "` | `unsupported` | " + descriptor.PlannedPhase + " |");
+            builder.AppendLine("| `" + descriptor.Name + "` | `unsupported` | " + descriptor.PlannedPhase + " | " + FormatExecutionPolicy(descriptor.ExecutionPolicy) + " |");
         }
 
         builder.AppendLine();
@@ -130,4 +130,15 @@ public static class ToolContractExporter
 
         return builder.ToString();
     }
+
+    private static string FormatExecutionPolicy(ContractToolExecutionPolicyDescriptor? descriptor) =>
+        descriptor is null
+            ? "—"
+            : "`policy_group=" + descriptor.PolicyGroup
+              + "; risk_level=" + descriptor.RiskLevel
+              + "; guard_capability=" + descriptor.GuardCapability
+              + "; supports_dry_run=" + descriptor.SupportsDryRun.ToString().ToLowerInvariant()
+              + "; confirmation_mode=" + descriptor.ConfirmationMode
+              + "; redaction_class=" + descriptor.RedactionClass
+              + "`";
 }

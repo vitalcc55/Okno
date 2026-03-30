@@ -136,6 +136,17 @@ public sealed class AdminToolTests
             descriptor => descriptor.Name == ToolNames.WindowsWait);
         Assert.Equal("implemented", waitDescriptor.Lifecycle);
         Assert.Equal("os_side_effect", waitDescriptor.SafetyClass);
+
+        ContractToolDescriptor inputDescriptor = Assert.Single(
+            result.DeferredTools,
+            descriptor => descriptor.Name == ToolNames.WindowsInput);
+        ContractToolExecutionPolicyDescriptor policy = Assert.IsType<ContractToolExecutionPolicyDescriptor>(inputDescriptor.ExecutionPolicy);
+        Assert.Equal("input", policy.PolicyGroup);
+        Assert.Equal("destructive", policy.RiskLevel);
+        Assert.Equal("input", policy.GuardCapability);
+        Assert.False(policy.SupportsDryRun);
+        Assert.Equal("required", policy.ConfirmationMode);
+        Assert.Equal("text_payload", policy.RedactionClass);
     }
 
     private static RuntimeGuardAssessment CreateAssessment(FakeMonitorManager monitorManager)

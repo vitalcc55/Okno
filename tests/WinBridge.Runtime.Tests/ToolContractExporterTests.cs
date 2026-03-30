@@ -55,8 +55,11 @@ public sealed class ToolContractExporterTests
 
         Assert.Contains("### Implemented now", markdown, StringComparison.Ordinal);
         Assert.Contains("### Deferred but declared", markdown, StringComparison.Ordinal);
+        Assert.Contains("| Tool | Safety class | Policy | Notes |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| Tool | Current outcome | Planned phase | Policy |", markdown, StringComparison.Ordinal);
         Assert.Contains(ToolNames.OknoHealth, markdown, StringComparison.Ordinal);
         Assert.Contains(ToolNames.WindowsCapture, markdown, StringComparison.Ordinal);
+        Assert.Contains("policy_group=clipboard; risk_level=medium; guard_capability=clipboard; supports_dry_run=false; confirmation_mode=required; redaction_class=clipboard_payload", markdown, StringComparison.Ordinal);
         Assert.Contains("artifacts/diagnostics/<run_id>/captures/<capture_id>.png", markdown, StringComparison.Ordinal);
     }
 
@@ -129,6 +132,30 @@ public sealed class ToolContractExporterTests
         Assert.Equal("implemented", waitTool.GetProperty("lifecycle").GetString());
         Assert.Equal("os_side_effect", waitTool.GetProperty("safety_class").GetString());
         Assert.True(waitTool.GetProperty("smoke_required").GetBoolean());
+    }
+
+    [Fact]
+    public void ExportJsonPublishesDeferredExecutionPolicyMetadata()
+    {
+        string root = CreateTempDirectory();
+        string jsonPath = Path.Combine(root, "project-interfaces.json");
+
+        ToolContractExporter.ExportJson(jsonPath);
+
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
+        JsonElement inputTool = document.RootElement
+            .GetProperty("tools")
+            .GetProperty("deferred")
+            .EnumerateArray()
+            .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsInput);
+
+        JsonElement policy = inputTool.GetProperty("execution_policy");
+        Assert.Equal("input", policy.GetProperty("policy_group").GetString());
+        Assert.Equal("destructive", policy.GetProperty("risk_level").GetString());
+        Assert.Equal("input", policy.GetProperty("guard_capability").GetString());
+        Assert.False(policy.GetProperty("supports_dry_run").GetBoolean());
+        Assert.Equal("required", policy.GetProperty("confirmation_mode").GetString());
+        Assert.Equal("text_payload", policy.GetProperty("redaction_class").GetString());
     }
 
     private static string CreateTempDirectory()

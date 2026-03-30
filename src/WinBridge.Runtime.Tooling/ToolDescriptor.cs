@@ -8,4 +8,5 @@ public sealed record ToolDescriptor(
     string Summary,
     string? PlannedPhase,
     string? SuggestedAlternative,
-    bool SmokeRequired);
+    bool SmokeRequired,
+    ToolExecutionPolicyDescriptor? ExecutionPolicy = null);

@@ -40,6 +40,54 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
+    public void ImplementedDescriptorsDoNotPublishExecutionPolicyMetadata()
+    {
+        Assert.All(
+            ToolContractManifest.Implemented,
+            descriptor => Assert.Null(descriptor.ExecutionPolicy));
+    }
+
+    [Fact]
+    public void DeferredDescriptorsPublishExecutionPolicyMetadata()
+    {
+        Assert.All(
+            ToolContractManifest.Deferred,
+            descriptor =>
+            {
+                ToolExecutionPolicyDescriptor policy = Assert.IsType<ToolExecutionPolicyDescriptor>(descriptor.ExecutionPolicy);
+                Assert.False(string.IsNullOrWhiteSpace(policy.GuardCapability));
+                Assert.True(Enum.IsDefined(typeof(ToolExecutionPolicyGroup), policy.PolicyGroup));
+                Assert.True(Enum.IsDefined(typeof(ToolExecutionRiskLevel), policy.RiskLevel));
+                Assert.True(Enum.IsDefined(typeof(ToolExecutionConfirmationMode), policy.ConfirmationMode));
+                Assert.True(Enum.IsDefined(typeof(ToolExecutionRedactionClass), policy.RedactionClass));
+            });
+    }
+
+    [Fact]
+    public void FutureLaunchPresetsExistWithoutManifestPublication()
+    {
+        Assert.Equal(2, ToolContractManifest.FutureLaunchFamilyPolicyPresets.Count);
+        Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey("windows.launch_process"));
+        Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey("windows.open_target"));
+
+        Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == "windows.launch_process");
+        Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == "windows.open_target");
+        Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == "windows.launch_process");
+        Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == "windows.open_target");
+    }
+
+    [Fact]
+    public void FutureLaunchPresetsAreNotPublishedAsPublicApi()
+    {
+        Assert.Null(typeof(ToolContractManifest).GetProperty(
+            "FutureLaunchFamilyPolicyPresets",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+        Assert.NotNull(typeof(ToolContractManifest).GetProperty(
+            "FutureLaunchFamilyPolicyPresets",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static));
+    }
+
+    [Fact]
     public void SmokeRequiredNamesAreSubsetOfImplementedTools()
     {
         HashSet<string> implemented = ToolContractManifest.ImplementedNames.ToHashSet(StringComparer.Ordinal);
@@ -88,5 +136,65 @@ public sealed class ToolContractManifestTests
         Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
         Assert.Contains(ToolNames.WindowsWait, ToolContractManifest.SmokeRequiredToolNames);
         Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsWait);
+    }
+
+    [Fact]
+    public void DeferredActionDescriptorsUseExpectedExecutionPolicyMetadata()
+    {
+        ToolDescriptor clipboardGet = Assert.Single(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsClipboardGet);
+        ToolDescriptor clipboardSet = Assert.Single(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsClipboardSet);
+        ToolDescriptor input = Assert.Single(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsInput);
+        ToolDescriptor uiaAction = Assert.Single(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsUiaAction);
+
+        AssertExecutionPolicy(
+            clipboardGet.ExecutionPolicy,
+            ToolExecutionPolicyGroup.Clipboard,
+            ToolExecutionRiskLevel.Medium,
+            "clipboard",
+            supportsDryRun: false,
+            ToolExecutionConfirmationMode.Required,
+            ToolExecutionRedactionClass.ClipboardPayload);
+        AssertExecutionPolicy(
+            clipboardSet.ExecutionPolicy,
+            ToolExecutionPolicyGroup.Clipboard,
+            ToolExecutionRiskLevel.High,
+            "clipboard",
+            supportsDryRun: true,
+            ToolExecutionConfirmationMode.Required,
+            ToolExecutionRedactionClass.ClipboardPayload);
+        AssertExecutionPolicy(
+            input.ExecutionPolicy,
+            ToolExecutionPolicyGroup.Input,
+            ToolExecutionRiskLevel.Destructive,
+            "input",
+            supportsDryRun: false,
+            ToolExecutionConfirmationMode.Required,
+            ToolExecutionRedactionClass.TextPayload);
+        AssertExecutionPolicy(
+            uiaAction.ExecutionPolicy,
+            ToolExecutionPolicyGroup.UiaAction,
+            ToolExecutionRiskLevel.High,
+            "uia",
+            supportsDryRun: false,
+            ToolExecutionConfirmationMode.Required,
+            ToolExecutionRedactionClass.TargetMetadata);
+    }
+
+    private static void AssertExecutionPolicy(
+        ToolExecutionPolicyDescriptor? policy,
+        ToolExecutionPolicyGroup expectedGroup,
+        ToolExecutionRiskLevel expectedRiskLevel,
+        string expectedGuardCapability,
+        bool supportsDryRun,
+        ToolExecutionConfirmationMode expectedConfirmationMode,
+        ToolExecutionRedactionClass expectedRedactionClass)
+    {
+        ToolExecutionPolicyDescriptor typedPolicy = Assert.IsType<ToolExecutionPolicyDescriptor>(policy);
+        Assert.Equal(expectedGroup, typedPolicy.PolicyGroup);
+        Assert.Equal(expectedRiskLevel, typedPolicy.RiskLevel);
+        Assert.Equal(expectedGuardCapability, typedPolicy.GuardCapability);
+        Assert.Equal(supportsDryRun, typedPolicy.SupportsDryRun);
+        Assert.Equal(expectedConfirmationMode, typedPolicy.ConfirmationMode);
+        Assert.Equal(expectedRedactionClass, typedPolicy.RedactionClass);
     }
 }

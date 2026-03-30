@@ -22,17 +22,19 @@
         "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0441\u0432\u043E\u0434\u043A\u0443 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F runtime \u0438 \u043A\u043E\u043D\u0441\u0435\u0440\u0432\u0430\u0442\u0438\u0432\u043D\u044B\u0439 readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains \u0438 capability status \u0431\u0435\u0437 hidden enforcement.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       },
       {
         "name": "okno.contract",
         "capability": "okno.admin",
         "lifecycle": "implemented",
         "safety_class": "read_only",
-        "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 MCP contract runtime: implemented tools, deferred tools \u0438 notes \u0431\u0435\u0437 \u0432\u044B\u0437\u043E\u0432\u0430 side effects.",
+        "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 MCP contract runtime: implemented tools, deferred tools, execution_policy metadata \u0434\u043B\u044F declared deferred tools \u0438 notes \u0431\u0435\u0437 \u0432\u044B\u0437\u043E\u0432\u0430 side effects.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": false
+        "smoke_required": false,
+        "execution_policy": null
       },
       {
         "name": "okno.session_state",
@@ -42,7 +44,8 @@
         "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 session snapshot, \u0432\u043A\u043B\u044E\u0447\u0430\u044F attached window \u0438 mode \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F session state.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       },
       {
         "name": "windows.list_monitors",
@@ -52,7 +55,8 @@
         "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 active monitor targets \u0442\u0435\u043A\u0443\u0449\u0435\u0439 desktop session \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 diagnostics display identity path. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 \u043F\u0435\u0440\u0435\u0434 explicit desktop capture \u043F\u043E monitorId.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       },
       {
         "name": "windows.list_windows",
@@ -62,7 +66,8 @@
         "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 live inventory top-level \u043E\u043A\u043E\u043D. \u041F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u0435\u0442 \u0432\u0438\u0434\u0438\u043C\u044B\u0435 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u043E\u043A\u043D\u0430; includeInvisible=true \u0434\u043E\u0431\u0430\u0432\u043B\u044F\u0435\u0442 invisible \u0438 untitled windows \u0434\u043B\u044F diagnostics \u0438 target resolution.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       },
       {
         "name": "windows.attach_window",
@@ -72,7 +77,8 @@
         "summary": "\u0412\u044B\u0431\u0438\u0440\u0430\u0435\u0442 live window target \u0438 \u043F\u0440\u0438\u043A\u0440\u0435\u043F\u043B\u044F\u0435\u0442 \u0435\u0433\u043E \u043A \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u0441\u0435\u0441\u0441\u0438\u0438. Attach \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0441\u0442\u0430\u0431\u0438\u043B\u044C\u043D\u043E\u0439 identity \u043E\u043A\u043D\u0430, \u0430 \u043D\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u0441\u043E\u0432\u043F\u0430\u0432\u0448\u0435\u0433\u043E \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       },
       {
         "name": "windows.activate_window",
@@ -82,7 +88,8 @@
         "summary": "\u0414\u0435\u043B\u0430\u0435\u0442 attached window usable target: \u043F\u0440\u0438 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438 restore, \u0437\u0430\u0442\u0435\u043C \u043F\u043E\u043F\u044B\u0442\u043A\u0430 foreground focus \u0438 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u0430\u044F final live-state verification. Status done \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D\u043D\u044B\u0439 foreground usable state, \u0430 \u043D\u0435 \u043F\u0440\u043E\u0441\u0442\u043E \u043F\u043E\u043F\u044B\u0442\u043A\u0443 \u0430\u043A\u0442\u0438\u0432\u0430\u0446\u0438\u0438.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       },
       {
         "name": "windows.focus_window",
@@ -92,7 +99,8 @@
         "summary": "\u0417\u0430\u043F\u0440\u0430\u0448\u0438\u0432\u0430\u0435\u0442 foreground focus \u0434\u043B\u044F explicit hwnd \u0438\u043B\u0438 attached window. \u0412 \u043E\u0442\u043B\u0438\u0447\u0438\u0435 \u043E\u0442 activate_window \u043D\u0435 \u0434\u0435\u043B\u0430\u0435\u0442 restore \u0438 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0430\u0435\u0442 usability final-state.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": false
+        "smoke_required": false,
+        "execution_policy": null
       },
       {
         "name": "windows.capture",
@@ -102,7 +110,8 @@
         "summary": "\u0412\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u0442 capture \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0439 \u0446\u0435\u043B\u0438 \u0438 \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 PNG \u002B structured metadata. \u041F\u0440\u0438 scope=window target \u0432\u044B\u0431\u0438\u0440\u0430\u0435\u0442\u0441\u044F \u043A\u0430\u043A explicit hwnd \u0438\u043B\u0438 attached window. \u041F\u0440\u0438 scope=desktop target \u0432\u044B\u0431\u0438\u0440\u0430\u0435\u0442\u0441\u044F \u043A\u0430\u043A explicit monitorId, explicit hwnd, attached window \u0438\u043B\u0438 primary monitor. \u0412\u0441\u0435 bounds \u0438 pixel sizes \u0432\u044B\u0440\u0430\u0436\u0435\u043D\u044B \u0432 physical_pixels.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       },
       {
         "name": "windows.uia_snapshot",
@@ -112,7 +121,8 @@
         "summary": "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 UIA snapshot \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u043E\u043A\u043D\u0430 \u0432 control view. Target policy: explicit hwnd -\u003E attached window -\u003E active foreground top-level window. Tool \u043D\u0435 \u0430\u043A\u0442\u0438\u0432\u0438\u0440\u0443\u0435\u0442 \u043E\u043A\u043D\u043E \u0441\u043A\u0440\u044B\u0442\u043E \u0438 \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 structured metadata \u002B text payload \u0431\u0435\u0437 image block.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       },
       {
         "name": "windows.wait",
@@ -122,7 +132,8 @@
         "summary": "\u0416\u0434\u0451\u0442 \u043D\u0430\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u044F live condition \u0434\u043B\u044F explicit, attached \u0438\u043B\u0438 active \u043E\u043A\u043D\u0430. Public contract \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 runtime wait model: condition \u002B nested selector \u002B expectedText \u002B hwnd \u002B timeoutMs, \u0430 result \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 structured wait payload \u0431\u0435\u0437 image block.",
         "planned_phase": null,
         "suggested_alternative": null,
-        "smoke_required": true
+        "smoke_required": true,
+        "execution_policy": null
       }
     ],
     "deferred": [
@@ -134,7 +145,15 @@
         "summary": "\u0427\u0438\u0442\u0430\u0435\u0442 \u0442\u0435\u043A\u0443\u0449\u0435\u0435 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 clipboard.",
         "planned_phase": "roadmap stage 4",
         "suggested_alternative": "Clipboard path \u0431\u0443\u0434\u0435\u0442 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D \u043F\u043E\u0441\u043B\u0435 skeleton runtime.",
-        "smoke_required": false
+        "smoke_required": false,
+        "execution_policy": {
+          "policy_group": "clipboard",
+          "risk_level": "medium",
+          "guard_capability": "clipboard",
+          "supports_dry_run": false,
+          "confirmation_mode": "required",
+          "redaction_class": "clipboard_payload"
+        }
       },
       {
         "name": "windows.clipboard_set",
@@ -144,7 +163,15 @@
         "summary": "\u0417\u0430\u043F\u0438\u0441\u044B\u0432\u0430\u0435\u0442 \u043D\u043E\u0432\u043E\u0435 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0432 clipboard.",
         "planned_phase": "roadmap stage 4",
         "suggested_alternative": "\u0414\u043E clipboard-\u0441\u0435\u0440\u0432\u0438\u0441\u0430 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u044B\u0435 stub calls.",
-        "smoke_required": false
+        "smoke_required": false,
+        "execution_policy": {
+          "policy_group": "clipboard",
+          "risk_level": "high",
+          "guard_capability": "clipboard",
+          "supports_dry_run": true,
+          "confirmation_mode": "required",
+          "redaction_class": "clipboard_payload"
+        }
       },
       {
         "name": "windows.input",
@@ -154,7 +181,15 @@
         "summary": "\u0412\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u0442 \u043D\u0438\u0437\u043A\u043E\u0443\u0440\u043E\u0432\u043D\u0435\u0432\u0443\u044E \u043F\u043E\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C input-\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439.",
         "planned_phase": "roadmap stage 5",
         "suggested_alternative": "Low-level input \u0432\u0432\u043E\u0434\u0438\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u043E\u0441\u043B\u0435 capture/text path.",
-        "smoke_required": false
+        "smoke_required": false,
+        "execution_policy": {
+          "policy_group": "input",
+          "risk_level": "destructive",
+          "guard_capability": "input",
+          "supports_dry_run": false,
+          "confirmation_mode": "required",
+          "redaction_class": "text_payload"
+        }
       },
       {
         "name": "windows.uia_action",
@@ -164,7 +199,15 @@
         "summary": "\u0412\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u0442 semantic UIA action \u043F\u043E element id.",
         "planned_phase": "roadmap stage 7",
         "suggested_alternative": "Semantic UIA actions \u0437\u0430\u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u043F\u043E\u0441\u043B\u0435 snapshot layer.",
-        "smoke_required": false
+        "smoke_required": false,
+        "execution_policy": {
+          "policy_group": "uia_action",
+          "risk_level": "high",
+          "guard_capability": "uia",
+          "supports_dry_run": false,
+          "confirmation_mode": "required",
+          "redaction_class": "target_metadata"
+        }
       }
     ],
     "implemented_names": [
