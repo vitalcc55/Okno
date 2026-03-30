@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-30 10:20
+
+- Добавлен новый active exec-plan [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md), который фиксирует следующий policy-first workstream после shipped reporting-first guard layer: canonical tooling metadata для future action tools, единый execution gate с `allowed / blocked / needs_confirmation / dry_run_only`, redaction-first diagnostics model, file-level integration map, official constraints, delivery packages, verification ladder и implementation checklist для follow-up `windows.launch_process`.
+
 ## 2026-03-27 08:34
 
 - Добавлен repo-local Codex plugin `okno`: создан marketplace `.agents/plugins/marketplace.json`, plugin root `plugins/okno/.codex-plugin/plugin.json`, plugin-local MCP manifest `plugins/okno/.mcp.json`, launcher script `plugins/okno/run-okno-mcp.ps1`, plugin README и bundled skill `okno-runtime-workflow` с `agents/openai.yaml`.
