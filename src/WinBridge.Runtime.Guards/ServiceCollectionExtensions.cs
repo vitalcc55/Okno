@@ -12,6 +12,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICaptureGuardFactSource, DefaultCaptureGuardFactSource>();
         services.AddSingleton<IUiaGuardFactSource, DefaultUiaGuardFactSource>();
         services.AddSingleton<IRuntimeGuardService, RuntimeGuardService>();
+        services.AddSingleton<IToolExecutionGate, ToolExecutionGate>();
         return services;
     }
 }

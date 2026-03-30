@@ -13,6 +13,9 @@ public static class GuardReasonCodeValues
     public const string CapabilitySessionBlocked = "capability_session_blocked";
     public const string CapabilityPrerequisitesUnknown = "capability_prerequisites_unknown";
     public const string CapabilitySessionTransition = "capability_session_transition";
+    public const string CapabilitySummaryAmbiguous = "capability_summary_ambiguous";
+    public const string CapabilityDryRunNotSupported = "capability_dry_run_not_supported";
+    public const string CapabilityDryRunPreviewUnavailable = "capability_dry_run_preview_unavailable";
     public const string InputDesktopUnavailable = "input_desktop_unavailable";
     public const string InputDesktopAvailable = "input_desktop_available";
     public const string InputDesktopIdentityUnknown = "input_desktop_identity_unknown";

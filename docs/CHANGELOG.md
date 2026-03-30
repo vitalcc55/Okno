@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-30 13:25
+
+- Закрыт `Package B` из [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md) без захода в `Package C/D`: добавлен reusable execution gate поверх existing `execution_policy` и `RuntimeGuardAssessment`, `ToolExecution` получил gated sync/async overload для canonical `allowed / blocked / needs_confirmation / dry_run_only` routing без rollout в shipped observe tools, а unit/integration tests теперь доказывают decision matrix, reuse runtime snapshot и synthetic server-boundary path без публикации нового action tool.
+
 ## 2026-03-30 11:03
 
 - Закрыт `Package A` из [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md) без захода в runtime gate/redaction rollout: в `WinBridge.Runtime.Tooling` добавлен typed `execution_policy` metadata layer для deferred action tools, `ToolDescriptor`/`ContractToolDescriptor` и общий export path (`okno.contract` + generated `project-interfaces`) теперь публикуют nested policy fields в canonical snake_case, а manifest заранее хранит internal-only presets для future `windows.launch_process` и `windows.open_target` без premature publication новых public tool names. В том же цикле обновлены узкие unit/integration tests на manifest/export alignment и literal set, а shipped behavior существующих tools и `okno.health` остались без изменения.
