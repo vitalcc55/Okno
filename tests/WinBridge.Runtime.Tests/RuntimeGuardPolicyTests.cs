@@ -48,6 +48,26 @@ public sealed class RuntimeGuardPolicyTests
     }
 
     [Fact]
+    public void BuildDomainsPrefersNonInteractiveSessionOverSessionMismatchForDesktopSession()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            sessionAlignment: new SessionAlignmentProbeResult(
+                ProcessSessionResolved: true,
+                ProcessSessionId: 3,
+                ActiveConsoleSessionId: 5,
+                ConnectState: SessionConnectState.Disconnected,
+                ClientProtocolType: 0));
+
+        ReadinessDomainStatus domain = Assert.Single(
+            RuntimeGuardPolicy.BuildDomains(facts),
+            item => item.Domain == ReadinessDomainValues.DesktopSession);
+
+        Assert.Equal(GuardStatusValues.Blocked, domain.Status);
+        GuardReason reason = Assert.Single(domain.Reasons);
+        Assert.Equal(GuardReasonCodeValues.SessionNotInteractive, reason.Code);
+    }
+
+    [Fact]
     public void BuildDomainsMarksDesktopSessionBlockedWhenInputDesktopIsNotDefault()
     {
         RuntimeGuardRawFacts facts = CreateFacts(
@@ -261,7 +281,7 @@ public sealed class RuntimeGuardPolicyTests
         Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.IntegrityRequiresEqualOrLowerTarget);
         Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified);
         Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.WaitShellVisualAvailable);
-        Assert.DoesNotContain(warnings, item => item.Code == GuardReasonCodeValues.AssessmentNotImplemented);
+        Assert.DoesNotContain(warnings, item => item.Code == "assessment_not_implemented");
         Assert.DoesNotContain(warnings, item => item.Code == GuardReasonCodeValues.CapabilitySessionTransition && item.Source == CapabilitySummaryValues.Input);
     }
 

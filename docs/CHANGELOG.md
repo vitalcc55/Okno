@@ -4,8 +4,8 @@
 
 ## 2026-03-27 08:34
 
-- Добавлен repo-local Codex plugin `okno`: создан marketplace `.agents/plugins/marketplace.json`, plugin root `plugins/okno/.codex-plugin/plugin.json`, plugin-local MCP manifest `plugins/okno/.mcp.json`, launcher script `scripts/codex/run-okno-mcp.ps1`, plugin README и bundled skill `okno-runtime-workflow` с `agents/openai.yaml`.
-- Plugin теперь публикует отдельный MCP server `okno`, который запускает уже собранный `Okno.Server.dll` через repo-owned launcher, не переписывая legacy home-level `windows` server.
+- Добавлен repo-local Codex plugin `okno`: создан marketplace `.agents/plugins/marketplace.json`, plugin root `plugins/okno/.codex-plugin/plugin.json`, plugin-local MCP manifest `plugins/okno/.mcp.json`, launcher script `plugins/okno/run-okno-mcp.ps1`, plugin README и bundled skill `okno-runtime-workflow` с `agents/openai.yaml`.
+- Plugin теперь публикует отдельный MCP server `okno`, который запускает уже собранный `Okno.Server.dll` через plugin-local launcher, не переписывая legacy home-level `windows` server.
 - В корневом `README.md` обновлён раздел про repo-local Codex plugin и закреплено, что user-facing plugin surface использует продуктовое имя `Okno`, а repo-local MCP identity — `okno`.
 
 ## 2026-03-27 13:28

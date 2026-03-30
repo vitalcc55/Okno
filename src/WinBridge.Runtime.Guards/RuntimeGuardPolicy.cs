@@ -117,6 +117,15 @@ internal static class RuntimeGuardPolicy
                 ]);
         }
 
+        GuardReason? nonInteractiveReason = CreateNonInteractiveSessionReason(facts.SessionAlignment);
+        if (nonInteractiveReason is not null)
+        {
+            return new(
+                Domain: ReadinessDomainValues.DesktopSession,
+                Status: GuardStatusValues.Blocked,
+                Reasons: [nonInteractiveReason]);
+        }
+
         if (facts.SessionAlignment.ProcessSessionResolved
             && facts.SessionAlignment.ProcessSessionId is uint processSessionId
             && processSessionId != facts.SessionAlignment.ActiveConsoleSessionId)
@@ -131,22 +140,6 @@ internal static class RuntimeGuardPolicy
                         GuardSeverityValues.Warning,
                         ReadinessDomainValues.DesktopSession,
                         "Input desktop доступен, но session текущего процесса не совпадает с active console session.")
-                ]);
-        }
-
-        if (facts.SessionAlignment.ConnectState is SessionConnectState connectState
-            && connectState != SessionConnectState.Active)
-        {
-            return new(
-                Domain: ReadinessDomainValues.DesktopSession,
-                Status: GuardStatusValues.Blocked,
-                Reasons:
-                [
-                    CreateReason(
-                        GuardReasonCodeValues.SessionNotInteractive,
-                        GuardSeverityValues.Blocked,
-                        ReadinessDomainValues.DesktopSession,
-                        $"Input desktop открыт, но текущая session не находится в active interactive state ({ToContractValue(connectState)}).")
                 ]);
         }
 
@@ -177,6 +170,20 @@ internal static class RuntimeGuardPolicy
                     ReadinessDomainValues.DesktopSession,
                     "Runtime успешно открыл input desktop 'Default' текущей interactive session.")
             ]);
+    }
+
+    private static GuardReason? CreateNonInteractiveSessionReason(SessionAlignmentProbeResult facts)
+    {
+        if (facts.ConnectState is not SessionConnectState connectState || connectState == SessionConnectState.Active)
+        {
+            return null;
+        }
+
+        return CreateReason(
+            GuardReasonCodeValues.SessionNotInteractive,
+            GuardSeverityValues.Blocked,
+            ReadinessDomainValues.DesktopSession,
+            $"Input desktop открыт, но текущая session не находится в active interactive state ({ToContractValue(connectState)}).");
     }
 
     private static ReadinessDomainStatus BuildSessionAlignment(SessionAlignmentProbeResult facts)

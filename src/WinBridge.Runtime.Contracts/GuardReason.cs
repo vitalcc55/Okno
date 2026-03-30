@@ -9,7 +9,6 @@ public static class GuardSeverityValues
 
 public static class GuardReasonCodeValues
 {
-    public const string AssessmentNotImplemented = "assessment_not_implemented";
     public const string CapabilityNotImplemented = "capability_not_implemented";
     public const string CapabilitySessionBlocked = "capability_session_blocked";
     public const string CapabilityPrerequisitesUnknown = "capability_prerequisites_unknown";
@@ -46,10 +45,8 @@ public static class GuardReasonCodeValues
     public const string WaitVisualBranchUnavailable = "wait_visual_branch_unavailable";
     public const string WaitVisualConditionUnavailable = "wait_visual_condition_unavailable";
     public const string WaitUiaConditionsUnavailable = "wait_uia_conditions_unavailable";
-    public const string WaitActiveWindowOnly = "wait_active_window_only";
     public const string InputUipiBarrierPresent = "input_uipi_barrier_present";
     public const string InputIntegrityLimited = "input_integrity_limited";
-    public const string ClipboardSessionRequired = "clipboard_session_required";
     public const string ClipboardIntegrityLimited = "clipboard_integrity_limited";
     public const string LaunchElevationBoundaryUnconfirmed = "launch_elevation_boundary_unconfirmed";
 }

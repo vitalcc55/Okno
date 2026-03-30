@@ -3,7 +3,7 @@
 $repoRoot = Get-RepoRoot -ScriptRoot $PSScriptRoot
 Set-Location $repoRoot
 
-$serverDll = Join-Path $repoRoot 'src\WinBridge.Server\bin\Debug\net8.0-windows10.0.19041.0\Okno.Server.dll'
+$serverDll = & (Join-Path $repoRoot 'scripts\codex\resolve-okno-server-dll.ps1') -RepoRoot $repoRoot
 $projectInterfacesJsonPath = Join-Path $repoRoot 'docs\generated\project-interfaces.json'
 $projectInterfacesMarkdownPath = Join-Path $repoRoot 'docs\generated\project-interfaces.md'
 $commandsMarkdownPath = Join-Path $repoRoot 'docs\generated\commands.md'
