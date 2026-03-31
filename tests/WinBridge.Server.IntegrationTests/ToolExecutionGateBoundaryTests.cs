@@ -37,6 +37,11 @@ public sealed class ToolExecutionGateBoundaryTests
         Assert.False(payload.GetProperty("dryRunSupported").GetBoolean());
         Assert.Equal(0, host.AllowedInvocationCount);
         Assert.Equal(1, host.RejectedInvocationCount);
+        string completedEvent = host.ReadCompletedEvent();
+        Assert.Contains("\"decision\":\"blocked\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"risk_level\":\"destructive\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"guard_capability\":\"input\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"reason_codes\":\"input_uipi_barrier_present\"", completedEvent, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -228,6 +233,7 @@ public sealed class ToolExecutionGateBoundaryTests
         };
 
         private readonly AuditLog _auditLog;
+        private readonly string _eventsPath;
         private readonly IToolExecutionGate _gate;
         private readonly InMemorySessionManager _sessionManager;
 
@@ -246,6 +252,7 @@ public sealed class ToolExecutionGateBoundaryTests
                 SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "tool-execution-gate-boundary", "summary.md"));
 
             _auditLog = new AuditLog(options, TimeProvider.System);
+            _eventsPath = options.EventsPath;
             _sessionManager = new InMemorySessionManager(TimeProvider.System, new SessionContext("tool-execution-gate-boundary"));
             _gate = new ToolExecutionGate(new FakeRuntimeGuardService(assessment));
         }
@@ -253,6 +260,10 @@ public sealed class ToolExecutionGateBoundaryTests
         public int AllowedInvocationCount { get; private set; }
 
         public int RejectedInvocationCount { get; private set; }
+
+        public string ReadCompletedEvent() =>
+            File.ReadAllLines(_eventsPath)
+                .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
 
         public CallToolResult Execute(ToolExecutionPolicyDescriptor policy, ToolExecutionIntent intent) =>
             RuntimeToolExecution.RunGated(

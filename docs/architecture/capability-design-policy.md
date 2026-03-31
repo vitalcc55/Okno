@@ -78,6 +78,14 @@
 
 Нельзя оставлять “правду” размазанной между несколькими частично обновлёнными слоями.
 
+### 5. Sensitive summaries never beat audit safety
+
+Если capability принимает текст, clipboard payload, launch args/env, file/URL targets или любой другой потенциально чувствительный payload, audit/evidence path обязан быть redaction-first:
+
+- readable reason можно сохранять только в safe виде;
+- raw request/exception payload нельзя писать “временно для диагностики”;
+- если redaction не может честно и стабильно выпустить safe summary, правильный fallback — suppression marker, а не raw value.
+
 ## Обязательная design-card перед реализацией
 
 Для каждой новой capability агент должен зафиксировать хотя бы в рабочем виде следующие поля.
@@ -130,6 +138,7 @@
 - что проверяет smoke;
 - что проверяют unit/integration tests;
 - где лежит человекочитаемый investigation path.
+- какие request/result/runtime summaries допустимо писать в audit как есть, а какие обязаны проходить redaction-first path.
 
 ## Универсальная матрица сценариев
 

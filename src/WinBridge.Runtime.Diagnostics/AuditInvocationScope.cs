@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using WinBridge.Runtime.Guards;
 
 namespace WinBridge.Runtime.Diagnostics;
 
@@ -6,14 +7,19 @@ public sealed class AuditInvocationScope : IDisposable
 {
     private readonly AuditLog _auditLog;
     private readonly Activity? _activity;
-    private readonly string _toolName;
+    private readonly AuditToolContext _toolContext;
     private bool _completed;
 
-    internal AuditInvocationScope(AuditLog auditLog, Activity? activity, string toolName)
+    internal AuditInvocationScope(AuditLog auditLog, Activity? activity, AuditToolContext toolContext)
     {
         _auditLog = auditLog;
         _activity = activity;
-        _toolName = toolName;
+        _toolContext = toolContext;
+    }
+
+    public void SetDecision(ToolExecutionDecision decision)
+    {
+        _toolContext.SetDecision(decision);
     }
 
     public void Complete(
@@ -27,7 +33,7 @@ public sealed class AuditInvocationScope : IDisposable
             return;
         }
 
-        _auditLog.WriteToolCompleted(_toolName, outcome, message, windowHwnd, data);
+        _auditLog.WriteToolCompleted(_toolContext, outcome, message, windowHwnd, data);
         _completed = true;
     }
 
@@ -39,14 +45,12 @@ public sealed class AuditInvocationScope : IDisposable
         }
 
         _auditLog.WriteToolCompleted(
-            _toolName,
+            _toolContext,
             "failed",
-            exception.Message,
+            "Внутренняя ошибка при выполнении инструмента.",
             windowHwnd,
-            new Dictionary<string, string?>
-            {
-                ["exception_type"] = exception.GetType().FullName,
-            });
+            data: null,
+            exception: exception);
 
         _completed = true;
     }
@@ -65,10 +69,8 @@ public sealed class AuditInvocationScope : IDisposable
         Dictionary<string, string?> payload = data is null
             ? []
             : new Dictionary<string, string?>(data, StringComparer.Ordinal);
-        payload["exception_type"] = exception.GetType().FullName;
-        payload["exception_message"] = exception.Message;
 
-        _auditLog.WriteToolCompleted(_toolName, "failed", publicMessage, windowHwnd, payload);
+        _auditLog.WriteToolCompleted(_toolContext, "failed", publicMessage, windowHwnd, payload, exception);
         _completed = true;
     }
 

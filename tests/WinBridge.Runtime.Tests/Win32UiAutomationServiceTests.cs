@@ -224,6 +224,34 @@ public sealed class Win32UiAutomationServiceTests
         Assert.Contains("\"failure_stage\":\"worker_process\"", eventLines[0], StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task SnapshotAsyncSanitizesFailureMessageInRuntimeEvent()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-uia-secret-reason");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        Win32UiAutomationService service = new(
+            new FakeBackend(
+                new UiaSnapshotBackendResult(
+                    Success: false,
+                    Reason: "secret traversal failure",
+                    FailureStage: UiaSnapshotFailureStageValues.Traversal,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)),
+            new UiaSnapshotArtifactWriter(options),
+            auditLog,
+            TimeProvider.System);
+
+        UiaSnapshotResult result = await service.SnapshotAsync(CreateWindow(), new UiaSnapshotRequest(), CancellationToken.None);
+
+        Assert.Equal(UiaSnapshotStatusValues.Failed, result.Status);
+        Assert.Equal("secret traversal failure", result.Reason);
+
+        string eventLine = Assert.Single(await File.ReadAllLinesAsync(options.EventsPath));
+        string summary = await File.ReadAllTextAsync(options.SummaryPath);
+        Assert.DoesNotContain("secret traversal failure", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret traversal failure", summary, StringComparison.Ordinal);
+    }
+
     private static AuditLogOptions CreateAuditLogOptions(string root, string runId) =>
         new(
             ContentRootPath: root,

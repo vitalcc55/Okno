@@ -454,14 +454,14 @@ Decision:
 - [x] Добавить reusable gate contracts (`IToolExecutionGate`, `ToolExecutionDecision`, `ToolExecutionIntent`) и concrete evaluator.
 - [x] Подключить gate к existing `RuntimeGuardAssessment`, не создавая новый probe stack.
 - [x] Добавить gated overload в `src/WinBridge.Runtime.Diagnostics/ToolExecution.cs`.
-- [ ] Добавить tool-aware redaction service в `src/WinBridge.Runtime.Diagnostics/`.
-- [ ] Перевести `src/WinBridge.Runtime.Diagnostics/AuditLog.cs` на sanitized request/result summaries.
+- [x] Добавить tool-aware redaction service в `src/WinBridge.Runtime.Diagnostics/`.
+- [x] Перевести `src/WinBridge.Runtime.Diagnostics/AuditLog.cs` на sanitized request/result summaries.
 - [x] Сделать safety metadata видимым через `okno.contract` без раздувания `okno.health`.
 - [x] Подтвердить, что `src/WinBridge.Server/Tools/WindowTools.cs` не меняет shipped behavior в этом workstream.
 - [x] Добавить L1 tests для manifest/export alignment.
 - [x] Добавить L1 tests для gate decision matrix.
-- [ ] Добавить L1 tests для redaction markers и отсутствия raw payload leakage.
+- [x] Добавить L1 tests для redaction markers и отсутствия raw payload leakage.
 - [x] Добавить L2 integration test на synthetic gated action boundary.
-- [ ] Обновить `docs/architecture/capability-design-policy.md` и `docs/architecture/observability.md`.
+- [x] Обновить `docs/architecture/capability-design-policy.md` и `docs/architecture/observability.md`.
 - [x] После реализации прогнать `scripts/refresh-generated-docs.ps1` и синхронизировать generated docs.
 - [ ] Перед закрытием workstream ответить на контрольный вопрос: “можно ли теперь строить `windows.launch_process` без новой safety-логики внутри launch?”

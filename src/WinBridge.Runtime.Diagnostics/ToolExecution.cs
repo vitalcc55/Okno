@@ -61,11 +61,12 @@ public static class ToolExecution
         ArgumentNullException.ThrowIfNull(onAllowed);
         ArgumentNullException.ThrowIfNull(onRejected);
 
-        using AuditInvocationScope invocation = auditLog.BeginInvocation(toolName, request, snapshot);
+        using AuditInvocationScope invocation = auditLog.BeginInvocation(toolName, request, snapshot, policy);
 
         try
         {
             ToolExecutionDecision decision = gate.Evaluate(policy, intent);
+            invocation.SetDecision(decision);
             return decision.IsAllowed
                 ? onAllowed(invocation, decision)
                 : onRejected(invocation, decision);
@@ -92,11 +93,12 @@ public static class ToolExecution
         ArgumentNullException.ThrowIfNull(onAllowed);
         ArgumentNullException.ThrowIfNull(onRejected);
 
-        using AuditInvocationScope invocation = auditLog.BeginInvocation(toolName, request, snapshot);
+        using AuditInvocationScope invocation = auditLog.BeginInvocation(toolName, request, snapshot, policy);
 
         try
         {
             ToolExecutionDecision decision = gate.Evaluate(policy, intent);
+            invocation.SetDecision(decision);
             return decision.IsAllowed
                 ? await onAllowed(invocation, decision).ConfigureAwait(false)
                 : await onRejected(invocation, decision).ConfigureAwait(false);

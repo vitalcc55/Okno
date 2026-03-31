@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-30 15:57
+
+- Закрыт `Package C` из [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md) без захода в `Package D`: в `WinBridge.Runtime.Diagnostics` добавлен минимальный tool-aware redaction seam (`AuditPayloadRedactor`, `AuditRedactionResult`, tool context resolution), `AuditLog` и `ToolExecution` переведены на sanitized request/failure path с fail-safe suppression, gated invocation теперь пишет canonical `decision`/`risk_level`/`guard_capability` markers через existing `ToolExecutionDecision`, а runtime/tool events больше не утекают raw `exception_message` в `events.jsonl` и `summary.md`. В том же цикле обновлены узкие unit/integration tests на redaction markers и отсутствие leakage для `windows.wait`, `windows.uia_snapshot` и synthetic gate boundary, плюс синхронизированы только минимально нужные architecture docs и checklist workstream-а.
+
 ## 2026-03-30 13:25
 
 - Закрыт `Package B` из [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md) без захода в `Package C/D`: добавлен reusable execution gate поверх existing `execution_policy` и `RuntimeGuardAssessment`, `ToolExecution` получил gated sync/async overload для canonical `allowed / blocked / needs_confirmation / dry_run_only` routing без rollout в shipped observe tools, а unit/integration tests теперь доказывают decision matrix, reuse runtime snapshot и synthetic server-boundary path без публикации нового action tool.

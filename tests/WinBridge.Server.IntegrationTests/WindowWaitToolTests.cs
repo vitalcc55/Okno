@@ -191,6 +191,10 @@ public sealed class WindowWaitToolTests
 
         string[] eventLines = await File.ReadAllLinesAsync(context.EventsPath);
         Assert.Contains(eventLines, line => line.Contains("\"event_name\":\"wait.runtime.completed\"", StringComparison.Ordinal));
+        Assert.DoesNotContain(eventLines, line => line.Contains("secret internal failure", StringComparison.Ordinal));
+        Assert.Contains(
+            eventLines,
+            line => line.Contains("\"redacted_fields\":\"exception_message\"", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -218,6 +222,10 @@ public sealed class WindowWaitToolTests
 
         string[] eventLines = await File.ReadAllLinesAsync(context.EventsPath);
         Assert.Contains(eventLines, line => line.Contains("\"event_name\":\"wait.runtime.completed\"", StringComparison.Ordinal));
+        Assert.DoesNotContain(eventLines, line => line.Contains("secret resolution failure", StringComparison.Ordinal));
+        Assert.Contains(
+            eventLines,
+            line => line.Contains("\"redacted_fields\":\"exception_message\"", StringComparison.Ordinal));
     }
 
     [Fact]

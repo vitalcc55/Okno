@@ -71,10 +71,217 @@ public sealed class AuditLogTests
         Assert.Contains("\"event_name\":\"session.attached\"", lines[0], StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void BeginInvocationRedactsSensitiveRequestSummaryAndWritesMarkers()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-003",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-003"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-003", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-003", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-003", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   "windows.wait",
+                   new
+                   {
+                       condition = "text_appears",
+                       expectedText = "super secret text",
+                       selector = new
+                       {
+                           name = "Sensitive field",
+                           automationId = "SearchBox",
+                       },
+                       timeoutMs = 500,
+                   },
+                   snapshot))
+        {
+            invocation.Complete("done", "Тестовый wait вызов завершён.");
+        }
+
+        string startedEvent = File.ReadAllLines(options.EventsPath)[0];
+        Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_class\":\"text_payload\"", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redacted_fields\":\"expectedText,selector.name\"", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super secret text", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sensitive field", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"request_summary\":", startedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BeginInvocationSuppressesRequestSummaryWhenRedactorFails()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-004",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-004"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-004", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-004", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System, new ThrowingAuditPayloadRedactor());
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-004", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   "windows.wait",
+                   new
+                   {
+                       expectedText = "super secret text",
+                   },
+                   snapshot))
+        {
+            invocation.Complete("done", "Тестовый wait вызов завершён.");
+        }
+
+        string startedEvent = File.ReadAllLines(options.EventsPath)[0];
+        Assert.Contains("\"request_summary_suppressed\":\"true\"", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"request_summary\":", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super secret text", startedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecordRuntimeEventFailsClosedWhenRedactorThrowsOnEventData()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-005",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-005"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-005", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-005", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System, new ThrowingAuditPayloadRedactor());
+
+        auditLog.RecordRuntimeEvent(
+            eventName: "wait.runtime.completed",
+            severity: "warning",
+            messageHuman: "Безопасное сообщение.",
+            toolName: "windows.wait",
+            outcome: "failed",
+            windowHwnd: 42,
+            data: new Dictionary<string, string?>
+            {
+                ["exception_message"] = "secret runtime payload",
+                ["user_text"] = "super secret text",
+            });
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"event_data_suppressed\":\"true\"", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret runtime payload", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("super secret text", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"user_text\":", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompleteFailsClosedWhenRedactorThrowsOnCompletionData()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-006",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-006"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-006", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-006", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System, new ThrowingAuditPayloadRedactor());
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-006", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation("windows.wait", new { condition = "text_appears" }, snapshot))
+        {
+            invocation.Complete(
+                "failed",
+                "Безопасное сообщение.",
+                data: new Dictionary<string, string?>
+                {
+                    ["exception_message"] = "secret completion payload",
+                    ["user_text"] = "super secret text",
+                });
+        }
+
+        string completedEvent = File.ReadAllLines(options.EventsPath)[1];
+        Assert.Contains("\"event_data_suppressed\":\"true\"", completedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret completion payload", completedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super secret text", completedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"user_text\":", completedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecordRuntimeEventSanitizesFailureMessageForRedactedTool()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-007",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-007"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-007", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-007", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+
+        auditLog.RecordRuntimeEvent(
+            eventName: "uia.snapshot.runtime.completed",
+            severity: "warning",
+            messageHuman: "secret traversal failure",
+            toolName: "windows.uia_snapshot",
+            outcome: "failed",
+            windowHwnd: 42,
+            data: new Dictionary<string, string?>
+            {
+                ["failure_stage"] = "traversal",
+            });
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        string summary = File.ReadAllText(options.SummaryPath);
+        Assert.DoesNotContain("secret traversal failure", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret traversal failure", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompleteSanitizesFailureMessageForRedactedTool()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-008",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-008"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-008", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-008", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-008", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation("windows.wait", new { condition = "text_appears" }, snapshot))
+        {
+            invocation.Complete("failed", "secret wait failure from runtime");
+        }
+
+        string completedEvent = File.ReadAllLines(options.EventsPath)[1];
+        string summary = File.ReadAllText(options.SummaryPath);
+        Assert.DoesNotContain("secret wait failure from runtime", completedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret wait failure from runtime", summary, StringComparison.Ordinal);
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private sealed class ThrowingAuditPayloadRedactor : IAuditPayloadRedactor
+    {
+        public AuditRedactionResult Redact(AuditPayloadRedactionContext context, object? payload)
+            => throw new InvalidOperationException("Redactor should fail closed.");
     }
 }

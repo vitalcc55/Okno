@@ -296,7 +296,10 @@ public sealed class WindowUiaSnapshotToolTests
             eventLines,
             line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
         Assert.Contains("\"exception_type\":\"System.InvalidOperationException\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"exception_message\":\"secret internal failure\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_class\":\"target_metadata\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redacted_fields\":\"exception_message\"", completedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret internal failure", completedEvent, StringComparison.Ordinal);
     }
 
     [Fact]

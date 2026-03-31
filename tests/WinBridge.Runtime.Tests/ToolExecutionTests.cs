@@ -7,6 +7,11 @@ namespace WinBridge.Runtime.Tests;
 
 public sealed class ToolExecutionTests
 {
+    private static readonly string[] LaunchProcessArguments =
+    [
+        "--token=super-secret",
+    ];
+
     [Fact]
     public void RunLogsFailedOutcomeWhenCallbackThrows()
     {
@@ -108,6 +113,14 @@ public sealed class ToolExecutionTests
 
         Assert.False(allowedCalled);
         Assert.Equal("rejected", result);
+
+        string completedEvent = File.ReadAllLines(options.EventsPath)[1];
+        Assert.Contains("\"decision\":\"blocked\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"risk_level\":\"destructive\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"guard_capability\":\"input\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"requires_confirmation\":\"false\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"dry_run_supported\":\"false\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"reason_codes\":\"input_uipi_barrier_present\"", completedEvent, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -195,6 +208,61 @@ public sealed class ToolExecutionTests
         Assert.Equal(2, lines.Length);
         Assert.Contains("\"outcome\":\"failed\"", lines[1], StringComparison.Ordinal);
         Assert.Contains("\"exception_type\":\"System.InvalidOperationException\"", lines[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("boom-gated", lines[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RunGatedSuppressesRawUnexpectedExceptionMessageForRedactedTool()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-009");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-009", DateTimeOffset.UtcNow);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => ToolExecution.RunGated<int>(
+                auditLog,
+                snapshot,
+                "windows.launch_process",
+                new
+                {
+                    executable = @"C:\tools\demo.exe",
+                    args = LaunchProcessArguments,
+                },
+                new ToolExecutionPolicyDescriptor(
+                    PolicyGroup: ToolExecutionPolicyGroup.Launch,
+                    RiskLevel: ToolExecutionRiskLevel.High,
+                    GuardCapability: CapabilitySummaryValues.Launch,
+                    SupportsDryRun: true,
+                    ConfirmationMode: ToolExecutionConfirmationMode.Required,
+                    RedactionClass: ToolExecutionRedactionClass.LaunchPayload),
+                new ToolExecutionIntent(
+                    IsDryRunRequested: false,
+                    ConfirmationGranted: true,
+                    PreviewAvailable: true),
+                new StubToolExecutionGate(
+                    new ToolExecutionDecision(
+                        Kind: ToolExecutionDecisionKind.Allowed,
+                        Mode: ToolExecutionMode.Live,
+                        RiskLevel: ToolExecutionRiskLevel.High,
+                        Reasons: [],
+                        RequiresConfirmation: false,
+                        DryRunSupported: true,
+                        GuardCapability: CapabilitySummaryValues.Launch)),
+                (_, _) => throw new InvalidOperationException("launch failed with --token=super-secret"),
+                (invocation, decision) =>
+                {
+                    invocation.Complete("blocked", "blocked");
+                    return 0;
+                }));
+
+        Assert.Equal("launch failed with --token=super-secret", exception.Message);
+
+        string completedEvent = File.ReadAllLines(options.EventsPath)[1];
+        Assert.Contains("\"redaction_applied\":\"true\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_class\":\"launch_payload\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redacted_fields\":\"exception_message\"", completedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret", completedEvent, StringComparison.Ordinal);
     }
 
     private static AuditLogOptions CreateOptions(string root, string runId) =>

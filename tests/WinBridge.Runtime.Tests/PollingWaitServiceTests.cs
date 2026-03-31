@@ -1115,7 +1115,9 @@ public sealed class PollingWaitServiceTests
         Assert.Single(eventLines);
         Assert.Contains("\"failure_stage\":\"runtime_unhandled\"", eventLines[0], StringComparison.Ordinal);
         Assert.Contains("\"exception_type\":\"System.InvalidOperationException\"", eventLines[0], StringComparison.Ordinal);
-        Assert.Contains("\"exception_message\":\"secret probe failure\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"redacted_fields\":\"exception_message\"", eventLines[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("secret probe failure", eventLines[0], StringComparison.Ordinal);
     }
 
     private sealed class SequenceWaitProbe(IReadOnlyList<UiAutomationWaitProbeResult>? results = null) : IUiAutomationWaitProbe
