@@ -5,9 +5,6 @@ namespace WinBridge.Runtime.Diagnostics;
 
 internal sealed class AuditToolContext
 {
-    private static readonly Dictionary<string, ToolDescriptor> DescriptorsByName =
-        ToolContractManifest.All.ToDictionary(item => item.Name, StringComparer.Ordinal);
-
     private static readonly Dictionary<string, ToolExecutionRedactionClass> InternalRedactionClassMap =
         new Dictionary<string, ToolExecutionRedactionClass>(StringComparer.Ordinal)
         {
@@ -35,11 +32,7 @@ internal sealed class AuditToolContext
 
     public static AuditToolContext Resolve(string toolName, ToolExecutionPolicyDescriptor? executionPolicy = null)
     {
-        ToolExecutionPolicyDescriptor? resolvedPolicy = executionPolicy;
-        if (resolvedPolicy is null && DescriptorsByName.TryGetValue(toolName, out ToolDescriptor? descriptor))
-        {
-            resolvedPolicy = descriptor.ExecutionPolicy;
-        }
+        ToolExecutionPolicyDescriptor? resolvedPolicy = executionPolicy ?? ToolContractManifest.ResolveExecutionPolicy(toolName);
 
         ToolExecutionRedactionClass redactionClass =
             resolvedPolicy?.RedactionClass

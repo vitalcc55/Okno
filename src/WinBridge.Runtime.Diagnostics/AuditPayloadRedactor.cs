@@ -107,6 +107,21 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
                 continue;
             }
 
+            if (TrySanitizeEventField(context.RedactionClass, key, value, out string? sanitizedValue, out bool fieldRedacted))
+            {
+                if (sanitizedValue is not null)
+                {
+                    sanitizedData[key] = sanitizedValue;
+                }
+
+                if (fieldRedacted)
+                {
+                    redactedFields.Add(key);
+                }
+
+                continue;
+            }
+
             if (string.Equals(key, "exception_message", StringComparison.Ordinal))
             {
                 redactedFields.Add(key);
@@ -128,6 +143,34 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
             RedactedFields: redactedFields,
             RedactionApplied: redactedFields.Count > 0,
             SummarySuppressed: false);
+    }
+
+    private static bool TrySanitizeEventField(
+        ToolExecutionRedactionClass redactionClass,
+        string key,
+        string value,
+        out string? sanitizedValue,
+        out bool fieldRedacted)
+    {
+        sanitizedValue = null;
+        fieldRedacted = false;
+
+        if (redactionClass == ToolExecutionRedactionClass.LaunchPayload
+            && string.Equals(key, "executable", StringComparison.OrdinalIgnoreCase))
+        {
+            string? executableIdentity = ResolveLaunchExecutableIdentity(value);
+            if (string.IsNullOrWhiteSpace(executableIdentity))
+            {
+                fieldRedacted = true;
+                return true;
+            }
+
+            sanitizedValue = executableIdentity;
+            fieldRedacted = !string.Equals(executableIdentity, value, StringComparison.Ordinal);
+            return true;
+        }
+
+        return false;
     }
 
     private static bool ShouldRedactEventField(ToolExecutionRedactionClass redactionClass, string key) =>
@@ -228,7 +271,10 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
             && propertyName is not null
             && string.Equals(propertyName, "executable", StringComparison.OrdinalIgnoreCase))
         {
-            return Path.GetFileName(value);
+            string? executableIdentity = ResolveLaunchExecutableIdentity(value);
+            return executableIdentity is not null
+                ? executableIdentity
+                : CreateRedactedStringMarker(value, propertyPath ?? propertyName, redactedFields);
         }
 
         if (!ShouldRedactStringValue(redactionClass, propertyName))
@@ -270,6 +316,34 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
                 !MatchesAny(propertyName, "artifactPath", "diagnosticArtifactPath", "mimeType", "byteSize", "status"),
             _ => false,
         };
+    }
+
+    private static string? ResolveLaunchExecutableIdentity(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        string normalized = value.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        string trimmed = normalized.TrimEnd(Path.DirectorySeparatorChar);
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return null;
+        }
+
+        string executableName = Path.GetFileName(trimmed);
+        if (string.IsNullOrWhiteSpace(executableName))
+        {
+            return null;
+        }
+
+        if (normalized.Contains(Path.DirectorySeparatorChar) && !Path.HasExtension(executableName))
+        {
+            return null;
+        }
+
+        return executableName;
     }
 
     private static Dictionary<string, object?> CreateRedactedMarker(

@@ -25,6 +25,9 @@ namespace WinBridgeSmoke
         [DllImport("user32.dll")]
         public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
         [DllImport("user32.dll")]
         public static extern bool ShowWindowAsync(IntPtr hwnd, int nCmdShow);
 
@@ -813,8 +816,14 @@ function Send-HelperCommand {
         [Parameter(Mandatory)]
         [uint32] $Message,
         [Parameter(Mandatory)]
-        [string] $Description
+        [string] $Description,
+        [switch] $Synchronous
     )
+
+    if ($Synchronous) {
+        [void][WinBridgeSmoke.User32]::SendMessage([IntPtr]::new($Hwnd), $Message, [IntPtr]::Zero, [IntPtr]::Zero)
+        return
+    }
 
     $posted = [WinBridgeSmoke.User32]::PostMessage([IntPtr]::new($Hwnd), $Message, [IntPtr]::Zero, [IntPtr]::Zero)
     Assert-Condition -Condition $posted -Message "Smoke helper command '$Description' was not delivered."
@@ -1105,7 +1114,7 @@ try {
     $activeWaitPayload = Assert-WaitSuccess -ToolCall $activeWaitCall -Condition 'active_window_matches'
     Assert-Condition -Condition ([bool]$activeWaitPayload.lastObserved.targetIsForeground) -Message 'active_window_matches must confirm foreground=true in lastObserved.'
 
-    Send-HelperCommand -Hwnd $helperHwnd -Message $wmAppPrepareFocus -Description 'prepare_focus'
+    Send-HelperCommand -Hwnd $helperHwnd -Message $wmAppPrepareFocus -Description 'prepare_focus' -Synchronous
     $focusWaitCall = Invoke-WaitToolCall -Process $process -Condition 'focus_is' -Selector @{ name = 'Run semantic smoke'; controlType = 'button' } -TimeoutMs $waitTimeoutSemanticUiMs -RequestName 'windows.wait(focus_is)'
     $rawFocusWaitRequest = $focusWaitCall.RawRequest
     $focusWaitResponse = [PSCustomObject]@{

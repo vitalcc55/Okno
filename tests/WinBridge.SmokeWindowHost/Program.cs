@@ -187,6 +187,13 @@ internal static class Program
             _runButton.Focus();
         }
 
+        private void PrepareCanonicalFocusTarget()
+        {
+            BringToFront();
+            Activate();
+            SetCanonicalFocusTarget();
+        }
+
         private void QueueCanonicalFocusTarget() =>
             BeginInvoke(SetCanonicalFocusTarget);
 
@@ -207,7 +214,7 @@ internal static class Program
                     m.Result = IntPtr.Zero;
                     return;
                 case WmAppPrepareFocus:
-                    QueueCanonicalFocusTarget();
+                    PrepareCanonicalFocusTarget();
                     m.Result = IntPtr.Zero;
                     return;
             }

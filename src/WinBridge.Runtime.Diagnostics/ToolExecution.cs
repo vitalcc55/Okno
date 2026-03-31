@@ -13,6 +13,7 @@ public static class ToolExecution
         object? request,
         Func<AuditInvocationScope, TResult> callback)
     {
+        EnsureRawExecutionAllowed(toolName);
         using AuditInvocationScope invocation = auditLog.BeginInvocation(toolName, request, snapshot);
 
         try
@@ -33,6 +34,7 @@ public static class ToolExecution
         object? request,
         Func<AuditInvocationScope, Task<TResult>> callback)
     {
+        EnsureRawExecutionAllowed(toolName);
         using AuditInvocationScope invocation = auditLog.BeginInvocation(toolName, request, snapshot);
 
         try
@@ -108,5 +110,17 @@ public static class ToolExecution
             invocation.Fail(exception);
             throw;
         }
+    }
+
+    private static void EnsureRawExecutionAllowed(string toolName)
+    {
+        ToolExecutionPolicyDescriptor? executionPolicy = ToolContractManifest.ResolveExecutionPolicy(toolName);
+        if (executionPolicy is null)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Tool '{toolName}' declares execution policy and must use {nameof(RunGated)}/{nameof(RunGatedAsync)} to enforce the shared safety gate.");
     }
 }

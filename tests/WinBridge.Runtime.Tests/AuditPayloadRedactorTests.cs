@@ -96,6 +96,51 @@ public sealed class AuditPayloadRedactorTests
     }
 
     [Fact]
+    public void RedactLaunchEventDataKeepsExecutableBasenameButNotFullPath()
+    {
+        AuditPayloadRedactor redactor = new();
+
+        AuditRedactionResult result = redactor.Redact(
+            new AuditPayloadRedactionContext(
+                ToolName: "windows.launch_process",
+                EventName: "launch.runtime.completed",
+                PayloadKind: AuditPayloadKind.EventData,
+                RedactionClass: ToolExecutionRedactionClass.LaunchPayload),
+            new Dictionary<string, string?>
+            {
+                ["executable"] = @"C:\tools\demo.exe",
+                ["arguments"] = "--token=super-secret",
+            });
+
+        Assert.True(result.RedactionApplied);
+        Assert.Contains("executable", result.RedactedFields);
+        Assert.Contains("arguments", result.RedactedFields);
+        Assert.Equal("demo.exe", result.SanitizedData["executable"]);
+        Assert.False(result.SanitizedData.ContainsKey("arguments"));
+    }
+
+    [Fact]
+    public void RedactLaunchEventDataSuppressesExecutableWhenBasenameCannotBeResolved()
+    {
+        AuditPayloadRedactor redactor = new();
+
+        AuditRedactionResult result = redactor.Redact(
+            new AuditPayloadRedactionContext(
+                ToolName: "windows.launch_process",
+                EventName: "launch.runtime.completed",
+                PayloadKind: AuditPayloadKind.EventData,
+                RedactionClass: ToolExecutionRedactionClass.LaunchPayload),
+            new Dictionary<string, string?>
+            {
+                ["executable"] = @"C:\tools\folder\",
+            });
+
+        Assert.True(result.RedactionApplied);
+        Assert.Contains("executable", result.RedactedFields);
+        Assert.False(result.SanitizedData.ContainsKey("executable"));
+    }
+
+    [Fact]
     public void RedactNonePreservesSafeSummary()
     {
         AuditPayloadRedactor redactor = new();

@@ -6,6 +6,7 @@ public static class ToolContractManifest
 {
     private const string WindowsLaunchProcess = "windows.launch_process";
     private const string WindowsOpenTarget = "windows.open_target";
+    private static readonly Dictionary<string, ToolDescriptor> AllByName;
 
     public static string ContractNotes { get; } =
         "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait и честные deferred action tools без hidden enforcement; okno.contract публикует execution_policy metadata только для уже объявленных deferred tools.";
@@ -29,6 +30,11 @@ public static class ToolContractManifest
             new ToolDescriptor(ToolNames.WindowsInput, "windows.input", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Выполняет низкоуровневую последовательность input-действий.", "roadmap stage 5", "Low-level input вводится только после capture/text path.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.Input, ToolExecutionRiskLevel.Destructive, CapabilitySummaryValues.Input, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.TextPayload)),
             new ToolDescriptor(ToolNames.WindowsUiaAction, "windows.uia", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Выполняет semantic UIA action по element id.", "roadmap stage 7", "Semantic UIA actions запланированы после snapshot layer.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.UiaAction, ToolExecutionRiskLevel.High, CapabilitySummaryValues.Uia, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.TargetMetadata)),
         };
+
+    static ToolContractManifest()
+    {
+        AllByName = All.ToDictionary(descriptor => descriptor.Name, StringComparer.Ordinal);
+    }
 
     internal static IReadOnlyDictionary<string, ToolExecutionPolicyDescriptor> FutureLaunchFamilyPolicyPresets { get; } =
         new Dictionary<string, ToolExecutionPolicyDescriptor>(StringComparer.Ordinal)
@@ -63,6 +69,20 @@ public static class ToolContractManifest
 
     public static IReadOnlyDictionary<string, string> DeferredPhaseMap { get; } =
         Deferred.ToDictionary(descriptor => descriptor.Name, descriptor => descriptor.PlannedPhase!, StringComparer.Ordinal);
+
+    internal static ToolExecutionPolicyDescriptor? ResolveExecutionPolicy(string toolName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
+
+        if (AllByName.TryGetValue(toolName, out ToolDescriptor? descriptor))
+        {
+            return descriptor.ExecutionPolicy;
+        }
+
+        return FutureLaunchFamilyPolicyPresets.TryGetValue(toolName, out ToolExecutionPolicyDescriptor? preset)
+            ? preset
+            : null;
+    }
 
     private static ToolExecutionPolicyDescriptor CreateExecutionPolicy(
         ToolExecutionPolicyGroup policyGroup,

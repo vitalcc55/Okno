@@ -78,7 +78,16 @@
 
 Нельзя оставлять “правду” размазанной между несколькими частично обновлёнными слоями.
 
-### 5. Sensitive summaries never beat audit safety
+### 5. Policy-bearing tools обязаны входить через gated boundary
+
+Если tool descriptor публикует `ExecutionPolicy`, это означает не только metadata для агента, но и обязательный runtime boundary contract:
+
+- такой tool не должен вызываться через raw `ToolExecution.Run(...)` / `RunAsync(...)`;
+- shared preflight decision обязан materialize-иться через `RunGated(...)` / `RunGatedAsync(...)`;
+- попытка обойти gated path должна считаться developer misuse и падать fail-fast до выполнения handler callback;
+- новый handler не должен дублировать собственный mini-policy там, где уже есть shared gate.
+
+### 6. Sensitive summaries never beat audit safety
 
 Если capability принимает текст, clipboard payload, launch args/env, file/URL targets или любой другой потенциально чувствительный payload, audit/evidence path обязан быть redaction-first:
 

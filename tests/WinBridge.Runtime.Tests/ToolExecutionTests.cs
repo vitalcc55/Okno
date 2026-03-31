@@ -44,6 +44,33 @@ public sealed class ToolExecutionTests
     }
 
     [Fact]
+    public void RunRejectsPolicyBearingToolDescriptorsOnRawPath()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-raw-policy-reject");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-raw-policy-reject", DateTimeOffset.UtcNow);
+        bool callbackCalled = false;
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => ToolExecution.Run<int>(
+                auditLog,
+                snapshot,
+                ToolNames.WindowsInput,
+                new { action = "click" },
+                _ =>
+                {
+                    callbackCalled = true;
+                    return 0;
+                }));
+
+        Assert.False(callbackCalled);
+        Assert.Contains(ToolNames.WindowsInput, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("RunGated", exception.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(options.EventsPath));
+    }
+
+    [Fact]
     public async Task RunAsyncLogsFailedOutcomeWhenCallbackThrows()
     {
         string root = CreateTempDirectory();
@@ -65,6 +92,33 @@ public sealed class ToolExecutionTests
         Assert.Equal(2, lines.Length);
         Assert.Contains("\"outcome\":\"failed\"", lines[1], StringComparison.Ordinal);
         Assert.Contains("\"exception_type\":\"System.InvalidOperationException\"", lines[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsyncRejectsPolicyBearingToolDescriptorsOnRawPath()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-raw-policy-reject-async");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-raw-policy-reject-async", DateTimeOffset.UtcNow);
+        bool callbackCalled = false;
+
+        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ToolExecution.RunAsync<int>(
+                auditLog,
+                snapshot,
+                ToolNames.WindowsClipboardSet,
+                new { text = "secret" },
+                _ =>
+                {
+                    callbackCalled = true;
+                    return Task.FromResult(0);
+                }));
+
+        Assert.False(callbackCalled);
+        Assert.Contains(ToolNames.WindowsClipboardSet, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("RunGatedAsync", exception.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(options.EventsPath));
     }
 
     [Fact]

@@ -294,15 +294,10 @@ public sealed class AuditLog
 
         if (!eventRedaction.SummarySuppressed)
         {
-        foreach ((string key, string? value) in eventRedaction.SanitizedData)
-        {
-            mutable[key] = value;
-        }
-        }
-
-        foreach (string redactedField in eventRedaction.RedactedFields)
-        {
-            mutable.Remove(redactedField);
+            foreach ((string key, string? value) in eventRedaction.SanitizedData)
+            {
+                mutable[key] = value;
+            }
         }
 
         ApplyRedactionMetadata(

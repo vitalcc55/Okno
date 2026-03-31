@@ -1,3 +1,4 @@
+using System.Text.Json;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 
@@ -270,6 +271,41 @@ public sealed class AuditLogTests
         string summary = File.ReadAllText(options.SummaryPath);
         Assert.DoesNotContain("secret wait failure from runtime", completedEvent, StringComparison.Ordinal);
         Assert.DoesNotContain("secret wait failure from runtime", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecordRuntimeEventSanitizesLaunchExecutableToBasename()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-009",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-009"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-009", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-009", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+
+        auditLog.RecordRuntimeEvent(
+            eventName: "launch.runtime.completed",
+            severity: "info",
+            messageHuman: "Launch diagnostics.",
+            toolName: "windows.launch_process",
+            outcome: "done",
+            windowHwnd: null,
+            data: new Dictionary<string, string?>
+            {
+                ["executable"] = @"C:\tools\demo.exe",
+                ["arguments"] = "--token=super-secret",
+            });
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        using JsonDocument document = JsonDocument.Parse(eventLine);
+        JsonElement data = document.RootElement.GetProperty("data");
+        Assert.Equal("demo.exe", data.GetProperty("executable").GetString());
+        Assert.False(data.TryGetProperty("arguments", out _));
+        Assert.Equal("launch_payload", data.GetProperty("redaction_class").GetString());
     }
 
     private static string CreateTempDirectory()
