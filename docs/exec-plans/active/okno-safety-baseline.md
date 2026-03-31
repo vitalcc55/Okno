@@ -1,8 +1,8 @@
 # ExecPlan: safety baseline для future action tools
 
-Статус: planned
+Статус: partial
 Создан: 2026-03-30
-Обновлён: 2026-03-30
+Обновлён: 2026-03-31
 
 ## Goal
 
@@ -14,6 +14,12 @@
 - канонический shape для blocked/confirmation/dry-run decisions и readable reasons;
 - redaction hooks для чувствительных request/result/artifact payloads;
 - достаточный contract/docs/test baseline, после которого `windows.launch_process` реализуется как tool semantics + existing guard decision.
+
+Текущий итог по состоянию на `2026-03-31`:
+
+- `Package A`, `Package B`, `Package C` и verification/proof wave `Package D` завершены;
+- общий baseline по metadata, gate, redaction, contract/export и verification contour собран;
+- workstream пока не может считаться `done`, потому что shared launch-readiness policy всё ещё не даёт честного reusable allow/degraded model для `windows.launch_process` без нового safety follow-up.
 
 ### Non-goals
 
@@ -387,9 +393,18 @@ Decision:
 - синхронизировать `okno.health` / `okno.contract` wording;
 - зафиксировать proof question для `windows.launch_process`.
 
-Выход пакета:
+Целевой выход пакета:
 
 - другой инженер может начать `windows.launch_process` как следующий slice и не придумывать заново block/confirm/dry-run/redaction logic.
+
+Статус по факту `2026-03-31`:
+
+- последовательный verification contour (`scripts/bootstrap.ps1` -> `scripts/build.ps1` -> `scripts/test.ps1` -> `scripts/smoke.ps1` -> `scripts/refresh-generated-docs.ps1` -> `scripts/codex/verify.ps1`) пройден без build/test/smoke drift;
+- generated/export слой не дал содержательного diff: `refresh-generated-docs.ps1` не изменил tracked generated files, а `okno.contract` / exporter / docs остались синхронизированы с manifest;
+- контрольный ответ для `windows.launch_process` = `нет`: shared baseline уже закрывает reusable metadata/gate/redaction boundary, но сам shared launch-readiness policy ещё не умеет честно различать safe live launch и hard block по executable elevation/manifest boundary;
+- evidence для residual gap находится в shared guard layer, а не в будущем handler-е: `RuntimeGuardPolicy.BuildLaunch(...)` всегда добавляет `launch_elevation_boundary_unconfirmed` и возвращает `launch` как deferred blocked capability даже в otherwise healthy environment; это закреплено `RuntimeGuardPolicyTests.BuildCapabilitiesAlwaysIncludesLaunchBoundaryWhenEnvironmentLooksReady()`;
+- свежий smoke report (`artifacts/smoke/20260331T092213872/report.json`) подтверждает тот же итог на live surface: `okno.health` возвращает `launch=blocked` с reason codes `capability_not_implemented` и `launch_elevation_boundary_unconfirmed`, при этом dedicated health artifact/event по-прежнему не materialized.
+- финальный checklist-пункт про `windows.launch_process` остаётся незакрытым намеренно: это residual safety gap, а не недописанный отчёт.
 
 ## L1 / L2 / L3
 
