@@ -75,14 +75,13 @@ public sealed class AdminToolTests
             GuardStatusValues.Blocked,
             Assert.Single(result.Readiness.Capabilities, item => item.Capability == CapabilitySummaryValues.Clipboard).Status);
         Assert.Equal(
-            GuardStatusValues.Blocked,
+            GuardStatusValues.Degraded,
             Assert.Single(result.Readiness.Capabilities, item => item.Capability == CapabilitySummaryValues.Launch).Status);
 
         Assert.Equal(
             [
                 CapabilitySummaryValues.Input,
                 CapabilitySummaryValues.Clipboard,
-                CapabilitySummaryValues.Launch,
             ],
             result.BlockedCapabilities.Select(item => item.Capability).ToArray());
 
@@ -91,6 +90,7 @@ public sealed class AdminToolTests
                 GuardReasonCodeValues.IntegrityRequiresEqualOrLowerTarget,
                 GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified,
                 GuardReasonCodeValues.WaitShellVisualAvailable,
+                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
             ],
             result.Warnings.Select(item => item.Code).ToArray());
         Assert.Equal(
@@ -98,6 +98,7 @@ public sealed class AdminToolTests
                 ReadinessDomainValues.Integrity,
                 CapabilitySummaryValues.Uia,
                 CapabilitySummaryValues.Wait,
+                CapabilitySummaryValues.Launch,
             ],
             result.Warnings.Select(item => item.Source).ToArray());
     }
@@ -280,18 +281,13 @@ public sealed class AdminToolTests
                     ]),
                 new(
                     Capability: CapabilitySummaryValues.Launch,
-                    Status: GuardStatusValues.Blocked,
+                    Status: GuardStatusValues.Degraded,
                     Reasons:
                     [
                         new(
-                            Code: GuardReasonCodeValues.CapabilityNotImplemented,
-                            Severity: GuardSeverityValues.Blocked,
-                            MessageHuman: "Эта capability пока не реализована в текущем runtime surface и не может считаться готовой.",
-                            Source: CapabilitySummaryValues.Launch),
-                        new(
                             Code: GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                            Severity: GuardSeverityValues.Blocked,
-                            MessageHuman: "Future launch path требует явной модели elevation/integrity boundary; текущий runtime этого ещё не гарантирует. Текущий token имеет medium integrity; interaction с higher-integrity target нельзя обещать по умолчанию.",
+                            Severity: GuardSeverityValues.Warning,
+                            MessageHuman: "Live launch path остаётся confirmation-worthy: higher-integrity boundary заранее не подтверждена. Текущий token имеет medium integrity; interaction с higher-integrity target нельзя обещать по умолчанию.",
                             Source: CapabilitySummaryValues.Launch)
                     ]),
             ]);

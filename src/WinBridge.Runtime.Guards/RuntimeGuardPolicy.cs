@@ -681,30 +681,74 @@ internal static class RuntimeGuardPolicy
         ReadinessDomainStatus sessionAlignment,
         ReadinessDomainStatus integrity)
     {
-        List<GuardReason> extraReasons =
-        [
-            CreateReason(
-                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                GuardSeverityValues.Blocked,
-                CapabilitySummaryValues.Launch,
-                "Future launch path требует явной модели elevation/integrity boundary; текущий runtime этого ещё не гарантирует.")
-        ];
-
-        GuardReason? environmentBlocker = CreateSessionEnvironmentReason(
+        GuardReason? environmentReason = CreateSessionEnvironmentReason(
             CapabilitySummaryValues.Launch,
             desktopSession,
             sessionAlignment,
             "Future launch path нельзя обещать без usable interactive desktop/session.");
-        environmentBlocker ??= CreateCapabilityPrerequisiteUnknownReason(
+        if (environmentReason is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Launch,
+                Status: IsUnknown(sessionAlignment) || IsUnknown(desktopSession)
+                    ? GuardStatusValues.Unknown
+                    : GuardStatusValues.Blocked,
+                Reasons: [environmentReason]);
+        }
+
+        GuardReason? integrityUnknownReason = CreateCapabilityPrerequisiteUnknownReason(
             CapabilitySummaryValues.Launch,
             integrity,
             "Future launch path не смог подтвердить integrity prerequisites.");
-        if (environmentBlocker is not null)
+        if (integrityUnknownReason is not null)
         {
-            extraReasons.Add(environmentBlocker);
+            return new(
+                Capability: CapabilitySummaryValues.Launch,
+                Status: GuardStatusValues.Unknown,
+                Reasons: [integrityUnknownReason]);
         }
 
-        return CreateDeferredBlockedCapability(CapabilitySummaryValues.Launch, extraReasons);
+        if (IsBlocked(integrity))
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Launch,
+                Status: GuardStatusValues.Blocked,
+                Reasons:
+                [
+                    CreateReason(
+                        GuardReasonCodeValues.LaunchIntegrityLimited,
+                        GuardSeverityValues.Blocked,
+                        CapabilitySummaryValues.Launch,
+                        "Future launch path требует как минимум medium integrity profile. " + FirstReasonMessage(integrity))
+                ]);
+        }
+
+        if (IsDegraded(integrity))
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Launch,
+                Status: GuardStatusValues.Degraded,
+                Reasons:
+                [
+                    CreateReason(
+                        GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                        GuardSeverityValues.Warning,
+                        CapabilitySummaryValues.Launch,
+                        "Live launch path остаётся confirmation-worthy: higher-integrity/elevation boundary заранее не подтверждена без target-specific manifest facts. " + FirstReasonMessage(integrity))
+                ]);
+        }
+
+        return new(
+            Capability: CapabilitySummaryValues.Launch,
+            Status: GuardStatusValues.Ready,
+            Reasons:
+            [
+                CreateReason(
+                    GuardReasonCodeValues.LaunchReadyProfile,
+                    GuardSeverityValues.Info,
+                    CapabilitySummaryValues.Launch,
+                    "Shared launch-readiness baseline подтверждён: interactive desktop/session стабильны, а текущий token имеет достаточный integrity profile для live launch path без отдельного safety follow-up внутри handler-а.")
+            ]);
     }
 
     private static CapabilityGuardSummary CreateDeferredBlockedCapability(string capability, IEnumerable<GuardReason> extraReasons)

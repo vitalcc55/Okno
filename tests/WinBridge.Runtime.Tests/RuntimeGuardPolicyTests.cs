@@ -277,10 +277,11 @@ public sealed class RuntimeGuardPolicyTests
 
         GuardReason[] warnings = RuntimeGuardPolicy.BuildWarnings(snapshot);
 
-        Assert.Equal(3, warnings.Length);
+        Assert.Equal(4, warnings.Length);
         Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.IntegrityRequiresEqualOrLowerTarget);
         Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified);
         Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.WaitShellVisualAvailable);
+        Assert.Contains(warnings, item => item.Code == GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed);
         Assert.DoesNotContain(warnings, item => item.Code == "assessment_not_implemented");
         Assert.DoesNotContain(warnings, item => item.Code == GuardReasonCodeValues.CapabilitySessionTransition && item.Source == CapabilitySummaryValues.Input);
     }
@@ -331,7 +332,7 @@ public sealed class RuntimeGuardPolicyTests
         Assert.Equal(GuardStatusValues.Degraded, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Wait).Status);
         Assert.Equal(GuardStatusValues.Blocked, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Input).Status);
         Assert.Equal(GuardStatusValues.Blocked, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Clipboard).Status);
-        Assert.Equal(GuardStatusValues.Blocked, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Launch).Status);
+        Assert.Equal(GuardStatusValues.Degraded, Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Launch).Status);
         Assert.Equal(
             GuardReasonCodeValues.CaptureReady,
             Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Capture).Reasons[0].Code);
@@ -348,10 +349,12 @@ public sealed class RuntimeGuardPolicyTests
             GuardReasonCodeValues.InputIntegrityLimited,
             Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Input).Reasons[1].Code);
         Assert.Equal(
+            GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+            Assert.Single(capabilities, item => item.Capability == CapabilitySummaryValues.Launch).Reasons[0].Code);
+        Assert.Equal(
             [
                 CapabilitySummaryValues.Input,
                 CapabilitySummaryValues.Clipboard,
-                CapabilitySummaryValues.Launch,
             ],
             RuntimeGuardPolicy.BuildBlockedCapabilities(capabilities).Select(item => item.Capability).ToArray());
     }
@@ -613,7 +616,7 @@ public sealed class RuntimeGuardPolicyTests
     }
 
     [Fact]
-    public void BuildCapabilitiesAlwaysIncludesLaunchBoundaryWhenEnvironmentLooksReady()
+    public void BuildCapabilitiesMarksLaunchReadyForHighIntegrityInteractiveEnvironment()
     {
         RuntimeGuardRawFacts facts = CreateFacts(
             token: new TokenProbeResult(
@@ -630,8 +633,86 @@ public sealed class RuntimeGuardPolicyTests
             RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
             item => item.Capability == CapabilitySummaryValues.Launch);
 
+        Assert.Equal(GuardStatusValues.Ready, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.LaunchReadyProfile, Assert.Single(capability.Reasons).Code);
+        Assert.DoesNotContain(capability.Reasons, item => item.Code == GuardReasonCodeValues.CapabilityNotImplemented);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksLaunchDegradedForMediumIntegrityInteractiveEnvironment()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts();
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Launch);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed, Assert.Single(capability.Reasons).Code);
+        Assert.DoesNotContain(capability.Reasons, item => item.Code == GuardReasonCodeValues.CapabilityNotImplemented);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesBlocksLaunchForLowIntegrityProfile()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            token: new TokenProbeResult(
+                IntegrityResolved: true,
+                IntegrityLevel: RuntimeIntegrityLevel.Low,
+                IntegrityRid: 0x1000,
+                ElevationResolved: true,
+                IsElevated: false,
+                ElevationType: TokenElevationTypeValue.Default,
+                UiAccessResolved: true,
+                UiAccess: false));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Launch);
+
         Assert.Equal(GuardStatusValues.Blocked, capability.Status);
-        Assert.Contains(capability.Reasons, item => item.Code == GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed);
+        Assert.Equal(GuardReasonCodeValues.LaunchIntegrityLimited, Assert.Single(capability.Reasons).Code);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksLaunchUnknownWhenIntegrityFactsAreMissing()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            token: new TokenProbeResult(
+                IntegrityResolved: false,
+                IntegrityLevel: null,
+                IntegrityRid: null,
+                ElevationResolved: false,
+                IsElevated: false,
+                ElevationType: null,
+                UiAccessResolved: true,
+                UiAccess: false));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Launch);
+
+        Assert.Equal(GuardStatusValues.Unknown, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.CapabilityPrerequisitesUnknown, Assert.Single(capability.Reasons).Code);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesBlocksLaunchWhenSessionIsTransitioning()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            sessionAlignment: new SessionAlignmentProbeResult(
+                ProcessSessionResolved: true,
+                ProcessSessionId: 1,
+                ActiveConsoleSessionId: 0xFFFFFFFF,
+                ConnectState: SessionConnectState.Active,
+                ClientProtocolType: 0));
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Launch);
+
+        Assert.Equal(GuardStatusValues.Blocked, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.CapabilitySessionTransition, Assert.Single(capability.Reasons).Code);
     }
 
     private static RuntimeGuardRawFacts CreateFacts(

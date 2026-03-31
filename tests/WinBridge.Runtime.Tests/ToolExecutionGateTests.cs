@@ -112,7 +112,7 @@ public sealed class ToolExecutionGateTests
                 CapabilitySummaryValues.Launch,
                 GuardStatusValues.Ready,
                 CreateReason(
-                    GuardReasonCodeValues.IntegrityReadyProfile,
+                    GuardReasonCodeValues.LaunchReadyProfile,
                     GuardSeverityValues.Info,
                     CapabilitySummaryValues.Launch,
                     "Launch path может быть выполнен.")));
@@ -135,6 +135,37 @@ public sealed class ToolExecutionGateTests
         Assert.Equal(ToolExecutionMode.Live, decision.Mode);
         Assert.False(decision.RequiresConfirmation);
         Assert.True(decision.DryRunSupported);
+    }
+
+    [Fact]
+    public void EvaluateReturnsNeedsConfirmationForDegradedLaunchCapabilityWhenConfirmationIsRequired()
+    {
+        RuntimeGuardAssessment assessment = CreateAssessment(
+            CreateCapability(
+                CapabilitySummaryValues.Launch,
+                GuardStatusValues.Degraded,
+                CreateReason(
+                    GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                    GuardSeverityValues.Warning,
+                    CapabilitySummaryValues.Launch,
+                    "Live launch path остаётся confirmation-worthy: higher-integrity boundary заранее не подтверждена.")));
+        ToolExecutionGate gate = CreateGate();
+
+        ToolExecutionDecision decision = gate.Evaluate(
+            CreatePolicy(
+                ToolExecutionPolicyGroup.Launch,
+                ToolExecutionRiskLevel.High,
+                CapabilitySummaryValues.Launch,
+                supportsDryRun: true,
+                ToolExecutionConfirmationMode.Required),
+            assessment,
+            ToolExecutionIntent.Default);
+
+        Assert.Equal(ToolExecutionDecisionKind.NeedsConfirmation, decision.Kind);
+        Assert.Equal(ToolExecutionMode.Live, decision.Mode);
+        Assert.True(decision.RequiresConfirmation);
+        Assert.True(decision.DryRunSupported);
+        Assert.Equal(GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed, Assert.Single(decision.Reasons).Code);
     }
 
     [Fact]

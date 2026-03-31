@@ -1,6 +1,6 @@
 # ExecPlan: safety baseline для future action tools
 
-Статус: partial
+Статус: done
 Создан: 2026-03-30
 Обновлён: 2026-03-31
 
@@ -18,8 +18,9 @@
 Текущий итог по состоянию на `2026-03-31`:
 
 - `Package A`, `Package B`, `Package C` и verification/proof wave `Package D` завершены;
-- общий baseline по metadata, gate, redaction, contract/export и verification contour собран;
-- workstream пока не может считаться `done`, потому что shared launch-readiness policy всё ещё не даёт честного reusable allow/degraded model для `windows.launch_process` без нового safety follow-up.
+- `Package E` завершён: shared launch-readiness policy больше не остаётся always-blocked placeholder и теперь даёт reusable `ready / degraded / blocked / unknown` модель на уровне общего guard layer;
+- общий baseline по metadata, gate, redaction, contract/export и verification contour собран и подтверждён последовательным verification loop;
+- контрольный ответ для `windows.launch_process` теперь = `да`: следующий slice можно строить как tool semantics + existing guard decision без новой safety-логики внутри launch handler-а.
 
 ### Non-goals
 
@@ -406,6 +407,37 @@ Decision:
 - свежий smoke report (`artifacts/smoke/20260331T092213872/report.json`) подтверждает тот же итог на live surface: `okno.health` возвращает `launch=blocked` с reason codes `capability_not_implemented` и `launch_elevation_boundary_unconfirmed`, при этом dedicated health artifact/event по-прежнему не materialized.
 - финальный checklist-пункт про `windows.launch_process` остаётся незакрытым намеренно: это residual safety gap, а не недописанный отчёт.
 
+### Package E: Shared launch-readiness policy completion
+
+Содержимое:
+
+- доработать shared guard layer так, чтобы `launch` больше не был всегда hard-blocked только из-за baseline assumption;
+- ввести reusable allow/degraded/blocked model для launch readiness на уровне shared policy, а не future handler-а;
+- явно разделить platform hard blocks, confirmation-worthy live launch paths и dry-run-only paths там, где это честно возможно;
+- закрепить это unit/integration/verify evidence и затем повторно ответить на proof question из `Package D`.
+
+Жёсткие границы пакета:
+
+- не реализовывать сам `windows.launch_process`;
+- не расширять scope в `open_target`, `input`, `clipboard` или broad policy-engine;
+- не дублировать launch policy внутри будущего handler-а, если тот же decision можно выразить в shared guard layer;
+- не закрывать пакет фиктивно, если shared policy по-прежнему не может честно отличить safe live launch от hard block.
+
+Целевой выход пакета:
+
+- `RuntimeGuardPolicy.BuildLaunch(...)` перестаёт быть always-blocked placeholder и становится reusable launch-readiness policy;
+- `okno.health`, gate decisions и docs остаются синхронизированы с этой моделью;
+- на контрольный вопрос “можно ли теперь строить `windows.launch_process` без новой safety-логики внутри launch?” можно ответить `да`.
+
+Статус по факту `2026-03-31`:
+
+- `RuntimeGuardPolicy.BuildLaunch(...)` больше не использует deferred blocked placeholder и различает `ready`, `degraded`, `blocked` и `unknown` из уже существующих shared runtime facts (`desktop_session`, `session_alignment`, `integrity`) без нового policy subsystem;
+- launch policy теперь честно разделяет environment hard blocks и confirmation-worthy medium-integrity path: interactive session transition остаётся `blocked`, unknown probes остаются `unknown`, medium integrity даёт `launch=degraded` с warning `launch_elevation_boundary_unconfirmed`, а high/system integrity даёт `launch=ready`;
+- `ToolExecutionGate` не потребовал новых special-case веток: existing matrix уже даёт `needs_confirmation` для ready/degraded launch policy, `blocked`/`dry_run_only` для hard blocks и `allowed` для granted confirmation или explicit dry-run;
+- unit/integration coverage обновлена на shared launch matrix, health projection и synthetic gate boundary; ручной export sync не понадобился, потому что `refresh-generated-docs.ps1` не дал tracked generated diff;
+- свежий smoke report (`artifacts/smoke/20260331T102916305/report.json`) подтверждает live surface: `okno.health` возвращает `launch=degraded`, `blockedCapabilities` больше не включают `launch`, а warning list дополняется `launch_elevation_boundary_unconfirmed` без materialized health artifact/event;
+- proof question закрыт положительно: residual gap из `Package D` исчез именно в shared guard layer, поэтому будущий `windows.launch_process` может опираться на existing launch preset + shared gate и добавлять только tool semantics, preview availability и post-action verification.
+
 ## L1 / L2 / L3
 
 ### L1
@@ -479,4 +511,6 @@ Decision:
 - [x] Добавить L2 integration test на synthetic gated action boundary.
 - [x] Обновить `docs/architecture/capability-design-policy.md` и `docs/architecture/observability.md`.
 - [x] После реализации прогнать `scripts/refresh-generated-docs.ps1` и синхронизировать generated docs.
-- [ ] Перед закрытием workstream ответить на контрольный вопрос: “можно ли теперь строить `windows.launch_process` без новой safety-логики внутри launch?”
+- [x] Доработать shared launch-readiness policy в `RuntimeGuardPolicy.BuildLaunch(...)` так, чтобы `launch` не оставался always-blocked placeholder в otherwise healthy environment.
+- [x] Закрепить reusable allow/degraded/blocked model для launch readiness tests и verification evidence, не реализуя сам `windows.launch_process`.
+- [x] Перед закрытием workstream ответить на контрольный вопрос: “можно ли теперь строить `windows.launch_process` без новой safety-логики внутри launch?”

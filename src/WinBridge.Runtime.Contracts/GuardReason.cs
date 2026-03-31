@@ -51,6 +51,8 @@ public static class GuardReasonCodeValues
     public const string InputUipiBarrierPresent = "input_uipi_barrier_present";
     public const string InputIntegrityLimited = "input_integrity_limited";
     public const string ClipboardIntegrityLimited = "clipboard_integrity_limited";
+    public const string LaunchReadyProfile = "launch_ready_profile";
+    public const string LaunchIntegrityLimited = "launch_integrity_limited";
     public const string LaunchElevationBoundaryUnconfirmed = "launch_elevation_boundary_unconfirmed";
 }
 

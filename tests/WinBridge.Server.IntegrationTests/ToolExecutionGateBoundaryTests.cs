@@ -149,12 +149,12 @@ public sealed class ToolExecutionGateBoundaryTests
                     "Clipboard path пока не должен обещать операции при неполном integrity profile.")),
             CreateCapability(
                 CapabilitySummaryValues.Launch,
-                GuardStatusValues.Ready,
+                GuardStatusValues.Degraded,
                 CreateReason(
-                    GuardReasonCodeValues.IntegrityReadyProfile,
-                    GuardSeverityValues.Info,
+                    GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                    GuardSeverityValues.Warning,
                     CapabilitySummaryValues.Launch,
-                    "Launch path может быть выполнен.")));
+                    "Live launch path остаётся confirmation-worthy: higher-integrity boundary заранее не подтверждена.")));
 
         return new SyntheticGatedBoundaryHost(assessment);
     }
