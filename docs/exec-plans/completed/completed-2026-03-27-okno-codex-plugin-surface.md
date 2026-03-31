@@ -1,5 +1,8 @@
 # Okno Codex Plugin Surface
 
+Статус: completed
+Архивирован: 2026-03-27
+
 ## Goal
 
 Добавить безопасный repo-local Codex plugin surface под продуктовым именем `Okno` без изменения существующего MCP runtime lifecycle и без конкурирующего источника истины для server startup/config.

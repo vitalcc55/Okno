@@ -1,6 +1,7 @@
 # ExecPlan: okno.health + runtime guard layer
 
-Статус: done
+Статус: completed
+Архивирован: 2026-03-25
 Создан: 2026-03-23
 Обновлён: 2026-03-25
 

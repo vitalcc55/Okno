@@ -2,6 +2,11 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-31 18:05
+
+- Структура `docs/exec-plans` приведена в порядок по фактическому lifecycle: завершённые планы `windows.uia_snapshot`, `windows.wait`, `okno.health + runtime guard layer`, `Okno Codex Plugin Surface` и `okno-safety-baseline` перенесены из `docs/exec-plans/active/` в `docs/exec-plans/completed/`, чтобы в `active` оставались только действительно живые workstream-ы.
+- Архивированные планы получили явные `Статус: completed` и `Архивирован: ...`, а ссылки в changelog и self-reference внутри `windows.uia_snapshot` синхронизированы с новыми путями.
+
 ## 2026-03-31 16:31
 
 - В repo docs зафиксирована отдельная compatibility track для OpenAI `computer use` без изменения ближайшего delivery order V1: `README`, product docs, architecture index и plugin README теперь явно разводят `shell`, `skills`, `MCP`, `computer use` и `Okno` по слоям ответственности вместо implicit chat-only договорённости.
@@ -11,7 +16,7 @@
 
 ## 2026-03-31 10:30
 
-- Закрыт `Package E` и вместе с ним весь workstream [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md): shared launch-readiness policy перенесена из placeholder-модели в reusable guard-layer decision matrix без реализации `windows.launch_process`, `RuntimeGuardPolicy.BuildLaunch(...)` теперь честно различает `ready / degraded / blocked / unknown` по existing runtime facts (`desktop_session`, `session_alignment`, `integrity`), а `launch_elevation_boundary_unconfirmed` стал warning для medium-integrity live launch path вместо unconditional hard block. В том же цикле обновлены unit/integration tests на launch matrix, `okno.health` projection и synthetic gated boundary, smoke подтвердил live `launch=degraded` и отсутствие `launch` в `blockedCapabilities`, generated docs не дали tracked diff после `refresh-generated-docs.ps1`, а roadmap и checklist синхронизированы с фактическим ответом `да` на proof question для будущего `windows.launch_process`.
+- Закрыт `Package E` и вместе с ним весь workstream [docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md](docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md): shared launch-readiness policy перенесена из placeholder-модели в reusable guard-layer decision matrix без реализации `windows.launch_process`, `RuntimeGuardPolicy.BuildLaunch(...)` теперь честно различает `ready / degraded / blocked / unknown` по existing runtime facts (`desktop_session`, `session_alignment`, `integrity`), а `launch_elevation_boundary_unconfirmed` стал warning для medium-integrity live launch path вместо unconditional hard block. В том же цикле обновлены unit/integration tests на launch matrix, `okno.health` projection и synthetic gated boundary, smoke подтвердил live `launch=degraded` и отсутствие `launch` в `blockedCapabilities`, generated docs не дали tracked diff после `refresh-generated-docs.ps1`, а roadmap и checklist синхронизированы с фактическим ответом `да` на proof question для будущего `windows.launch_process`.
 
 ## 2026-03-31 15:20
 
@@ -19,19 +24,19 @@
 
 ## 2026-03-30 15:57
 
-- Закрыт `Package C` из [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md) без захода в `Package D`: в `WinBridge.Runtime.Diagnostics` добавлен минимальный tool-aware redaction seam (`AuditPayloadRedactor`, `AuditRedactionResult`, tool context resolution), `AuditLog` и `ToolExecution` переведены на sanitized request/failure path с fail-safe suppression, gated invocation теперь пишет canonical `decision`/`risk_level`/`guard_capability` markers через existing `ToolExecutionDecision`, а runtime/tool events больше не утекают raw `exception_message` в `events.jsonl` и `summary.md`. В том же цикле обновлены узкие unit/integration tests на redaction markers и отсутствие leakage для `windows.wait`, `windows.uia_snapshot` и synthetic gate boundary, плюс синхронизированы только минимально нужные architecture docs и checklist workstream-а.
+- Закрыт `Package C` из [docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md](docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md) без захода в `Package D`: в `WinBridge.Runtime.Diagnostics` добавлен минимальный tool-aware redaction seam (`AuditPayloadRedactor`, `AuditRedactionResult`, tool context resolution), `AuditLog` и `ToolExecution` переведены на sanitized request/failure path с fail-safe suppression, gated invocation теперь пишет canonical `decision`/`risk_level`/`guard_capability` markers через existing `ToolExecutionDecision`, а runtime/tool events больше не утекают raw `exception_message` в `events.jsonl` и `summary.md`. В том же цикле обновлены узкие unit/integration tests на redaction markers и отсутствие leakage для `windows.wait`, `windows.uia_snapshot` и synthetic gate boundary, плюс синхронизированы только минимально нужные architecture docs и checklist workstream-а.
 
 ## 2026-03-30 13:25
 
-- Закрыт `Package B` из [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md) без захода в `Package C/D`: добавлен reusable execution gate поверх existing `execution_policy` и `RuntimeGuardAssessment`, `ToolExecution` получил gated sync/async overload для canonical `allowed / blocked / needs_confirmation / dry_run_only` routing без rollout в shipped observe tools, а unit/integration tests теперь доказывают decision matrix, reuse runtime snapshot и synthetic server-boundary path без публикации нового action tool.
+- Закрыт `Package B` из [docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md](docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md) без захода в `Package C/D`: добавлен reusable execution gate поверх existing `execution_policy` и `RuntimeGuardAssessment`, `ToolExecution` получил gated sync/async overload для canonical `allowed / blocked / needs_confirmation / dry_run_only` routing без rollout в shipped observe tools, а unit/integration tests теперь доказывают decision matrix, reuse runtime snapshot и synthetic server-boundary path без публикации нового action tool.
 
 ## 2026-03-30 11:03
 
-- Закрыт `Package A` из [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md) без захода в runtime gate/redaction rollout: в `WinBridge.Runtime.Tooling` добавлен typed `execution_policy` metadata layer для deferred action tools, `ToolDescriptor`/`ContractToolDescriptor` и общий export path (`okno.contract` + generated `project-interfaces`) теперь публикуют nested policy fields в canonical snake_case, а manifest заранее хранит internal-only presets для future `windows.launch_process` и `windows.open_target` без premature publication новых public tool names. В том же цикле обновлены узкие unit/integration tests на manifest/export alignment и literal set, а shipped behavior существующих tools и `okno.health` остались без изменения.
+- Закрыт `Package A` из [docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md](docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md) без захода в runtime gate/redaction rollout: в `WinBridge.Runtime.Tooling` добавлен typed `execution_policy` metadata layer для deferred action tools, `ToolDescriptor`/`ContractToolDescriptor` и общий export path (`okno.contract` + generated `project-interfaces`) теперь публикуют nested policy fields в canonical snake_case, а manifest заранее хранит internal-only presets для future `windows.launch_process` и `windows.open_target` без premature publication новых public tool names. В том же цикле обновлены узкие unit/integration tests на manifest/export alignment и literal set, а shipped behavior существующих tools и `okno.health` остались без изменения.
 
 ## 2026-03-30 10:20
 
-- Добавлен новый active exec-plan [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md), который фиксирует следующий policy-first workstream после shipped reporting-first guard layer: canonical tooling metadata для future action tools, единый execution gate с `allowed / blocked / needs_confirmation / dry_run_only`, redaction-first diagnostics model, file-level integration map, official constraints, delivery packages, verification ladder и implementation checklist для follow-up `windows.launch_process`.
+- Добавлен новый exec-plan [docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md](docs/exec-plans/completed/completed-2026-03-31-okno-safety-baseline.md), который зафиксировал policy-first workstream после shipped reporting-first guard layer: canonical tooling metadata для future action tools, единый execution gate с `allowed / blocked / needs_confirmation / dry_run_only`, redaction-first diagnostics model, file-level integration map, official constraints, delivery packages, verification ladder и implementation checklist для follow-up `windows.launch_process`.
 
 ## 2026-03-27 08:34
 
@@ -112,7 +117,7 @@
 
 ## 2026-03-19 18:23
 
-- Добавлен отдельный exec-plan для следующего shipped public slice `windows.wait` в `docs/exec-plans/active/windows-wait.md`: план фиксирует V1 boundary, polling-first target model `explicit -> attached -> active`, condition matrix для `active/focus/element/text/visual`, honest status/error model, evidence contract, file-level integration map, L1/L2/L3 ladder, docs sync и rollback без преждевременного захода в `windows.uia_action` или broad `windows.input`.
+- Добавлен отдельный exec-plan для shipped public slice `windows.wait` в [docs/exec-plans/completed/completed-2026-03-23-windows-wait.md](docs/exec-plans/completed/completed-2026-03-23-windows-wait.md): план фиксирует V1 boundary, polling-first target model `explicit -> attached -> active`, condition matrix для `active/focus/element/text/visual`, honest status/error model, evidence contract, file-level integration map, L1/L2/L3 ladder, docs sync и rollback без преждевременного захода в `windows.uia_action` или broad `windows.input`.
 
 ## 2026-03-19 14:34
 
@@ -175,7 +180,7 @@
 
 ## 2026-03-18 11:08
 
-- Добавлен отдельный exec-plan для следующего shipped capability slice `windows.uia_snapshot` в `docs/exec-plans/active/windows-uia-snapshot.md`: план фиксирует contract-first goal, non-goals, official Microsoft/MCP constraints, file-level integration map, typed DTO/result shape, L1/L2/L3 ladder, docs sync и rollback policy без преждевременного захода в `windows.wait`, `windows.input` или `windows.uia_action`.
+- Добавлен отдельный exec-plan для shipped capability slice `windows.uia_snapshot` в [docs/exec-plans/completed/completed-2026-03-19-windows-uia-snapshot.md](docs/exec-plans/completed/completed-2026-03-19-windows-uia-snapshot.md): план фиксирует contract-first goal, non-goals, official Microsoft/MCP constraints, file-level integration map, typed DTO/result shape, L1/L2/L3 ladder, docs sync и rollback policy без преждевременного захода в `windows.wait`, `windows.input` или `windows.uia_action`.
 - В тот же exec-plan добавлена явная target policy `explicit -> attached -> active` для `windows.uia_snapshot` с запретом на silent fallback из stale attached/explicit target и расширен обязательный docs-sync до полного source-of-truth набора по slice: `product/index`, `okno-spec`, `okno-roadmap`, `okno-vision`, `observability` и generated docs.
 
 ## 2026-03-18 09:50

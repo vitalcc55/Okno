@@ -1,6 +1,7 @@
 # ExecPlan: safety baseline для future action tools
 
-Статус: done
+Статус: completed
+Архивирован: 2026-03-31
 Создан: 2026-03-30
 Обновлён: 2026-03-31
 

@@ -1,6 +1,7 @@
 # ExecPlan: windows.uia_snapshot
 
-Статус: done
+Статус: completed
+Архивирован: 2026-03-19
 Создан: 2026-03-18
 Обновлён: 2026-03-19
 
@@ -152,7 +153,7 @@ Package A/B меняют только следующие слои:
 - `src/WinBridge.Runtime/`
 - `tests/WinBridge.Runtime.Tests/`
 - `tests/WinBridge.Server.IntegrationTests/`
-- `docs/exec-plans/active/windows-uia-snapshot.md`
+- `docs/exec-plans/completed/completed-2026-03-19-windows-uia-snapshot.md`
 - `docs/architecture/observability.md`
 - `docs/CHANGELOG.md`
 
