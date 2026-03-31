@@ -35,3 +35,13 @@
 - `skills/okno-runtime-workflow/`
 
 Этот skill предназначен для repo-local работы с `Okno`: verify, smoke, triage diagnostics и работа через plugin-local MCP server `okno`.
+
+## Relation to OpenAI computer use
+
+Этот plugin остаётся текущим локальным integration path для `Codex app/CLI/IDE` и не зависит от built-in OpenAI `computer use`.
+
+Практическая модель такая:
+
+- `shell` закрывает terminal/code workflows;
+- plugin-local `okno` закрывает Windows-native desktop/runtime workflows;
+- будущая `computer use`-совместимость, если понадобится, должна приходить отдельным adapter-слоем поверх `Okno`, а не через подмену plugin-local MCP surface.

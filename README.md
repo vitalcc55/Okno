@@ -100,10 +100,27 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 
 Этот plugin добавляет repo-local MCP identity `okno` и bundled skill surface, не переписывая legacy home-level `windows` server в локальном Codex config.
 
+## OpenAI interop
+
+`Okno` не должен конкурировать с `shell`, `skills`, `MCP` или `computer use` из OpenAI ecosystem. Для этого репозитория правильная модель такая:
+
+- `shell` закрывает terminal/code side;
+- `Okno` закрывает Windows desktop side;
+- `skills` служат routing/procedure слоем;
+- `MCP` остаётся transport/integration boundary;
+- `computer use` рассматривается как будущая compatibility track, а не как немедленная замена локального Windows runtime.
+
+Практический вывод:
+
+- для текущего `Codex app/CLI/IDE` primary local path остаётся `shell + Okno MCP/plugin`;
+- built-in OpenAI `computer use` не является блокером для V1 и не требует перестройки core runtime;
+- compatibility work нужно закладывать через action/schema discipline будущего `windows.input` и отдельный adapter-слой поверх `Okno`, а не через смешение OpenAI-specific логики с `WinBridge.Runtime` или `WinBridge.Server`.
+
 ## Где читать дальше
 
 - [docs/product/index.md](docs/product/index.md)
 - [docs/architecture/index.md](docs/architecture/index.md)
+- [docs/architecture/openai-computer-use-interop.md](docs/architecture/openai-computer-use-interop.md)
 - [docs/generated/commands.md](docs/generated/commands.md)
 - [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md)
 - [docs/runbooks/investigation.md](docs/runbooks/investigation.md)

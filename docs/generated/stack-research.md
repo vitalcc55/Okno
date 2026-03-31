@@ -107,9 +107,17 @@
 - [Harness Engineering](https://openai.com/index/harness-engineering/)
 - [Unrolling the Codex Agent Loop](https://openai.com/index/unrolling-the-codex-agent-loop/)
 - [How OpenAI uses Codex](https://openai.com/index/how-openai-uses-codex/)
+- [Computer use](https://developers.openai.com/api/docs/guides/tools-computer-use)
+- [Skills](https://developers.openai.com/api/docs/guides/tools-skills)
+- [MCP and Connectors](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
+- [Shell + Skills + Compaction](https://developers.openai.com/blog/skills-shell-tips)
+- [Codex app on Windows](https://developers.openai.com/codex/app/windows)
 
 ### Что реально применено в этом репозитории
 
 - Repo-local source of truth вынесен в `AGENTS.md`, `docs/`, scripts и skill.
 - Verification-first loop материализован как команды, а не как устная договорённость.
 - Evidence pack хранится в артефактах запуска, а не только в чате.
+- `shell`, `skills`, `MCP` и `computer use` трактуются как соседние слои, а не как взаимозаменяемые части одного продукта.
+- Текущий локальный integration path для Codex остаётся `shell + Okno(MCP/plugin) + skills`; built-in `computer use` не считается немедленной зависимостью для `Okno V1`.
+- Future OpenAI interop фиксируется как compatibility track для `windows.input` и отдельного adapter-слоя, а не как причина смешивать OpenAI-specific contracts с `WinBridge.Runtime`.

@@ -4,6 +4,7 @@
 
 - `Okno` — продуктовое имя проекта. Внутренний codename и namespace-слой пока остаются `WinBridge`.
 - Source of truth по продукту больше не лежит в корне: используй [docs/product/index.md](docs/product/index.md), [docs/product/okno-spec.md](docs/product/okno-spec.md), [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md), [docs/product/okno-vision.md](docs/product/okno-vision.md).
+- Source of truth по OpenAI interop: [docs/architecture/openai-computer-use-interop.md](docs/architecture/openai-computer-use-interop.md), [docs/exec-plans/active/openai-computer-use-interop.md](docs/exec-plans/active/openai-computer-use-interop.md).
 - Операционный source of truth для bootstrap: [docs/exec-plans/active/bootstrap-harness.md](docs/exec-plans/active/bootstrap-harness.md), [docs/generated/commands.md](docs/generated/commands.md), [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md), [docs/generated/stack-research.md](docs/generated/stack-research.md), `docs/bootstrap/bootstrap-status.json`.
 - Source of truth для tool contract: `src/WinBridge.Runtime.Tooling/ToolNames.cs` + `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`.
 
@@ -35,6 +36,7 @@
 - Для новых capability slices (`focus`, `clipboard`, `input`, `wait`, `uia`, будущие observe/action tools) сначала применяй universal policy из [docs/architecture/capability-design-policy.md](docs/architecture/capability-design-policy.md): identity, fallback, false-success, scenario matrix и verification ladder должны быть определены до реализации.
 - `docs/generated/*` и `docs/bootstrap/bootstrap-status.json` могут обновляться автоматически после `refresh-generated-docs.ps1` и `ci.ps1`. Если они изменились без ручной правки, это ожидаемое generated behavior, а не неожиданный user diff.
 - Для V1 не подменять GUI-слой shell-автоматизацией; shell допустим только для repo operations, test harness и локальных dev-команд.
+- Built-in OpenAI `computer use` не считать replacement для `Okno`: current local integration path остаётся repo-local MCP/plugin surface, а future compatibility должна приходить отдельным adapter-слоем без протекания OpenAI-specific contracts в `WinBridge.Runtime` / `WinBridge.Server`.
 - Любая новая нетривиальная задача должна обновлять ExecPlan и соответствующие generated docs по факту проверок, а не по догадке.
 - Если меняется tool contract или observability schema, синхронизируй [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md) и [docs/architecture/observability.md](docs/architecture/observability.md) в том же цикле.
 - Verification-first loop уже нормализован: `scripts/bootstrap.ps1` -> `scripts/build.ps1` -> `scripts/test.ps1` -> `scripts/smoke.ps1` -> `scripts/refresh-generated-docs.ps1`; для полного локального контура используй `scripts/ci.ps1`.

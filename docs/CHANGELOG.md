@@ -2,6 +2,13 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-31 16:31
+
+- В repo docs зафиксирована отдельная compatibility track для OpenAI `computer use` без изменения ближайшего delivery order V1: `README`, product docs, architecture index и plugin README теперь явно разводят `shell`, `skills`, `MCP`, `computer use` и `Okno` по слоям ответственности вместо implicit chat-only договорённости.
+- Добавлен новый source-of-truth документ [docs/architecture/openai-computer-use-interop.md](docs/architecture/openai-computer-use-interop.md), который фиксирует adapter boundary, vocabulary expectations для будущего `windows.input`, split `windows.launch_process` / `windows.open_target` и правило, что OpenAI-specific interop не должен протекать внутрь `WinBridge.Runtime` / `WinBridge.Server`.
+- В roadmap и exec-plans интегрирован planned compatibility track: [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md) теперь явно удерживает `computer use` interop вне ближайшего `launch -> input -> clipboard` delivery order, а [docs/exec-plans/active/openai-computer-use-interop.md](docs/exec-plans/active/openai-computer-use-interop.md) задаёт activation criteria для будущего adapter-слоя после shipped `windows.input(click first)`.
+- `AGENTS.md` получил минимальный reusable guardrail по этой теме: source of truth для OpenAI interop теперь явно привязан к architecture/exec-plan docs, а future `computer use` compatibility закреплена как отдельный adapter-слой без протекания OpenAI-specific contracts в core runtime и без подмены repo-local MCP/plugin path.
+
 ## 2026-03-31 10:30
 
 - Закрыт `Package E` и вместе с ним весь workstream [docs/exec-plans/active/okno-safety-baseline.md](docs/exec-plans/active/okno-safety-baseline.md): shared launch-readiness policy перенесена из placeholder-модели в reusable guard-layer decision matrix без реализации `windows.launch_process`, `RuntimeGuardPolicy.BuildLaunch(...)` теперь честно различает `ready / degraded / blocked / unknown` по existing runtime facts (`desktop_session`, `session_alignment`, `integrity`), а `launch_elevation_boundary_unconfirmed` стал warning для medium-integrity live launch path вместо unconditional hard block. В том же цикле обновлены unit/integration tests на launch matrix, `okno.health` projection и synthetic gated boundary, smoke подтвердил live `launch=degraded` и отсутствие `launch` в `blockedCapabilities`, generated docs не дали tracked diff после `refresh-generated-docs.ps1`, а roadmap и checklist синхронизированы с фактическим ответом `да` на proof question для будущего `windows.launch_process`.

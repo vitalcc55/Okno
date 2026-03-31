@@ -451,6 +451,38 @@ Input — это fallback и исполнительный слой, но не о
 
 ---
 
+## 7.3. Как Okno соотносится с OpenAI tool layers
+
+Для продукта важно не путать разные слои OpenAI ecosystem:
+
+- `shell` — execution layer для terminal/code workflows;
+- `skills` — procedural/routing layer;
+- `MCP` — transport/integration boundary;
+- `computer use` — внешний action protocol / compatibility target.
+
+Следствие для Okno:
+
+- `Okno` не должен пытаться стать “ещё одним shell”;
+- `Okno` не должен зависеть от built-in `computer use`, чтобы быть полезным локально;
+- текущий основной путь для Codex остаётся `shell + Okno(MCP/plugin) + skills`;
+- будущая `computer use`-совместимость должна приходить как отдельный adapter-слой поверх `Okno`, а не как OpenAI-specific логика внутри core runtime.
+
+Переиспользование по слоям должно выглядеть так:
+
+- `Okno` даёт Windows-native observe/verify/guardrails;
+- будущий `windows.input` даёт execution vocabulary;
+- отдельный adapter переводит `computer_call.actions[]` во внутренние вызовы Okno;
+- после действия adapter возвращает новый screenshot/state назад во внешний loop.
+
+Это позволяет сохранить семантику продукта:
+
+- semantic-first;
+- input-second;
+- verify-always;
+- без размывания V1 вокруг внешнего API.
+
+---
+
 ## 8. Практические решения, которые я бы принял заранее
 
 ### 8.1. Не делать system-shell всемогущим центром управления
@@ -470,6 +502,10 @@ OCR полезен как fallback, но не как главный semantic lay
 ### 8.4. Не путать browser automation и desktop automation, но и не разводить их в два несвязанных мира
 
 Нужен единый orchestration слой и разные capability layers underneath.
+
+### 8.5. Не перестраивать Okno вокруг built-in `computer use`
+
+Если у продукта уже есть собственный Windows-native runtime, `computer use` надо рассматривать как внешний protocol target и будущую adapter-surface, а не как причину переписывать core runtime вокруг OpenAI-specific loop.
 
 ---
 

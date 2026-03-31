@@ -467,6 +467,25 @@ Target policy:
 
 ---
 
+## 4.7. Внешняя совместимость с OpenAI tool layers
+
+Для V1 это не отдельный runtime mode и не обязательный transport. Базовые решения такие:
+
+- primary local delivery path остаётся `STDIO MCP`;
+- built-in OpenAI `computer use` не является обязательной зависимостью для `Okno V1`;
+- `shell`, `skills`, `MCP` и `computer use` считаются соседними слоями, а не заменами друг друга.
+
+Практические следствия для контракта:
+
+- `windows.input` должен проектироваться так, чтобы action vocabulary без больших потерь маппился на семейство действий уровня `move / click / double_click / drag / scroll / type / keypress`;
+- `windows.capture` и `windows.wait` остаются отдельными primitives и не поглощаются внутрь `windows.input`;
+- `windows.launch_process` и `windows.open_target` должны оставаться раздельными tools, без смешения process launch и shell-open semantics;
+- любые OpenAI-specific bridge/adapters должны жить отдельным слоем поверх `Okno`, а не внутри `WinBridge.Runtime` или `WinBridge.Server`.
+
+Это допускает будущую compatibility track с внешними agent loops без ломки локального Windows-native контракта V1.
+
+---
+
 ## 5. Внутренние компоненты V1
 
 ## 5.1. Session manager
