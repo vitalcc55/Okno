@@ -158,6 +158,19 @@ public sealed class ToolContractExporterTests
         Assert.Equal("text_payload", policy.GetProperty("redaction_class").GetString());
     }
 
+    [Fact]
+    public void ExporterDoesNotPublishInternalLaunchProcessFreezeDescriptor()
+    {
+        ToolContractExportDocument document = ToolContractExporter.CreateDocument();
+        string markdown = ToolContractExporter.RenderMarkdown(document);
+
+        Assert.DoesNotContain(document.Tools.Implemented, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
+        Assert.DoesNotContain(document.Tools.Deferred, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
+        Assert.DoesNotContain(document.Tools.ImplementedNames, toolName => toolName == ToolNames.WindowsLaunchProcess);
+        Assert.DoesNotContain(document.Tools.DeferredPhaseMap.Keys, toolName => toolName == ToolNames.WindowsLaunchProcess);
+        Assert.DoesNotContain(ToolNames.WindowsLaunchProcess, markdown, StringComparison.Ordinal);
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));

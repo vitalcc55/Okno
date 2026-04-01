@@ -39,4 +39,13 @@ public static class ToolDescriptions
     public const string WaitExpectedTextParameter = "Ожидаемый текст для condition text_appears. Для остальных conditions должен быть пустым.";
     public const string WaitHwndParameter = "Явный HWND target. Если передан, имеет приоритет над attached и active target. Stale или invalid explicit hwnd не fallback-ится и даёт targetFailureCode=stale_explicit_target.";
     public const string WaitTimeoutMsParameter = "Максимальное время ожидания в миллисекундах. Значение должно быть > 0. По умолчанию используется wait timeout V1.";
+
+    public const string WindowsLaunchProcessTool = "Явно запускает executable/process через direct ProcessStartInfo semantics без shell-open, auto-attach и auto-focus. Success фиксирует start/PID, а optional waitForWindow только дополнительно проверяет main window.";
+    public const string LaunchProcessExecutableParameter = "Обязательный executable target: fully qualified direct executable path с расширением .exe или .com либо bare executable name для PATH lookup. URL, shell-open target, rooted directory, unsupported file type и relative subpath в V1 не поддерживаются.";
+    public const string LaunchProcessArgsParameter = "Аргументы запуска как массив строк. Runtime freeze-ит только ArgumentList semantics и не принимает raw command line string.";
+    public const string LaunchProcessWorkingDirectoryParameter = "Optional absolute working directory для уже запущенного процесса. Это поле не участвует в executable resolution.";
+    public const string LaunchProcessWaitForWindowParameter = "Если true, runtime после успешного старта дополнительно пытается наблюдать non-zero main window handle в пределах timeout. Focus и attach в этот шаг не входят.";
+    public const string LaunchProcessTimeoutMsParameter = "Timeout для optional main window observation. Допустим только вместе с waitForWindow=true и должен быть > 0.";
+    public const string LaunchProcessDryRunParameter = "Если true, invocation запрашивает dry-run path через shared execution gate и safe preview без Process.Start(...).";
+    public const string LaunchProcessConfirmParameter = "Если true, invocation сообщает shared execution gate, что обязательное user confirmation уже получено.";
 }

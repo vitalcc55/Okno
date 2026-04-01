@@ -2,6 +2,14 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-03-31 18:55
+
+- Добавлен новый active exec-plan [docs/exec-plans/active/windows-launch-process.md](docs/exec-plans/active/windows-launch-process.md) для следующего shipped action slice после safety baseline: документ фиксирует `windows.launch_process` как отдельный explicit executable/process launch tool, удерживает split с `windows.open_target`, переиспользует existing `RunGated(...)` / launch-readiness / `launch_payload` foundation и задаёт file-level integration map, official constraints, public DTO proposal, evidence/redaction contract, delivery packages, test ladder и smoke story без focus-dependent acceptance.
+
+## 2026-03-31 18:32
+
+- Закрыт `Package A` в active workstream [docs/exec-plans/active/windows-launch-process.md](docs/exec-plans/active/windows-launch-process.md) без захода в runtime/service/handler rollout: в `WinBridge.Runtime.Contracts` добавлен frozen DTO/value-set/validator seam для `windows.launch_process`, а в `WinBridge.Runtime.Tooling` зафиксирован internal-only `FutureLaunchProcessDescriptor` с canonical summary, parameter wording и final execution-policy metadata. Поверх этого boundary request contract доведён до canonical shape, чтобы следующий пакет не латал семантику задним числом: `timeoutMs` теперь distinguishable optional override, `args` получили canonical empty default и reject null-elements, request boundary fail-closed сохраняет и отклоняет любые unsupported extra fields, rooted directory/document/shell-open targets и drive-relative paths больше не проходят как launchable executable intent, а preview/result явным именованием фиксируют safe executable identity вместо raw path. При этом `windows.launch_process` намеренно не переведён в `ToolContractManifest.All`, `okno.contract`, `okno.health`, exporter и фактический `tools/list`, чтобы current shipped surface оставался честно синхронизирован с отсутствующим handler boundary. В том же цикле добавлены узкие runtime/integration tests на contract freeze и explicit absence из agent-visible surface, а active exec-plan checklist выровнен под фактически завершённые пункты `Package A`.
+
 ## 2026-03-31 18:05
 
 - Структура `docs/exec-plans` приведена в порядок по фактическому lifecycle: завершённые планы `windows.uia_snapshot`, `windows.wait`, `okno.health + runtime guard layer`, `Okno Codex Plugin Surface` и `okno-safety-baseline` перенесены из `docs/exec-plans/active/` в `docs/exec-plans/completed/`, чтобы в `active` оставались только действительно живые workstream-ы.

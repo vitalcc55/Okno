@@ -1,3 +1,4 @@
+using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Runtime.Tests;
@@ -67,12 +68,12 @@ public sealed class ToolContractManifestTests
     public void FutureLaunchPresetsExistWithoutManifestPublication()
     {
         Assert.Equal(2, ToolContractManifest.FutureLaunchFamilyPolicyPresets.Count);
-        Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey("windows.launch_process"));
+        Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey(ToolNames.WindowsLaunchProcess));
         Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey("windows.open_target"));
 
-        Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == "windows.launch_process");
+        Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
         Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == "windows.open_target");
-        Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == "windows.launch_process");
+        Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == ToolNames.WindowsLaunchProcess);
         Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == "windows.open_target");
     }
 
@@ -85,6 +86,32 @@ public sealed class ToolContractManifestTests
         Assert.NotNull(typeof(ToolContractManifest).GetProperty(
             "FutureLaunchFamilyPolicyPresets",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static));
+    }
+
+    [Fact]
+    public void FutureLaunchProcessDescriptorCarriesFinalFrozenMetadata()
+    {
+        ToolDescriptor descriptor = ToolContractManifest.FutureLaunchProcessDescriptor;
+
+        Assert.Equal(ToolNames.WindowsLaunchProcess, descriptor.Name);
+        Assert.Equal("windows.launch", descriptor.Capability);
+        Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
+        Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
+        Assert.Equal(ToolDescriptions.WindowsLaunchProcessTool, descriptor.Summary);
+        Assert.True(descriptor.SmokeRequired);
+        Assert.Null(descriptor.PlannedPhase);
+        Assert.Null(descriptor.SuggestedAlternative);
+        AssertExecutionPolicy(
+            descriptor.ExecutionPolicy,
+            ToolExecutionPolicyGroup.Launch,
+            ToolExecutionRiskLevel.High,
+            CapabilitySummaryValues.Launch,
+            supportsDryRun: true,
+            ToolExecutionConfirmationMode.Required,
+            ToolExecutionRedactionClass.LaunchPayload);
+        Assert.Same(
+            descriptor.ExecutionPolicy,
+            ToolContractManifest.ResolveExecutionPolicy(ToolNames.WindowsLaunchProcess));
     }
 
     [Fact]

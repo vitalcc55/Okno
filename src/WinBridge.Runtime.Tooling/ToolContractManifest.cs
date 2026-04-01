@@ -4,9 +4,26 @@ namespace WinBridge.Runtime.Tooling;
 
 public static class ToolContractManifest
 {
-    private const string WindowsLaunchProcess = "windows.launch_process";
     private const string WindowsOpenTarget = "windows.open_target";
     private static readonly Dictionary<string, ToolDescriptor> AllByName;
+
+    internal static ToolDescriptor FutureLaunchProcessDescriptor { get; } =
+        new(
+            ToolNames.WindowsLaunchProcess,
+            "windows.launch",
+            ToolLifecycle.Implemented,
+            ToolSafetyClass.OsSideEffect,
+            ToolDescriptions.WindowsLaunchProcessTool,
+            null,
+            null,
+            true,
+            CreateExecutionPolicy(
+                ToolExecutionPolicyGroup.Launch,
+                ToolExecutionRiskLevel.High,
+                CapabilitySummaryValues.Launch,
+                supportsDryRun: true,
+                ToolExecutionConfirmationMode.Required,
+                ToolExecutionRedactionClass.LaunchPayload));
 
     public static string ContractNotes { get; } =
         "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait и честные deferred action tools без hidden enforcement; okno.contract публикует execution_policy metadata только для уже объявленных deferred tools.";
@@ -39,13 +56,7 @@ public static class ToolContractManifest
     internal static IReadOnlyDictionary<string, ToolExecutionPolicyDescriptor> FutureLaunchFamilyPolicyPresets { get; } =
         new Dictionary<string, ToolExecutionPolicyDescriptor>(StringComparer.Ordinal)
         {
-            [WindowsLaunchProcess] = CreateExecutionPolicy(
-                ToolExecutionPolicyGroup.Launch,
-                ToolExecutionRiskLevel.High,
-                CapabilitySummaryValues.Launch,
-                supportsDryRun: true,
-                ToolExecutionConfirmationMode.Required,
-                ToolExecutionRedactionClass.LaunchPayload),
+            [ToolNames.WindowsLaunchProcess] = FutureLaunchProcessDescriptor.ExecutionPolicy!,
             [WindowsOpenTarget] = CreateExecutionPolicy(
                 ToolExecutionPolicyGroup.Launch,
                 ToolExecutionRiskLevel.Medium,
