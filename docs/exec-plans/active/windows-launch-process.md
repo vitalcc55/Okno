@@ -1,8 +1,8 @@
 # ExecPlan: windows.launch_process
 
-Статус: planned
+Статус: in_progress
 Создан: 2026-03-31
-Актуально на: 2026-03-31
+Актуально на: 2026-04-01
 
 ## 1. Goal
 
@@ -359,6 +359,14 @@ Done when:
 
 - runtime service честно различает `process_started`, `process_started_and_exited`, `window_observed` и tool failures без focus/attach side effects.
 
+Текущее состояние на `2026-04-01`:
+
+- отдельный runtime seam `WinBridge.Runtime.Windows.Launch` добавлен без handler/publication rollout;
+- direct `ProcessStartInfo` path реализован только через `UseShellExecute = false` + `ArgumentList`;
+- optional `waitForWindow` materialized как runtime-only observation step через `WaitForInputIdle` + `Refresh` + `MainWindowHandle`;
+- follow-up hardening внутри того же `Package B` убрал lossy `File.Exists` / `Directory.Exists` preflight, перенёс классификацию ошибок на authoritative start-failure mapping, сделал `WaitForInputIdle` bounded/cancel-aware через короткие slices и provider-aware poll delay на одном `TimeProvider`, выровнял process snapshot (`HasExited` / `ExitCode`) между `process_started`, `process_started_and_exited` и `window_observed`, а `InvalidOperationException` от `WaitForInputIdle` перестал бездоказательно materialize-иться как `not_supported`: runtime теперь консервативно продолжает main-window observation и выбирает `process_exited_before_window`, `main_window_timeout` или `main_window_not_observed` по реально observed snapshot. Дополнительно `input-idle timeout` больше не считается terminal доказательством отсутствия main window: если окно уже materialized в пределах общего бюджета, `waitForWindow` честно возвращает `window_observed`, даже когда message loop не успел перейти в idle. Final deadline verdict теперь тоже берётся из fresh observation snapshot с обязательным `Refresh()` перед чтением `MainWindowHandle`, но stronger success допускается только если этот fresh snapshot снят не позже общего `timeoutMs`; stale cached handle и late-after-deadline window больше не дают ложный success. Для started-result веток runtime теперь тоже делает fresh result snapshot без legacy cached-state assumptions, включая cancel-path после старта, а observation verdict не может отдать `window_observed` поверх уже exited snapshot. Ambiguous `ERROR_PATH_NOT_FOUND` больше не материализуется как `working_directory_not_found` по одной только комбинации bare executable + `workingDirectory`: для таких path-ambiguity cases runtime теперь честно остаётся на `start_failed`, а `working_directory_not_found` сохраняется только для более сильных сигналов (`DirectoryNotFoundException`, `ERROR_DIRECTORY` / `267`);
+- DI root в `WinBridge.Runtime` уже резолвит `IProcessLaunchService`, а shipped MCP surface по-прежнему не публикует `windows.launch_process`.
+
 ### Package C: Gated MCP boundary
 
 Scope:
@@ -405,15 +413,15 @@ Done when:
 - [x] Добавить canonical description и parameter descriptions в `ToolDescriptions`.
 - [x] Зафиксировать internal-only `FutureLaunchProcessDescriptor` и policy freeze без публикации `windows.launch_process` в `ToolContractManifest.All` / export surface.
 - [x] Добавить launch request/result contracts и validator в `WinBridge.Runtime.Contracts`.
-- [ ] Завести отдельный runtime launch service seam и DI registration.
-- [ ] Строить `ProcessStartInfo` только через `UseShellExecute = false`.
-- [ ] Использовать `ArgumentList`, а не raw `Arguments`.
+- [x] Завести отдельный runtime launch service seam и DI registration.
+- [x] Строить `ProcessStartInfo` только через `UseShellExecute = false`.
+- [x] Использовать `ArgumentList`, а не raw `Arguments`.
 - [x] Не принимать `environment`, `verb`, alternate credentials и shell-open targets в V1.
-- [ ] Реализовать optional GUI post-check через `WaitForInputIdle` + `Refresh` + `MainWindowHandle`.
+- [x] Реализовать optional GUI post-check через `WaitForInputIdle` + `Refresh` + `MainWindowHandle`.
 - [x] Сделать `window_observed` optional success mode, а не universal success requirement.
 - [ ] Добавить dedicated `launch.runtime.completed` event и `launch/<launch_id>.json` artifact.
 - [ ] Не вводить новую redaction class; reuse `launch_payload`.
-- [ ] Не вводить auto-attach или auto-focus.
+- [x] Не вводить auto-attach или auto-focus.
 - [x] Добавить L1 tests для request validation и launch result modes.
 - [ ] Добавить L1 tests для event-data redaction и fail-safe suppression.
 - [ ] Добавить L2 synthetic boundary tests на `blocked / needs_confirmation / dry_run_only / allowed`.

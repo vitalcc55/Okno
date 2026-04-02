@@ -4,23 +4,6 @@ namespace WinBridge.Runtime.Contracts;
 
 public static class LaunchProcessRequestValidator
 {
-    private static readonly HashSet<string> DirectExecutableExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".com",
-        ".exe",
-    };
-
-    private enum ExecutableTargetKind
-    {
-        BareName,
-        AbsolutePath,
-        RelativePath,
-        DriveRelativePath,
-        AbsoluteUri,
-        Directory,
-        UnsupportedFileType,
-    }
-
     public static bool TryValidate(
         LaunchProcessRequest request,
         out string? failureCode,
@@ -48,22 +31,22 @@ public static class LaunchProcessRequestValidator
             return false;
         }
 
-        switch (ClassifyExecutableTarget(executable))
+        switch (LaunchProcessExecutableTarget.Classify(executable))
         {
-            case ExecutableTargetKind.AbsoluteUri:
+            case LaunchProcessExecutableTargetKind.AbsoluteUri:
                 failureCode = LaunchProcessFailureCodeValues.UnsupportedTargetKind;
                 reason = "V1 launch_process не принимает URI target; передай executable path или bare executable name.";
                 return false;
-            case ExecutableTargetKind.RelativePath:
-            case ExecutableTargetKind.DriveRelativePath:
+            case LaunchProcessExecutableTargetKind.RelativePath:
+            case LaunchProcessExecutableTargetKind.DriveRelativePath:
                 failureCode = LaunchProcessFailureCodeValues.InvalidRequest;
                 reason = "V1 launch_process принимает только absolute path или bare executable name; relative executable path не поддерживается.";
                 return false;
-            case ExecutableTargetKind.Directory:
+            case LaunchProcessExecutableTargetKind.Directory:
                 failureCode = LaunchProcessFailureCodeValues.UnsupportedTargetKind;
                 reason = "V1 launch_process не принимает directory target в поле executable.";
                 return false;
-            case ExecutableTargetKind.UnsupportedFileType:
+            case LaunchProcessExecutableTargetKind.UnsupportedFileType:
                 failureCode = LaunchProcessFailureCodeValues.UnsupportedTargetKind;
                 reason = "V1 launch_process принимает только direct executable target; document/shell-open file types должны идти через отдельный launch_process/open_target split.";
                 return false;
@@ -72,7 +55,7 @@ public static class LaunchProcessRequestValidator
         if (request.WorkingDirectory is not null)
         {
             if (string.IsNullOrWhiteSpace(request.WorkingDirectory)
-                || IsAbsoluteUri(request.WorkingDirectory)
+                || TryClassifyWorkingDirectoryAsUri(request.WorkingDirectory)
                 || !Path.IsPathFullyQualified(request.WorkingDirectory))
             {
                 failureCode = LaunchProcessFailureCodeValues.InvalidRequest;
@@ -98,43 +81,6 @@ public static class LaunchProcessRequestValidator
         failureCode = null;
         reason = null;
         return true;
-    }
-
-    private static ExecutableTargetKind ClassifyExecutableTarget(string executable)
-    {
-        if (IsAbsoluteUri(executable))
-        {
-            return ExecutableTargetKind.AbsoluteUri;
-        }
-
-        if (Path.IsPathRooted(executable) && !Path.IsPathFullyQualified(executable))
-        {
-            return ExecutableTargetKind.DriveRelativePath;
-        }
-
-        if (Path.IsPathFullyQualified(executable) && Path.EndsInDirectorySeparator(executable))
-        {
-            return ExecutableTargetKind.Directory;
-        }
-
-        if (HasDirectorySeparators(executable) && !Path.IsPathFullyQualified(executable))
-        {
-            return ExecutableTargetKind.RelativePath;
-        }
-
-        if (Path.IsPathFullyQualified(executable))
-        {
-            return HasSupportedDirectExecutableExtension(executable)
-                ? ExecutableTargetKind.AbsolutePath
-                : ExecutableTargetKind.UnsupportedFileType;
-        }
-
-        if (HasUnsupportedBareExecutableExtension(executable))
-        {
-            return ExecutableTargetKind.UnsupportedFileType;
-        }
-
-        return ExecutableTargetKind.BareName;
     }
 
     private static bool TryValidateAdditionalProperties(
@@ -165,23 +111,8 @@ public static class LaunchProcessRequestValidator
         return false;
     }
 
-    private static bool HasDirectorySeparators(string value) =>
-        value.Contains(Path.DirectorySeparatorChar) || value.Contains(Path.AltDirectorySeparatorChar);
-
-    private static bool IsAbsoluteUri(string value) =>
+    private static bool TryClassifyWorkingDirectoryAsUri(string value) =>
         !Path.IsPathFullyQualified(value)
         && Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
         && uri.IsAbsoluteUri;
-
-    private static bool HasSupportedDirectExecutableExtension(string executable)
-    {
-        string extension = Path.GetExtension(executable);
-        return !string.IsNullOrWhiteSpace(extension) && DirectExecutableExtensions.Contains(extension);
-    }
-
-    private static bool HasUnsupportedBareExecutableExtension(string executable)
-    {
-        string extension = Path.GetExtension(executable);
-        return !string.IsNullOrWhiteSpace(extension) && !DirectExecutableExtensions.Contains(extension);
-    }
 }

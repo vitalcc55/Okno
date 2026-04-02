@@ -20,6 +20,7 @@
     "src/WinBridge.Runtime.Windows.Clipboard",
     "src/WinBridge.Runtime.Windows.Display",
     "src/WinBridge.Runtime.Windows.Input",
+    "src/WinBridge.Runtime.Windows.Launch",
     "src/WinBridge.Runtime.Windows.Shell",
     "src/WinBridge.Runtime.Windows.UIA.Hosting",
     "src/WinBridge.Runtime.Windows.UIA.Worker",

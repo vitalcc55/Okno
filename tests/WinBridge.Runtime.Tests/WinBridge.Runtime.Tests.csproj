@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Display\WinBridge.Runtime.Windows.Display.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.UIA\WinBridge.Runtime.Windows.UIA.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Launch\WinBridge.Runtime.Windows.Launch.csproj" />
   </ItemGroup>
 
 </Project>

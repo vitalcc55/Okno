@@ -6,6 +6,7 @@ using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Windows.Launch;
 using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Runtime;
@@ -31,6 +32,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(WindowActivationOptions.Default);
         services.AddSingleton<IWindowActivationPlatform, Win32WindowActivationPlatform>();
         services.AddSingleton<IWindowActivationService, WindowActivationService>();
+        services.AddSingleton(ProcessLaunchOptions.Default);
+        services.AddSingleton<IProcessLaunchPlatform, SystemProcessLaunchPlatform>();
+        services.AddSingleton<IProcessLaunchService>(
+            sp => new ProcessLaunchService(
+                sp.GetRequiredService<IProcessLaunchPlatform>(),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<ProcessLaunchOptions>()));
         services.AddSingleton(WaitOptions.Default);
         services.AddSingleton<WaitResultMaterializer>();
         services.AddSingleton<IWaitService, PollingWaitService>();
