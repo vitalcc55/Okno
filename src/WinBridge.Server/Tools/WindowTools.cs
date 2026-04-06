@@ -672,7 +672,7 @@ public sealed class WindowTools
             LaunchProcessResult runtimeResult = await _processLaunchService
                 .LaunchAsync(request, cancellationToken)
                 .ConfigureAwait(false);
-            invocation.Complete(
+            invocation.CompleteBestEffort(
                 runtimeResult.Status,
                 CreateLaunchProcessCompletionMessage(runtimeResult),
                 data: CreateLaunchProcessAuditData(runtimeResult));
@@ -875,6 +875,7 @@ public sealed class WindowTools
             ["failure_code"] = result.FailureCode,
             ["executable_identity"] = result.ExecutableIdentity,
             ["process_id"] = result.ProcessId?.ToString(CultureInfo.InvariantCulture),
+            ["artifact_path"] = result.ArtifactPath,
             ["main_window_observation_status"] = result.MainWindowObservationStatus,
             ["preview_resolution_mode"] = result.Preview?.ResolutionMode,
             ["preview_argument_count"] = result.Preview?.ArgumentCount.ToString(CultureInfo.InvariantCulture),

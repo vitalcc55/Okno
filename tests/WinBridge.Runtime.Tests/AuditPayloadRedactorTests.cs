@@ -120,6 +120,37 @@ public sealed class AuditPayloadRedactorTests
     }
 
     [Fact]
+    public void RedactLaunchRuntimeEventDataKeepsSafeFieldsAndSuppressesSensitiveLaunchValues()
+    {
+        AuditPayloadRedactor redactor = new();
+
+        AuditRedactionResult result = redactor.Redact(
+            new AuditPayloadRedactionContext(
+                ToolName: "windows.launch_process",
+                EventName: "launch.runtime.completed",
+                PayloadKind: AuditPayloadKind.EventData,
+                RedactionClass: ToolExecutionRedactionClass.LaunchPayload),
+            new Dictionary<string, string?>
+            {
+                ["status"] = "done",
+                ["executable_identity"] = @"C:\tools\demo.exe",
+                ["working_directory"] = @"C:\Users\alice\private",
+                ["arguments"] = "--token=super-secret",
+                ["artifact_path"] = @"C:\artifacts\launch\launch-20260406T140000000-demo.json",
+            });
+
+        Assert.True(result.RedactionApplied);
+        Assert.Contains("executable_identity", result.RedactedFields);
+        Assert.Contains("working_directory", result.RedactedFields);
+        Assert.Contains("arguments", result.RedactedFields);
+        Assert.Equal("done", result.SanitizedData["status"]);
+        Assert.Equal("demo.exe", result.SanitizedData["executable_identity"]);
+        Assert.Equal(@"C:\artifacts\launch\launch-20260406T140000000-demo.json", result.SanitizedData["artifact_path"]);
+        Assert.False(result.SanitizedData.ContainsKey("working_directory"));
+        Assert.False(result.SanitizedData.ContainsKey("arguments"));
+    }
+
+    [Fact]
     public void RedactLaunchEventDataSuppressesExecutableWhenBasenameCannotBeResolved()
     {
         AuditPayloadRedactor redactor = new();

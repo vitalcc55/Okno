@@ -37,6 +37,28 @@ public sealed class AuditInvocationScope : IDisposable
         _completed = true;
     }
 
+    public void CompleteBestEffort(
+        string outcome,
+        string message,
+        long? windowHwnd = null,
+        IReadOnlyDictionary<string, string?>? data = null)
+    {
+        if (_completed)
+        {
+            return;
+        }
+
+        try
+        {
+            _auditLog.WriteToolCompleted(_toolContext, outcome, message, windowHwnd, data);
+        }
+        catch (Exception)
+        {
+        }
+
+        _completed = true;
+    }
+
     public void Fail(Exception exception, long? windowHwnd = null)
     {
         if (_completed)

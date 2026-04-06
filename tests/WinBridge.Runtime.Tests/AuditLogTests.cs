@@ -308,6 +308,112 @@ public sealed class AuditLogTests
         Assert.Equal("launch_payload", data.GetProperty("redaction_class").GetString());
     }
 
+    [Fact]
+    public void RecordRuntimeEventFailsClosedForLaunchRuntimeEventWhenRedactorThrows()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-010",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-010"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-010", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-010", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System, new ThrowingAuditPayloadRedactor());
+
+        auditLog.RecordRuntimeEvent(
+            eventName: "launch.runtime.completed",
+            severity: "warning",
+            messageHuman: "Launch завершился без раскрытия raw payload.",
+            toolName: "windows.launch_process",
+            outcome: "failed",
+            windowHwnd: null,
+            data: new Dictionary<string, string?>
+            {
+                ["executable_identity"] = @"C:\secret\demo.exe",
+                ["working_directory"] = @"C:\Users\alice\private",
+                ["arguments"] = "--token=super-secret",
+            });
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"event_data_suppressed\":\"true\"", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"C:\secret\demo.exe", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"C:\Users\alice\private", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecordRuntimeEventSanitizesLaunchFailureMessage()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-011",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-011"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-011", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-011", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+
+        auditLog.RecordRuntimeEvent(
+            eventName: "launch.runtime.completed",
+            severity: "warning",
+            messageHuman: @"Launch failed for C:\secret\demo.exe --token=super-secret",
+            toolName: "windows.launch_process",
+            outcome: "failed",
+            windowHwnd: null,
+            data: new Dictionary<string, string?>
+            {
+                ["failure_code"] = "start_failed",
+            });
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        string summary = File.ReadAllText(options.SummaryPath);
+        Assert.DoesNotContain(@"C:\secret\demo.exe", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"C:\secret\demo.exe", summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecordRuntimeEventAddsSafeLaunchIdentifiersToSummary()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-012",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-012"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-012", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-012", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+
+        auditLog.RecordRuntimeEvent(
+            eventName: "launch.runtime.completed",
+            severity: "info",
+            messageHuman: "Runtime launch завершён.",
+            toolName: "windows.launch_process",
+            outcome: "done",
+            windowHwnd: null,
+            data: new Dictionary<string, string?>
+            {
+                ["executable_identity"] = @"C:\tools\demo.exe",
+                ["process_id"] = "4242",
+                ["result_mode"] = "process_started",
+                ["artifact_path"] = @"C:\artifacts\diagnostics\launch\launch-20260406T140000000-demo.json",
+            });
+
+        string summary = File.ReadAllText(options.SummaryPath);
+        Assert.Contains("demo.exe", summary, StringComparison.Ordinal);
+        Assert.Contains("4242", summary, StringComparison.Ordinal);
+        Assert.Contains("process_started", summary, StringComparison.Ordinal);
+        Assert.Contains(@"C:\artifacts\diagnostics\launch\launch-20260406T140000000-demo.json", summary, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"C:\tools\demo.exe", summary, StringComparison.Ordinal);
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));

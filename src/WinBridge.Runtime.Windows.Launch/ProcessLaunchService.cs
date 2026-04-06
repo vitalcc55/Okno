@@ -9,15 +9,18 @@ public sealed class ProcessLaunchService : IProcessLaunchService
     private readonly IProcessLaunchPlatform _platform;
     private readonly TimeProvider _timeProvider;
     private readonly ProcessLaunchOptions _options;
+    private readonly LaunchResultMaterializer _resultMaterializer;
 
     internal ProcessLaunchService(
         IProcessLaunchPlatform platform,
         TimeProvider timeProvider,
-        ProcessLaunchOptions options)
+        ProcessLaunchOptions options,
+        LaunchResultMaterializer resultMaterializer)
     {
         _platform = platform;
         _timeProvider = timeProvider;
         _options = options;
+        _resultMaterializer = resultMaterializer;
     }
 
     public async Task<LaunchProcessResult> LaunchAsync(LaunchProcessRequest request, CancellationToken cancellationToken)
@@ -48,21 +51,21 @@ public sealed class ProcessLaunchService : IProcessLaunchService
             using IStartedProcessHandle? processHandle = _platform.Start(startInfo);
             if (processHandle is null)
             {
-                return CreateFailureResult(
+                return MaterializeResult(CreateFailureResult(
                     LaunchProcessFailureCodeValues.ProcessObjectUnavailable,
                     "Runtime не получил process object после Process.Start(...).",
                     executableIdentity,
-                    mainWindowObservationStatus: request.WaitForWindow ? null : notRequestedStatus);
+                    mainWindowObservationStatus: request.WaitForWindow ? null : notRequestedStatus));
             }
 
             int? processId = TryGetProcessId(processHandle);
             if (processId is null or <= 0)
             {
-                return CreateFailureResult(
+                return MaterializeResult(CreateFailureResult(
                     LaunchProcessFailureCodeValues.ProcessObjectUnavailable,
                     "Runtime не смог зафиксировать stable process id после старта.",
                     executableIdentity,
-                    mainWindowObservationStatus: request.WaitForWindow ? null : notRequestedStatus);
+                    mainWindowObservationStatus: request.WaitForWindow ? null : notRequestedStatus));
             }
 
             DateTimeOffset startedAtUtc = _timeProvider.GetUtcNow();
@@ -70,12 +73,12 @@ public sealed class ProcessLaunchService : IProcessLaunchService
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return CreateStartedResult(
+                    return MaterializeResult(CreateStartedResult(
                         executableIdentity,
                         processId.Value,
                         startedAtUtc,
                         CaptureFreshResultState(processHandle),
-                        LaunchMainWindowObservationStatusValues.NotObserved);
+                        LaunchMainWindowObservationStatusValues.NotObserved));
                 }
 
                 return await ObserveMainWindowAsync(
@@ -87,20 +90,20 @@ public sealed class ProcessLaunchService : IProcessLaunchService
                     cancellationToken).ConfigureAwait(false);
             }
 
-            return CreateStartedResult(
+            return MaterializeResult(CreateStartedResult(
                 executableIdentity,
                 processId.Value,
                 startedAtUtc,
                 CaptureFreshResultState(processHandle),
-                LaunchMainWindowObservationStatusValues.NotRequested);
+                LaunchMainWindowObservationStatusValues.NotRequested));
         }
         catch (Exception exception) when (TryMapStartFailure(exception, startInfo, out string mappedFailureCode, out string mappedReason))
         {
-            return CreateFailureResult(
+            return MaterializeResult(CreateFailureResult(
                 mappedFailureCode,
                 mappedReason,
                 executableIdentity,
-                mainWindowObservationStatus: request.WaitForWindow ? null : notRequestedStatus);
+                mainWindowObservationStatus: request.WaitForWindow ? null : notRequestedStatus));
         }
     }
 
@@ -122,7 +125,7 @@ public sealed class ProcessLaunchService : IProcessLaunchService
         switch (waitOutcome.Kind)
         {
             case WaitForInputIdleOutcomeKind.ProcessExited:
-                return CreateFailureResult(
+                return MaterializeResult(CreateFailureResult(
                     LaunchProcessFailureCodeValues.ProcessExitedBeforeWindow,
                     "Процесс завершился до наблюдения main window handle.",
                     executableIdentity,
@@ -130,14 +133,14 @@ public sealed class ProcessLaunchService : IProcessLaunchService
                     startedAtUtc,
                     waitOutcome.Snapshot.HasExited,
                     waitOutcome.Snapshot.ExitCode,
-                    mainWindowObservationStatus: LaunchMainWindowObservationStatusValues.ProcessExited);
+                    mainWindowObservationStatus: LaunchMainWindowObservationStatusValues.ProcessExited));
             case WaitForInputIdleOutcomeKind.Cancelled:
-                return CreateStartedResult(
+                return MaterializeResult(CreateStartedResult(
                     executableIdentity,
                     processId,
                     startedAtUtc,
                     CaptureFreshResultState(processHandle),
-                    LaunchMainWindowObservationStatusValues.NotObserved);
+                    LaunchMainWindowObservationStatusValues.NotObserved));
             case WaitForInputIdleOutcomeKind.InputIdleUnavailable:
             case WaitForInputIdleOutcomeKind.TimedOut:
             case WaitForInputIdleOutcomeKind.IdleReached:
@@ -148,18 +151,18 @@ public sealed class ProcessLaunchService : IProcessLaunchService
         {
             if (cancellationToken.IsCancellationRequested)
             {
-                return CreateStartedResult(
+                return MaterializeResult(CreateStartedResult(
                     executableIdentity,
                     processId,
                     startedAtUtc,
                     CaptureFreshResultState(processHandle),
-                    LaunchMainWindowObservationStatusValues.NotObserved);
+                    LaunchMainWindowObservationStatusValues.NotObserved));
             }
 
             ProcessStateSnapshot pendingSnapshot = CaptureFreshObservationState(processHandle);
             if (pendingSnapshot.HasExited == true)
             {
-                return CreateFailureResult(
+                return MaterializeResult(CreateFailureResult(
                     LaunchProcessFailureCodeValues.ProcessExitedBeforeWindow,
                     "Процесс завершился до наблюдения main window handle.",
                     executableIdentity,
@@ -167,21 +170,21 @@ public sealed class ProcessLaunchService : IProcessLaunchService
                     startedAtUtc,
                     pendingSnapshot.HasExited,
                     pendingSnapshot.ExitCode,
-                    mainWindowObservationStatus: LaunchMainWindowObservationStatusValues.ProcessExited);
+                    mainWindowObservationStatus: LaunchMainWindowObservationStatusValues.ProcessExited));
             }
 
             if (pendingSnapshot.MainWindowHandle is > 0 && pendingSnapshot.CapturedAtUtc <= deadlineUtc)
             {
-                return CreateWindowObservedResult(
+                return MaterializeResult(CreateWindowObservedResult(
                     executableIdentity,
                     processId,
                     startedAtUtc,
-                    pendingSnapshot);
+                    pendingSnapshot));
             }
 
             if (pendingSnapshot.CapturedAtUtc >= deadlineUtc)
             {
-                return CreateFailureResult(
+                return MaterializeResult(CreateFailureResult(
                     waitOutcome.Kind == WaitForInputIdleOutcomeKind.TimedOut
                         ? LaunchProcessFailureCodeValues.MainWindowTimeout
                         : LaunchProcessFailureCodeValues.MainWindowNotObserved,
@@ -195,7 +198,7 @@ public sealed class ProcessLaunchService : IProcessLaunchService
                     pendingSnapshot.ExitCode,
                     mainWindowObservationStatus: waitOutcome.Kind == WaitForInputIdleOutcomeKind.TimedOut
                         ? LaunchMainWindowObservationStatusValues.TimedOut
-                        : LaunchMainWindowObservationStatusValues.NotObserved);
+                        : LaunchMainWindowObservationStatusValues.NotObserved));
             }
 
             TimeSpan delay = GetRemainingDelay(deadlineUtc, _options.MainWindowPollInterval);
@@ -210,15 +213,18 @@ public sealed class ProcessLaunchService : IProcessLaunchService
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                return CreateStartedResult(
+                return MaterializeResult(CreateStartedResult(
                     executableIdentity,
                     processId,
                     startedAtUtc,
                     CaptureFreshResultState(processHandle),
-                    LaunchMainWindowObservationStatusValues.NotObserved);
+                    LaunchMainWindowObservationStatusValues.NotObserved));
             }
         }
     }
+
+    private LaunchProcessResult MaterializeResult(LaunchProcessResult result) =>
+        _resultMaterializer.Materialize(result);
 
     private static ProcessStartInfo CreateStartInfo(LaunchProcessRequest request)
     {

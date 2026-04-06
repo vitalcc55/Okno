@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Windows.Launch;
 
 namespace WinBridge.Runtime.Tests;
@@ -82,6 +84,204 @@ public sealed class ProcessLaunchServiceTests
         Assert.Equal(LaunchProcessStatusValues.Failed, result.Status);
         Assert.Equal(LaunchProcessFailureCodeValues.WorkingDirectoryNotFound, result.FailureCode);
         Assert.NotNull(platform.LastStartInfo);
+    }
+
+    [Fact]
+    public async Task LaunchAsyncDoesNotMaterializeEvidenceForValidationOnlyFailure()
+    {
+        string root = CreateWorkingDirectory();
+        AuditLogOptions auditOptions = CreateAuditLogOptions(root, "run-launch-validation-no-evidence");
+        AuditLog auditLog = new(auditOptions, TimeProvider.System);
+        LaunchResultMaterializer materializer = new(auditLog, auditOptions, TimeProvider.System);
+        FakeProcessLaunchPlatform platform = new(_ => throw new InvalidOperationException("platform should not be called"));
+        ProcessLaunchService service = new(
+            platform,
+            TimeProvider.System,
+            new ProcessLaunchOptions(
+                MainWindowPollInterval: TimeSpan.FromMilliseconds(1),
+                InputIdleWaitSlice: TimeSpan.FromMilliseconds(10)),
+            materializer);
+
+        LaunchProcessResult result = await service.LaunchAsync(
+            new LaunchProcessRequest
+            {
+                Executable = "https://host/app.exe?token=super-secret",
+            },
+            CancellationToken.None);
+
+        Assert.Equal(LaunchProcessStatusValues.Failed, result.Status);
+        Assert.Equal(LaunchProcessFailureCodeValues.UnsupportedTargetKind, result.FailureCode);
+        Assert.Null(result.ArtifactPath);
+        Assert.False(File.Exists(auditOptions.EventsPath));
+        Assert.False(Directory.Exists(Path.Combine(auditOptions.RunDirectory, "launch")));
+
+        string summary = File.ReadAllText(auditOptions.SummaryPath);
+        Assert.DoesNotContain("launch.runtime.completed", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LaunchAsyncMaterializesLaunchArtifactAndRuntimeEvent()
+    {
+        string root = CreateWorkingDirectory();
+        string executablePath = CreateExecutablePath();
+        FakeProcessLaunchPlatform platform = new(
+            _ => new FakeStartedProcessHandle(
+                id: 4242,
+                hasExitedSequence: [false],
+                exitCode: null,
+                mainWindowHandles: [0]));
+
+        ServiceCollection services = new();
+        services.AddWinBridgeRuntime(root, "Tests");
+        services.AddSingleton<IProcessLaunchPlatform>(platform);
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+        AuditLogOptions auditOptions = provider.GetRequiredService<AuditLogOptions>();
+        IProcessLaunchService service = provider.GetRequiredService<IProcessLaunchService>();
+
+        LaunchProcessResult result = await service.LaunchAsync(
+            new LaunchProcessRequest
+            {
+                Executable = executablePath,
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
+
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        JsonElement artifactResult = artifact.RootElement.GetProperty("result");
+        Assert.Equal(result.ArtifactPath, artifactResult.GetProperty("artifact_path").GetString());
+        Assert.Equal(result.ProcessId, artifactResult.GetProperty("process_id").GetInt32());
+
+        string eventLine = Assert.Single(File.ReadAllLines(auditOptions.EventsPath));
+        Assert.Contains("\"event_name\":\"launch.runtime.completed\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"artifact_path\"", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LaunchAsyncKeepsFactualOutcomeWhenLaunchRuntimeEventWriteFails()
+    {
+        string root = CreateWorkingDirectory();
+        string executablePath = CreateExecutablePath();
+        AuditLogOptions auditOptions = CreateAuditLogOptions(root, "run-launch-event-write-failure");
+        AuditLog auditLog = new(auditOptions, TimeProvider.System);
+        Directory.CreateDirectory(auditOptions.EventsPath);
+        LaunchResultMaterializer materializer = new(auditLog, auditOptions, TimeProvider.System);
+        FakeProcessLaunchPlatform platform = new(
+            _ => new FakeStartedProcessHandle(
+                id: 4342,
+                hasExitedSequence: [false],
+                exitCode: null,
+                mainWindowHandles: [0]));
+        ProcessLaunchService service = new(
+            platform,
+            TimeProvider.System,
+            new ProcessLaunchOptions(
+                MainWindowPollInterval: TimeSpan.FromMilliseconds(1),
+                InputIdleWaitSlice: TimeSpan.FromMilliseconds(10)),
+            materializer);
+
+        LaunchProcessResult result = await service.LaunchAsync(
+            new LaunchProcessRequest
+            {
+                Executable = executablePath,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(LaunchProcessStatusValues.Done, result.Status);
+        Assert.Equal(LaunchProcessResultModeValues.ProcessStarted, result.ResultMode);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
+        Assert.True(Directory.Exists(auditOptions.EventsPath));
+    }
+
+    [Fact]
+    public async Task LaunchAsyncKeepsFactualOutcomeWhenLaunchArtifactWriteFails()
+    {
+        string root = CreateWorkingDirectory();
+        string executablePath = CreateExecutablePath();
+        FakeProcessLaunchPlatform platform = new(
+            _ => new FakeStartedProcessHandle(
+                id: 4343,
+                hasExitedSequence: [false],
+                exitCode: null,
+                mainWindowHandles: [0]));
+
+        ServiceCollection services = new();
+        services.AddWinBridgeRuntime(root, "Tests");
+        services.AddSingleton<IProcessLaunchPlatform>(platform);
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+        AuditLogOptions auditOptions = provider.GetRequiredService<AuditLogOptions>();
+        Directory.CreateDirectory(auditOptions.RunDirectory);
+        File.WriteAllText(Path.Combine(auditOptions.RunDirectory, "launch"), "block-launch-directory");
+        IProcessLaunchService service = provider.GetRequiredService<IProcessLaunchService>();
+
+        LaunchProcessResult result = await service.LaunchAsync(
+            new LaunchProcessRequest
+            {
+                Executable = executablePath,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(LaunchProcessStatusValues.Done, result.Status);
+        Assert.Equal(LaunchProcessResultModeValues.ProcessStarted, result.ResultMode);
+        Assert.Null(result.ArtifactPath);
+
+        string eventLine = Assert.Single(File.ReadAllLines(auditOptions.EventsPath));
+        Assert.Contains("\"event_name\":\"launch.runtime.completed\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"failure_stage\":\"artifact_write\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"exception_type\"", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("exception_message", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LaunchAsyncMaterializesArtifactAndRuntimeEventForFactualFailedRuntimeResult()
+    {
+        string root = CreateWorkingDirectory();
+        string executablePath = CreateExecutablePath();
+        AuditLogOptions auditOptions = CreateAuditLogOptions(root, "run-launch-failed-runtime-evidence");
+        AuditLog auditLog = new(auditOptions, TimeProvider.System);
+        LaunchResultMaterializer materializer = new(auditLog, auditOptions, TimeProvider.System);
+        FakeProcessLaunchPlatform platform = new(
+            _ => new FakeStartedProcessHandle(
+                id: 654,
+                hasExitedSequence: [false, false, true],
+                exitCode: 7,
+                waitForInputIdleResults: [true],
+                mainWindowHandles: [0]));
+        ProcessLaunchService service = new(
+            platform,
+            TimeProvider.System,
+            new ProcessLaunchOptions(
+                MainWindowPollInterval: TimeSpan.FromMilliseconds(1),
+                InputIdleWaitSlice: TimeSpan.FromMilliseconds(10)),
+            materializer);
+
+        LaunchProcessResult result = await service.LaunchAsync(
+            new LaunchProcessRequest
+            {
+                Executable = executablePath,
+                WaitForWindow = true,
+                TimeoutMs = 25,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(LaunchProcessStatusValues.Failed, result.Status);
+        Assert.Equal(LaunchProcessFailureCodeValues.ProcessExitedBeforeWindow, result.FailureCode);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
+
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        JsonElement artifactResult = artifact.RootElement.GetProperty("result");
+        Assert.Equal(result.ArtifactPath, artifactResult.GetProperty("artifact_path").GetString());
+        Assert.Equal("process_exited_before_window", artifactResult.GetProperty("failure_code").GetString());
+
+        string eventLine = Assert.Single(File.ReadAllLines(auditOptions.EventsPath));
+        Assert.Contains("\"event_name\":\"launch.runtime.completed\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"artifact_path\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"failure_code\":\"process_exited_before_window\"", eventLine, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -706,13 +906,31 @@ public sealed class ProcessLaunchServiceTests
     private static ProcessLaunchService CreateService(
         FakeProcessLaunchPlatform platform,
         ProcessLaunchOptions? options = null,
-        TimeProvider? timeProvider = null) =>
-        new(
+        TimeProvider? timeProvider = null)
+    {
+        TimeProvider resolvedTimeProvider = timeProvider ?? TimeProvider.System;
+        AuditLogOptions auditOptions = CreateAuditLogOptions(CreateWorkingDirectory(), Guid.NewGuid().ToString("N"));
+        AuditLog auditLog = new(auditOptions, resolvedTimeProvider);
+        LaunchResultMaterializer materializer = new(auditLog, auditOptions, resolvedTimeProvider);
+
+        return new ProcessLaunchService(
             platform,
-            timeProvider ?? TimeProvider.System,
+            resolvedTimeProvider,
             options ?? new ProcessLaunchOptions(
                 MainWindowPollInterval: TimeSpan.FromMilliseconds(1),
-                InputIdleWaitSlice: TimeSpan.FromMilliseconds(10)));
+                InputIdleWaitSlice: TimeSpan.FromMilliseconds(10)),
+            materializer);
+    }
+
+    private static AuditLogOptions CreateAuditLogOptions(string root, string runId) =>
+        new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: runId,
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", runId),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", runId, "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", runId, "summary.md"));
 
     private static string CreateExecutablePath()
     {

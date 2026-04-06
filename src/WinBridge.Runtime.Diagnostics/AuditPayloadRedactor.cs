@@ -156,7 +156,8 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
         fieldRedacted = false;
 
         if (redactionClass == ToolExecutionRedactionClass.LaunchPayload
-            && string.Equals(key, "executable", StringComparison.OrdinalIgnoreCase))
+            && (string.Equals(key, "executable", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "executable_identity", StringComparison.OrdinalIgnoreCase)))
         {
             string? executableIdentity = ResolveLaunchExecutableIdentity(value);
             if (string.IsNullOrWhiteSpace(executableIdentity))
@@ -178,7 +179,20 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
         {
             ToolExecutionRedactionClass.TextPayload => MatchesAny(key, "expected_text", "text", "value", "name"),
             ToolExecutionRedactionClass.ClipboardPayload => MatchesAny(key, "clipboard", "content", "text", "value"),
-            ToolExecutionRedactionClass.LaunchPayload => MatchesAny(key, "command", "command_line", "args", "arguments", "environment", "env", "path", "target", "uri", "url"),
+            ToolExecutionRedactionClass.LaunchPayload => MatchesAny(
+                key,
+                "command",
+                "command_line",
+                "args",
+                "arguments",
+                "environment",
+                "env",
+                "path",
+                "target",
+                "uri",
+                "url",
+                "working_directory",
+                "workingDirectory"),
             ToolExecutionRedactionClass.TargetMetadata => MatchesAny(key, "text", "value", "title", "title_pattern"),
             _ => false,
         };

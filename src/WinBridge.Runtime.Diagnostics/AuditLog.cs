@@ -256,10 +256,11 @@ public sealed class AuditLog
             Data: data ?? new Dictionary<string, string?>());
 
         string serialized = JsonSerializer.Serialize(auditEvent, JsonOptions);
+        string summarySuffix = CreateSummarySuffix(eventName, data);
         string summaryLine =
             $"- {timestamp:O} [{severity}] `{eventName}`"
             + (toolName is null ? string.Empty : $" `{toolName}`")
-            + $": {messageHuman}{Environment.NewLine}";
+            + $": {messageHuman}{summarySuffix}{Environment.NewLine}";
 
         lock (_sync)
         {
@@ -329,6 +330,7 @@ public sealed class AuditLog
             "tool.invocation.completed" => outcome == "ambiguous"
                 ? "Вызов инструмента завершился неоднозначно."
                 : "Вызов инструмента завершился с ошибкой.",
+            "launch.runtime.completed" => "Runtime launch завершился без безопасного раскрытия детали.",
             "wait.runtime.completed" => "Runtime wait завершился без безопасного раскрытия детали.",
             "uia.snapshot.runtime.completed" => "Runtime UIA snapshot завершился с ошибкой.",
             _ => "Runtime событие завершилось без безопасного раскрытия детали.",
@@ -339,6 +341,7 @@ public sealed class AuditLog
         eventName switch
         {
             "tool.invocation.completed" => outcome is "failed" or "ambiguous",
+            "launch.runtime.completed" => outcome is not "done",
             "wait.runtime.completed" => outcome is not "done",
             "uia.snapshot.runtime.completed" => outcome is not "done",
             _ => false,
@@ -399,6 +402,36 @@ public sealed class AuditLog
 
     private static string ToInvariantBoolean(bool value) =>
         value ? "true" : "false";
+
+    private static string CreateSummarySuffix(string eventName, IReadOnlyDictionary<string, string?>? data)
+    {
+        if (!string.Equals(eventName, "launch.runtime.completed", StringComparison.Ordinal) || data is null)
+        {
+            return string.Empty;
+        }
+
+        List<string> parts = [];
+        AddSummaryPart(parts, "executable", data, "executable_identity");
+        AddSummaryPart(parts, "process_id", data, "process_id");
+        AddSummaryPart(parts, "result_mode", data, "result_mode");
+        AddSummaryPart(parts, "artifact_path", data, "artifact_path");
+
+        return parts.Count == 0
+            ? string.Empty
+            : " [" + string.Join("; ", parts) + "]";
+    }
+
+    private static void AddSummaryPart(
+        List<string> parts,
+        string label,
+        IReadOnlyDictionary<string, string?> data,
+        string key)
+    {
+        if (data.TryGetValue(key, out string? value) && !string.IsNullOrWhiteSpace(value))
+        {
+            parts.Add($"{label}={value}");
+        }
+    }
 
     private static string ToSnakeCase<TEnum>(TEnum value)
         where TEnum : struct, Enum =>

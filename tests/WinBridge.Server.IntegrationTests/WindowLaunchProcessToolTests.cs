@@ -155,8 +155,94 @@ public sealed class WindowLaunchProcessToolTests
     }
 
     [Fact]
+    public async Task LaunchProcessAllowedLiveIncludesArtifactPathInPayloadAndCompletionAudit()
+    {
+        const string artifactPath = @"C:\artifacts\diagnostics\launch\launch-20260406T140000000-test.json";
+        FakeProcessLaunchService launchService = new(
+            (_, _) => Task.FromResult(
+                new LaunchProcessResult(
+                    Status: LaunchProcessStatusValues.Done,
+                    Decision: LaunchProcessStatusValues.Done,
+                    ResultMode: LaunchProcessResultModeValues.ProcessStarted,
+                    ExecutableIdentity: "notepad.exe",
+                    ProcessId: 4243,
+                    StartedAtUtc: new DateTimeOffset(2026, 4, 6, 10, 5, 0, TimeSpan.Zero),
+                    HasExited: false,
+                    MainWindowObserved: false,
+                    MainWindowObservationStatus: LaunchMainWindowObservationStatusValues.NotRequested,
+                    ArtifactPath: artifactPath)));
+        TestContext context = CreateContext(
+            decision: CreateDecision(
+                ToolExecutionDecisionKind.Allowed,
+                ToolExecutionMode.Live,
+                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                GuardSeverityValues.Warning),
+            launchService: launchService);
+
+        CallToolResult result = await context.Tools.LaunchProcess(new LaunchProcessRequest
+        {
+            Executable = "notepad.exe",
+            Confirm = true,
+        });
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal(artifactPath, payload.GetProperty("artifactPath").GetString());
+
+        string[] eventLines = File.ReadAllLines(context.AuditOptions.EventsPath);
+        Assert.Equal(2, eventLines.Length);
+        Assert.Contains("\"artifact_path\":\"C:\\\\artifacts\\\\diagnostics\\\\launch\\\\launch-20260406T140000000-test.json\"", eventLines[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LaunchProcessAllowedLiveReturnsFactualPayloadWhenCompletionAuditWriteFails()
+    {
+        AuditLogOptions? auditOptions = null;
+        FakeProcessLaunchService launchService = new(
+            (_, _) =>
+            {
+                Assert.NotNull(auditOptions);
+                File.Delete(auditOptions!.EventsPath);
+                Directory.CreateDirectory(auditOptions.EventsPath);
+
+                return Task.FromResult(
+                    new LaunchProcessResult(
+                        Status: LaunchProcessStatusValues.Done,
+                        Decision: LaunchProcessStatusValues.Done,
+                        ResultMode: LaunchProcessResultModeValues.ProcessStarted,
+                        ExecutableIdentity: "notepad.exe",
+                        ProcessId: 4244,
+                        StartedAtUtc: new DateTimeOffset(2026, 4, 6, 10, 6, 0, TimeSpan.Zero),
+                        HasExited: false,
+                        MainWindowObserved: false,
+                        MainWindowObservationStatus: LaunchMainWindowObservationStatusValues.NotRequested));
+            });
+        TestContext context = CreateContext(
+            decision: CreateDecision(
+                ToolExecutionDecisionKind.Allowed,
+                ToolExecutionMode.Live,
+                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                GuardSeverityValues.Warning),
+            launchService: launchService);
+        auditOptions = context.AuditOptions;
+
+        CallToolResult result = await context.Tools.LaunchProcess(new LaunchProcessRequest
+        {
+            Executable = "notepad.exe",
+            Confirm = true,
+        });
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.False(result.IsError);
+        Assert.Equal(LaunchProcessStatusValues.Done, payload.GetProperty("status").GetString());
+        Assert.Equal(LaunchProcessStatusValues.Done, payload.GetProperty("decision").GetString());
+        Assert.Equal(4244, payload.GetProperty("processId").GetInt32());
+        Assert.True(Directory.Exists(context.AuditOptions.EventsPath));
+    }
+
+    [Fact]
     public async Task LaunchProcessAllowedLiveRuntimeFailureReturnsFailedDecision()
     {
+        const string artifactPath = @"C:\artifacts\diagnostics\launch\launch-20260406T140500000-failed.json";
         FakeProcessLaunchService launchService = new(
             (_, _) => Task.FromResult(
                 new LaunchProcessResult(
@@ -164,7 +250,8 @@ public sealed class WindowLaunchProcessToolTests
                     Decision: LaunchProcessStatusValues.Failed,
                     FailureCode: LaunchProcessFailureCodeValues.StartFailed,
                     Reason: "Process.Start failed.",
-                    ExecutableIdentity: "notepad.exe")));
+                    ExecutableIdentity: "notepad.exe",
+                    ArtifactPath: artifactPath)));
         TestContext context = CreateContext(
             decision: CreateDecision(
                 ToolExecutionDecisionKind.Allowed,
@@ -184,7 +271,12 @@ public sealed class WindowLaunchProcessToolTests
         Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
         Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
         Assert.Equal(LaunchProcessFailureCodeValues.StartFailed, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(artifactPath, payload.GetProperty("artifactPath").GetString());
         Assert.Equal(1, context.LaunchService.Calls);
+
+        string[] eventLines = File.ReadAllLines(context.AuditOptions.EventsPath);
+        Assert.Equal(2, eventLines.Length);
+        Assert.Contains("\"artifact_path\":\"C:\\\\artifacts\\\\diagnostics\\\\launch\\\\launch-20260406T140500000-failed.json\"", eventLines[1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -250,7 +342,8 @@ public sealed class WindowLaunchProcessToolTests
                 gate,
                 effectiveLaunchService),
             gate,
-            effectiveLaunchService);
+            effectiveLaunchService,
+            options);
     }
 
     private static ToolExecutionDecision CreateDecision(
@@ -286,7 +379,8 @@ public sealed class WindowLaunchProcessToolTests
     private sealed record TestContext(
         WindowTools Tools,
         FakeToolExecutionGate Gate,
-        FakeProcessLaunchService LaunchService);
+        FakeProcessLaunchService LaunchService,
+        AuditLogOptions AuditOptions);
 
     private sealed class FakeWindowManager(IReadOnlyList<WindowDescriptor> windows) : IWindowManager
     {

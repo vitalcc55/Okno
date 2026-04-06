@@ -397,13 +397,24 @@ Done when:
 Scope:
 
 - materialize-ить `launch.runtime.completed`;
-- писать `artifacts/diagnostics/<run_id>/launch/<launch_id>.json` для allowed dry-run/live execution paths;
+- писать `artifacts/diagnostics/<run_id>/launch/<launch_id>.json` для allowed live runtime paths;
 - использовать existing `launch_payload` redaction class для request/event/error path;
 - summary.md должен ссылаться только на safe executable identity, `processId`, `resultMode`, `artifactPath`.
 
 Done when:
 
 - raw args/full path/working directory/env values не попадают ни в `events.jsonl`, ни в `summary.md`, ни в artifact safe summary.
+
+Текущее состояние на `2026-04-06`:
+
+- `ProcessLaunchService` теперь всегда materialize-ит один launch artifact и один `launch.runtime.completed` event на каждый factual runtime result, не создавая вторую truth-model поверх `LaunchProcessResult`;
+- validation-only failures внутри `ProcessLaunchService` больше не materialize-ят launch artifact/event и остаются pre-runtime result с `ArtifactPath = null`;
+- launch artifact пишет только safe-by-construction payload: `result`, `capturedAtUtc` и optional `failureDiagnostics` c `failureStage`, `exceptionType`, `exceptionMessageSuppressed`, без raw executable path / args / working directory / env;
+- `artifact_write` считается observability side effect: public/result status не downcast-ится, `ArtifactPath` остаётся `null`, а runtime event несёт только `failure_stage=artifact_write` и `exception_type`;
+- runtime event write тоже best-effort: если `events.jsonl` / `summary.md` недоступны уже после factual launch result, observability write не меняет factual outcome;
+- public live-path completion audit после уже полученного factual `LaunchProcessResult` тоже работает как best-effort observability step и не должен downcast-ить tool result в generic failure;
+- `summary.md` для `launch.runtime.completed` теперь включает только safe identifiers (`executableIdentity`, `processId`, `resultMode`, `artifactPath`), без raw path/args disclosure;
+- existing `launch_payload` redaction class переиспользован для request/tool completion/runtime event path; dry-run/rejected preview paths остаются на existing completion audit trail без отдельного runtime event.
 
 ### Package E: Tests + smoke + docs sync
 
@@ -429,11 +440,11 @@ Done when:
 - [x] Не принимать `environment`, `verb`, alternate credentials и shell-open targets в V1.
 - [x] Реализовать optional GUI post-check через `WaitForInputIdle` + `Refresh` + `MainWindowHandle`.
 - [x] Сделать `window_observed` optional success mode, а не universal success requirement.
-- [ ] Добавить dedicated `launch.runtime.completed` event и `launch/<launch_id>.json` artifact.
-- [ ] Не вводить новую redaction class; reuse `launch_payload`.
+- [x] Добавить dedicated `launch.runtime.completed` event и `launch/<launch_id>.json` artifact.
+- [x] Не вводить новую redaction class; reuse `launch_payload`.
 - [x] Не вводить auto-attach или auto-focus.
 - [x] Добавить L1 tests для request validation и launch result modes.
-- [ ] Добавить L1 tests для event-data redaction и fail-safe suppression.
+- [x] Добавить L1 tests для event-data redaction и fail-safe suppression.
 - [x] Добавить L2 synthetic boundary tests на `blocked / needs_confirmation / dry_run_only / allowed`.
 - [x] Обновить `AdminToolTests` и contract export expectations.
 - [x] Зафиксировать в active exec-plan и `CHANGELOG`, что public publication откладывается до handler boundary ради honesty current surface.
@@ -549,6 +560,11 @@ Conditional docs:
 - не отмечать row 13 как completed/implemented без tests + smoke + docs sync;
 - не менять wording `windows.open_target` в том же PR beyond keeping the split explicit;
 - observability doc должна явно фиксировать, что launch artifact/event добавлены, а health artifact policy остаётся прежней.
+
+Package D note:
+
+- в этом пакете синхронизированы только `docs/architecture/observability.md`, `docs/generated/project-interfaces.md`, active exec-plan и `docs/CHANGELOG.md`;
+- `docs/generated/commands.md`, `docs/product/okno-roadmap.md` и `docs/product/okno-spec.md` intentionally остаются на `Package E`, потому что smoke/docs-rollout ещё не закрыт.
 
 ## 12. Rollback / risk notes
 

@@ -34,11 +34,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWindowActivationService, WindowActivationService>();
         services.AddSingleton(ProcessLaunchOptions.Default);
         services.AddSingleton<IProcessLaunchPlatform, SystemProcessLaunchPlatform>();
+        services.AddSingleton<LaunchResultMaterializer>();
         services.AddSingleton<IProcessLaunchService>(
             sp => new ProcessLaunchService(
                 sp.GetRequiredService<IProcessLaunchPlatform>(),
                 sp.GetRequiredService<TimeProvider>(),
-                sp.GetRequiredService<ProcessLaunchOptions>()));
+                sp.GetRequiredService<ProcessLaunchOptions>(),
+                sp.GetRequiredService<LaunchResultMaterializer>()));
         services.AddSingleton(WaitOptions.Default);
         services.AddSingleton<WaitResultMaterializer>();
         services.AddSingleton<IWaitService, PollingWaitService>();
