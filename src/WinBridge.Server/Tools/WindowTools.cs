@@ -10,11 +10,13 @@ using ModelContextProtocol.Server;
 using WinBridge.Runtime;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Guards;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Windows.Launch;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Runtime.Windows.UIA;
 using RuntimeToolExecution = WinBridge.Runtime.Diagnostics.ToolExecution;
@@ -33,7 +35,9 @@ public sealed class WindowTools
     private readonly AuditLog _auditLog;
     private readonly ICaptureService _captureService;
     private readonly IMonitorManager _monitorManager;
+    private readonly IProcessLaunchService _processLaunchService;
     private readonly ISessionManager _sessionManager;
+    private readonly IToolExecutionGate _toolExecutionGate;
     private readonly IUiAutomationService _uiAutomationService;
     private readonly IWaitService _waitService;
     private readonly WaitResultMaterializer _waitResultMaterializer;
@@ -51,12 +55,16 @@ public sealed class WindowTools
         IWindowTargetResolver windowTargetResolver,
         IUiAutomationService uiAutomationService,
         IWaitService waitService,
-        WaitResultMaterializer waitResultMaterializer)
+        WaitResultMaterializer waitResultMaterializer,
+        IToolExecutionGate toolExecutionGate,
+        IProcessLaunchService processLaunchService)
     {
         _auditLog = auditLog;
         _captureService = captureService;
         _monitorManager = monitorManager;
+        _processLaunchService = processLaunchService;
         _sessionManager = sessionManager;
+        _toolExecutionGate = toolExecutionGate;
         _uiAutomationService = uiAutomationService;
         _waitService = waitService;
         _waitResultMaterializer = waitResultMaterializer;
@@ -428,6 +436,48 @@ public sealed class WindowTools
                 }
             });
 
+    public Task<CallToolResult> LaunchProcess(
+        LaunchProcessRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteLaunchProcessAsync(request, new(true, request, null, null), cancellationToken);
+    }
+
+    public Task<CallToolResult> LaunchProcess(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requestContext);
+        LaunchProcessTransportBinding binding = BindLaunchProcessRequest(requestContext);
+        return ExecuteLaunchProcessAsync(binding.Request, binding, cancellationToken);
+    }
+
+    private Task<CallToolResult> ExecuteLaunchProcessAsync(
+        LaunchProcessRequest request,
+        LaunchProcessTransportBinding binding,
+        CancellationToken cancellationToken)
+    {
+        LaunchProcessBoundaryValidation validation = ValidateLaunchProcessRequest(request, binding);
+        ToolExecutionPolicyDescriptor policy = ToolContractManifest.ResolveExecutionPolicy(ToolNames.WindowsLaunchProcess)
+            ?? throw new InvalidOperationException("Execution policy for windows.launch_process is not configured.");
+        ToolExecutionIntent intent = new(
+            IsDryRunRequested: request.DryRun,
+            ConfirmationGranted: request.Confirm,
+            PreviewAvailable: validation.IsValid);
+
+        return RuntimeToolExecution.RunGatedAsync(
+            _auditLog,
+            _sessionManager.GetSnapshot(),
+            ToolNames.WindowsLaunchProcess,
+            request,
+            policy,
+            intent,
+            _toolExecutionGate,
+            (invocation, decision) => ExecuteAllowedLaunchProcessAsync(invocation, request, validation, decision, cancellationToken),
+            (invocation, decision) => Task.FromResult(CreateRejectedLaunchProcessToolResult(invocation, request, validation, decision)));
+    }
+
     [McpServerTool(Name = ToolNames.WindowsClipboardGet)]
     public DeferredToolResult ClipboardGet() =>
         Deferred(ToolNames.WindowsClipboardGet);
@@ -595,6 +645,90 @@ public sealed class WindowTools
                 }
             });
 
+    private async Task<CallToolResult> ExecuteAllowedLaunchProcessAsync(
+        AuditInvocationScope invocation,
+        LaunchProcessRequest request,
+        LaunchProcessBoundaryValidation validation,
+        ToolExecutionDecision decision,
+        CancellationToken cancellationToken)
+    {
+        if (!validation.IsValid)
+        {
+            return CreateInvalidLaunchProcessToolResult(invocation, request, validation);
+        }
+
+        if (decision.Mode == ToolExecutionMode.DryRun)
+        {
+            LaunchProcessResult dryRunResult = CreateAllowedDryRunLaunchProcessResult(validation.Preview!, decision);
+            invocation.Complete(
+                dryRunResult.Status,
+                "Подготовлен dry-run preview запуска процесса.",
+                data: CreateLaunchProcessAuditData(dryRunResult));
+            return CreateToolResult(dryRunResult, isError: false);
+        }
+
+        try
+        {
+            LaunchProcessResult runtimeResult = await _processLaunchService
+                .LaunchAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+            invocation.Complete(
+                runtimeResult.Status,
+                CreateLaunchProcessCompletionMessage(runtimeResult),
+                data: CreateLaunchProcessAuditData(runtimeResult));
+            return CreateToolResult(runtimeResult, isError: LaunchProcessStatusIsToolError(runtimeResult.Status));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LaunchProcessResult failedResult = CreateUnexpectedLaunchProcessFailureResult(request, validation.ExecutableIdentity);
+            invocation.CompleteSanitizedFailure(
+                failedResult.Reason ?? "Server не смог завершить launch request.",
+                exception,
+                data: CreateLaunchProcessAuditData(failedResult));
+            return CreateToolResult(failedResult, isError: true);
+        }
+    }
+
+    private static CallToolResult CreateRejectedLaunchProcessToolResult(
+        AuditInvocationScope invocation,
+        LaunchProcessRequest request,
+        LaunchProcessBoundaryValidation validation,
+        ToolExecutionDecision decision)
+    {
+        if (!validation.IsValid)
+        {
+            return CreateInvalidLaunchProcessToolResult(invocation, request, validation);
+        }
+
+        LaunchProcessResult rejectedResult = CreateRejectedLaunchProcessResult(validation.Preview!, validation.ExecutableIdentity, decision);
+        invocation.Complete(
+            rejectedResult.Status,
+            CreateLaunchProcessCompletionMessage(rejectedResult),
+            data: CreateLaunchProcessAuditData(rejectedResult));
+        return CreateToolResult(rejectedResult, isError: true);
+    }
+
+    private static CallToolResult CreateInvalidLaunchProcessToolResult(
+        AuditInvocationScope invocation,
+        LaunchProcessRequest request,
+        LaunchProcessBoundaryValidation validation)
+    {
+        LaunchProcessResult failedResult = CreateLaunchProcessFailureResult(
+            request,
+            validation.FailureCode ?? LaunchProcessFailureCodeValues.InvalidRequest,
+            validation.Reason ?? "Launch request не прошёл validation.",
+            validation.ExecutableIdentity);
+        invocation.Complete(
+            failedResult.Status,
+            failedResult.Reason ?? "Launch request не прошёл validation.",
+            data: CreateLaunchProcessAuditData(failedResult));
+        return CreateToolResult(failedResult, isError: true);
+    }
+
     private DeferredToolResult Deferred(string toolName)
         => RuntimeToolExecution.Run(
             _auditLog,
@@ -624,6 +758,196 @@ public sealed class WindowTools
 
         return _windowTargetResolver.ResolveExplicitOrAttachedWindow(hwnd, _sessionManager.GetAttachedWindow()?.Window);
     }
+
+    private static LaunchProcessBoundaryValidation ValidateLaunchProcessRequest(
+        LaunchProcessRequest request,
+        LaunchProcessTransportBinding binding)
+    {
+        string? executableIdentity = TryResolveSafeExecutableIdentity(request.Executable);
+        if (!binding.IsSuccess)
+        {
+            return new(false, binding.FailureCode, binding.Reason, executableIdentity, null);
+        }
+
+        if (!LaunchProcessRequestValidator.TryValidate(request, out string? failureCode, out string? reason))
+        {
+            return new(false, failureCode, reason, executableIdentity, null);
+        }
+
+        return new(
+            true,
+            null,
+            null,
+            executableIdentity,
+            new LaunchProcessPreview(
+                ExecutableIdentity: executableIdentity ?? string.Empty,
+                ResolutionMode: Path.IsPathFullyQualified(request.Executable)
+                    ? LaunchProcessPreviewResolutionModeValues.AbsolutePath
+                    : LaunchProcessPreviewResolutionModeValues.PathLookup,
+                ArgumentCount: request.Args.Count,
+                WorkingDirectoryProvided: !string.IsNullOrWhiteSpace(request.WorkingDirectory),
+                WaitForWindow: request.WaitForWindow,
+                TimeoutMs: request.TimeoutMs));
+    }
+
+    private static LaunchProcessTransportBinding BindLaunchProcessRequest(
+        RequestContext<CallToolRequestParams> requestContext)
+    {
+        IDictionary<string, JsonElement>? arguments = requestContext.Params?.Arguments;
+
+        try
+        {
+            JsonElement rawArguments = JsonSerializer.SerializeToElement(arguments);
+            LaunchProcessRequest request = rawArguments.Deserialize<LaunchProcessRequest>()
+                ?? throw new JsonException("Transport arguments did not deserialize to LaunchProcessRequest.");
+            return new(true, request, null, null);
+        }
+        catch (JsonException exception)
+        {
+            return new(
+                false,
+                new LaunchProcessRequest(),
+                LaunchProcessFailureCodeValues.InvalidRequest,
+                $"Transport arguments для launch_process не прошли binding: {exception.Message}");
+        }
+    }
+
+    private static LaunchProcessResult CreateRejectedLaunchProcessResult(
+        LaunchProcessPreview preview,
+        string? executableIdentity,
+        ToolExecutionDecision decision) =>
+        new(
+            Status: ToLaunchProcessRejectedStatus(decision.Kind),
+            Decision: ToLaunchProcessRejectedStatus(decision.Kind),
+            Reason: CreateLaunchProcessGateReason(decision.Kind),
+            ExecutableIdentity: executableIdentity,
+            Preview: preview,
+            RiskLevel: ToSnakeCase(decision.RiskLevel),
+            GuardCapability: decision.GuardCapability,
+            RequiresConfirmation: decision.RequiresConfirmation,
+            DryRunSupported: decision.DryRunSupported,
+            Reasons: decision.Reasons);
+
+    private static LaunchProcessResult CreateAllowedDryRunLaunchProcessResult(
+        LaunchProcessPreview preview,
+        ToolExecutionDecision decision) =>
+        new(
+            Status: LaunchProcessStatusValues.Done,
+            Decision: LaunchProcessStatusValues.Done,
+            ExecutableIdentity: preview.ExecutableIdentity,
+            Preview: preview,
+            RiskLevel: ToSnakeCase(decision.RiskLevel),
+            GuardCapability: decision.GuardCapability,
+            RequiresConfirmation: decision.RequiresConfirmation,
+            DryRunSupported: decision.DryRunSupported,
+            Reasons: decision.Reasons);
+
+    private static LaunchProcessResult CreateLaunchProcessFailureResult(
+        LaunchProcessRequest request,
+        string failureCode,
+        string reason,
+        string? executableIdentity) =>
+        new(
+            Status: LaunchProcessStatusValues.Failed,
+            Decision: LaunchProcessStatusValues.Failed,
+            FailureCode: failureCode,
+            Reason: reason,
+            ExecutableIdentity: executableIdentity,
+            MainWindowObservationStatus: request.WaitForWindow
+                ? null
+                : LaunchMainWindowObservationStatusValues.NotRequested);
+
+    private static LaunchProcessResult CreateUnexpectedLaunchProcessFailureResult(
+        LaunchProcessRequest request,
+        string? executableIdentity) =>
+        CreateLaunchProcessFailureResult(
+            request,
+            LaunchProcessFailureCodeValues.StartFailed,
+            "Server не смог завершить launch request.",
+            executableIdentity);
+
+    private static Dictionary<string, string?> CreateLaunchProcessAuditData(LaunchProcessResult result) =>
+        new Dictionary<string, string?>
+        {
+            ["status"] = result.Status,
+            ["decision"] = result.Decision,
+            ["result_mode"] = result.ResultMode,
+            ["failure_code"] = result.FailureCode,
+            ["executable_identity"] = result.ExecutableIdentity,
+            ["process_id"] = result.ProcessId?.ToString(CultureInfo.InvariantCulture),
+            ["main_window_observation_status"] = result.MainWindowObservationStatus,
+            ["preview_resolution_mode"] = result.Preview?.ResolutionMode,
+            ["preview_argument_count"] = result.Preview?.ArgumentCount.ToString(CultureInfo.InvariantCulture),
+        };
+
+    private static string CreateLaunchProcessCompletionMessage(LaunchProcessResult result)
+    {
+        if (result.Status == LaunchProcessStatusValues.Done && result.Preview is not null && result.ProcessId is null)
+        {
+            return "Подготовлен dry-run preview запуска процесса.";
+        }
+
+        return result.Status switch
+        {
+            LaunchProcessStatusValues.Blocked => "Запуск процесса заблокирован shared gate.",
+            LaunchProcessStatusValues.NeedsConfirmation => "Запуск процесса требует явного подтверждения.",
+            LaunchProcessStatusValues.DryRunOnly => "Live launch недоступен, но dry-run preview разрешён.",
+            LaunchProcessStatusValues.Done when result.ResultMode == LaunchProcessResultModeValues.WindowObserved =>
+                "Процесс успешно запущен, main window observed.",
+            LaunchProcessStatusValues.Done when result.ResultMode == LaunchProcessResultModeValues.ProcessStartedAndExited =>
+                "Процесс успешно стартовал и уже завершился.",
+            LaunchProcessStatusValues.Done => "Процесс успешно запущен.",
+            _ => result.Reason ?? "Launch request завершился ошибкой.",
+        };
+    }
+
+    private static string CreateLaunchProcessGateReason(ToolExecutionDecisionKind kind) =>
+        kind switch
+        {
+            ToolExecutionDecisionKind.Blocked => "Запуск процесса заблокирован shared gate.",
+            ToolExecutionDecisionKind.NeedsConfirmation => "Запуск процесса требует явного подтверждения.",
+            ToolExecutionDecisionKind.DryRunOnly => "Live launch недоступен, но dry-run preview разрешён.",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+
+    private static string ToLaunchProcessRejectedStatus(ToolExecutionDecisionKind kind) =>
+        kind switch
+        {
+            ToolExecutionDecisionKind.Blocked => LaunchProcessStatusValues.Blocked,
+            ToolExecutionDecisionKind.NeedsConfirmation => LaunchProcessStatusValues.NeedsConfirmation,
+            ToolExecutionDecisionKind.DryRunOnly => LaunchProcessStatusValues.DryRunOnly,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+
+    private static string? TryResolveSafeExecutableIdentity(string executable)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return null;
+        }
+
+        string candidate = executable;
+        if (!Path.IsPathFullyQualified(executable)
+            && Uri.TryCreate(executable, UriKind.Absolute, out Uri? uri)
+            && uri.IsAbsoluteUri)
+        {
+            candidate = uri.AbsolutePath;
+        }
+
+        string normalized = candidate.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        string trimmed = normalized.TrimEnd(Path.DirectorySeparatorChar);
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return null;
+        }
+
+        string executableName = Path.GetFileName(trimmed);
+        return string.IsNullOrWhiteSpace(executableName) ? null : executableName;
+    }
+
+    private static string ToSnakeCase<TEnum>(TEnum value)
+        where TEnum : struct, Enum =>
+        JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
 
     private static CallToolResult CreateSuccessResult(CaptureResult result)
     {
@@ -675,6 +999,9 @@ public sealed class WindowTools
     private static bool UiaSnapshotStatusIsToolError(string status) =>
         !string.Equals(status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal);
 
+    private static bool LaunchProcessStatusIsToolError(string status) =>
+        !string.Equals(status, LaunchProcessStatusValues.Done, StringComparison.Ordinal);
+
     private static Dictionary<string, string?> CreateWaitAuditData(
         string condition,
         long? requestedHwnd,
@@ -713,6 +1040,19 @@ public sealed class WindowTools
             Depth = depth,
             MaxNodes = maxNodes,
         };
+
+    private readonly record struct LaunchProcessBoundaryValidation(
+        bool IsValid,
+        string? FailureCode,
+        string? Reason,
+        string? ExecutableIdentity,
+        LaunchProcessPreview? Preview);
+
+    private readonly record struct LaunchProcessTransportBinding(
+        bool IsSuccess,
+        LaunchProcessRequest Request,
+        string? FailureCode,
+        string? Reason);
 
     private static CallToolResult CreateInvalidRequestToolResult(
         AuditInvocationScope invocation,

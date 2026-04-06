@@ -41,11 +41,27 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
-    public void ImplementedDescriptorsDoNotPublishExecutionPolicyMetadata()
+    public void ImplementedDescriptorsOnlyPublishExecutionPolicyForLaunchProcess()
     {
         Assert.All(
             ToolContractManifest.Implemented,
-            descriptor => Assert.Null(descriptor.ExecutionPolicy));
+            descriptor =>
+            {
+                if (descriptor.Name == ToolNames.WindowsLaunchProcess)
+                {
+                    AssertExecutionPolicy(
+                        descriptor.ExecutionPolicy,
+                        ToolExecutionPolicyGroup.Launch,
+                        ToolExecutionRiskLevel.High,
+                        CapabilitySummaryValues.Launch,
+                        supportsDryRun: true,
+                        ToolExecutionConfirmationMode.Required,
+                        ToolExecutionRedactionClass.LaunchPayload);
+                    return;
+                }
+
+                Assert.Null(descriptor.ExecutionPolicy);
+            });
     }
 
     [Fact]
@@ -65,15 +81,14 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
-    public void FutureLaunchPresetsExistWithoutManifestPublication()
+    public void FutureLaunchPresetsKeepOnlyOpenTargetWithoutManifestPublication()
     {
-        Assert.Equal(2, ToolContractManifest.FutureLaunchFamilyPolicyPresets.Count);
-        Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey(ToolNames.WindowsLaunchProcess));
+        Assert.Single(ToolContractManifest.FutureLaunchFamilyPolicyPresets);
         Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey("windows.open_target"));
 
-        Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
+        Assert.Contains(ToolContractManifest.All, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
         Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == "windows.open_target");
-        Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == ToolNames.WindowsLaunchProcess);
+        Assert.Contains(ToolContractManifest.ImplementedNames, toolName => toolName == ToolNames.WindowsLaunchProcess);
         Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == "windows.open_target");
     }
 
@@ -112,6 +127,9 @@ public sealed class ToolContractManifestTests
         Assert.Same(
             descriptor.ExecutionPolicy,
             ToolContractManifest.ResolveExecutionPolicy(ToolNames.WindowsLaunchProcess));
+        Assert.Contains(
+            ToolContractManifest.Implemented,
+            implementedDescriptor => ReferenceEquals(implementedDescriptor, descriptor));
     }
 
     [Fact]
@@ -163,6 +181,19 @@ public sealed class ToolContractManifestTests
         Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
         Assert.Contains(ToolNames.WindowsWait, ToolContractManifest.SmokeRequiredToolNames);
         Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsWait);
+    }
+
+    [Fact]
+    public void WindowsLaunchProcessIsImplementedAndSmokeRequired()
+    {
+        ToolDescriptor descriptor = Assert.Single(
+            ToolContractManifest.Implemented,
+            item => item.Name == ToolNames.WindowsLaunchProcess);
+
+        Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
+        Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
+        Assert.Contains(ToolNames.WindowsLaunchProcess, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsLaunchProcess);
     }
 
     [Fact]

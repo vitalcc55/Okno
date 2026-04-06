@@ -366,7 +366,9 @@ public sealed class WindowUiaSnapshotToolTests
                 new WindowTargetResolver(windowManager),
                 uiAutomationService,
                 new FakeWaitService(),
-                waitResultMaterializer),
+                waitResultMaterializer,
+                new FakeToolExecutionGate(),
+                new FakeProcessLaunchService()),
             options.EventsPath);
     }
 

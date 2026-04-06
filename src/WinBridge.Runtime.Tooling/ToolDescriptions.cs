@@ -4,7 +4,7 @@ public static class ToolDescriptions
 {
     public const string OknoHealthTool = "Возвращает сводку состояния runtime и консервативный readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains и capability status без hidden enforcement.";
 
-    public const string OknoContractTool = "Возвращает текущий MCP contract runtime: implemented tools, deferred tools, execution_policy metadata для declared deferred tools и notes без вызова side effects.";
+    public const string OknoContractTool = "Возвращает текущий MCP contract runtime: implemented tools, deferred tools, execution_policy metadata для policy-bearing public tools и declared deferred tools, а также notes без вызова side effects.";
 
     public const string OknoSessionStateTool = "Возвращает текущий session snapshot, включая attached window и mode без изменения session state.";
 

@@ -123,6 +123,267 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
+    public async Task ToolsListPublishesWindowsLaunchProcessWithSchemaAndAnnotations()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument toolsResponse = await session.SendRequestAsync(
+                "tools/list",
+                new { },
+                "tools/list");
+            JsonElement launchDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsLaunchProcess);
+
+            Assert.False(string.IsNullOrWhiteSpace(launchDescriptor.GetProperty("description").GetString()));
+            JsonElement annotations = launchDescriptor.GetProperty("annotations");
+            Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
+
+            JsonElement properties = launchDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("executable").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("args").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("workingDirectory").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("waitForWindow").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("timeoutMs").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("dryRun").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("confirm").GetProperty("description").GetString()));
+            AssertSchemaTypeContains(properties.GetProperty("args").GetProperty("type"), "array");
+            AssertSchemaTypeContains(properties.GetProperty("executable").GetProperty("type"), "string");
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
+    public async Task LaunchProcessRejectsEnvironmentOverridesAsToolLevelFailedResult()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument response = await CallToolAsync(
+                session,
+                ToolNames.WindowsLaunchProcess,
+                new
+                {
+                    executable = "notepad.exe",
+                    environment = new
+                    {
+                        FOO = "bar",
+                    },
+                });
+
+            JsonElement result = response.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("isError").GetBoolean());
+            JsonElement payload = result.GetProperty("structuredContent");
+            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
+            Assert.Equal(LaunchProcessFailureCodeValues.UnsupportedEnvironmentOverrides, payload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
+    public async Task LaunchProcessRejectsUnsupportedExtraFieldAsToolLevelFailedResult()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument response = await CallToolAsync(
+                session,
+                ToolNames.WindowsLaunchProcess,
+                new
+                {
+                    executable = "notepad.exe",
+                    extraField = "unexpected",
+                });
+
+            JsonElement result = response.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("isError").GetBoolean());
+            JsonElement payload = result.GetProperty("structuredContent");
+            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
+            Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
+    public async Task LaunchProcessRejectsMissingExecutableAsToolLevelFailedResult()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument response = await CallToolAsync(
+                session,
+                ToolNames.WindowsLaunchProcess,
+                new { });
+
+            JsonElement result = response.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("isError").GetBoolean());
+            JsonElement payload = result.GetProperty("structuredContent");
+            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
+            Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
+    public async Task LaunchProcessRejectsWrongTypeArgsAsToolLevelFailedResult()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument response = await CallToolAsync(
+                session,
+                ToolNames.WindowsLaunchProcess,
+                new
+                {
+                    executable = "notepad.exe",
+                    args = "--flag",
+                });
+
+            JsonElement result = response.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("isError").GetBoolean());
+            JsonElement payload = result.GetProperty("structuredContent");
+            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
+            Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
     public async Task OknoContractPublishesDeferredExecutionPolicyWithSnakeCaseDescriptorFields()
     {
         using Process process = StartServer();
@@ -980,6 +1241,17 @@ public sealed class McpProtocolSmokeTests
     private static IEnumerable<JsonElement> GetWarningReasons(JsonElement reasons) =>
         reasons.EnumerateArray()
             .Where(item => string.Equals(item.GetProperty("severity").GetString(), GuardSeverityValues.Warning, StringComparison.Ordinal));
+
+    private static void AssertSchemaTypeContains(JsonElement typeElement, string expectedType)
+    {
+        if (typeElement.ValueKind == JsonValueKind.String)
+        {
+            Assert.Equal(expectedType, typeElement.GetString());
+            return;
+        }
+
+        Assert.Contains(expectedType, typeElement.EnumerateArray().Select(item => item.GetString()));
+    }
 
     private static string GetReasonSignature(JsonElement reason) =>
         string.Join(

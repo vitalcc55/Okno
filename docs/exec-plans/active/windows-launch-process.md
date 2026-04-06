@@ -278,6 +278,7 @@ Rule:
 
 - `blocked / needs_confirmation / dry_run_only` используют existing `GuardReason` list и existing gate reason codes;
 - `failed + failureCode` используется только после того, как invocation уже вошёл в allowed handler path.
+- boundary semantics для `Package C`: если shared gate уже дал `allowed`, а дальше boundary или runtime materialize-ит `failed`, public payload публикует `Decision=failed`, а факт предварительного `allowed` остаётся только во внутреннем audit decision metadata.
 
 ## 7. Integration points by file
 
@@ -382,6 +383,15 @@ Done when:
 
 - server boundary проходит synthetic gate tests, `tools/list`/`okno.contract`/manifest больше не расходятся между собой и не содержат собственного policy branching beyond request validation + result mapping.
 
+Текущее состояние на `2026-04-06`:
+
+- public `windows.launch_process` больше не зависит от attribute/scalar auto-binding: tool зарегистрирован programmatically с explicit flat `inputSchema`, а execution path стартует от raw MCP `arguments`;
+- boundary bind-ит canonical `LaunchProcessRequest` из raw MCP `arguments`, поэтому `JsonExtensionData`, missing required fields, type mismatch и fail-closed validation для `environment` / extra fields больше не теряются до validator-а;
+- valid request path публикует safe preview для rejected/dry-run outcomes и вызывает `IProcessLaunchService` только на allowed live path;
+- invalid request materialize-ится как tool-level `failed`, а не как guard rejection;
+- publication sync доведён до `ToolContractManifest.All` / implemented surface / `okno.contract` / actual `tools/list`, при этом `windows.open_target` остаётся только future policy preset;
+- explicit semantic handoff зафиксирован так: если shared gate уже дал `allowed`, но boundary/runtime возвращает failure, public payload использует `Decision=failed`.
+
 ### Package D: Evidence and redaction
 
 Scope:
@@ -424,7 +434,7 @@ Done when:
 - [x] Не вводить auto-attach или auto-focus.
 - [x] Добавить L1 tests для request validation и launch result modes.
 - [ ] Добавить L1 tests для event-data redaction и fail-safe suppression.
-- [ ] Добавить L2 synthetic boundary tests на `blocked / needs_confirmation / dry_run_only / allowed`.
+- [x] Добавить L2 synthetic boundary tests на `blocked / needs_confirmation / dry_run_only / allowed`.
 - [x] Обновить `AdminToolTests` и contract export expectations.
 - [x] Зафиксировать в active exec-plan и `CHANGELOG`, что public publication откладывается до handler boundary ради honesty current surface.
 - [ ] Добавить L3 smoke на helper launch через сам tool.

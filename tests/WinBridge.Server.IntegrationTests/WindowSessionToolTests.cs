@@ -360,7 +360,9 @@ public sealed class WindowSessionToolTests
             new WindowTargetResolver(windowManager),
             new FakeUiAutomationService(),
             new FakeWaitService(),
-            waitResultMaterializer);
+            waitResultMaterializer,
+            new FakeToolExecutionGate(),
+            new FakeProcessLaunchService());
 
         return new TestContext(tools, sessionManager);
     }

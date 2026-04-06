@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Runtime.Tests;
@@ -59,6 +60,8 @@ public sealed class ToolContractExporterTests
         Assert.Contains("| Tool | Current outcome | Planned phase | Policy |", markdown, StringComparison.Ordinal);
         Assert.Contains(ToolNames.OknoHealth, markdown, StringComparison.Ordinal);
         Assert.Contains(ToolNames.WindowsCapture, markdown, StringComparison.Ordinal);
+        Assert.Contains(ToolNames.WindowsLaunchProcess, markdown, StringComparison.Ordinal);
+        Assert.Contains("policy_group=launch; risk_level=high; guard_capability=launch; supports_dry_run=true; confirmation_mode=required; redaction_class=launch_payload", markdown, StringComparison.Ordinal);
         Assert.Contains("policy_group=clipboard; risk_level=medium; guard_capability=clipboard; supports_dry_run=false; confirmation_mode=required; redaction_class=clipboard_payload", markdown, StringComparison.Ordinal);
         Assert.Contains("artifacts/diagnostics/<run_id>/captures/<capture_id>.png", markdown, StringComparison.Ordinal);
     }
@@ -159,16 +162,27 @@ public sealed class ToolContractExporterTests
     }
 
     [Fact]
-    public void ExporterDoesNotPublishInternalLaunchProcessFreezeDescriptor()
+    public void ExporterPublishesLaunchProcessAsImplementedPolicyBearingTool()
     {
         ToolContractExportDocument document = ToolContractExporter.CreateDocument();
         string markdown = ToolContractExporter.RenderMarkdown(document);
 
-        Assert.DoesNotContain(document.Tools.Implemented, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
+        ContractToolDescriptor descriptor = Assert.Single(
+            document.Tools.Implemented,
+            item => item.Name == ToolNames.WindowsLaunchProcess);
+        Assert.Equal("implemented", descriptor.Lifecycle);
+        Assert.Equal("os_side_effect", descriptor.SafetyClass);
+        ContractToolExecutionPolicyDescriptor policy = Assert.IsType<ContractToolExecutionPolicyDescriptor>(descriptor.ExecutionPolicy);
+        Assert.Equal("launch", policy.PolicyGroup);
+        Assert.Equal("high", policy.RiskLevel);
+        Assert.Equal("launch", policy.GuardCapability);
+        Assert.True(policy.SupportsDryRun);
+        Assert.Equal("required", policy.ConfirmationMode);
+        Assert.Equal("launch_payload", policy.RedactionClass);
+        Assert.Contains(document.Tools.ImplementedNames, toolName => toolName == ToolNames.WindowsLaunchProcess);
         Assert.DoesNotContain(document.Tools.Deferred, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
-        Assert.DoesNotContain(document.Tools.ImplementedNames, toolName => toolName == ToolNames.WindowsLaunchProcess);
         Assert.DoesNotContain(document.Tools.DeferredPhaseMap.Keys, toolName => toolName == ToolNames.WindowsLaunchProcess);
-        Assert.DoesNotContain(ToolNames.WindowsLaunchProcess, markdown, StringComparison.Ordinal);
+        Assert.Contains(ToolNames.WindowsLaunchProcess, markdown, StringComparison.Ordinal);
     }
 
     private static string CreateTempDirectory()

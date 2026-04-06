@@ -289,7 +289,9 @@ public sealed class WindowWaitToolTests
                 windowTargetResolver ?? new WindowTargetResolver(windowManager),
                 new FakeUiAutomationService(),
                 waitService,
-                waitResultMaterializer),
+                waitResultMaterializer,
+                new FakeToolExecutionGate(),
+                new FakeProcessLaunchService()),
             options.EventsPath);
     }
 

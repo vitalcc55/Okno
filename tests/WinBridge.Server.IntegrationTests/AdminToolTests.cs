@@ -101,7 +101,7 @@ public sealed class AdminToolTests
                 CapabilitySummaryValues.Launch,
             ],
             result.Warnings.Select(item => item.Source).ToArray());
-        Assert.DoesNotContain(ToolNames.WindowsLaunchProcess, result.ImplementedTools);
+        Assert.Contains(ToolNames.WindowsLaunchProcess, result.ImplementedTools);
         Assert.False(result.DeferredTools.ContainsKey(ToolNames.WindowsLaunchProcess));
     }
 
@@ -140,17 +140,27 @@ public sealed class AdminToolTests
         Assert.Equal("implemented", waitDescriptor.Lifecycle);
         Assert.Equal("os_side_effect", waitDescriptor.SafetyClass);
 
+        ContractToolDescriptor launchDescriptor = Assert.Single(
+            result.ImplementedTools,
+            descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
+        ContractToolExecutionPolicyDescriptor launchPolicy = Assert.IsType<ContractToolExecutionPolicyDescriptor>(launchDescriptor.ExecutionPolicy);
+        Assert.Equal("launch", launchPolicy.PolicyGroup);
+        Assert.Equal("high", launchPolicy.RiskLevel);
+        Assert.Equal("launch", launchPolicy.GuardCapability);
+        Assert.True(launchPolicy.SupportsDryRun);
+        Assert.Equal("required", launchPolicy.ConfirmationMode);
+        Assert.Equal("launch_payload", launchPolicy.RedactionClass);
+
         ContractToolDescriptor inputDescriptor = Assert.Single(
             result.DeferredTools,
             descriptor => descriptor.Name == ToolNames.WindowsInput);
-        ContractToolExecutionPolicyDescriptor policy = Assert.IsType<ContractToolExecutionPolicyDescriptor>(inputDescriptor.ExecutionPolicy);
-        Assert.Equal("input", policy.PolicyGroup);
-        Assert.Equal("destructive", policy.RiskLevel);
-        Assert.Equal("input", policy.GuardCapability);
-        Assert.False(policy.SupportsDryRun);
-        Assert.Equal("required", policy.ConfirmationMode);
-        Assert.Equal("text_payload", policy.RedactionClass);
-        Assert.DoesNotContain(result.ImplementedTools, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
+        ContractToolExecutionPolicyDescriptor inputPolicy = Assert.IsType<ContractToolExecutionPolicyDescriptor>(inputDescriptor.ExecutionPolicy);
+        Assert.Equal("input", inputPolicy.PolicyGroup);
+        Assert.Equal("destructive", inputPolicy.RiskLevel);
+        Assert.Equal("input", inputPolicy.GuardCapability);
+        Assert.False(inputPolicy.SupportsDryRun);
+        Assert.Equal("required", inputPolicy.ConfirmationMode);
+        Assert.Equal("text_payload", inputPolicy.RedactionClass);
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
     }
 

@@ -379,7 +379,9 @@ public sealed class WindowCaptureToolTests
             new WindowTargetResolver(new FakeWindowManager(windows)),
             new FakeUiAutomationService(),
             new FakeWaitService(),
-            waitResultMaterializer);
+            waitResultMaterializer,
+            new FakeToolExecutionGate(),
+            new FakeProcessLaunchService());
     }
 
     private static WindowDescriptor CreateWindow(

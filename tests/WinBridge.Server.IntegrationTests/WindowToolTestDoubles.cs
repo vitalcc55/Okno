@@ -1,6 +1,9 @@
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Guards;
+using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Display;
 using WinBridge.Runtime.Waiting;
+using WinBridge.Runtime.Windows.Launch;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Runtime.Windows.UIA;
 
@@ -155,5 +158,63 @@ internal sealed class FakeWaitService(
         }
 
         return handler(target, request, cancellationToken);
+    }
+}
+
+internal sealed class FakeProcessLaunchService(
+    Func<LaunchProcessRequest, CancellationToken, Task<LaunchProcessResult>>? handler = null) : IProcessLaunchService
+{
+    public int Calls { get; private set; }
+
+    public LaunchProcessRequest? LastRequest { get; private set; }
+
+    public Task<LaunchProcessResult> LaunchAsync(LaunchProcessRequest request, CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastRequest = request;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("Launch service не должен вызываться в этом тесте.");
+        }
+
+        return handler(request, cancellationToken);
+    }
+}
+
+internal sealed class FakeToolExecutionGate(
+    Func<ToolExecutionPolicyDescriptor, ToolExecutionIntent, ToolExecutionDecision>? handler = null) : IToolExecutionGate
+{
+    public int Calls { get; private set; }
+
+    public ToolExecutionIntent? LastIntent { get; private set; }
+
+    public ToolExecutionDecision Evaluate(ToolExecutionPolicyDescriptor policy, ToolExecutionIntent intent)
+    {
+        Calls++;
+        LastIntent = intent;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("Shared gate не должен вызываться в этом тесте.");
+        }
+
+        return handler(policy, intent);
+    }
+
+    public ToolExecutionDecision Evaluate(
+        ToolExecutionPolicyDescriptor policy,
+        RuntimeGuardAssessment assessment,
+        ToolExecutionIntent intent)
+    {
+        Calls++;
+        LastIntent = intent;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("Shared gate не должен вызываться в этом тесте.");
+        }
+
+        return handler(policy, intent);
     }
 }
