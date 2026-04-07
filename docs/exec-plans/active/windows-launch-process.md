@@ -1,8 +1,8 @@
 # ExecPlan: windows.launch_process
 
-Статус: in_progress
+Статус: completed
 Создан: 2026-03-31
-Актуально на: 2026-04-01
+Актуально на: 2026-04-06
 
 ## 1. Goal
 
@@ -428,6 +428,13 @@ Done when:
 
 - `windows.launch_process` появляется в shipped surface вместе с tests, smoke evidence и docs sync, а roadmap row 13 обновлён по факту.
 
+Текущее состояние на `2026-04-06`:
+
+- `scripts/smoke.ps1` теперь поднимает helper только через `windows.launch_process`: отдельный dry-run path проверяет safe preview, live path проверяет `window_observed`, `artifactPath` и `launch.runtime.completed`, а дальнейшие attach/UIA/capture/wait шаги идут по тому же tool-launched окну.
+- smoke harness теперь доказательно проверяет и negative path: dry-run launch не materialize-ит helper process/window side effects, launch artifact валидируется против canonical `launch/<launch_id>.json`, а `launch.runtime.completed` сверяется с полным safe parity set runtime event-data.
+- smoke harness больше не держит пользователя на endless visual loop и не зависит от helper defaults: visual-change helper переведён на bounded burst через explicit smoke args, helper lifetime budget теперь передаётся явно из smoke, orphan helper получил self-close budget, а `active_window_matches` / `focus_is` в smoke используют более устойчивые timeouts для environment-sensitive waits.
+- sequential contour `scripts/build.ps1 -> scripts/test.ps1 -> scripts/smoke.ps1 -> scripts/refresh-generated-docs.ps1 -> scripts/codex/verify.ps1` пройден последовательно, а roadmap/spec/generated docs/changelog синхронизированы с фактически shipped состоянием.
+
 ### Implementation checklist
 
 - [x] Добавить `WindowsLaunchProcess` в `ToolNames`.
@@ -448,9 +455,9 @@ Done when:
 - [x] Добавить L2 synthetic boundary tests на `blocked / needs_confirmation / dry_run_only / allowed`.
 - [x] Обновить `AdminToolTests` и contract export expectations.
 - [x] Зафиксировать в active exec-plan и `CHANGELOG`, что public publication откладывается до handler boundary ради honesty current surface.
-- [ ] Добавить L3 smoke на helper launch через сам tool.
-- [ ] После implementation прогнать `scripts/build.ps1`, `scripts/test.ps1`, `scripts/smoke.ps1`, `scripts/refresh-generated-docs.ps1`, `scripts/codex/verify.ps1` строго последовательно.
-- [ ] Синхронизировать roadmap/spec/observability/generated docs/changelog в том же цикле.
+- [x] Добавить L3 smoke на helper launch через сам tool.
+- [x] После implementation прогнать `scripts/build.ps1`, `scripts/test.ps1`, `scripts/smoke.ps1`, `scripts/refresh-generated-docs.ps1`, `scripts/codex/verify.ps1` строго последовательно.
+- [x] Синхронизировать roadmap/spec/observability/generated docs/changelog в том же цикле.
 
 ## 9. Test ladder L1/L2/L3
 
@@ -508,19 +515,20 @@ No parallel run in the same worktree, because these commands share build/generat
 Use current helper `tests/WinBridge.SmokeWindowHost/Program.cs` as explicit launched target:
 
 - executable: built `WinBridge.SmokeWindowHost.exe`;
-- args: `["--title", "Okno Launch Smoke <run_id>"]`;
+- args: `["--title", "Okno Launch Smoke <run_id>", "--smoke-run-id", "okno-smoke-run:<run_id>", "--lifetime-ms", "<scenario_budget_ms>", "--visual-burst-ms", "<visual_budget_ms>"]`;
 - request: `waitForWindow=true`, `timeoutMs=10000`, `confirm=true`, `dryRun=false`.
 
 ### Assertions
 
 - `result.isError == false`;
 - `structuredContent.status == "done"`;
-- `structuredContent.decision == "allowed"`;
+- `structuredContent.decision == "done"`;
 - `structuredContent.resultMode == "window_observed"`;
 - `processId > 0`;
 - `mainWindowObserved == true`;
 - `mainWindowHandle != 0`;
-- `artifactPath` exists.
+- `artifactPath` exists under `artifacts/diagnostics/<run_id>/launch/`;
+- launch artifact JSON and `launch.runtime.completed` stay consistent with the public live payload.
 
 ### Cross-check without focus dependence
 
@@ -535,8 +543,21 @@ Smoke не должен зависеть от `activate_window`, `focus_window` 
 Отдельно добавить lightweight dry-run assertion:
 
 - `dryRun=true`, `confirm=false`;
-- expected `status == "done"` или separate preview-only success within `decision == "allowed"` in dry-run mode;
-- preview содержит only safe executable identity, argument count and flags, без raw args/path disclosure.
+- expected `status == "done"` и `decision == "done"` with preview-only payload;
+- preview содержит only safe executable identity, argument count and flags, без raw args/path disclosure;
+- dry-run пишет internal preview-branch marker, не пишет `launch.runtime.completed` и не оставляет helper process/window side effects после возврата;
+- cleanup reconciliation захватывается сразу после dry-run/live tool call как OS-only state: primary ownership остаётся на hidden `--smoke-run-id`, а fallback сохраняет ранний candidate snapshot по exact helper `ExecutablePath`, затем в proof/cleanup фазе запускает bounded resolution loop, который на каждой итерации повторно делает candidate discovery и уже на текущем candidate set проверяет `MainWindowTitle`; для этого используется тот же helper window materialization budget, что и у `Wait-ForVisibleHelperWindow`, поэтому teardown не зависит от follow-up `windows.list_windows` и не теряет helper при delayed process discovery или delayed title materialization;
+- internal proof marker остаётся best-effort observability signal и не должен менять сам dry-run result.
+
+### Visual wait choreography
+
+Для `windows.wait(visual_changed)` smoke не должен опираться на sleep/arm-delay эвристику:
+
+- wait request стартует async path;
+- helper arm-ится только после internal runtime marker `wait.visual.baseline_captured`;
+- visual helper больше не держит дополнительный `arm-delay` budget, потому что baseline-ready приходит из actual wait runtime.
+- `wait.visual.baseline_captured` остаётся best-effort internal marker: он нужен для smoke synchronization, но не должен менять factual outcome `windows.wait`.
+- отсутствие этого marker-а в smoke считается failure verification environment, а не доказательством runtime defect-а в `windows.wait`.
 
 ## 11. Docs sync
 

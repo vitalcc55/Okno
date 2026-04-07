@@ -65,7 +65,7 @@ public sealed class WaitResultMaterializer(
             ? "Runtime wait condition подтверждено."
             : result.Reason ?? "Runtime wait завершился без подтверждения condition.";
 
-        auditLog.RecordRuntimeEvent(
+        auditLog.TryRecordRuntimeEvent(
             eventName: RuntimeCompletedEventName,
             severity: severity,
             messageHuman: message,

@@ -9,6 +9,7 @@ using WinBridge.Runtime.Windows.UIA;
 namespace WinBridge.Runtime.Waiting;
 
 public sealed class PollingWaitService(
+    AuditLog auditLog,
     IWindowManager windowManager,
     IWindowTargetResolver windowTargetResolver,
     IUiAutomationWaitProbe uiAutomationWaitProbe,
@@ -18,6 +19,7 @@ public sealed class PollingWaitService(
     WaitOptions options,
     WaitResultMaterializer resultMaterializer) : IWaitService
 {
+    private const string VisualBaselineCapturedEventName = "wait.visual.baseline_captured";
     private readonly WaitResultMaterializer _resultMaterializer = resultMaterializer;
     private readonly string _visualArtifactDirectory = Path.Combine(auditLogOptions.RunDirectory, "wait", "visual");
 
@@ -484,6 +486,19 @@ public sealed class PollingWaitService(
                 currentSample.PixelHeight,
                 observedAtUtc,
                 currentSample.EvidenceFrame);
+            auditLog.TryRecordRuntimeEvent(
+                eventName: VisualBaselineCapturedEventName,
+                severity: "info",
+                messageHuman: "Visual baseline зафиксирован.",
+                toolName: "windows.wait",
+                outcome: "baseline_captured",
+                windowHwnd: observedWindow.Hwnd,
+                data: new Dictionary<string, string?>
+                {
+                    ["condition"] = WaitConditionValues.VisualChanged,
+                    ["target_source"] = targetSource,
+                    ["visual_difference_threshold"] = WaitVisualComparisonPolicy.DifferenceRatioThreshold.ToString(CultureInfo.InvariantCulture),
+                });
             return new WaitProbeSnapshot(
                 Outcome: WaitProbeOutcome.Pending,
                 ObservedAtUtc: observedAtUtc,

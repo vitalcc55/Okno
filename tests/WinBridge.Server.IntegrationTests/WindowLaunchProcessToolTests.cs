@@ -109,10 +109,60 @@ public sealed class WindowLaunchProcessToolTests
         Assert.False(result.IsError);
         Assert.Equal(LaunchProcessStatusValues.Done, payload.GetProperty("status").GetString());
         Assert.Equal(LaunchProcessStatusValues.Done, payload.GetProperty("decision").GetString());
+        Assert.Equal("Demo.exe", payload.GetProperty("executableIdentity").GetString());
         Assert.True(payload.TryGetProperty("preview", out JsonElement preview));
         Assert.Equal("Demo.exe", preview.GetProperty("executableIdentity").GetString());
         Assert.Equal(1, preview.GetProperty("argumentCount").GetInt32());
+        Assert.False(payload.TryGetProperty("processId", out _));
+        Assert.False(payload.TryGetProperty("startedAtUtc", out _));
+        Assert.False(payload.TryGetProperty("hasExited", out _));
+        Assert.False(payload.TryGetProperty("exitCode", out _));
+        Assert.False(payload.TryGetProperty("mainWindowHandle", out _));
+        Assert.False(payload.TryGetProperty("resultMode", out _));
+        Assert.False(payload.TryGetProperty("artifactPath", out _));
         Assert.Equal(0, context.LaunchService.Calls);
+
+        string[] eventLines = File.ReadAllLines(context.AuditOptions.EventsPath);
+        Assert.Equal(3, eventLines.Length);
+        Assert.Contains("\"event_name\":\"launch.preview.completed\"", eventLines[1], StringComparison.Ordinal);
+        Assert.Contains("\"tool_name\":\"windows.launch_process\"", eventLines[1], StringComparison.Ordinal);
+        Assert.DoesNotContain(eventLines, line => line.Contains("\"event_name\":\"launch.runtime.completed\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LaunchProcessAllowedDryRunReturnsPreviewWhenObservabilityWritesFailAfterDecision()
+    {
+        AuditLogOptions? auditOptions = null;
+        TestContext context = CreateContext(
+            decision: CreateDecision(
+                ToolExecutionDecisionKind.Allowed,
+                ToolExecutionMode.DryRun,
+                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                GuardSeverityValues.Warning),
+            onGateEvaluate: () =>
+            {
+                Assert.NotNull(auditOptions);
+                File.Delete(auditOptions!.EventsPath);
+                Directory.CreateDirectory(auditOptions.EventsPath);
+            });
+        auditOptions = context.AuditOptions;
+
+        CallToolResult result = await context.Tools.LaunchProcess(new LaunchProcessRequest
+        {
+            Executable = @"C:\Tools\Demo.exe",
+            Args = ["--flag"],
+            WorkingDirectory = @"C:\Tools",
+            WaitForWindow = true,
+            TimeoutMs = 4000,
+            DryRun = true,
+        });
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.False(result.IsError);
+        Assert.Equal(LaunchProcessStatusValues.Done, payload.GetProperty("status").GetString());
+        Assert.Equal(LaunchProcessStatusValues.Done, payload.GetProperty("decision").GetString());
+        Assert.Equal(0, context.LaunchService.Calls);
+        Assert.True(Directory.Exists(context.AuditOptions.EventsPath));
     }
 
     [Fact]
@@ -306,7 +356,8 @@ public sealed class WindowLaunchProcessToolTests
 
     private static TestContext CreateContext(
         ToolExecutionDecision decision,
-        FakeProcessLaunchService? launchService = null)
+        FakeProcessLaunchService? launchService = null,
+        Action? onGateEvaluate = null)
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -323,7 +374,7 @@ public sealed class WindowLaunchProcessToolTests
         AuditLog auditLog = new(options, TimeProvider.System);
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("launch-process-tests"));
         FakeWindowManager windowManager = new([]);
-        FakeToolExecutionGate gate = new(decision);
+        FakeToolExecutionGate gate = new(decision, onGateEvaluate);
         FakeProcessLaunchService effectiveLaunchService = launchService ?? new FakeProcessLaunchService();
         WaitResultMaterializer waitResultMaterializer = new(auditLog, options, WaitOptions.Default);
 
@@ -450,7 +501,7 @@ public sealed class WindowLaunchProcessToolTests
         }
     }
 
-    private sealed class FakeToolExecutionGate(ToolExecutionDecision decision) : IToolExecutionGate
+    private sealed class FakeToolExecutionGate(ToolExecutionDecision decision, Action? onEvaluate = null) : IToolExecutionGate
     {
         public int Calls { get; private set; }
 
@@ -460,6 +511,7 @@ public sealed class WindowLaunchProcessToolTests
         {
             Calls++;
             LastIntent = intent;
+            onEvaluate?.Invoke();
             return decision;
         }
 
@@ -470,6 +522,7 @@ public sealed class WindowLaunchProcessToolTests
         {
             Calls++;
             LastIntent = intent;
+            onEvaluate?.Invoke();
             return decision;
         }
     }

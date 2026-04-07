@@ -460,14 +460,38 @@ Target policy:
 
 ---
 
-## 4.6. Clipboard primitives
+## 4.6. Process launch primitives
+
+### `windows.launch_process`
+Аргументы:
+- `executable`: absolute direct executable path с расширением `.exe`/`.com` или bare executable name для `PATH` lookup;
+- `args`: optional массив строк для `ArgumentList`;
+- `workingDirectory`: optional absolute working directory;
+- `waitForWindow`, `timeoutMs`, `dryRun`, `confirm`.
+
+Invariant:
+- runtime использует только direct `ProcessStartInfo` semantics с `UseShellExecute = false`;
+- tool не принимает shell-open targets, `environment`, `Verb`, alternate credentials и не смешивается с будущим `windows.open_target`;
+- `timeoutMs` допустим только вместе с `waitForWindow=true`;
+- success не включает hidden `attach`, `focus` или `activate`.
+
+Возвращает:
+- `blocked | needs_confirmation | dry_run_only | done | failed`;
+- `preview` на rejected/dry-run path только с safe полями `executableIdentity`, `resolutionMode`, `argumentCount`, `workingDirectoryProvided`, `waitForWindow`, `timeoutMs`, без live side effects;
+- на factual live path `resultMode = process_started | process_started_and_exited | window_observed`, `processId`, `startedAtUtc`, `hasExited`, optional `exitCode`;
+- `mainWindowObserved`, `mainWindowHandle`, `mainWindowObservationStatus` для optional GUI post-check;
+- optional `artifactPath` для JSON evidence в diagnostics run directory; при `artifact_write` failure observability остаётся best-effort и factual launch result не downcast-ится.
+
+---
+
+## 4.7. Clipboard primitives
 
 ### `windows.clipboard_get`
 ### `windows.clipboard_set`
 
 ---
 
-## 4.7. Внешняя совместимость с OpenAI tool layers
+## 4.8. Внешняя совместимость с OpenAI tool layers
 
 Для V1 это не отдельный runtime mode и не обязательный transport. Базовые решения такие:
 

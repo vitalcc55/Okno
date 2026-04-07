@@ -414,6 +414,73 @@ public sealed class AuditLogTests
         Assert.DoesNotContain(@"C:\tools\demo.exe", summary, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TryRecordRuntimeEventPreservesFailClosedRedactionMarkers()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-013",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-013"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-013", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-013", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System, new ThrowingAuditPayloadRedactor());
+
+        bool recorded = auditLog.TryRecordRuntimeEvent(
+            eventName: "wait.runtime.completed",
+            severity: "warning",
+            messageHuman: "Безопасное сообщение.",
+            toolName: "windows.wait",
+            outcome: "failed",
+            windowHwnd: 42,
+            data: new Dictionary<string, string?>
+            {
+                ["exception_message"] = "secret runtime payload",
+                ["user_text"] = "super secret text",
+            });
+
+        Assert.True(recorded);
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"event_data_suppressed\":\"true\"", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret runtime payload", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("super secret text", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TryRecordRuntimeEventReturnsFalseWhenSinkWriteFails()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-014",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-014"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-014", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-014", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+
+        File.Delete(options.EventsPath);
+        Directory.CreateDirectory(options.EventsPath);
+
+        bool recorded = auditLog.TryRecordRuntimeEvent(
+            eventName: "launch.runtime.completed",
+            severity: "info",
+            messageHuman: "Runtime launch завершён.",
+            toolName: "windows.launch_process",
+            outcome: "done",
+            windowHwnd: null,
+            data: new Dictionary<string, string?>
+            {
+                ["executable_identity"] = "demo.exe",
+            });
+
+        Assert.False(recorded);
+        Assert.True(Directory.Exists(options.EventsPath));
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));

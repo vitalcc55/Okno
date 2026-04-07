@@ -44,6 +44,7 @@ public static class ToolContractExporter
                 "artifacts/diagnostics/<run_id>/events.jsonl",
                 "artifacts/diagnostics/<run_id>/summary.md",
                 "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",
+                "artifacts/diagnostics/<run_id>/launch/<launch_id>.json",
                 "artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json",
                 "artifacts/diagnostics/<run_id>/wait/<wait_id>.json",
                 "artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png",

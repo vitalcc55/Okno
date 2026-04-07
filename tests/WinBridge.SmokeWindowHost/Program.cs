@@ -5,12 +5,17 @@ namespace WinBridge.SmokeWindowHost;
 
 internal static class Program
 {
+    private const int DefaultLifetimeMs = 90000;
+    private const int DefaultVisualBurstMs = 6000;
+
     [STAThread]
     private static void Main(string[] args)
     {
         string title = ParseTitle(args) ?? "Okno Smoke Window";
+        int lifetimeMs = ParseLifetimeMs(args) ?? DefaultLifetimeMs;
+        int visualBurstMs = ParseVisualBurstMs(args) ?? DefaultVisualBurstMs;
         ApplicationConfiguration.Initialize();
-        Application.Run(new SmokeWindowForm(title));
+        Application.Run(new SmokeWindowForm(title, lifetimeMs, visualBurstMs));
     }
 
     private static string? ParseTitle(string[] args)
@@ -26,10 +31,44 @@ internal static class Program
         return null;
     }
 
+    private static int? ParseLifetimeMs(string[] args)
+    {
+        for (int index = 0; index < args.Length; index++)
+        {
+            if (args[index] == "--lifetime-ms"
+                && index + 1 < args.Length
+                && int.TryParse(args[index + 1], out int lifetimeMs)
+                && lifetimeMs > 0)
+            {
+                return lifetimeMs;
+            }
+        }
+
+        return null;
+    }
+
+    private static int? ParseVisualBurstMs(string[] args)
+    {
+        for (int index = 0; index < args.Length; index++)
+        {
+            if (args[index] == "--visual-burst-ms"
+                && index + 1 < args.Length
+                && int.TryParse(args[index + 1], out int visualBurstMs)
+                && visualBurstMs > 0)
+            {
+                return visualBurstMs;
+            }
+        }
+
+        return null;
+    }
+
     private sealed class SmokeWindowForm : Form
     {
         private const int WmAppArmElementGone = 0x8001;
         private const int WmAppPrepareFocus = 0x8002;
+        private const int WmAppArmVisualHeartbeat = 0x8003;
+        private const int VisualHeartbeatIntervalMs = 500;
 
         private readonly Button _runButton;
         private readonly Button _transientWaitButton;
@@ -37,10 +76,13 @@ internal static class Program
         private readonly Panel _visualHeartbeatPanel;
         private readonly Label _visualHeartbeatLabel;
         private readonly System.Windows.Forms.Timer _visualHeartbeatTimer;
+        private readonly System.Windows.Forms.Timer _autoCloseTimer;
         private readonly System.Windows.Forms.Timer _transientHideTimer;
+        private readonly int _visualBurstTransitionCount;
+        private int _remainingVisualTransitions;
         private bool _visualPhase;
 
-        public SmokeWindowForm(string title)
+        public SmokeWindowForm(string title, int lifetimeMs, int visualBurstMs)
         {
             Text = title;
             StartPosition = FormStartPosition.Manual;
@@ -52,7 +94,9 @@ internal static class Program
             _visualHeartbeatPanel = CreateVisualHeartbeatPanel();
             _visualHeartbeatLabel = CreateVisualHeartbeatLabel();
             _visualHeartbeatTimer = CreateVisualHeartbeatTimer();
+            _autoCloseTimer = CreateAutoCloseTimer(lifetimeMs);
             _transientHideTimer = CreateTransientHideTimer();
+            _visualBurstTransitionCount = Math.Max(1, (int)Math.Ceiling((double)visualBurstMs / VisualHeartbeatIntervalMs));
             Controls.Add(_runButton);
             Controls.Add(_transientWaitButton);
             Controls.Add(CreateRememberCheckBox());
@@ -63,7 +107,7 @@ internal static class Program
             Shown += (_, _) =>
             {
                 QueueCanonicalFocusTarget();
-                _visualHeartbeatTimer.Start();
+                _autoCloseTimer.Start();
             };
             Activated += (_, _) => QueueCanonicalFocusTarget();
         }
@@ -131,10 +175,18 @@ internal static class Program
         {
             System.Windows.Forms.Timer timer = new()
             {
-                Interval = 700,
+                Interval = VisualHeartbeatIntervalMs,
                 Enabled = false,
             };
-            timer.Tick += (_, _) => ToggleVisualState();
+            timer.Tick += (_, _) =>
+            {
+                ToggleVisualState();
+                _remainingVisualTransitions--;
+                if (_remainingVisualTransitions <= 0)
+                {
+                    timer.Stop();
+                }
+            };
             return timer;
         }
 
@@ -149,6 +201,21 @@ internal static class Program
             {
                 _transientWaitButton.Visible = false;
                 timer.Stop();
+            };
+            return timer;
+        }
+
+        private static System.Windows.Forms.Timer CreateAutoCloseTimer(int lifetimeMs)
+        {
+            System.Windows.Forms.Timer timer = new()
+            {
+                Interval = lifetimeMs,
+                Enabled = false,
+            };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                Application.ExitThread();
             };
             return timer;
         }
@@ -205,6 +272,17 @@ internal static class Program
             _transientHideTimer.Start();
         }
 
+        private void ArmVisualHeartbeatScenario()
+        {
+            if (_visualHeartbeatTimer.Enabled)
+            {
+                return;
+            }
+
+            _remainingVisualTransitions = _visualBurstTransitionCount;
+            _visualHeartbeatTimer.Start();
+        }
+
         protected override void WndProc(ref Message m)
         {
             switch (m.Msg)
@@ -215,6 +293,10 @@ internal static class Program
                     return;
                 case WmAppPrepareFocus:
                     PrepareCanonicalFocusTarget();
+                    m.Result = IntPtr.Zero;
+                    return;
+                case WmAppArmVisualHeartbeat:
+                    ArmVisualHeartbeatScenario();
                     m.Result = IntPtr.Zero;
                     return;
             }

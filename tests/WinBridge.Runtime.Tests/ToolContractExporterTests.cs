@@ -67,12 +67,15 @@ public sealed class ToolContractExporterTests
     }
 
     [Fact]
-    public void ExportJsonIncludesCaptureArtifactPath()
+    public void ExportJsonIncludesArtifactPathsForShippedToolEvidence()
     {
         ToolContractExportDocument document = ToolContractExporter.CreateDocument();
 
         Assert.Contains(
             "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",
+            document.Artifacts);
+        Assert.Contains(
+            "artifacts/diagnostics/<run_id>/launch/<launch_id>.json",
             document.Artifacts);
         Assert.Contains(
             "artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json",

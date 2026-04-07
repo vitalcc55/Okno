@@ -26,6 +26,7 @@ namespace WinBridge.Server.Tools;
 [McpServerToolType]
 public sealed class WindowTools
 {
+    private const string LaunchPreviewCompletedEventName = "launch.preview.completed";
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -660,7 +661,15 @@ public sealed class WindowTools
         if (decision.Mode == ToolExecutionMode.DryRun)
         {
             LaunchProcessResult dryRunResult = CreateAllowedDryRunLaunchProcessResult(validation.Preview!, decision);
-            invocation.Complete(
+            _auditLog.TryRecordRuntimeEvent(
+                eventName: LaunchPreviewCompletedEventName,
+                severity: "info",
+                messageHuman: "Dry-run preview подготовлен без factual запуска процесса.",
+                toolName: ToolNames.WindowsLaunchProcess,
+                outcome: "preview_only",
+                windowHwnd: null,
+                data: CreateLaunchProcessAuditData(dryRunResult));
+            invocation.CompleteBestEffort(
                 dryRunResult.Status,
                 "Подготовлен dry-run preview запуска процесса.",
                 data: CreateLaunchProcessAuditData(dryRunResult));

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Diagnostics;
+using System.Security;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -157,6 +158,82 @@ public sealed class AuditLog
         long? windowHwnd,
         IReadOnlyDictionary<string, string?>? data = null)
     {
+        PreparedRuntimeEvent preparedEvent = PrepareRuntimeEvent(
+            eventName,
+            severity,
+            messageHuman,
+            toolName,
+            outcome,
+            windowHwnd,
+            data);
+
+        WriteEvent(
+            severity: severity,
+            eventName: eventName,
+            messageHuman: preparedEvent.MessageHuman,
+            toolName: toolName,
+            outcome: outcome,
+            windowHwnd: windowHwnd,
+            data: preparedEvent.Data);
+    }
+
+    public bool TryRecordRuntimeEvent(
+        string eventName,
+        string severity,
+        string messageHuman,
+        string? toolName,
+        string? outcome,
+        long? windowHwnd,
+        IReadOnlyDictionary<string, string?>? data = null)
+    {
+        PreparedRuntimeEvent preparedEvent = PrepareRuntimeEvent(
+            eventName,
+            severity,
+            messageHuman,
+            toolName,
+            outcome,
+            windowHwnd,
+            data);
+
+        try
+        {
+            WriteEvent(
+                severity: severity,
+                eventName: eventName,
+                messageHuman: preparedEvent.MessageHuman,
+                toolName: toolName,
+                outcome: outcome,
+                windowHwnd: windowHwnd,
+                data: preparedEvent.Data);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+        catch (SecurityException)
+        {
+            return false;
+        }
+    }
+
+    private PreparedRuntimeEvent PrepareRuntimeEvent(
+        string eventName,
+        string severity,
+        string messageHuman,
+        string? toolName,
+        string? outcome,
+        long? windowHwnd,
+        IReadOnlyDictionary<string, string?>? data)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(eventName);
         ArgumentException.ThrowIfNullOrWhiteSpace(severity);
         ArgumentException.ThrowIfNullOrWhiteSpace(messageHuman);
@@ -170,14 +247,7 @@ public sealed class AuditLog
             outcome,
             preserveProvidedFailureMessage: false);
 
-        WriteEvent(
-            severity: severity,
-            eventName: eventName,
-            messageHuman: sanitizedMessage,
-            toolName: toolName,
-            outcome: outcome,
-            windowHwnd: windowHwnd,
-            data: sanitizedData);
+        return new PreparedRuntimeEvent(sanitizedMessage, sanitizedData);
     }
 
     internal void WriteToolCompleted(
@@ -453,4 +523,8 @@ public sealed class AuditLog
                 SummarySuppressed: true);
         }
     }
+
+    private sealed record PreparedRuntimeEvent(
+        string MessageHuman,
+        Dictionary<string, string?>? Data);
 }

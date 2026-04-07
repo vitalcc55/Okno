@@ -620,6 +620,75 @@ public sealed class PollingWaitServiceTests
     }
 
     [Fact]
+    public async Task WaitAsyncRecordsVisualBaselineCapturedEventBeforeCompletion()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-baseline-event");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 607612, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            visualProbe);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 100),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+
+        string[] eventLines = await File.ReadAllLinesAsync(options.EventsPath);
+        Assert.Equal(2, eventLines.Length);
+        Assert.Contains("\"event_name\":\"wait.visual.baseline_captured\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"tool_name\":\"windows.wait\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"condition\":\"visual_changed\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"event_name\":\"wait.runtime.completed\"", eventLines[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WaitAsyncReturnsDoneWhenVisualObservabilityWritesFail()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-wait-visual-audit-failure");
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 6076121, isForeground: false);
+        SequenceVisualProbe visualProbe = new(
+        [
+            CreateVisualFrame(targetWindow, changedCells: 0),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+            CreateVisualFrame(targetWindow, changedCells: 16),
+        ]);
+        PollingWaitService service = CreateService(
+            options,
+            new FakeWindowManager([targetWindow]),
+            new FakeWindowTargetResolver(_ => targetWindow),
+            new SequenceWaitProbe(),
+            new WaitOptions(TimeSpan.FromMilliseconds(1)),
+            visualProbe);
+
+        File.Delete(options.EventsPath);
+        Directory.CreateDirectory(options.EventsPath);
+
+        WaitResult result = await service.WaitAsync(
+            CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
+            new WaitRequest(WaitConditionValues.VisualChanged, TimeoutMs: 100),
+            CancellationToken.None);
+
+        Assert.Equal(WaitStatusValues.Done, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
+        Assert.True(Directory.Exists(options.EventsPath));
+    }
+
+    [Fact]
     public async Task WaitAsyncReturnsDoneWhenVisualEvidenceBudgetExpires()
     {
         string root = CreateTempDirectory();
@@ -762,7 +831,6 @@ public sealed class PollingWaitServiceTests
             new FakeWindowTargetResolver(_ => targetWindow),
             probe,
             new WaitOptions(TimeSpan.FromMilliseconds(1)));
-        Stopwatch stopwatch = Stopwatch.StartNew();
 
         WaitResult result = await service.WaitAsync(
             CreateTarget(targetWindow, WaitTargetSourceValues.Attached),
@@ -772,10 +840,9 @@ public sealed class PollingWaitServiceTests
                 TimeoutMs: 20),
             CancellationToken.None);
 
-        stopwatch.Stop();
-
         Assert.Equal(WaitStatusValues.Timeout, result.Status);
-        Assert.True(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(150));
+        Assert.NotEmpty(probe.Timeouts);
+        Assert.All(probe.Timeouts, timeout => Assert.True(timeout <= TimeSpan.FromMilliseconds(20)));
     }
 
     [Fact]
@@ -856,6 +923,7 @@ public sealed class PollingWaitServiceTests
         WaitOptions effectiveWaitOptions = waitOptions ?? new WaitOptions(TimeSpan.FromMilliseconds(1));
         WaitResultMaterializer resultMaterializer = new(auditLog, options, effectiveWaitOptions);
         return new PollingWaitService(
+            auditLog,
             windowManager,
             windowTargetResolver,
             probe,
@@ -1150,12 +1218,15 @@ public sealed class PollingWaitServiceTests
 
     private sealed class DelayedWaitProbe(TimeSpan delay) : IUiAutomationWaitProbe
     {
+        public List<TimeSpan> Timeouts { get; } = [];
+
         public async Task<UiAutomationWaitProbeExecutionResult> ProbeAsync(
             WindowDescriptor targetWindow,
             WaitRequest request,
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
+            Timeouts.Add(timeout);
             await Task.Delay(delay, CancellationToken.None);
 
             return new UiAutomationWaitProbeExecutionResult(

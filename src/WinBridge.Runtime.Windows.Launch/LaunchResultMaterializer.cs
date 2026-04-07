@@ -69,37 +69,31 @@ internal sealed class LaunchResultMaterializer
                 : result.Reason ?? "Runtime launch завершился без подтверждённого результата.")
             : "Runtime launch завершён, но diagnostics artifact не materialized.";
 
-        try
-        {
-            _auditLog.RecordRuntimeEvent(
-                eventName: RuntimeCompletedEventName,
-                severity: severity,
-                messageHuman: message,
-                toolName: "windows.launch_process",
-                outcome: result.Status,
-                windowHwnd: result.MainWindowObserved ? result.MainWindowHandle : null,
-                data: new Dictionary<string, string?>
-                {
-                    ["status"] = result.Status,
-                    ["decision"] = result.Decision,
-                    ["result_mode"] = result.ResultMode,
-                    ["failure_code"] = result.FailureCode,
-                    ["executable_identity"] = result.ExecutableIdentity,
-                    ["process_id"] = result.ProcessId?.ToString(CultureInfo.InvariantCulture),
-                    ["started_at_utc"] = result.StartedAtUtc?.ToString("O", CultureInfo.InvariantCulture),
-                    ["has_exited"] = ToInvariantBoolean(result.HasExited),
-                    ["exit_code"] = result.ExitCode?.ToString(CultureInfo.InvariantCulture),
-                    ["main_window_observed"] = ToInvariantBoolean(result.MainWindowObserved),
-                    ["main_window_handle"] = result.MainWindowHandle?.ToString(CultureInfo.InvariantCulture),
-                    ["main_window_observation_status"] = result.MainWindowObservationStatus,
-                    ["artifact_path"] = result.ArtifactPath,
-                    ["failure_stage"] = failureDiagnostics?.FailureStage,
-                    ["exception_type"] = failureDiagnostics?.ExceptionType,
-                });
-        }
-        catch (Exception)
-        {
-        }
+        _auditLog.TryRecordRuntimeEvent(
+            eventName: RuntimeCompletedEventName,
+            severity: severity,
+            messageHuman: message,
+            toolName: "windows.launch_process",
+            outcome: result.Status,
+            windowHwnd: result.MainWindowObserved ? result.MainWindowHandle : null,
+            data: new Dictionary<string, string?>
+            {
+                ["status"] = result.Status,
+                ["decision"] = result.Decision,
+                ["result_mode"] = result.ResultMode,
+                ["failure_code"] = result.FailureCode,
+                ["executable_identity"] = result.ExecutableIdentity,
+                ["process_id"] = result.ProcessId?.ToString(CultureInfo.InvariantCulture),
+                ["started_at_utc"] = result.StartedAtUtc?.ToString("O", CultureInfo.InvariantCulture),
+                ["has_exited"] = ToInvariantBoolean(result.HasExited),
+                ["exit_code"] = result.ExitCode?.ToString(CultureInfo.InvariantCulture),
+                ["main_window_observed"] = ToInvariantBoolean(result.MainWindowObserved),
+                ["main_window_handle"] = result.MainWindowHandle?.ToString(CultureInfo.InvariantCulture),
+                ["main_window_observation_status"] = result.MainWindowObservationStatus,
+                ["artifact_path"] = result.ArtifactPath,
+                ["failure_stage"] = failureDiagnostics?.FailureStage,
+                ["exception_type"] = failureDiagnostics?.ExceptionType,
+            });
     }
 
     private static LaunchFailureDiagnostics CreateFailureDiagnostics(string failureStage, Exception exception) =>

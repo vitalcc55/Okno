@@ -9,7 +9,7 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` | `dotnet restore` |
 | `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers |
 | `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests |
-| `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke and artifact report |
+| `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke with `windows.launch_process` helper story and artifact report |
 | `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |
 | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |
 | `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |
@@ -25,6 +25,7 @@
 - `dotnet test WinBridge.sln`
 - `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`
 
 ## Artifact Layout
@@ -32,6 +33,7 @@
 - `artifacts/diagnostics/<run_id>/events.jsonl`
 - `artifacts/diagnostics/<run_id>/summary.md`
 - `artifacts/diagnostics/<run_id>/captures/<capture_id>.png`
+- `artifacts/diagnostics/<run_id>/launch/<launch_id>.json`
 - `artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json`
 - `artifacts/diagnostics/<run_id>/wait/<wait_id>.json`
 - `artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png`

@@ -122,7 +122,7 @@ public sealed class Win32UiAutomationService : IUiAutomationService
             ? "Runtime UIA snapshot построен."
             : result.Reason ?? "Runtime UIA snapshot завершился с ошибкой.";
 
-        _auditLog.RecordRuntimeEvent(
+        _auditLog.TryRecordRuntimeEvent(
             eventName: RuntimeCompletedEventName,
             severity: severity,
             messageHuman: message,

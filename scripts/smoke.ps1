@@ -40,10 +40,17 @@ namespace WinBridgeSmoke
 
 $wmAppArmElementGone = 0x8001
 $wmAppPrepareFocus = 0x8002
-$waitTimeoutForegroundMs = 1500
+$wmAppArmVisualHeartbeat = 0x8003
+$waitTimeoutForegroundMs = 5000
+$waitTimeoutFocusMs = 5000
 $waitTimeoutSemanticUiMs = 3000
 $waitTimeoutElementGoneMs = 5000
 $waitTimeoutVisualMs = 6000
+$helperLaunchWaitTimeoutMs = 10000
+$helperWindowMaterializationTimeoutMs = 10000
+$helperLifetimeSafetyBufferMs = 120000
+$helperVisualBurstMs = $waitTimeoutVisualMs + 2000
+$helperTitleResolutionPollIntervalMs = 100
 $expectedHealthDomains = @('desktop_session', 'session_alignment', 'integrity', 'uiaccess')
 $expectedHealthCapabilities = @('capture', 'uia', 'wait', 'input', 'clipboard', 'launch')
 $allowedGuardStatuses = @('ready', 'degraded', 'blocked', 'unknown')
@@ -431,10 +438,7 @@ function Assert-HealthObservabilityContract {
     $eventsPath = Join-Path ([string]$Payload.artifactsDirectory) 'events.jsonl'
     Assert-Condition -Condition (Test-Path $eventsPath) -Message "Health observability contract expected events file '$eventsPath'."
 
-    $allRunEvents = @(
-        Get-Content $eventsPath |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            ForEach-Object { $_ | ConvertFrom-Json })
+    $allRunEvents = @(Get-AuditEvents -ArtifactsDirectory ([string]$Payload.artifactsDirectory))
 
     $healthEvents = @(
         $allRunEvents |
@@ -531,28 +535,6 @@ function Wait-Until {
     return [bool](& $Predicate)
 }
 
-function Start-SmokeHelperWindow {
-    param(
-        [Parameter(Mandatory)]
-        [string] $ExecutablePath,
-        [Parameter(Mandatory)]
-        [string] $Title
-    )
-
-    Assert-Condition -Condition (Test-Path $ExecutablePath) -Message "Smoke helper executable '$ExecutablePath' does not exist. Build the solution before running smoke."
-
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $ExecutablePath
-    $startInfo.Arguments = "--title `"$Title`""
-    $startInfo.WorkingDirectory = $repoRoot
-    $startInfo.UseShellExecute = $false
-
-    $helperProcess = [System.Diagnostics.Process]::new()
-    $helperProcess.StartInfo = $startInfo
-    $helperProcess.Start() | Out-Null
-    return $helperProcess
-}
-
 function Wait-ForMainWindowHandle {
     param(
         [Parameter(Mandatory)]
@@ -574,6 +556,419 @@ function Wait-ForMainWindowHandle {
     Assert-Condition -Condition $found -Message 'Smoke helper window did not expose a main window handle in time.'
     $Process.Refresh()
     return [int64]$Process.MainWindowHandle
+}
+
+function Get-ProcessByIdWithRetry {
+    param(
+        [Parameter(Mandatory)]
+        [int] $ProcessId,
+        [int] $TimeoutMilliseconds = 10000,
+        [int] $PollMilliseconds = 100
+    )
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    do {
+        try {
+            $candidate = [System.Diagnostics.Process]::GetProcessById($ProcessId)
+            $candidate.Refresh()
+            if (-not $candidate.HasExited) {
+                return $candidate
+            }
+        }
+        catch [System.ArgumentException] {
+        }
+
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+    while ((Get-Date) -lt $deadline)
+
+    throw "Smoke helper process '$ProcessId' did not become observable in time."
+}
+
+function Get-SmokeHelperProcessIds {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ProcessName,
+        [Parameter(Mandatory)]
+        [string] $ExpectedOwnershipMarker
+    )
+
+    $imageName = if ($ProcessName.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $ProcessName
+    }
+    else {
+        "$ProcessName.exe"
+    }
+
+    return @(
+        Get-CimInstance Win32_Process -Filter "Name = '$imageName'" -ErrorAction SilentlyContinue |
+            Where-Object {
+                $commandLine = [string]$_.CommandLine
+                -not [string]::IsNullOrWhiteSpace($commandLine) -and
+                ($commandLine.IndexOf($ExpectedOwnershipMarker, [System.StringComparison]::Ordinal) -ge 0)
+            } |
+            ForEach-Object { [int]$_.ProcessId } |
+            Sort-Object -Unique)
+}
+
+function Get-SmokeHelperLaunchArguments {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Title,
+        [Parameter(Mandatory)]
+        [string] $OwnershipMarker,
+        [Parameter(Mandatory)]
+        [int] $LifetimeMs,
+        [Parameter(Mandatory)]
+        [int] $VisualBurstMs
+    )
+
+    return @(
+        '--title',
+        $Title,
+        '--smoke-run-id',
+        $OwnershipMarker,
+        '--lifetime-ms',
+        $LifetimeMs.ToString([System.Globalization.CultureInfo]::InvariantCulture),
+        '--visual-burst-ms',
+        $VisualBurstMs.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+}
+
+function Get-SmokeHelperProcessLeakIds {
+    param(
+        [Parameter(Mandatory)]
+        [string] $HelperProcessName,
+        [Parameter(Mandatory)]
+        [string] $ExpectedOwnershipMarker,
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory)]
+        [int[]] $BaselineProcessIds
+    )
+
+    $currentProcessIds = @(Get-SmokeHelperProcessIds -ProcessName $HelperProcessName -ExpectedOwnershipMarker $ExpectedOwnershipMarker)
+    return @($currentProcessIds | Where-Object { $_ -notin $BaselineProcessIds })
+}
+
+function Get-SmokeHelperWindowLeaks {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTitle,
+        [Parameter(Mandatory)]
+        [string] $RequestName
+    )
+
+    $windowInventory = Invoke-ToolCall -Process $Process -Name 'windows.list_windows' -Arguments @{ includeInvisible = $true } -RequestName $RequestName
+    return @(
+        $windowInventory.Payload.windows |
+            Where-Object { [string]$_.title -eq $ExpectedTitle })
+}
+
+function Get-SmokeHelperCandidateProcessIds {
+    param(
+        [Parameter(Mandatory)]
+        [string] $HelperProcessName,
+        [Parameter(Mandatory)]
+        [string] $ExpectedExecutablePath,
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory)]
+        [int[]] $BaselineProcessIds
+    )
+
+    $imageName = if ($HelperProcessName.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $HelperProcessName
+    }
+    else {
+        "$HelperProcessName.exe"
+    }
+
+    $normalizedExecutablePath = [System.IO.Path]::GetFullPath($ExpectedExecutablePath)
+
+    return @(
+        Get-CimInstance Win32_Process -Filter "Name = '$imageName'" -ErrorAction SilentlyContinue |
+            Where-Object {
+                $executablePath = [string]$_.ExecutablePath
+                -not [string]::IsNullOrWhiteSpace($executablePath) -and
+                ([string]::Equals(
+                    [System.IO.Path]::GetFullPath($executablePath),
+                    $normalizedExecutablePath,
+                    [System.StringComparison]::OrdinalIgnoreCase))
+            } |
+            ForEach-Object { [int]$_.ProcessId } |
+            Where-Object { $_ -notin $BaselineProcessIds } |
+            Sort-Object -Unique)
+}
+
+function Resolve-SmokeHelperTitleProcessIds {
+    param(
+        [Parameter(Mandatory)]
+        [string] $HelperProcessName,
+        [Parameter(Mandatory)]
+        [string] $ExpectedExecutablePath,
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory)]
+        [int[]] $BaselineProcessIds,
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory)]
+        [int[]] $AdditionalCandidateProcessIds,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTitle,
+        [Parameter(Mandatory)]
+        [int] $TimeoutMs
+    )
+
+    $candidateProcessIds = @([int[]]$AdditionalCandidateProcessIds)
+    $candidateProcessIds = @($candidateProcessIds | Sort-Object -Unique)
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    do {
+        $discoveredCandidateProcessIds = @(Get-SmokeHelperCandidateProcessIds `
+            -HelperProcessName $HelperProcessName `
+            -ExpectedExecutablePath $ExpectedExecutablePath `
+            -BaselineProcessIds $BaselineProcessIds)
+        $candidateProcessIds = @($candidateProcessIds + $discoveredCandidateProcessIds)
+        $candidateProcessIds = @($candidateProcessIds | Sort-Object -Unique)
+
+        $titleProcessIds = foreach ($processId in $candidateProcessIds) {
+            $candidateProcess = Get-Process -Id $processId -ErrorAction SilentlyContinue
+            if ($null -ne $candidateProcess -and -not $candidateProcess.HasExited) {
+                $candidateProcess.Refresh()
+                if ([string]$candidateProcess.MainWindowTitle -eq $ExpectedTitle) {
+                    [int]$processId
+                }
+            }
+        }
+        $titleProcessIds = @($titleProcessIds | Sort-Object -Unique)
+
+        if ($titleProcessIds.Count -gt 0) {
+            return [PSCustomObject]@{
+                CandidateProcessIds = $candidateProcessIds
+                TitleProcessIds = $titleProcessIds
+            }
+        }
+
+        Start-Sleep -Milliseconds $helperTitleResolutionPollIntervalMs
+    }
+    while ((Get-Date) -lt $deadline)
+
+    return [PSCustomObject]@{
+        CandidateProcessIds = $candidateProcessIds
+        TitleProcessIds = @()
+    }
+}
+
+function Get-SmokeHelperBaseReconciliationState {
+    param(
+        [Parameter(Mandatory)]
+        [string] $HelperProcessName,
+        [Parameter(Mandatory)]
+        [string] $ExpectedOwnershipMarker,
+        [Parameter(Mandatory)]
+        [string] $ExpectedExecutablePath,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTitle,
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory)]
+        [int[]] $BaselineProcessIds
+    )
+
+    $markerProcessIds = @(Get-SmokeHelperProcessLeakIds -HelperProcessName $HelperProcessName -ExpectedOwnershipMarker $ExpectedOwnershipMarker -BaselineProcessIds $BaselineProcessIds)
+    $titleCandidateProcessIds = @(Get-SmokeHelperCandidateProcessIds -HelperProcessName $HelperProcessName -ExpectedExecutablePath $ExpectedExecutablePath -BaselineProcessIds $BaselineProcessIds)
+    return [PSCustomObject]@{
+        HelperProcessName = $HelperProcessName
+        ExpectedOwnershipMarker = $ExpectedOwnershipMarker
+        ExpectedExecutablePath = $ExpectedExecutablePath
+        ExpectedTitle = $ExpectedTitle
+        BaselineProcessIds = $BaselineProcessIds
+        MarkerProcessIds = $markerProcessIds
+        TitleCandidateProcessIds = $titleCandidateProcessIds
+    }
+}
+
+function Resolve-SmokeHelperCleanupProcessIds {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ReconciliationState,
+        [Parameter(Mandatory)]
+        [int] $TitleResolutionTimeoutMs
+    )
+
+    $markerProcessIds = @(Get-SmokeHelperProcessLeakIds `
+        -HelperProcessName ([string]$ReconciliationState.HelperProcessName) `
+        -ExpectedOwnershipMarker ([string]$ReconciliationState.ExpectedOwnershipMarker) `
+        -BaselineProcessIds @([int[]]$ReconciliationState.BaselineProcessIds))
+    $titleResolution = (Resolve-SmokeHelperTitleProcessIds `
+        -HelperProcessName ([string]$ReconciliationState.HelperProcessName) `
+        -ExpectedExecutablePath ([string]$ReconciliationState.ExpectedExecutablePath) `
+        -BaselineProcessIds @([int[]]$ReconciliationState.BaselineProcessIds) `
+        -AdditionalCandidateProcessIds @([int[]]$ReconciliationState.TitleCandidateProcessIds) `
+        -ExpectedTitle ([string]$ReconciliationState.ExpectedTitle) `
+        -TimeoutMs $TitleResolutionTimeoutMs)
+    $titleCandidateProcessIds = @([int[]]$titleResolution.CandidateProcessIds)
+    $titleProcessIds = @([int[]]$titleResolution.TitleProcessIds)
+
+    return [PSCustomObject]@{
+        MarkerProcessIds = $markerProcessIds
+        TitleCandidateProcessIds = $titleCandidateProcessIds
+        TitleProcessIds = $titleProcessIds
+        CleanupProcessIds = @($markerProcessIds + $titleProcessIds | Sort-Object -Unique)
+    }
+}
+
+function Stop-SmokeHelperLeaks {
+    param(
+        [Parameter(Mandatory)]
+        [int[]] $ProcessIds
+    )
+
+    foreach ($processId in @($ProcessIds | Sort-Object -Unique)) {
+        try {
+            $process = [System.Diagnostics.Process]::GetProcessById([int]$processId)
+            if (-not $process.HasExited) {
+                $process.Kill()
+                $process.WaitForExit()
+            }
+        }
+        catch [System.ArgumentException] {
+        }
+    }
+}
+
+function Assert-NoDryRunLaunchSideEffects {
+    param(
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory)]
+        [int[]] $ProcessLeakIds,
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory)]
+        [object[]] $WindowLeaks
+    )
+
+    Assert-Condition -Condition ($ProcessLeakIds.Count -eq 0) -Message "Dry-run launch unexpectedly created helper process ids: $($ProcessLeakIds -join ', ')."
+    Assert-Condition -Condition ($WindowLeaks.Count -eq 0) -Message 'Dry-run launch unexpectedly materialized helper window.'
+}
+
+function Assert-DryRunPreviewRuntimeEvent {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [int] $BaselineEventCount
+    )
+
+    $currentEventCount = Get-AuditEventCount -ArtifactsDirectory $ArtifactsDirectory -ToolName 'windows.launch_process' -EventName 'launch.preview.completed'
+    Assert-Condition -Condition ($currentEventCount -eq ($BaselineEventCount + 1)) -Message 'Dry-run launch did not record the preview-only runtime event.'
+}
+
+function Assert-NoDryRunRuntimeEvent {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [int] $BaselineEventCount
+    )
+
+    $currentEventCount = Get-AuditEventCount -ArtifactsDirectory $ArtifactsDirectory -ToolName 'windows.launch_process' -EventName 'launch.runtime.completed'
+    Assert-Condition -Condition ($currentEventCount -eq $BaselineEventCount) -Message 'Dry-run launch unexpectedly entered the factual runtime event path.'
+}
+
+function Assert-LaunchProcessPreview {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ToolCall,
+        [Parameter(Mandatory)]
+        [string] $ExpectedExecutableIdentity,
+        [Parameter(Mandatory)]
+        [int] $ExpectedArgumentCount,
+        [Parameter(Mandatory)]
+        [bool] $ExpectedWorkingDirectoryProvided,
+        [Parameter(Mandatory)]
+        [bool] $ExpectedWaitForWindow,
+        [Parameter(Mandatory)]
+        [int] $ExpectedTimeoutMs
+    )
+
+    Assert-Condition -Condition (-not [bool]$ToolCall.Json.result.isError) -Message 'Dry-run launch preview returned isError=true.'
+    $payload = $ToolCall.Payload
+    Assert-Condition -Condition ([string]$payload.status -eq 'done') -Message "Dry-run launch returned unexpected status '$($payload.status)'."
+    Assert-Condition -Condition ([string]$payload.decision -eq 'done') -Message "Dry-run launch returned unexpected decision '$($payload.decision)'."
+    Assert-Condition -Condition ($null -ne $payload.preview) -Message 'Dry-run launch did not return preview.'
+    Assert-Condition -Condition ([string]$payload.preview.executableIdentity -eq $ExpectedExecutableIdentity) -Message 'Dry-run launch preview executableIdentity does not match helper basename.'
+    Assert-Condition -Condition ([string]$payload.preview.resolutionMode -eq 'absolute_path') -Message "Dry-run launch preview returned unexpected resolutionMode '$($payload.preview.resolutionMode)'."
+    Assert-Condition -Condition ([int]$payload.preview.argumentCount -eq $ExpectedArgumentCount) -Message 'Dry-run launch preview argumentCount does not match helper invocation.'
+    Assert-Condition -Condition ([bool]$payload.preview.workingDirectoryProvided -eq $ExpectedWorkingDirectoryProvided) -Message 'Dry-run launch preview workingDirectoryProvided does not match request.'
+    Assert-Condition -Condition ([bool]$payload.preview.waitForWindow -eq $ExpectedWaitForWindow) -Message 'Dry-run launch preview waitForWindow does not match request.'
+    Assert-Condition -Condition ([int]$payload.preview.timeoutMs -eq $ExpectedTimeoutMs) -Message 'Dry-run launch preview timeoutMs does not match request.'
+
+    Assert-Condition -Condition ([string]$payload.executableIdentity -eq $ExpectedExecutableIdentity) -Message 'Dry-run launch executableIdentity does not match helper basename.'
+    Assert-Condition -Condition ($null -eq $payload.processId) -Message 'Dry-run launch must not return processId.'
+    Assert-Condition -Condition ($null -eq $payload.startedAtUtc) -Message 'Dry-run launch must not return startedAtUtc.'
+    Assert-Condition -Condition ($null -eq $payload.hasExited) -Message 'Dry-run launch must not return hasExited.'
+    Assert-Condition -Condition ($null -eq $payload.exitCode) -Message 'Dry-run launch must not return exitCode.'
+    Assert-Condition -Condition (-not [bool]$payload.mainWindowObserved) -Message 'Dry-run launch must not report mainWindowObserved=true.'
+    Assert-Condition -Condition ($null -eq $payload.mainWindowHandle) -Message 'Dry-run launch must not return mainWindowHandle.'
+    Assert-Condition -Condition ($null -eq $payload.mainWindowObservationStatus) -Message 'Dry-run launch must not return mainWindowObservationStatus.'
+    Assert-Condition -Condition ($null -eq $payload.resultMode) -Message 'Dry-run launch must not return resultMode.'
+    Assert-Condition -Condition ($null -eq $payload.artifactPath) -Message 'Dry-run launch must not return artifactPath.'
+
+    $previewProperties = @($payload.preview.PSObject.Properties.Name | Sort-Object)
+    Assert-Condition -Condition (
+        (Join-ContractValues -Values $previewProperties) -eq 'argumentCount,executableIdentity,resolutionMode,timeoutMs,waitForWindow,workingDirectoryProvided'
+    ) -Message 'Dry-run launch preview exposed unexpected fields beyond the safe preview contract.'
+}
+
+function Assert-LaunchProcessLiveResult {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ToolCall,
+        [Parameter(Mandatory)]
+        [string] $ExpectedExecutableIdentity
+    )
+
+    Assert-Condition -Condition (-not [bool]$ToolCall.Json.result.isError) -Message 'Live launch returned isError=true.'
+    $payload = $ToolCall.Payload
+    Assert-Condition -Condition ([string]$payload.status -eq 'done') -Message "Live launch returned unexpected status '$($payload.status)'."
+    Assert-Condition -Condition ([string]$payload.decision -eq 'done') -Message "Live launch returned unexpected decision '$($payload.decision)'."
+    Assert-Condition -Condition ([string]$payload.resultMode -eq 'window_observed') -Message "Live launch returned unexpected resultMode '$($payload.resultMode)'."
+    Assert-Condition -Condition ([string]$payload.executableIdentity -eq $ExpectedExecutableIdentity) -Message 'Live launch executableIdentity does not match helper basename.'
+    Assert-Condition -Condition ([int]$payload.processId -gt 0) -Message 'Live launch did not return a positive processId.'
+    Assert-Condition -Condition ([bool]$payload.mainWindowObserved) -Message 'Live launch did not confirm mainWindowObserved=true.'
+    Assert-Condition -Condition ([int64]$payload.mainWindowHandle -ne 0) -Message 'Live launch did not return a non-zero mainWindowHandle.'
+    Assert-Condition -Condition ([string]$payload.mainWindowObservationStatus -eq 'observed') -Message "Live launch returned unexpected mainWindowObservationStatus '$($payload.mainWindowObservationStatus)'."
+    Assert-Condition -Condition (-not [bool]$payload.hasExited) -Message 'Live launch helper exited before smoke cross-check completed.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$payload.startedAtUtc)) -Message 'Live launch did not return startedAtUtc.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$payload.artifactPath)) -Message 'Live launch did not return artifactPath.'
+    Assert-Condition -Condition (Test-Path ([string]$payload.artifactPath)) -Message "Live launch artifact '$($payload.artifactPath)' was not created."
+}
+
+function Assert-LaunchArtifact {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [object] $LaunchPayload
+    )
+
+    $artifactPath = [System.IO.Path]::GetFullPath([string]$LaunchPayload.artifactPath)
+    $expectedLaunchDirectory = [System.IO.Path]::GetFullPath((Join-Path $ArtifactsDirectory 'launch'))
+    $expectedLaunchPrefix = $expectedLaunchDirectory + [System.IO.Path]::DirectorySeparatorChar
+    Assert-Condition -Condition ($artifactPath.StartsWith($expectedLaunchPrefix, [System.StringComparison]::OrdinalIgnoreCase)) -Message 'Launch artifact path is outside the canonical diagnostics launch directory.'
+    Assert-Condition -Condition ([System.IO.Path]::GetExtension($artifactPath) -eq '.json') -Message 'Launch artifact must be a JSON file.'
+    Assert-Condition -Condition ([System.IO.Path]::GetFileName($artifactPath) -match '^launch-.+\.json$') -Message 'Launch artifact file name does not match the canonical launch artifact naming pattern.'
+
+    $artifact = Get-Content $artifactPath -Raw | ConvertFrom-Json
+    Assert-Condition -Condition (-not ($artifact.PSObject.Properties.Name -contains 'failure_diagnostics')) -Message 'Successful launch artifact must not publish failure_diagnostics.'
+    Assert-Condition -Condition ([string]$artifact.result.status -eq [string]$LaunchPayload.status) -Message 'Launch artifact status diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.decision -eq [string]$LaunchPayload.decision) -Message 'Launch artifact decision diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.result_mode -eq [string]$LaunchPayload.resultMode) -Message 'Launch artifact resultMode diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.executable_identity -eq [string]$LaunchPayload.executableIdentity) -Message 'Launch artifact executableIdentity diverges from public payload.'
+    Assert-Condition -Condition ([int]$artifact.result.process_id -eq [int]$LaunchPayload.processId) -Message 'Launch artifact processId diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.started_at_utc -eq [string]$LaunchPayload.startedAtUtc) -Message 'Launch artifact startedAtUtc diverges from public payload.'
+    Assert-Condition -Condition ([bool]$artifact.result.has_exited -eq [bool]$LaunchPayload.hasExited) -Message 'Launch artifact hasExited diverges from public payload.'
+    Assert-Condition -Condition ([bool]$artifact.result.main_window_observed -eq [bool]$LaunchPayload.mainWindowObserved) -Message 'Launch artifact mainWindowObserved diverges from public payload.'
+    Assert-Condition -Condition ([int64]$artifact.result.main_window_handle -eq [int64]$LaunchPayload.mainWindowHandle) -Message 'Launch artifact mainWindowHandle diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.main_window_observation_status -eq [string]$LaunchPayload.mainWindowObservationStatus) -Message 'Launch artifact mainWindowObservationStatus diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.artifact_path -eq [string]$LaunchPayload.artifactPath) -Message 'Launch artifact nested artifactPath diverges from public payload.'
 }
 
 function Invoke-ToolCall {
@@ -644,6 +1039,8 @@ function Wait-ForVisibleHelperWindow {
         [System.Diagnostics.Process] $Process,
         [Parameter(Mandatory)]
         [int64] $HelperHwnd,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTitle,
         [int] $TimeoutMilliseconds = 10000,
         [int] $PollMilliseconds = 100
     )
@@ -652,8 +1049,12 @@ function Wait-ForVisibleHelperWindow {
     do {
         $result = Invoke-ToolCall -Process $Process -Name 'windows.list_windows' -Arguments @{ includeInvisible = $false } -RequestName 'windows.list_windows(visible helper readiness)'
 
-        if ($result.Payload.count -gt 0 -and (@($result.Payload.windows | ForEach-Object { [int64]$_.hwnd }) -contains $HelperHwnd)) {
-            return $result
+        if ($result.Payload.count -gt 0) {
+            $matchingWindow = @($result.Payload.windows | Where-Object { [int64]$_.hwnd -eq $HelperHwnd })
+            if ($matchingWindow.Count -eq 1) {
+                Assert-Condition -Condition ([string]$matchingWindow[0].title -eq $ExpectedTitle) -Message 'Smoke helper window title did not match the launched helper title.'
+                return $result
+            }
         }
 
         Start-Sleep -Milliseconds $PollMilliseconds
@@ -661,6 +1062,144 @@ function Wait-ForVisibleHelperWindow {
     while ((Get-Date) -lt $deadline)
 
     throw 'Smoke helper window did not appear in visible windows.list_windows inventory in time.'
+}
+
+function Get-AuditEvents {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory
+    )
+
+    $eventsPath = Join-Path $ArtifactsDirectory 'events.jsonl'
+    if (-not (Test-Path $eventsPath)) {
+        return @()
+    }
+
+    $rawContent = Get-Content $eventsPath -Raw
+    if ([string]::IsNullOrEmpty($rawContent)) {
+        return @()
+    }
+
+    $lastLineFeedIndex = $rawContent.LastIndexOf("`n", [System.StringComparison]::Ordinal)
+    if ($lastLineFeedIndex -lt 0) {
+        return @()
+    }
+
+    $completedContent = $rawContent.Substring(0, $lastLineFeedIndex + 1)
+    return @(
+        $completedContent -split "`r?`n" |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { $_ | ConvertFrom-Json })
+}
+
+function Get-AuditEventCount {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [string] $ToolName,
+        [Parameter(Mandatory)]
+        [string] $EventName
+    )
+
+    return @(
+        Get-AuditEvents -ArtifactsDirectory $ArtifactsDirectory |
+            Where-Object {
+                ([string]$_.tool_name -eq $ToolName) -and
+                ([string]$_.event_name -eq $EventName)
+            }).Count
+}
+
+function Start-ToolCallRequest {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [string] $Name,
+        [Parameter(Mandatory)]
+        [hashtable] $Arguments
+    )
+
+    $requestId = Get-NextMcpRequestId
+    $rawRequest = Send-Json -Process $Process -Payload @{
+        jsonrpc = '2.0'
+        id = $requestId
+        method = 'tools/call'
+        params = @{
+            name = $Name
+            arguments = $Arguments
+        }
+    }
+
+    return [PSCustomObject]@{
+        Id = $requestId
+        RawRequest = $rawRequest
+    }
+}
+
+function Complete-ToolCallRequest {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [object] $PendingRequest,
+        [Parameter(Mandatory)]
+        [string] $RequestName
+    )
+
+    $response = Read-Response -Process $Process -RequestName $RequestName -ExpectedId ([int]$PendingRequest.Id)
+    return [PSCustomObject]@{
+        Id = $PendingRequest.Id
+        RawRequest = $PendingRequest.RawRequest
+        RawResponse = $response.Raw
+        Json = $response.Json
+        Payload = Get-ToolPayload -ToolResponse $response.Json
+    }
+}
+
+function Assert-LaunchRuntimeEvent {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [object] $LaunchPayload
+    )
+
+    $eventsPath = Join-Path $ArtifactsDirectory 'events.jsonl'
+    Assert-Condition -Condition (Test-Path $eventsPath) -Message "Launch smoke expected events file '$eventsPath'."
+
+    $launchEvents = @(
+        Get-AuditEvents -ArtifactsDirectory $ArtifactsDirectory |
+            Where-Object {
+                ([string]$_.tool_name -eq 'windows.launch_process') -and
+                ([string]$_.event_name -eq 'launch.runtime.completed')
+            })
+
+    Assert-Condition -Condition ($launchEvents.Count -eq 1) -Message "Launch smoke expected exactly one launch.runtime.completed event, got $($launchEvents.Count)."
+
+    $launchEvent = $launchEvents[0]
+    $expectedHasExited = if ([bool]$LaunchPayload.hasExited) { 'true' } else { 'false' }
+    $expectedMainWindowObserved = if ([bool]$LaunchPayload.mainWindowObserved) { 'true' } else { 'false' }
+    $eventDataProperties = @($launchEvent.data.PSObject.Properties.Name | Sort-Object)
+    Assert-Condition -Condition (
+        (Join-ContractValues -Values $eventDataProperties) -eq 'artifact_path,decision,exception_type,executable_identity,exit_code,failure_code,failure_stage,has_exited,main_window_handle,main_window_observation_status,main_window_observed,process_id,result_mode,started_at_utc,status'
+    ) -Message 'Launch runtime event exposed unexpected fields outside the safe runtime-event contract.'
+    Assert-Condition -Condition ([string]$launchEvent.outcome -eq 'done') -Message "Launch runtime event returned unexpected outcome '$($launchEvent.outcome)'."
+    Assert-Condition -Condition ([string]$launchEvent.data.status -eq [string]$LaunchPayload.status) -Message 'Launch runtime event status diverges from public payload.'
+    Assert-Condition -Condition ([string]$launchEvent.data.decision -eq [string]$LaunchPayload.decision) -Message 'Launch runtime event decision diverges from public payload.'
+    Assert-Condition -Condition ([string]$launchEvent.data.result_mode -eq [string]$LaunchPayload.resultMode) -Message 'Launch runtime event result_mode diverges from public payload.'
+    Assert-Condition -Condition ([string]$launchEvent.data.executable_identity -eq [string]$LaunchPayload.executableIdentity) -Message 'Launch runtime event executable_identity diverges from public payload.'
+    Assert-Condition -Condition ([int]$launchEvent.data.process_id -eq [int]$LaunchPayload.processId) -Message 'Launch runtime event process_id diverges from public payload.'
+    Assert-Condition -Condition ([string]$launchEvent.data.started_at_utc -eq [string]$LaunchPayload.startedAtUtc) -Message 'Launch runtime event started_at_utc diverges from public payload.'
+    Assert-Condition -Condition ([string]$launchEvent.data.has_exited -eq $expectedHasExited) -Message 'Launch runtime event has_exited diverges from public payload.'
+    Assert-Condition -Condition ([string]$launchEvent.data.main_window_observed -eq $expectedMainWindowObserved) -Message 'Launch runtime event main_window_observed diverges from public payload.'
+    Assert-Condition -Condition ([int64]$launchEvent.data.main_window_handle -eq [int64]$LaunchPayload.mainWindowHandle) -Message 'Launch runtime event main_window_handle diverges from public payload.'
+    Assert-Condition -Condition ([string]$launchEvent.data.main_window_observation_status -eq [string]$LaunchPayload.mainWindowObservationStatus) -Message 'Launch runtime event main_window_observation_status diverges from public payload.'
+    Assert-Condition -Condition ([string]$launchEvent.data.artifact_path -eq [string]$LaunchPayload.artifactPath) -Message 'Launch runtime event artifact_path diverges from public payload.'
+    Assert-Condition -Condition ($null -eq $launchEvent.data.failure_code) -Message 'Successful launch runtime event must not publish failure_code.'
+    Assert-Condition -Condition ($null -eq $launchEvent.data.exit_code) -Message 'Successful launch runtime event must not publish exit_code.'
+    Assert-Condition -Condition ($null -eq $launchEvent.data.failure_stage) -Message 'Successful launch runtime event must not publish failure_stage.'
+    Assert-Condition -Condition ($null -eq $launchEvent.data.exception_type) -Message 'Successful launch runtime event must not publish exception_type.'
 }
 
 function Wait-ForSuccessfulWindowCapture {
@@ -853,6 +1392,10 @@ $process = [System.Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
 $process.Start() | Out-Null
 $helperProcess = $null
+$helperProcessId = $null
+$helperProcessIdsBeforeLive = $null
+$liveReconciliation = $null
+$helperHwnd = $null
 
 try {
     Invoke-NativeCommand -Description 'tool contract export for smoke' -Command {
@@ -861,10 +1404,6 @@ try {
 
     $manifest = Get-Content $contractPath -Raw | ConvertFrom-Json
     $requiredTools = Get-RequiredToolNames -Manifest $manifest
-
-    $helperTitle = "Okno Smoke Helper $runId"
-    $helperProcess = Start-SmokeHelperWindow -ExecutablePath $helperExe -Title $helperTitle
-    $helperHwnd = Wait-ForMainWindowHandle -Process $helperProcess
 
     $initializeCall = Invoke-McpRequest -Process $process -Method 'initialize' -Params @{
         protocolVersion = '2025-06-18'
@@ -946,6 +1485,99 @@ try {
             "- status: partial_after_health",
             "- report: $reportPath")
 
+    $helperTitle = "Okno Launch Smoke $runId"
+    $helperOwnershipMarker = "okno-smoke-run:$runId"
+    $helperExecutableIdentity = [System.IO.Path]::GetFileName($helperExe)
+    $helperProcessName = [System.IO.Path]::GetFileNameWithoutExtension($helperExe)
+    $helperLifetimeMs = $helperLaunchWaitTimeoutMs + $helperWindowMaterializationTimeoutMs + $waitTimeoutForegroundMs + $waitTimeoutFocusMs + (3 * $waitTimeoutSemanticUiMs) + $waitTimeoutElementGoneMs + $waitTimeoutVisualMs + $helperLifetimeSafetyBufferMs
+    $helperLaunchArgs = Get-SmokeHelperLaunchArguments -Title $helperTitle -OwnershipMarker $helperOwnershipMarker -LifetimeMs $helperLifetimeMs -VisualBurstMs $helperVisualBurstMs
+    Assert-Condition -Condition (Test-Path $helperExe) -Message "Smoke helper executable '$helperExe' does not exist. Build the solution before running smoke."
+    $helperProcessIdsBeforeDryRun = @(Get-SmokeHelperProcessIds -ProcessName $helperProcessName -ExpectedOwnershipMarker $helperOwnershipMarker)
+    $dryRunPreviewEventCountBefore = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.launch_process' -EventName 'launch.preview.completed'
+    $dryRunLaunchRuntimeEventCountBefore = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.launch_process' -EventName 'launch.runtime.completed'
+
+    $launchDryRunCall = Invoke-ToolCall -Process $process -Name 'windows.launch_process' -Arguments @{
+        executable = $helperExe
+        args = $helperLaunchArgs
+        workingDirectory = $repoRoot
+        waitForWindow = $true
+        timeoutMs = 10000
+        dryRun = $true
+        confirm = $false
+    } -RequestName 'windows.launch_process(dry_run helper)'
+    $rawLaunchDryRunRequest = $launchDryRunCall.RawRequest
+    $launchDryRunResponse = [PSCustomObject]@{
+        Raw = $launchDryRunCall.RawResponse
+        Json = $launchDryRunCall.Json
+    }
+    $launchDryRunPayload = $launchDryRunCall.Payload
+    $dryRunReconciliation = Get-SmokeHelperBaseReconciliationState `
+        -HelperProcessName $helperProcessName `
+        -ExpectedOwnershipMarker $helperOwnershipMarker `
+        -ExpectedExecutablePath $helperExe `
+        -ExpectedTitle $helperTitle `
+        -BaselineProcessIds $helperProcessIdsBeforeDryRun
+    try {
+        Assert-LaunchProcessPreview `
+            -ToolCall $launchDryRunCall `
+            -ExpectedExecutableIdentity $helperExecutableIdentity `
+            -ExpectedArgumentCount $helperLaunchArgs.Count `
+            -ExpectedWorkingDirectoryProvided $true `
+            -ExpectedWaitForWindow $true `
+            -ExpectedTimeoutMs 10000
+        Assert-DryRunPreviewRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -BaselineEventCount $dryRunPreviewEventCountBefore
+        Assert-NoDryRunRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -BaselineEventCount $dryRunLaunchRuntimeEventCountBefore
+        $dryRunWindowLeaks = @(Get-SmokeHelperWindowLeaks -Process $process -ExpectedTitle $helperTitle -RequestName 'windows.list_windows(dry_run side_effect_check)')
+        $dryRunResolvedReconciliation = Resolve-SmokeHelperCleanupProcessIds -ReconciliationState $dryRunReconciliation -TitleResolutionTimeoutMs $helperWindowMaterializationTimeoutMs
+        Assert-NoDryRunLaunchSideEffects -ProcessLeakIds $dryRunResolvedReconciliation.CleanupProcessIds -WindowLeaks $dryRunWindowLeaks
+    }
+    finally {
+        if ($null -eq $dryRunReconciliation) {
+            $dryRunReconciliation = Get-SmokeHelperBaseReconciliationState `
+                -HelperProcessName $helperProcessName `
+                -ExpectedOwnershipMarker $helperOwnershipMarker `
+                -ExpectedExecutablePath $helperExe `
+                -ExpectedTitle $helperTitle `
+                -BaselineProcessIds $helperProcessIdsBeforeDryRun
+        }
+
+        $dryRunResolvedReconciliation = Resolve-SmokeHelperCleanupProcessIds -ReconciliationState $dryRunReconciliation -TitleResolutionTimeoutMs $helperWindowMaterializationTimeoutMs
+        if ($dryRunResolvedReconciliation.CleanupProcessIds.Count -gt 0) {
+            Stop-SmokeHelperLeaks -ProcessIds $dryRunResolvedReconciliation.CleanupProcessIds
+        }
+    }
+
+    $helperProcessIdsBeforeLive = @(Get-SmokeHelperProcessIds -ProcessName $helperProcessName -ExpectedOwnershipMarker $helperOwnershipMarker)
+    $launchLiveCall = Invoke-ToolCall -Process $process -Name 'windows.launch_process' -Arguments @{
+        executable = $helperExe
+        args = $helperLaunchArgs
+        workingDirectory = $repoRoot
+        waitForWindow = $true
+        timeoutMs = 10000
+        dryRun = $false
+        confirm = $true
+    } -RequestName 'windows.launch_process(live helper)'
+    $rawLaunchLiveRequest = $launchLiveCall.RawRequest
+    $launchLiveResponse = [PSCustomObject]@{
+        Raw = $launchLiveCall.RawResponse
+        Json = $launchLiveCall.Json
+    }
+    $launchLivePayload = $launchLiveCall.Payload
+    $liveReconciliation = Get-SmokeHelperBaseReconciliationState `
+        -HelperProcessName $helperProcessName `
+        -ExpectedOwnershipMarker $helperOwnershipMarker `
+        -ExpectedExecutablePath $helperExe `
+        -ExpectedTitle $helperTitle `
+        -BaselineProcessIds $helperProcessIdsBeforeLive
+    $helperProcessId = [int]$launchLivePayload.processId
+    $helperProcess = Get-ProcessByIdWithRetry -ProcessId $helperProcessId
+    Assert-LaunchProcessLiveResult -ToolCall $launchLiveCall -ExpectedExecutableIdentity $helperExecutableIdentity
+    Assert-LaunchArtifact -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -LaunchPayload $launchLivePayload
+    $helperHwnd = Wait-ForMainWindowHandle -Process $helperProcess
+    Assert-Condition -Condition ($helperHwnd -eq [int64]$launchLivePayload.mainWindowHandle) -Message 'Live launch cross-check observed a different helper hwnd than the public payload.'
+    $helperProcess.Refresh()
+    Assert-Condition -Condition ([string]$helperProcess.MainWindowTitle -eq $helperTitle) -Message 'Live launch cross-check observed an unexpected helper window title.'
+
     $monitorsCall = Invoke-ToolCall -Process $process -Name 'windows.list_monitors' -Arguments @{} -RequestName 'windows.list_monitors'
     $rawMonitorsRequest = $monitorsCall.RawRequest
     $monitorsResponse = [PSCustomObject]@{
@@ -957,7 +1589,7 @@ try {
     Assert-HealthTopologyConsistency -HealthPayload $healthPayload -MonitorsPayload $monitorsPayload
     $primaryMonitorId = [string]$monitorsPayload.monitors[0].monitorId
 
-    $visibleWindowResult = Wait-ForVisibleHelperWindow -Process $process -HelperHwnd $helperHwnd
+    $visibleWindowResult = Wait-ForVisibleHelperWindow -Process $process -HelperHwnd $helperHwnd -ExpectedTitle $helperTitle -TimeoutMilliseconds $helperWindowMaterializationTimeoutMs
     $rawWindowsRequest = $visibleWindowResult.RawRequest
     $windowsResponse = [PSCustomObject]@{
         Raw = $visibleWindowResult.RawResponse
@@ -1115,7 +1747,7 @@ try {
     Assert-Condition -Condition ([bool]$activeWaitPayload.lastObserved.targetIsForeground) -Message 'active_window_matches must confirm foreground=true in lastObserved.'
 
     Send-HelperCommand -Hwnd $helperHwnd -Message $wmAppPrepareFocus -Description 'prepare_focus' -Synchronous
-    $focusWaitCall = Invoke-WaitToolCall -Process $process -Condition 'focus_is' -Selector @{ name = 'Run semantic smoke'; controlType = 'button' } -TimeoutMs $waitTimeoutSemanticUiMs -RequestName 'windows.wait(focus_is)'
+    $focusWaitCall = Invoke-WaitToolCall -Process $process -Condition 'focus_is' -Selector @{ name = 'Run semantic smoke'; controlType = 'button' } -TimeoutMs $waitTimeoutFocusMs -RequestName 'windows.wait(focus_is)'
     $rawFocusWaitRequest = $focusWaitCall.RawRequest
     $focusWaitResponse = [PSCustomObject]@{
         Raw = $focusWaitCall.RawResponse
@@ -1161,8 +1793,18 @@ try {
     $textWaitPayload = Assert-WaitSuccess -ToolCall $textWaitCall -Condition 'text_appears'
     Assert-Condition -Condition (@('value_pattern', 'text_pattern', 'name') -contains [string]$textWaitPayload.lastObserved.matchedTextSource) -Message 'text_appears did not report a canonical matchedTextSource.'
 
-    $visualWaitCall = Invoke-WaitToolCall -Process $process -Condition 'visual_changed' -TimeoutMs $waitTimeoutVisualMs -RequestName 'windows.wait(visual_changed)'
-    $rawVisualWaitRequest = $visualWaitCall.RawRequest
+    $visualBaselineCapturedCount = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.wait' -EventName 'wait.visual.baseline_captured'
+    $visualWaitPendingRequest = Start-ToolCallRequest -Process $process -Name 'windows.wait' -Arguments @{
+        condition = 'visual_changed'
+        timeoutMs = $waitTimeoutVisualMs
+    }
+    $rawVisualWaitRequest = $visualWaitPendingRequest.RawRequest
+    $visualBaselineCaptured = Wait-Until -TimeoutMilliseconds 5000 -Predicate {
+        (Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.wait' -EventName 'wait.visual.baseline_captured') -gt $visualBaselineCapturedCount
+    }
+    Assert-Condition -Condition $visualBaselineCaptured -Message 'Smoke did not observe visual baseline capture before arming helper burst.'
+    Send-HelperCommand -Hwnd $helperHwnd -Message $wmAppArmVisualHeartbeat -Description 'arm_visual_heartbeat'
+    $visualWaitCall = Complete-ToolCallRequest -Process $process -PendingRequest $visualWaitPendingRequest -RequestName 'windows.wait(visual_changed)'
     $visualWaitResponse = [PSCustomObject]@{
         Raw = $visualWaitCall.RawResponse
         Json = $visualWaitCall.Json
@@ -1198,6 +1840,7 @@ try {
 
     $stderr = $process.StandardError.ReadToEnd()
     Assert-HealthObservabilityContract -Payload $healthPayload
+    Assert-LaunchRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -LaunchPayload $launchLivePayload
 
     $report = [ordered]@{
         run_id = $runId
@@ -1213,6 +1856,17 @@ try {
             warning_codes = @($healthPayload.warnings | ForEach-Object { [string]$_.code })
             artifact_materialized = $false
             dedicated_runtime_event_validation = 'verified_absent'
+        }
+        launch_process = [ordered]@{
+            dry_run = $launchDryRunPayload
+            dry_run_preview_event = 'verified'
+            dry_run_runtime_event = 'not_materialized'
+            dry_run_side_effects = 'no_residual_process_or_window_effects'
+            live = $launchLivePayload
+            runtime_event_validation = 'verified'
+            artifact_validation = 'verified'
+            helper_lifetime_ms = $helperLifetimeMs
+            helper_visual_burst_ms = $helperVisualBurstMs
         }
         monitors = $monitorsPayload
         windows = $windowsPayload
@@ -1238,6 +1892,8 @@ try {
             initialize = $rawInitializeRequest
             list_tools = $rawListRequest
             health = $rawHealthRequest
+            launch_process_dry_run = $rawLaunchDryRunRequest
+            launch_process_live = $rawLaunchLiveRequest
             list_monitors = $rawMonitorsRequest
             list_windows = $rawWindowsRequest
             desktop_capture = $rawDesktopCaptureRequest
@@ -1259,6 +1915,8 @@ try {
             initialize = $initializeResponse.Raw
             list_tools = $listResponse.Raw
             health = $healthResponse.Raw
+            launch_process_dry_run = $launchDryRunResponse.Raw
+            launch_process_live = $launchLiveResponse.Raw
             list_monitors = $monitorsResponse.Raw
             list_windows = $windowsResponse.Raw
             desktop_capture = $desktopCaptureResponse.Raw
@@ -1292,6 +1950,15 @@ try {
         "- health_warning_codes: $((@($healthPayload.warnings | ForEach-Object { [string]$_.code }) -join ', '))",
         "- health_artifact: not_materialized",
         "- health_event: not_materialized",
+        "- launch_dry_run_status: $($launchDryRunPayload.status)",
+        "- launch_dry_run_preview: $($launchDryRunPayload.preview.executableIdentity) args=$($launchDryRunPayload.preview.argumentCount) waitForWindow=$($launchDryRunPayload.preview.waitForWindow)",
+        "- launch_dry_run_preview_event: verified",
+        "- launch_dry_run_runtime_event: not_materialized",
+        "- launch_dry_run_side_effects: no_residual_process_or_window_effects",
+        "- launch_live_status: $($launchLivePayload.status)",
+        "- launch_live_result_mode: $($launchLivePayload.resultMode)",
+        "- launch_live_artifact: $($launchLivePayload.artifactPath)",
+        "- launch_runtime_event: verified",
         "- monitor_count: $($monitorsPayload.count)",
         "- desktop_monitor_id: $primaryMonitorId",
         "- visible_windows: $($windowsPayload.count)",
@@ -1321,6 +1988,36 @@ finally {
     if ($null -ne $helperProcess -and -not $helperProcess.HasExited) {
         $helperProcess.Kill()
         $helperProcess.WaitForExit()
+    }
+    elseif ($null -ne $helperProcessId) {
+        try {
+            $helperProcessFallback = [System.Diagnostics.Process]::GetProcessById([int]$helperProcessId)
+            if (-not $helperProcessFallback.HasExited) {
+                $helperProcessFallback.Kill()
+                $helperProcessFallback.WaitForExit()
+            }
+        }
+        catch [System.ArgumentException] {
+        }
+    }
+
+    if ($null -ne $liveReconciliation) {
+        $liveResolvedReconciliation = Resolve-SmokeHelperCleanupProcessIds -ReconciliationState $liveReconciliation -TitleResolutionTimeoutMs $helperWindowMaterializationTimeoutMs
+        if ($liveResolvedReconciliation.CleanupProcessIds.Count -gt 0) {
+            Stop-SmokeHelperLeaks -ProcessIds $liveResolvedReconciliation.CleanupProcessIds
+        }
+    }
+    elseif ($null -ne $helperProcessIdsBeforeLive) {
+        $liveFallbackReconciliation = Get-SmokeHelperBaseReconciliationState `
+            -HelperProcessName $helperProcessName `
+            -ExpectedOwnershipMarker $helperOwnershipMarker `
+            -ExpectedExecutablePath $helperExe `
+            -ExpectedTitle $helperTitle `
+            -BaselineProcessIds $helperProcessIdsBeforeLive
+        $liveResolvedReconciliation = Resolve-SmokeHelperCleanupProcessIds -ReconciliationState $liveFallbackReconciliation -TitleResolutionTimeoutMs $helperWindowMaterializationTimeoutMs
+        if ($liveResolvedReconciliation.CleanupProcessIds.Count -gt 0) {
+            Stop-SmokeHelperLeaks -ProcessIds $liveResolvedReconciliation.CleanupProcessIds
+        }
     }
 
     if ($null -ne $process -and -not $process.HasExited) {
