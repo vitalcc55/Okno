@@ -1,6 +1,7 @@
 # ExecPlan: windows.launch_process
 
 Статус: completed
+Архивирован: 2026-04-08
 Создан: 2026-03-31
 Актуально на: 2026-04-06
 
