@@ -38,10 +38,10 @@ public sealed class ToolExecutionGateBoundaryTests
         Assert.Equal(0, host.AllowedInvocationCount);
         Assert.Equal(1, host.RejectedInvocationCount);
         string completedEvent = host.ReadCompletedEvent();
-        Assert.Contains("\"decision\":\"blocked\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"risk_level\":\"destructive\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"guard_capability\":\"input\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"reason_codes\":\"input_uipi_barrier_present\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_decision\":\"blocked\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_risk_level\":\"destructive\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_guard_capability\":\"input\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_reason_codes\":\"input_uipi_barrier_present\"", completedEvent, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -240,6 +240,8 @@ public sealed class WindowLaunchProcessToolTests
 
         string[] eventLines = File.ReadAllLines(context.AuditOptions.EventsPath);
         Assert.Equal(2, eventLines.Length);
+        Assert.Contains("\"decision\":\"done\"", eventLines[1], StringComparison.Ordinal);
+        Assert.Contains("\"gate_decision\":\"allowed\"", eventLines[1], StringComparison.Ordinal);
         Assert.Contains("\"artifact_path\":\"C:\\\\artifacts\\\\diagnostics\\\\launch\\\\launch-20260406T140000000-test.json\"", eventLines[1], StringComparison.Ordinal);
     }
 
@@ -326,6 +328,8 @@ public sealed class WindowLaunchProcessToolTests
 
         string[] eventLines = File.ReadAllLines(context.AuditOptions.EventsPath);
         Assert.Equal(2, eventLines.Length);
+        Assert.Contains("\"decision\":\"failed\"", eventLines[1], StringComparison.Ordinal);
+        Assert.Contains("\"gate_decision\":\"allowed\"", eventLines[1], StringComparison.Ordinal);
         Assert.Contains("\"artifact_path\":\"C:\\\\artifacts\\\\diagnostics\\\\launch\\\\launch-20260406T140500000-failed.json\"", eventLines[1], StringComparison.Ordinal);
     }
 
@@ -352,6 +356,11 @@ public sealed class WindowLaunchProcessToolTests
         Assert.Equal(1, context.Gate.Calls);
         Assert.Equal(0, context.LaunchService.Calls);
         Assert.False(payload.TryGetProperty("preview", out _));
+
+        string[] eventLines = File.ReadAllLines(context.AuditOptions.EventsPath);
+        Assert.Equal(2, eventLines.Length);
+        Assert.Contains("\"decision\":\"failed\"", eventLines[1], StringComparison.Ordinal);
+        Assert.Contains("\"gate_decision\":\"allowed\"", eventLines[1], StringComparison.Ordinal);
     }
 
     private static TestContext CreateContext(

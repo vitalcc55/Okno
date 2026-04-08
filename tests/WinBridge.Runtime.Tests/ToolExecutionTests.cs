@@ -169,12 +169,12 @@ public sealed class ToolExecutionTests
         Assert.Equal("rejected", result);
 
         string completedEvent = File.ReadAllLines(options.EventsPath)[1];
-        Assert.Contains("\"decision\":\"blocked\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"risk_level\":\"destructive\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"guard_capability\":\"input\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"requires_confirmation\":\"false\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"dry_run_supported\":\"false\"", completedEvent, StringComparison.Ordinal);
-        Assert.Contains("\"reason_codes\":\"input_uipi_barrier_present\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_decision\":\"blocked\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_risk_level\":\"destructive\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_guard_capability\":\"input\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_requires_confirmation\":\"false\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_dry_run_supported\":\"false\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_reason_codes\":\"input_uipi_barrier_present\"", completedEvent, StringComparison.Ordinal);
     }
 
     [Fact]

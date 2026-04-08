@@ -45,13 +45,13 @@
 - `redaction_class`
 - `redacted_fields`
 - `request_summary_suppressed` или `exception_message_suppressed`, когда fail-safe path намеренно не пишет raw значение
-- `decision`, `risk_level`, `guard_capability`, `requires_confirmation`, `dry_run_supported`, `reason_codes` для gated execution boundary
+- `gate_decision`, `gate_risk_level`, `gate_guard_capability`, `gate_requires_confirmation`, `gate_dry_run_supported`, `gate_reason_codes` для internal gated execution boundary; public payload-shaped keys не должны делить с ними один namespace
 
 ## Каналы и anti-noise rules
 
 | Канал | Всегда включён | Что пишет | Anti-noise правило |
 | --- | --- | --- | --- |
-| `tool.invocation.started/completed` | Да | Старт/завершение каждого MCP tool call, sanitized `request_summary` и decision/redaction markers при наличии | Не пишем внутренние step-by-step сообщения по `list_windows`/`attach`; при сомнении raw payload не пишется вовсе |
+| `tool.invocation.started/completed` | Да | Старт/завершение каждого MCP tool call, sanitized `request_summary`, internal `gate_*` markers и redaction markers при наличии | Не пишем внутренние step-by-step сообщения по `list_windows`/`attach`; public payload-shaped поля и internal gate metadata не должны конфликтовать по именам |
 | `session.attached` | Да | Только state transition session -> window | Повторное attach к тому же окну не логируется вторично |
 | `display.identity.state_changed` | Да, при смене состояния | Typed diagnostics по `display_config_strong` vs `gdi_fallback` | Логируем только transition, а не каждый повторный вызов |
 | `capture artifacts` | Для `windows.capture` | PNG в diagnostics run directory + metadata в `tool.invocation.completed` | Храним один PNG на один успешный capture call, без отдельного verbose event stream |

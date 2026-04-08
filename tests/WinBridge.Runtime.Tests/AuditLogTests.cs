@@ -1,6 +1,8 @@
 using System.Text.Json;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Guards;
+using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Runtime.Tests;
 
@@ -213,6 +215,64 @@ public sealed class AuditLogTests
         Assert.DoesNotContain("secret completion payload", completedEvent, StringComparison.Ordinal);
         Assert.DoesNotContain("super secret text", completedEvent, StringComparison.Ordinal);
         Assert.DoesNotContain("\"user_text\":", completedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompletePreservesPublicDecisionWhenGateDecisionMetadataIsPresent()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-006b",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-006b"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-006b", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-006b", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-006b", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   "windows.launch_process",
+                   new { executable = "notepad.exe" },
+                   snapshot))
+        {
+            invocation.SetDecision(
+                new ToolExecutionDecision(
+                    Kind: ToolExecutionDecisionKind.Allowed,
+                    Mode: ToolExecutionMode.Live,
+                    RiskLevel: ToolExecutionRiskLevel.High,
+                    Reasons:
+                    [
+                        new GuardReason(
+                            GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                            GuardSeverityValues.Warning,
+                            "Launch требует подтверждённой integrity boundary.",
+                            CapabilitySummaryValues.Launch),
+                    ],
+                    RequiresConfirmation: true,
+                    DryRunSupported: true,
+                    GuardCapability: CapabilitySummaryValues.Launch));
+            invocation.Complete(
+                "failed",
+                "Launch завершился ошибкой.",
+                data: new Dictionary<string, string?>
+                {
+                    ["status"] = "failed",
+                    ["decision"] = "failed",
+                    ["failure_code"] = "start_failed",
+                    ["executable_identity"] = "notepad.exe",
+                });
+        }
+
+        string completedEvent = File.ReadAllLines(options.EventsPath)[1];
+        Assert.Contains("\"decision\":\"failed\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_decision\":\"allowed\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_risk_level\":\"high\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_guard_capability\":\"launch\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_requires_confirmation\":\"true\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_dry_run_supported\":\"true\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"gate_reason_codes\":\"launch_elevation_boundary_unconfirmed\"", completedEvent, StringComparison.Ordinal);
     }
 
     [Fact]

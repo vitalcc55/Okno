@@ -260,7 +260,7 @@ public sealed class AuditLog
     {
         Dictionary<string, string?> sanitizedData = SanitizeEventData(toolContext, "tool.invocation.completed", data)
             ?? new Dictionary<string, string?>(StringComparer.Ordinal);
-        ApplyDecisionMetadata(toolContext.Decision, sanitizedData);
+        ApplyGateDecisionMetadata(toolContext.Decision, sanitizedData);
 
         if (exception is not null)
         {
@@ -417,21 +417,21 @@ public sealed class AuditLog
             _ => false,
         };
 
-    private static void ApplyDecisionMetadata(ToolExecutionDecision? decision, IDictionary<string, string?> data)
+    private static void ApplyGateDecisionMetadata(ToolExecutionDecision? decision, IDictionary<string, string?> data)
     {
         if (decision is null)
         {
             return;
         }
 
-        data["decision"] = ToSnakeCase(decision.Kind);
-        data["risk_level"] = ToSnakeCase(decision.RiskLevel);
-        data["guard_capability"] = decision.GuardCapability;
-        data["requires_confirmation"] = ToInvariantBoolean(decision.RequiresConfirmation);
-        data["dry_run_supported"] = ToInvariantBoolean(decision.DryRunSupported);
+        data["gate_decision"] = ToSnakeCase(decision.Kind);
+        data["gate_risk_level"] = ToSnakeCase(decision.RiskLevel);
+        data["gate_guard_capability"] = decision.GuardCapability;
+        data["gate_requires_confirmation"] = ToInvariantBoolean(decision.RequiresConfirmation);
+        data["gate_dry_run_supported"] = ToInvariantBoolean(decision.DryRunSupported);
         if (decision.Reasons.Count > 0)
         {
-            data["reason_codes"] = string.Join(",", decision.Reasons.Select(item => item.Code));
+            data["gate_reason_codes"] = string.Join(",", decision.Reasons.Select(item => item.Code));
         }
     }
 
