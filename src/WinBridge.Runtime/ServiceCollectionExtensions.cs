@@ -41,6 +41,13 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<TimeProvider>(),
                 sp.GetRequiredService<ProcessLaunchOptions>(),
                 sp.GetRequiredService<LaunchResultMaterializer>()));
+        services.AddSingleton<IOpenTargetPathInspector, FileSystemOpenTargetPathInspector>();
+        services.AddSingleton<IOpenTargetPlatform, ShellExecuteOpenTargetPlatform>();
+        services.AddSingleton<IOpenTargetService>(
+            sp => new OpenTargetService(
+                sp.GetRequiredService<IOpenTargetPlatform>(),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<IOpenTargetPathInspector>()));
         services.AddSingleton(WaitOptions.Default);
         services.AddSingleton<WaitResultMaterializer>();
         services.AddSingleton<IWaitService, PollingWaitService>();

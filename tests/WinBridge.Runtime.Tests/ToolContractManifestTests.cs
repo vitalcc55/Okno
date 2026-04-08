@@ -84,12 +84,12 @@ public sealed class ToolContractManifestTests
     public void FutureLaunchPresetsKeepOnlyOpenTargetWithoutManifestPublication()
     {
         Assert.Single(ToolContractManifest.FutureLaunchFamilyPolicyPresets);
-        Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey("windows.open_target"));
+        Assert.True(ToolContractManifest.FutureLaunchFamilyPolicyPresets.ContainsKey(ToolNames.WindowsOpenTarget));
 
         Assert.Contains(ToolContractManifest.All, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
-        Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == "windows.open_target");
+        Assert.DoesNotContain(ToolContractManifest.All, descriptor => descriptor.Name == ToolNames.WindowsOpenTarget);
         Assert.Contains(ToolContractManifest.ImplementedNames, toolName => toolName == ToolNames.WindowsLaunchProcess);
-        Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == "windows.open_target");
+        Assert.DoesNotContain(ToolContractManifest.DeferredPhaseMap.Keys, toolName => toolName == ToolNames.WindowsOpenTarget);
     }
 
     [Fact]
@@ -129,6 +129,35 @@ public sealed class ToolContractManifestTests
             ToolContractManifest.ResolveExecutionPolicy(ToolNames.WindowsLaunchProcess));
         Assert.Contains(
             ToolContractManifest.Implemented,
+            implementedDescriptor => ReferenceEquals(implementedDescriptor, descriptor));
+    }
+
+    [Fact]
+    public void FutureOpenTargetDescriptorCarriesFinalFrozenMetadataWithoutPublication()
+    {
+        ToolDescriptor descriptor = ToolContractManifest.FutureOpenTargetDescriptor;
+
+        Assert.Equal(ToolNames.WindowsOpenTarget, descriptor.Name);
+        Assert.Equal("windows.launch", descriptor.Capability);
+        Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
+        Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
+        Assert.Equal(ToolDescriptions.WindowsOpenTargetTool, descriptor.Summary);
+        Assert.True(descriptor.SmokeRequired);
+        Assert.Null(descriptor.PlannedPhase);
+        Assert.Null(descriptor.SuggestedAlternative);
+        AssertExecutionPolicy(
+            descriptor.ExecutionPolicy,
+            ToolExecutionPolicyGroup.Launch,
+            ToolExecutionRiskLevel.Medium,
+            CapabilitySummaryValues.Launch,
+            supportsDryRun: true,
+            ToolExecutionConfirmationMode.Required,
+            ToolExecutionRedactionClass.LaunchPayload);
+        Assert.Same(
+            descriptor.ExecutionPolicy,
+            ToolContractManifest.ResolveExecutionPolicy(ToolNames.WindowsOpenTarget));
+        Assert.DoesNotContain(
+            ToolContractManifest.All,
             implementedDescriptor => ReferenceEquals(implementedDescriptor, descriptor));
     }
 

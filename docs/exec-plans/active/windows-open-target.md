@@ -249,7 +249,7 @@ Rule:
 | --- | --- | --- |
 | `src/WinBridge.Runtime.Tooling/ToolNames.cs` | public tool name source of truth | В `Package A` добавить `WindowsOpenTarget`; `windows.open_target` должен стать literal source of truth наравне с `windows.launch_process`. |
 | `src/WinBridge.Runtime.Tooling/ToolDescriptions.cs` | public wording | Добавить canonical summary и parameter descriptions только для `targetKind`, `target`, `dryRun`, `confirm`; не переносить `workingDirectory`/`verb` wording из sibling tool. |
-| `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs` | manifest/export truth | На `Package A` зафиксировать internal-only `FutureOpenTargetDescriptor`, который reuse-ит existing launch preset и не публикуется в `All`/`Implemented` до handler boundary. После `Package C` перевести descriptor в implemented surface, не ломая sibling `windows.launch_process`. |
+| `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs` | manifest/export truth | На `Package A` зафиксировать internal-only `FutureOpenTargetDescriptor`, который reuse-ит existing launch preset и не публикуется в `All`/`Implemented` до handler boundary. После `Package B` перевести descriptor в implemented surface, не ломая sibling `windows.launch_process`. |
 | `src/WinBridge.Runtime.Tooling/ToolExecutionPolicyDescriptor.cs` | shared policy types | Reuse as-is; новых policy enums или confirmation modes не требуется. |
 | `src/WinBridge.Runtime.Guards/RuntimeGuardPolicy.cs` | shared launch readiness | Reuse `BuildLaunch(...)` as-is; open-target handler не должен вводить собственный mini-gate или другую reason taxonomy. |
 | `src/WinBridge.Runtime.Guards/ToolExecutionGate.cs` | decision matrix | Reuse as-is; handler только передаёт `PreviewAvailable=true` после request validation и deterministic preview build. |
@@ -265,8 +265,8 @@ Rule:
 | `src/WinBridge.Server/Tools/WindowTools.cs` | public MCP boundary | Добавить `OpenTarget(...)` handler с raw arguments binding, validator, shared gate, dry-run preview, live call в новый service и canonical payload mapping. |
 | `tests/WinBridge.Server.IntegrationTests/WindowLaunchProcessToolTests.cs` | sibling boundary proof | Использовать как template для `WindowOpenTargetToolTests.cs`: blocked/needs_confirmation/dry_run/live-path coverage, audit/event best-effort behavior, invalid transport binding. |
 | `tests/WinBridge.Runtime.Tests/LaunchProcessContractFreezeTests.cs` | contract freeze pattern | Использовать как template для `OpenTargetContractFreezeTests.cs`: literals, defaults, validator, ToolDescriptions freeze и schema drift rejection. |
-| `tests/WinBridge.Runtime.Tests/ToolContractManifestTests.cs` | manifest/export sync | Обновить future launch preset expectations на `Package A`, затем implemented/publication expectations на `Package C`. |
-| `tests/WinBridge.Server.IntegrationTests/AdminToolTests.cs` | `okno.contract` / `okno.health` sync | На `Package A` зафиксировать отсутствие premature publication; на `Package C` перевести `windows.open_target` в implemented tool list с expected execution policy, не меняя `launch` readiness semantics. |
+| `tests/WinBridge.Runtime.Tests/ToolContractManifestTests.cs` | manifest/export sync | Обновить future launch preset expectations на `Package A`, затем implemented/publication expectations на `Package B`. |
+| `tests/WinBridge.Server.IntegrationTests/AdminToolTests.cs` | `okno.contract` / `okno.health` sync | На `Package A` зафиксировать отсутствие premature publication; на `Package B` перевести `windows.open_target` в implemented tool list с expected execution policy, не меняя `launch` readiness semantics. |
 | `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs` | real stdio smoke helpers | Добавить final `tools/list` / `okno.contract` parity expectations для `windows.open_target`; smoke acceptance не должен требовать browser/editor-specific handler. |
 
 ### New runtime seam
@@ -289,37 +289,30 @@ Rule:
 
 ## 8. Delivery packages
 
-### Package A: Contract freeze and internal descriptor
+### Package A: Contract and runtime foundation
 
 Scope:
 
-- зафиксировать request/result/preview DTO;
-- выбрать final literal sets для `targetKind`, `status`, `resultMode`, `failureCode`;
+- зафиксировать request/result/preview DTO и final literal sets для `targetKind`, `status`, `resultMode`, `failureCode`;
 - добавить `ToolNames` / `ToolDescriptions` / internal `FutureOpenTargetDescriptor`;
-- решить V1 scope по target kinds, `verb`, `workingDirectory`, URI schemes и redaction surface.
-
-Done when:
-
-- другой инженер может открыть contracts + internal descriptor и реализовать runtime/boundary без повторного design fork по `mailto`, `custom scheme`, `workingDirectory`, `verb`, success semantics и smoke target choice;
-- `windows.open_target` ещё не появляется в `ToolContractManifest.All`, `okno.contract`, `okno.health` или `tools/list`.
-
-### Package B: Runtime shell-open service
-
-Scope:
-
-- ввести новый `IOpenTargetService`;
-- реализовать validator-aware live path поверх отдельного `IOpenTargetPlatform`;
-- primary platform path = `ShellExecuteExW` с `SEE_MASK_FLAG_NO_UI | SEE_MASK_NOCLOSEPROCESS`;
+- решить V1 scope по target kinds, `verb`, `workingDirectory`, URI schemes и redaction surface;
+- ввести новый `IOpenTargetService` и `IOpenTargetPlatform`;
+- реализовать validator-aware live path поверх `ShellExecuteExW` с `SEE_MASK_FLAG_NO_UI | SEE_MASK_NOCLOSEPROCESS`;
 - map-ить ShellExecute failure space в public failure codes `target_not_found`, `target_access_denied`, `no_association`, `shell_rejected_target`;
 - materialize-ить factual `AcceptedAtUtc` и optional `HandlerProcessId`.
 
 Done when:
 
+- другой инженер может открыть contracts + runtime seam и реализовать MCP boundary без повторного design fork по `mailto`, `custom scheme`, `workingDirectory`, `verb`, success semantics и smoke target choice;
 - runtime service честно различает `target_open_requested`, `handler_process_observed` и tool failures без attach/focus/window assumptions;
 - live success больше не зависит от обязательного process object;
-- `windows.launch_process` code-path не меняется семантически.
+- `windows.open_target` ещё не появляется в `ToolContractManifest.All`, `okno.contract`, `okno.health` или `tools/list`.
 
-### Package C: Gated MCP boundary and publication
+Текущее состояние на `2026-04-08`:
+
+- `Package A` закрыт: internal-only descriptor, contracts, shell-open runtime seam, DI registration и узкие tests уже добавлены без premature publication в public surface.
+
+### Package B: Public boundary and observability rollout
 
 Scope:
 
@@ -328,18 +321,7 @@ Scope:
 - bind-ить request из raw MCP `arguments`, а не через attribute/scalar auto-binding;
 - blocked/confirmation/dry-run payload materialize-ить без side effects;
 - allowed live path вызывать только через новый service;
-- одновременно перевести `windows.open_target` из internal contract freeze в agent-visible implemented surface через `ToolContractManifest.All` / `okno.contract` / `tools/list`.
-
-Done when:
-
-- server boundary проходит synthetic gate tests;
-- invalid request materialize-ится как tool-level `failed`, а не как transport error;
-- allowed live failure path публикует `Decision=failed`, даже если shared gate до этого дал `allowed`.
-
-### Package D: Evidence and redaction
-
-Scope:
-
+- одновременно перевести `windows.open_target` из internal contract freeze в agent-visible implemented surface через `ToolContractManifest.All` / `okno.contract` / `tools/list`;
 - materialize-ить `open_target.runtime.completed` только для factual live path;
 - использовать `artifacts/diagnostics/<run_id>/launch/open-target-<id>.json` как launch-family evidence directory, но с отдельным payload type;
 - добавить internal dry-run proof marker `open_target.preview.completed`;
@@ -347,41 +329,66 @@ Scope:
 
 Done when:
 
+- server boundary проходит synthetic gate tests;
+- invalid request materialize-ится как tool-level `failed`, а не как transport error;
+- allowed live failure path публикует `Decision=failed`, даже если shared gate до этого дал `allowed`;
 - raw path, raw URL, query string, fragment, custom-scheme payload и future verb-like fields не попадают в `events.jsonl`, `summary.md` или runtime artifact;
 - observability write остаётся best-effort и не downcast-ит factual result при `artifact_write` / audit sink failures.
 
-### Package E: Tests, smoke, docs sync
+Текущее состояние на `2026-04-08`:
+
+- `Package B` не начат; public MCP boundary, publication и observability rollout остаются следующим workstream-ом.
+
+### Package C: Verification, smoke and docs rollout
 
 Scope:
 
-- L1/L2 tests на validator, platform mapping, runtime service, boundary, manifest/export, redaction;
+- L1/L2 tests на validator, platform mapping, runtime service, boundary, manifest/export, observability и redaction;
 - L3 smoke без browser/editor dependency;
-- `refresh-generated-docs.ps1` и docs sync.
+- `refresh-generated-docs.ps1` и product/generated/architecture docs sync.
 
 Done when:
 
 - `windows.open_target` появляется в shipped surface вместе с tests, smoke evidence и docs sync;
-- roadmap row 14 переводится из `запланировано` только по факту зелёного sequential contour.
+- roadmap row 14 переводится из `запланировано` только по факту зелёного sequential contour;
+- sequential contour `build -> test -> smoke -> refresh-generated-docs -> verify` пройден без дополнительных blocker follow-up.
+
+Текущее состояние на `2026-04-08`:
+
+- `Package C` не начат; broad verification contour, smoke и docs rollout осознанно отложены до завершения `Package B`.
 
 ### Implementation checklist
 
-- [ ] Добавить `WindowsOpenTarget` в `ToolNames`.
-- [ ] Добавить canonical summary и parameter descriptions в `ToolDescriptions`.
-- [ ] Зафиксировать internal-only `FutureOpenTargetDescriptor` и final execution policy metadata.
-- [ ] Добавить open-target request/result/preview contracts и validator в `WinBridge.Runtime.Contracts`.
-- [ ] Завести отдельный runtime shell-open service seam в `WinBridge.Runtime.Windows.Launch`.
-- [ ] Реализовать Win32 shell-open platform поверх `ShellExecuteExW`, а не поверх прямого `Process.Start(...)`.
-- [ ] Не публиковать `workingDirectory`, `verb`, `waitForWindow`, `timeoutMs`, `environment`.
-- [ ] Зафиксировать V1 kinds: `document`, `folder`, `url(http/https)`.
-- [ ] Явно оставить `mailto` и custom URI schemes вне V1.
-- [ ] Сделать success factual вокруг shell acceptance, а не обязательного PID/window.
-- [ ] Делать optional `handlerProcessId` только как enrichment.
+`Package A`
+
+- [x] Добавить `WindowsOpenTarget` в `ToolNames`.
+- [x] Добавить canonical summary и parameter descriptions в `ToolDescriptions`.
+- [x] Зафиксировать internal-only `FutureOpenTargetDescriptor` и final execution policy metadata.
+- [x] Добавить open-target request/result/preview contracts и validator в `WinBridge.Runtime.Contracts`.
+- [x] Завести отдельный runtime shell-open service seam в `WinBridge.Runtime.Windows.Launch`.
+- [x] Реализовать Win32 shell-open platform поверх `ShellExecuteExW`, а не поверх прямого `Process.Start(...)`.
+- [x] Не публиковать `workingDirectory`, `verb`, `waitForWindow`, `timeoutMs`, `environment`.
+- [x] Зафиксировать V1 kinds: `document`, `folder`, `url(http/https)`.
+- [x] Явно оставить `mailto` и custom URI schemes вне V1.
+- [x] Сделать success factual вокруг shell acceptance, а не обязательного PID/window.
+- [x] Делать optional `handlerProcessId` только как enrichment.
+
+`Package B`
+
+- [ ] Добавить `WindowsOpenTargetToolRegistration` и explicit flat `inputSchema`.
+- [ ] Добавить raw-arguments binding и gated `OpenTarget(...)` handler в `WindowTools`.
+- [ ] Перевести `windows.open_target` в implemented/publication surface без drift между `ToolContractManifest`, `okno.contract` и `tools/list`.
 - [ ] Добавить dedicated `open_target.runtime.completed` event и `launch/open-target-*.json` artifact.
+- [ ] Добавить internal preview marker `open_target.preview.completed`.
 - [ ] Не вводить новую redaction class; reuse `launch_payload`.
 - [ ] Не вводить auto-attach или auto-focus.
-- [ ] Добавить L1 tests для request validation, shell failure mapping и redaction.
-- [ ] Добавить L2 boundary tests на `blocked / needs_confirmation / dry_run_only / allowed`.
+
+`Package C`
+
+- [ ] Добавить L1 tests для request validation, shell failure mapping, runtime service и redaction.
+- [ ] Добавить L2 boundary tests на `blocked / needs_confirmation / dry_run_only / allowed` и publication parity.
 - [ ] Добавить L3 smoke на folder target без browser/editor assumptions.
+- [ ] Синхронизировать observability/generated/product docs в том же цикле.
 - [ ] После implementation прогнать `scripts/build.ps1`, `scripts/test.ps1`, `scripts/smoke.ps1`, `scripts/refresh-generated-docs.ps1`, `scripts/codex/verify.ps1` строго последовательно.
 
 ## 9. L1/L2/L3 test ladder
@@ -427,7 +434,7 @@ Done when:
   - audit sink failure after factual result does not rewrite payload to generic failure.
 - `ToolContractManifestTests`
   - `Package A`: preset/descriptor freeze without public publication;
-  - `Package C`: implemented surface contains `windows.open_target` and keeps `windows.launch_process` unchanged.
+  - `Package B`: implemented surface contains `windows.open_target` and keeps `windows.launch_process` unchanged.
 - `AdminToolTests`
   - `okno.contract` publishes `execution_policy` for `windows.open_target`;
   - `okno.health` launch readiness remains the same because gate foundation не меняется.

@@ -12,6 +12,7 @@ public static class ToolNames
     public const string WindowsFocusWindow = "windows.focus_window";
     public const string WindowsCapture = "windows.capture";
     public const string WindowsLaunchProcess = "windows.launch_process";
+    public const string WindowsOpenTarget = "windows.open_target";
     public const string WindowsClipboardGet = "windows.clipboard_get";
     public const string WindowsClipboardSet = "windows.clipboard_set";
     public const string WindowsInput = "windows.input";

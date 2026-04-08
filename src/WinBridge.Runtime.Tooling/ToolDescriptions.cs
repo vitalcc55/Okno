@@ -48,4 +48,10 @@ public static class ToolDescriptions
     public const string LaunchProcessTimeoutMsParameter = "Timeout для optional main window observation. Допустим только вместе с waitForWindow=true и должен быть > 0.";
     public const string LaunchProcessDryRunParameter = "Если true, invocation запрашивает dry-run path через shared execution gate и safe preview без Process.Start(...).";
     public const string LaunchProcessConfirmParameter = "Если true, invocation сообщает shared execution gate, что обязательное user confirmation уже получено.";
+
+    public const string WindowsOpenTargetTool = "Запрашивает shell-open для document, folder или http/https URL без смешения с direct process launch, auto-attach и auto-focus. Success фиксирует shell acceptance, а optional handler process id остаётся только best-effort enrichment.";
+    public const string OpenTargetKindParameter = "Тип shell-open target. V1 поддерживает только document, folder и url. Поле обязательно и не заменяется эвристикой по строке target.";
+    public const string OpenTargetTargetParameter = "Сам target для shell-open. Для document и folder допустим только absolute local/UNC path. Для url допустим только absolute http/https URL. V1 не принимает mailto, file://, custom schemes, verb и workingDirectory.";
+    public const string OpenTargetDryRunParameter = "Если true, invocation запрашивает dry-run path через shared execution gate и safe preview без live ShellExecuteExW call.";
+    public const string OpenTargetConfirmParameter = "Если true, invocation сообщает shared execution gate, что обязательное user confirmation уже получено.";
 }

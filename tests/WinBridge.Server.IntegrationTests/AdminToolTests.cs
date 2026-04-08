@@ -102,7 +102,9 @@ public sealed class AdminToolTests
             ],
             result.Warnings.Select(item => item.Source).ToArray());
         Assert.Contains(ToolNames.WindowsLaunchProcess, result.ImplementedTools);
+        Assert.DoesNotContain(ToolNames.WindowsOpenTarget, result.ImplementedTools);
         Assert.False(result.DeferredTools.ContainsKey(ToolNames.WindowsLaunchProcess));
+        Assert.False(result.DeferredTools.ContainsKey(ToolNames.WindowsOpenTarget));
     }
 
     [Fact]
@@ -162,6 +164,8 @@ public sealed class AdminToolTests
         Assert.Equal("required", inputPolicy.ConfirmationMode);
         Assert.Equal("text_payload", inputPolicy.RedactionClass);
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
+        Assert.DoesNotContain(result.ImplementedTools, descriptor => descriptor.Name == ToolNames.WindowsOpenTarget);
+        Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsOpenTarget);
     }
 
     private static RuntimeGuardAssessment CreateAssessment(FakeMonitorManager monitorManager)

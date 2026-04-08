@@ -4,7 +4,6 @@ namespace WinBridge.Runtime.Tooling;
 
 public static class ToolContractManifest
 {
-    private const string WindowsOpenTarget = "windows.open_target";
     private static readonly Dictionary<string, ToolDescriptor> AllByName;
 
     internal static ToolDescriptor FutureLaunchProcessDescriptor { get; } =
@@ -20,6 +19,24 @@ public static class ToolContractManifest
             CreateExecutionPolicy(
                 ToolExecutionPolicyGroup.Launch,
                 ToolExecutionRiskLevel.High,
+                CapabilitySummaryValues.Launch,
+                supportsDryRun: true,
+                ToolExecutionConfirmationMode.Required,
+                ToolExecutionRedactionClass.LaunchPayload));
+
+    internal static ToolDescriptor FutureOpenTargetDescriptor { get; } =
+        new(
+            ToolNames.WindowsOpenTarget,
+            "windows.launch",
+            ToolLifecycle.Implemented,
+            ToolSafetyClass.OsSideEffect,
+            ToolDescriptions.WindowsOpenTargetTool,
+            null,
+            null,
+            true,
+            CreateExecutionPolicy(
+                ToolExecutionPolicyGroup.Launch,
+                ToolExecutionRiskLevel.Medium,
                 CapabilitySummaryValues.Launch,
                 supportsDryRun: true,
                 ToolExecutionConfirmationMode.Required,
@@ -57,13 +74,8 @@ public static class ToolContractManifest
     internal static IReadOnlyDictionary<string, ToolExecutionPolicyDescriptor> FutureLaunchFamilyPolicyPresets { get; } =
         new Dictionary<string, ToolExecutionPolicyDescriptor>(StringComparer.Ordinal)
         {
-            [WindowsOpenTarget] = CreateExecutionPolicy(
-                ToolExecutionPolicyGroup.Launch,
-                ToolExecutionRiskLevel.Medium,
-                CapabilitySummaryValues.Launch,
-                supportsDryRun: true,
-                ToolExecutionConfirmationMode.Required,
-                ToolExecutionRedactionClass.LaunchPayload),
+            [ToolNames.WindowsOpenTarget] = FutureOpenTargetDescriptor.ExecutionPolicy
+                ?? throw new InvalidOperationException("Execution policy for FutureOpenTargetDescriptor must be configured."),
         };
 
     public static IReadOnlyList<ToolDescriptor> Implemented { get; } =
