@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-04-08 08:45
+
+- После перевода `windows.launch_process` workstream в completed lifecycle финальный `scripts/codex/verify.ps1` вскрыл branch-local недетерминизм в `PollingWaitServiceTests.WaitAsyncBoundsUiAutomationProbeByRemainingTimeout`: тест использовал слишком маленький `TimeoutMs=20` и иногда завершался до первого probe на загруженной машине, хотя сам shipped runtime contract не менялся. Тестовая проверка widened до устойчивого бюджета `80ms`, чтобы она продолжала доказывать bounded propagation оставшегося timeout в UIA probe, но больше не зависела от планировщика и локальной нагрузки. После этого полный final contour `scripts/codex/verify.ps1` снова пройден зелёным на ветке `codex/windows-launch-process`, так что фича и lifecycle/docs состояние подтверждены уже без условностей и ручных оговорок про случайный verify drift.
+
 ## 2026-04-08 08:40
 
 - После финальной verification wave exec-plan [docs/exec-plans/completed/completed-2026-04-08-windows-launch-process.md](docs/exec-plans/completed/completed-2026-04-08-windows-launch-process.md) архивирован из `active` в `completed`, чтобы lifecycle `docs/exec-plans` снова оставался консистентным: в `active` остаются только живые workstream-ы, а полностью завершённый `windows.launch_process` хранится рядом с остальными completed plans.

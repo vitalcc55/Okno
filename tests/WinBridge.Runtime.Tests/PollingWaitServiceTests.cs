@@ -837,12 +837,12 @@ public sealed class PollingWaitServiceTests
             new WaitRequest(
                 WaitConditionValues.ElementExists,
                 new WaitElementSelector(AutomationId: "SearchBox"),
-                TimeoutMs: 20),
+                TimeoutMs: 80),
             CancellationToken.None);
 
         Assert.Equal(WaitStatusValues.Timeout, result.Status);
         Assert.NotEmpty(probe.Timeouts);
-        Assert.All(probe.Timeouts, timeout => Assert.True(timeout <= TimeSpan.FromMilliseconds(20)));
+        Assert.All(probe.Timeouts, timeout => Assert.True(timeout <= TimeSpan.FromMilliseconds(80)));
     }
 
     [Fact]
