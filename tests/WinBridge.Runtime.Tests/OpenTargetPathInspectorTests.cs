@@ -63,4 +63,28 @@ public sealed class OpenTargetPathInspectorTests
 
         Assert.Equal(OpenTargetResolvedPathKind.ExistingFile, result);
     }
+
+    [Fact]
+    public void InspectReturnsExistingFileForLocalRemovableDrive()
+    {
+        FileSystemOpenTargetPathInspector inspector = new(
+            getDriveType: _ => FileSystemOpenTargetPathInspector.DriveRemovable,
+            getAttributes: _ => FileAttributes.Normal);
+
+        OpenTargetResolvedPathKind result = inspector.Inspect(@"E:\Docs\report.pdf");
+
+        Assert.Equal(OpenTargetResolvedPathKind.ExistingFile, result);
+    }
+
+    [Fact]
+    public void InspectReturnsExistingDirectoryForLocalCdRom()
+    {
+        FileSystemOpenTargetPathInspector inspector = new(
+            getDriveType: _ => FileSystemOpenTargetPathInspector.DriveCdRom,
+            getAttributes: _ => FileAttributes.Directory);
+
+        OpenTargetResolvedPathKind result = inspector.Inspect(@"D:\Docs");
+
+        Assert.Equal(OpenTargetResolvedPathKind.ExistingDirectory, result);
+    }
 }
