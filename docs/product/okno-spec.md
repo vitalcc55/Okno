@@ -460,7 +460,7 @@ Target policy:
 
 ---
 
-## 4.6. Process launch primitives
+## 4.6. Launch primitives
 
 ### `windows.launch_process`
 Аргументы:
@@ -471,7 +471,7 @@ Target policy:
 
 Invariant:
 - runtime использует только direct `ProcessStartInfo` semantics с `UseShellExecute = false`;
-- tool не принимает shell-open targets, `environment`, `Verb`, alternate credentials и не смешивается с будущим `windows.open_target`;
+- tool не принимает shell-open targets, `environment`, `Verb`, alternate credentials и не смешивается с shipped `windows.open_target`;
 - `timeoutMs` допустим только вместе с `waitForWindow=true`;
 - success не включает hidden `attach`, `focus` или `activate`.
 
@@ -481,6 +481,26 @@ Invariant:
 - на factual live path `resultMode = process_started | process_started_and_exited | window_observed`, `processId`, `startedAtUtc`, `hasExited`, optional `exitCode`;
 - `mainWindowObserved`, `mainWindowHandle`, `mainWindowObservationStatus` для optional GUI post-check;
 - optional `artifactPath` для JSON evidence в diagnostics run directory; при `artifact_write` failure observability остаётся best-effort и factual launch result не downcast-ится.
+
+---
+
+### `windows.open_target`
+Аргументы:
+- `targetKind`: один из `document`, `folder`, `url`;
+- `target`: absolute local/UNC path для `document` и `folder`, либо absolute `http/https` URL для `url`;
+- `dryRun`, `confirm`.
+
+Invariant:
+- runtime использует только shell-open semantics через default action и не смешивает их с direct process launch;
+- V1 принимает только `document`, `folder` и `url(http/https)`;
+- tool не принимает `workingDirectory`, `Verb`, `environment`, `waitForWindow`, `timeoutMs`, `mailto`, `file://` и custom URI schemes;
+- success не включает hidden `attach`, `focus` или `activate` и не требует нового process/window.
+
+Возвращает:
+- `blocked | needs_confirmation | dry_run_only | done | failed`;
+- `preview` на rejected/dry-run path только с safe полями `targetKind`, optional `targetIdentity` и optional `uriScheme`, без raw full path / raw URL disclosure;
+- на factual live path `resultMode = target_open_requested | handler_process_observed`, `acceptedAtUtc`, optional `handlerProcessId`, `targetKind`, optional `targetIdentity`, optional `uriScheme`;
+- optional `artifactPath` для JSON evidence в diagnostics run directory; при `artifact_write` failure observability остаётся best-effort и factual open-target result не downcast-ится.
 
 ---
 

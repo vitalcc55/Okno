@@ -65,6 +65,9 @@ function Write-Utf8DeterministicFile {
 }
 
 function New-CommandsMarkdown {
+    $smokeCommandLiteral = Get-SmokeCommandLiteral
+    $smokeCommandPurpose = Get-SmokeCommandPurpose
+
     $lines = @(
         '# Commands Inventory',
         '',
@@ -77,7 +80,7 @@ function New-CommandsMarkdown {
         '| `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` | `dotnet restore` |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests |',
-        '| `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke with `windows.launch_process` helper story and artifact report |',
+        "| $smokeCommandLiteral | $smokeCommandPurpose |",
         '| `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |',
@@ -113,6 +116,9 @@ function New-CommandsMarkdown {
 }
 
 function New-TestMatrixMarkdown {
+    $smokeCommandLiteral = Get-SmokeCommandLiteral
+    $smokeCoverageNarrative = Get-SmokeCoverageNarrative
+
     $lines = @(
         '# Test Matrix',
         '',
@@ -124,8 +130,8 @@ function New-TestMatrixMarkdown {
         '| --- | --- | --- |',
         '| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |',
         '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, launch exporter drift, launch runtime/status/evidence policy, display identity pipeline, monitor id formatting, activation decision logic, wait runtime/status/evidence policy, UIA runtime packaging/evidence, session dedupe, session mutation |',
-        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, public `windows.launch_process` schema/result mapping, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
-        '| Smoke | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | init -> tools/list -> health -> `windows.launch_process` dry-run/live helper launch -> list monitors -> list windows -> attach -> session_state -> uia_snapshot -> capture -> helper minimize/activate/window capture -> wait active/exists/gone/text/focus/visual -> launch artifact/event cross-check |',
+        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, public `windows.launch_process` and `windows.open_target` schema/result mapping, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
+        "| Smoke | $smokeCommandLiteral | $smokeCoverageNarrative |",
         '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke |',
         '',
         '## Чего пока не хватает',

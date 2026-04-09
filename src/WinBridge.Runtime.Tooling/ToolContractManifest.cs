@@ -33,7 +33,7 @@ public static class ToolContractManifest
             ToolDescriptions.WindowsOpenTargetTool,
             null,
             null,
-            false,
+            true,
             CreateExecutionPolicy(
                 ToolExecutionPolicyGroup.Launch,
                 ToolExecutionRiskLevel.Medium,

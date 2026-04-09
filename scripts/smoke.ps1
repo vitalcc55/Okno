@@ -12,6 +12,7 @@ $helperExe = Join-Path $repoRoot 'tests\WinBridge.SmokeWindowHost\bin\Debug\net8
 $contractPath = Join-Path $artifactRoot 'project-interfaces.json'
 $script:NextMcpRequestId = 1
 New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+Remove-StaleSmokeUnownedProbeRoots -CurrentRunId $runId
 
 if (-not ([System.Management.Automation.PSTypeName]'WinBridgeSmoke.User32').Type) {
     Add-Type -TypeDefinition @'
@@ -870,6 +871,190 @@ function Assert-NoDryRunRuntimeEvent {
 
     $currentEventCount = Get-AuditEventCount -ArtifactsDirectory $ArtifactsDirectory -ToolName 'windows.launch_process' -EventName 'launch.runtime.completed'
     Assert-Condition -Condition ($currentEventCount -eq $BaselineEventCount) -Message 'Dry-run launch unexpectedly entered the factual runtime event path.'
+}
+
+function Assert-OpenTargetPreviewRuntimeEvent {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [int] $BaselineEventCount
+    )
+
+    $currentEventCount = Get-AuditEventCount -ArtifactsDirectory $ArtifactsDirectory -ToolName 'windows.open_target' -EventName 'open_target.preview.completed'
+    Assert-Condition -Condition ($currentEventCount -eq ($BaselineEventCount + 1)) -Message 'Dry-run open_target did not record the preview-only runtime event.'
+}
+
+function Assert-NoOpenTargetDryRunRuntimeEvent {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [int] $BaselineEventCount
+    )
+
+    $currentEventCount = Get-AuditEventCount -ArtifactsDirectory $ArtifactsDirectory -ToolName 'windows.open_target' -EventName 'open_target.runtime.completed'
+    Assert-Condition -Condition ($currentEventCount -eq $BaselineEventCount) -Message 'Dry-run open_target unexpectedly entered the factual runtime event path.'
+}
+
+function Get-OpenTargetArtifactCount {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory
+    )
+
+    $launchDirectory = Join-Path $ArtifactsDirectory 'launch'
+    if (-not (Test-Path $launchDirectory)) {
+        return 0
+    }
+
+    return @(
+        Get-ChildItem -Path $launchDirectory -Filter 'open-target-*.json' -File -ErrorAction SilentlyContinue
+    ).Count
+}
+
+function Assert-OpenTargetPreview {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ToolCall,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTargetKind,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTargetIdentity
+    )
+
+    Assert-Condition -Condition (-not [bool]$ToolCall.Json.result.isError) -Message 'Dry-run open_target preview returned isError=true.'
+    $payload = $ToolCall.Payload
+    Assert-Condition -Condition ([string]$payload.status -eq 'done') -Message "Dry-run open_target returned unexpected status '$($payload.status)'."
+    Assert-Condition -Condition ([string]$payload.decision -eq 'done') -Message "Dry-run open_target returned unexpected decision '$($payload.decision)'."
+    Assert-Condition -Condition ($null -ne $payload.preview) -Message 'Dry-run open_target did not return preview.'
+    Assert-Condition -Condition ([string]$payload.preview.targetKind -eq $ExpectedTargetKind) -Message 'Dry-run open_target preview targetKind does not match request.'
+    Assert-Condition -Condition ([string]$payload.preview.targetIdentity -eq $ExpectedTargetIdentity) -Message 'Dry-run open_target preview targetIdentity does not match folder basename.'
+    Assert-Condition -Condition ($null -eq $payload.preview.uriScheme) -Message 'Dry-run open_target folder preview must not return uriScheme.'
+    Assert-Condition -Condition ([string]$payload.targetKind -eq $ExpectedTargetKind) -Message 'Dry-run open_target targetKind does not match request.'
+    Assert-Condition -Condition ([string]$payload.targetIdentity -eq $ExpectedTargetIdentity) -Message 'Dry-run open_target targetIdentity does not match folder basename.'
+    Assert-Condition -Condition ($null -eq $payload.uriScheme) -Message 'Dry-run open_target folder payload must not return uriScheme.'
+    Assert-Condition -Condition ($null -eq $payload.acceptedAtUtc) -Message 'Dry-run open_target must not return acceptedAtUtc.'
+    Assert-Condition -Condition ($null -eq $payload.handlerProcessId) -Message 'Dry-run open_target must not return handlerProcessId.'
+    Assert-Condition -Condition ($null -eq $payload.resultMode) -Message 'Dry-run open_target must not return resultMode.'
+    Assert-Condition -Condition ($null -eq $payload.artifactPath) -Message 'Dry-run open_target must not return artifactPath.'
+
+    $previewProperties = @($payload.preview.PSObject.Properties.Name | Sort-Object)
+    Assert-Condition -Condition (
+        (Join-ContractValues -Values $previewProperties) -eq 'targetIdentity,targetKind'
+    ) -Message 'Dry-run open_target preview exposed unexpected fields beyond the safe preview contract.'
+}
+
+function Assert-OpenTargetLiveResult {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ToolCall,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTargetKind,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTargetIdentity
+    )
+
+    Assert-Condition -Condition (-not [bool]$ToolCall.Json.result.isError) -Message 'Live open_target returned isError=true.'
+    $payload = $ToolCall.Payload
+    $resultMode = [string]$payload.resultMode
+    Assert-Condition -Condition ([string]$payload.status -eq 'done') -Message "Live open_target returned unexpected status '$($payload.status)'."
+    Assert-Condition -Condition ([string]$payload.decision -eq 'done') -Message "Live open_target returned unexpected decision '$($payload.decision)'."
+    Assert-Condition -Condition (@('target_open_requested', 'handler_process_observed') -contains $resultMode) -Message "Live open_target returned unexpected resultMode '$resultMode'."
+    Assert-Condition -Condition ([string]$payload.targetKind -eq $ExpectedTargetKind) -Message 'Live open_target targetKind does not match request.'
+    Assert-Condition -Condition ([string]$payload.targetIdentity -eq $ExpectedTargetIdentity) -Message 'Live open_target targetIdentity does not match folder basename.'
+    Assert-Condition -Condition ($null -eq $payload.uriScheme) -Message 'Live open_target folder payload must not return uriScheme.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$payload.acceptedAtUtc)) -Message 'Live open_target did not return acceptedAtUtc.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$payload.artifactPath)) -Message 'Live open_target did not return artifactPath.'
+    Assert-Condition -Condition (Test-Path ([string]$payload.artifactPath)) -Message "Live open_target artifact '$($payload.artifactPath)' was not created."
+
+    if ($resultMode -eq 'handler_process_observed') {
+        Assert-Condition -Condition ([int]$payload.handlerProcessId -gt 0) -Message 'Live open_target reported handler_process_observed without positive handlerProcessId.'
+    }
+    else {
+        Assert-Condition -Condition ($null -eq $payload.handlerProcessId) -Message 'Live open_target returned handlerProcessId without handler_process_observed resultMode.'
+    }
+}
+
+function Assert-OpenTargetArtifact {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [object] $OpenTargetPayload
+    )
+
+    $artifactPath = [System.IO.Path]::GetFullPath([string]$OpenTargetPayload.artifactPath)
+    $expectedLaunchDirectory = [System.IO.Path]::GetFullPath((Join-Path $ArtifactsDirectory 'launch'))
+    $expectedLaunchPrefix = $expectedLaunchDirectory + [System.IO.Path]::DirectorySeparatorChar
+    Assert-Condition -Condition ($artifactPath.StartsWith($expectedLaunchPrefix, [System.StringComparison]::OrdinalIgnoreCase)) -Message 'Open-target artifact path is outside the canonical diagnostics launch directory.'
+    Assert-Condition -Condition ([System.IO.Path]::GetExtension($artifactPath) -eq '.json') -Message 'Open-target artifact must be a JSON file.'
+    Assert-Condition -Condition ([System.IO.Path]::GetFileName($artifactPath) -match '^open-target-.+\.json$') -Message 'Open-target artifact file name does not match the canonical naming pattern.'
+
+    $artifact = Get-Content $artifactPath -Raw | ConvertFrom-Json
+    Assert-Condition -Condition (-not ($artifact.PSObject.Properties.Name -contains 'failure_diagnostics')) -Message 'Successful open-target artifact must not publish failure_diagnostics.'
+    Assert-Condition -Condition ([string]$artifact.result.status -eq [string]$OpenTargetPayload.status) -Message 'Open-target artifact status diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.decision -eq [string]$OpenTargetPayload.decision) -Message 'Open-target artifact decision diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.result_mode -eq [string]$OpenTargetPayload.resultMode) -Message 'Open-target artifact resultMode diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.target_kind -eq [string]$OpenTargetPayload.targetKind) -Message 'Open-target artifact targetKind diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.target_identity -eq [string]$OpenTargetPayload.targetIdentity) -Message 'Open-target artifact targetIdentity diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.uri_scheme -eq [string]$OpenTargetPayload.uriScheme) -Message 'Open-target artifact uriScheme diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.accepted_at_utc -eq [string]$OpenTargetPayload.acceptedAtUtc) -Message 'Open-target artifact acceptedAtUtc diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.artifact_path -eq [string]$OpenTargetPayload.artifactPath) -Message 'Open-target artifact nested artifactPath diverges from public payload.'
+
+    if ($null -eq $OpenTargetPayload.handlerProcessId) {
+        Assert-Condition -Condition ($null -eq $artifact.result.handler_process_id) -Message 'Open-target artifact unexpectedly returned handlerProcessId.'
+    }
+    else {
+        Assert-Condition -Condition ([int]$artifact.result.handler_process_id -eq [int]$OpenTargetPayload.handlerProcessId) -Message 'Open-target artifact handlerProcessId diverges from public payload.'
+    }
+}
+
+function Assert-OpenTargetRuntimeEvent {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [object] $OpenTargetPayload
+    )
+
+    $eventsPath = Join-Path $ArtifactsDirectory 'events.jsonl'
+    Assert-Condition -Condition (Test-Path $eventsPath) -Message "Open-target smoke expected events file '$eventsPath'."
+
+    $openTargetEvents = @(
+        Get-AuditEvents -ArtifactsDirectory $ArtifactsDirectory |
+            Where-Object {
+                ([string]$_.tool_name -eq 'windows.open_target') -and
+                ([string]$_.event_name -eq 'open_target.runtime.completed')
+            })
+
+    Assert-Condition -Condition ($openTargetEvents.Count -eq 1) -Message "Open-target smoke expected exactly one open_target.runtime.completed event, got $($openTargetEvents.Count)."
+
+    $openTargetEvent = $openTargetEvents[0]
+    $eventDataProperties = @($openTargetEvent.data.PSObject.Properties.Name | Sort-Object)
+    Assert-Condition -Condition (
+        (Join-ContractValues -Values $eventDataProperties) -eq 'accepted_at_utc,artifact_path,decision,exception_type,failure_code,failure_stage,handler_process_id,result_mode,status,target_identity,target_kind,uri_scheme'
+    ) -Message 'Open-target runtime event exposed unexpected fields outside the safe runtime-event contract.'
+    Assert-Condition -Condition ([string]$openTargetEvent.outcome -eq 'done') -Message "Open-target runtime event returned unexpected outcome '$($openTargetEvent.outcome)'."
+    Assert-Condition -Condition ([string]$openTargetEvent.data.status -eq [string]$OpenTargetPayload.status) -Message 'Open-target runtime event status diverges from public payload.'
+    Assert-Condition -Condition ([string]$openTargetEvent.data.decision -eq [string]$OpenTargetPayload.decision) -Message 'Open-target runtime event decision diverges from public payload.'
+    Assert-Condition -Condition ([string]$openTargetEvent.data.result_mode -eq [string]$OpenTargetPayload.resultMode) -Message 'Open-target runtime event result_mode diverges from public payload.'
+    Assert-Condition -Condition ([string]$openTargetEvent.data.target_kind -eq [string]$OpenTargetPayload.targetKind) -Message 'Open-target runtime event target_kind diverges from public payload.'
+    Assert-Condition -Condition ([string]$openTargetEvent.data.target_identity -eq [string]$OpenTargetPayload.targetIdentity) -Message 'Open-target runtime event target_identity diverges from public payload.'
+    Assert-Condition -Condition ([string]$openTargetEvent.data.uri_scheme -eq [string]$OpenTargetPayload.uriScheme) -Message 'Open-target runtime event uri_scheme diverges from public payload.'
+    Assert-Condition -Condition ([string]$openTargetEvent.data.accepted_at_utc -eq [string]$OpenTargetPayload.acceptedAtUtc) -Message 'Open-target runtime event accepted_at_utc diverges from public payload.'
+    Assert-Condition -Condition ([string]$openTargetEvent.data.artifact_path -eq [string]$OpenTargetPayload.artifactPath) -Message 'Open-target runtime event artifact_path diverges from public payload.'
+
+    if ($null -eq $OpenTargetPayload.handlerProcessId) {
+        Assert-Condition -Condition ($null -eq $openTargetEvent.data.handler_process_id) -Message 'Open-target runtime event unexpectedly returned handler_process_id.'
+    }
+    else {
+        Assert-Condition -Condition ([int]$openTargetEvent.data.handler_process_id -eq [int]$OpenTargetPayload.handlerProcessId) -Message 'Open-target runtime event handler_process_id diverges from public payload.'
+    }
+
+    Assert-Condition -Condition ($null -eq $openTargetEvent.data.failure_code) -Message 'Successful open-target runtime event must not publish failure_code.'
+    Assert-Condition -Condition ($null -eq $openTargetEvent.data.failure_stage) -Message 'Successful open-target runtime event must not publish failure_stage.'
+    Assert-Condition -Condition ($null -eq $openTargetEvent.data.exception_type) -Message 'Successful open-target runtime event must not publish exception_type.'
 }
 
 function Assert-LaunchProcessPreview {
@@ -1827,6 +2012,54 @@ try {
         Assert-Condition -Condition (Test-Path $visualCurrentArtifactPath) -Message "visual_changed current artifact '$visualCurrentArtifactPath' was not created."
     }
 
+    # Terminal unowned shell-open proof: run after all owned helper-based checks and keep the
+    # probe folder as retained evidence, because Explorer ownership/reuse cannot be proven safely.
+    $openTargetFolderPath = New-SmokeUnownedProbeFolder -RunId $runId -FolderName 'open-target-folder'
+    $openTargetFolderIdentity = Split-Path -Leaf $openTargetFolderPath
+    $openTargetPreviewEventCountBefore = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.open_target' -EventName 'open_target.preview.completed'
+    $openTargetRuntimeEventCountBefore = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.open_target' -EventName 'open_target.runtime.completed'
+    $openTargetArtifactCountBefore = Get-OpenTargetArtifactCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory)
+
+    $openTargetDryRunCall = Invoke-ToolCall -Process $process -Name 'windows.open_target' -Arguments @{
+        targetKind = 'folder'
+        target = $openTargetFolderPath
+        dryRun = $true
+        confirm = $false
+    } -RequestName 'windows.open_target(dry_run folder)'
+    $rawOpenTargetDryRunRequest = $openTargetDryRunCall.RawRequest
+    $openTargetDryRunResponse = [PSCustomObject]@{
+        Raw = $openTargetDryRunCall.RawResponse
+        Json = $openTargetDryRunCall.Json
+    }
+    $openTargetDryRunPayload = $openTargetDryRunCall.Payload
+    Assert-OpenTargetPreview `
+        -ToolCall $openTargetDryRunCall `
+        -ExpectedTargetKind 'folder' `
+        -ExpectedTargetIdentity $openTargetFolderIdentity
+    Assert-OpenTargetPreviewRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -BaselineEventCount $openTargetPreviewEventCountBefore
+    Assert-NoOpenTargetDryRunRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -BaselineEventCount $openTargetRuntimeEventCountBefore
+    Assert-Condition -Condition ((Get-OpenTargetArtifactCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory)) -eq $openTargetArtifactCountBefore) -Message 'Dry-run open_target unexpectedly materialized a runtime artifact.'
+
+    $openTargetLiveCall = Invoke-ToolCall -Process $process -Name 'windows.open_target' -Arguments @{
+        targetKind = 'folder'
+        target = $openTargetFolderPath
+        dryRun = $false
+        confirm = $true
+    } -RequestName 'windows.open_target(live folder)'
+    $rawOpenTargetLiveRequest = $openTargetLiveCall.RawRequest
+    $openTargetLiveResponse = [PSCustomObject]@{
+        Raw = $openTargetLiveCall.RawResponse
+        Json = $openTargetLiveCall.Json
+    }
+    $openTargetLivePayload = $openTargetLiveCall.Payload
+    Assert-OpenTargetLiveResult `
+        -ToolCall $openTargetLiveCall `
+        -ExpectedTargetKind 'folder' `
+        -ExpectedTargetIdentity $openTargetFolderIdentity
+    Assert-Condition -Condition ((Get-OpenTargetArtifactCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory)) -eq ($openTargetArtifactCountBefore + 1)) -Message 'Live open_target did not materialize exactly one runtime artifact.'
+    Assert-OpenTargetArtifact -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -OpenTargetPayload $openTargetLivePayload
+    $openTargetProbeDisposition = 'external_retained_evidence'
+
     $attachedHwnd = $null
     if ($null -ne $attachedWindow) {
         $attachedHwnd = $attachedWindow.attachedWindow.window.hwnd
@@ -1840,6 +2073,7 @@ try {
 
     $stderr = $process.StandardError.ReadToEnd()
     Assert-HealthObservabilityContract -Payload $healthPayload
+    Assert-OpenTargetRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -OpenTargetPayload $openTargetLivePayload
     Assert-LaunchRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -LaunchPayload $launchLivePayload
 
     $report = [ordered]@{
@@ -1888,6 +2122,16 @@ try {
         wait_element_gone = $elementGoneWaitPayload
         wait_text_appears = $textWaitPayload
         wait_visual_changed = $visualWaitPayload
+        open_target = [ordered]@{
+            dry_run = $openTargetDryRunPayload
+            dry_run_preview_event = 'verified'
+            dry_run_runtime_event = 'not_materialized'
+            dry_run_artifact = 'not_materialized'
+            live = $openTargetLivePayload
+            runtime_event_validation = 'verified'
+            artifact_validation = 'verified'
+            probe_target_disposition = $openTargetProbeDisposition
+        }
         raw_requests = [ordered]@{
             initialize = $rawInitializeRequest
             list_tools = $rawListRequest
@@ -1910,6 +2154,8 @@ try {
             wait_element_gone = $rawElementGoneWaitRequest
             wait_text_appears = $rawTextWaitRequest
             wait_visual_changed = $rawVisualWaitRequest
+            open_target_dry_run = $rawOpenTargetDryRunRequest
+            open_target_live = $rawOpenTargetLiveRequest
         }
         raw_responses = [ordered]@{
             initialize = $initializeResponse.Raw
@@ -1933,6 +2179,8 @@ try {
             wait_element_gone = $elementGoneWaitResponse.Raw
             wait_text_appears = $textWaitResponse.Raw
             wait_visual_changed = $visualWaitResponse.Raw
+            open_target_dry_run = $openTargetDryRunResponse.Raw
+            open_target_live = $openTargetLiveResponse.Raw
         }
         stderr = $stderr
     }
@@ -1976,6 +2224,16 @@ try {
         "- wait_element_gone_artifact: $($elementGoneWaitPayload.artifactPath)",
         "- wait_text_appears_artifact: $($textWaitPayload.artifactPath)",
         "- wait_visual_changed_artifact: $($visualWaitPayload.artifactPath)",
+        "- open_target_dry_run_status: $($openTargetDryRunPayload.status)",
+        "- open_target_dry_run_preview: $($openTargetDryRunPayload.preview.targetKind) $($openTargetDryRunPayload.preview.targetIdentity)",
+        "- open_target_dry_run_preview_event: verified",
+        "- open_target_dry_run_runtime_event: not_materialized",
+        "- open_target_dry_run_artifact: not_materialized",
+        "- open_target_live_status: $($openTargetLivePayload.status)",
+        "- open_target_live_result_mode: $($openTargetLivePayload.resultMode)",
+        "- open_target_live_artifact: $($openTargetLivePayload.artifactPath)",
+        "- open_target_runtime_event: verified",
+        "- open_target_probe_target: external_retained_evidence",
         "- audit_dir: $($healthPayload.artifactsDirectory)",
         "- report: $reportPath"
     )

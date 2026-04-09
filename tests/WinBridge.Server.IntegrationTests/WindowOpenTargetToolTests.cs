@@ -42,6 +42,56 @@ public sealed class WindowOpenTargetToolTests
     }
 
     [Fact]
+    public async Task OpenTargetReturnsNeedsConfirmationPayloadWithoutInvokingRuntimeService()
+    {
+        TestContext context = CreateContext(
+            decision: CreateDecision(
+                ToolExecutionDecisionKind.NeedsConfirmation,
+                ToolExecutionMode.Live,
+                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                GuardSeverityValues.Warning,
+                requiresConfirmation: true));
+
+        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
+        {
+            TargetKind = OpenTargetKindValues.Document,
+            Target = @"C:\Docs\report.pdf",
+        });
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.True(result.IsError);
+        Assert.Equal(OpenTargetStatusValues.NeedsConfirmation, payload.GetProperty("status").GetString());
+        Assert.Equal(OpenTargetStatusValues.NeedsConfirmation, payload.GetProperty("decision").GetString());
+        Assert.True(payload.GetProperty("requiresConfirmation").GetBoolean());
+        Assert.Equal(0, context.OpenTargetService.Calls);
+        Assert.True(payload.TryGetProperty("preview", out _));
+    }
+
+    [Fact]
+    public async Task OpenTargetReturnsDryRunOnlyPayloadWithoutInvokingRuntimeService()
+    {
+        TestContext context = CreateContext(
+            decision: CreateDecision(
+                ToolExecutionDecisionKind.DryRunOnly,
+                ToolExecutionMode.DryRun,
+                GuardReasonCodeValues.CapabilityDryRunPreviewUnavailable,
+                GuardSeverityValues.Blocked));
+
+        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
+        {
+            TargetKind = OpenTargetKindValues.Folder,
+            Target = @"C:\Docs",
+        });
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.True(result.IsError);
+        Assert.Equal(OpenTargetStatusValues.DryRunOnly, payload.GetProperty("status").GetString());
+        Assert.Equal(OpenTargetStatusValues.DryRunOnly, payload.GetProperty("decision").GetString());
+        Assert.Equal(0, context.OpenTargetService.Calls);
+        Assert.True(payload.TryGetProperty("preview", out _));
+    }
+
+    [Fact]
     public async Task OpenTargetAllowedDryRunReturnsPreviewWithoutInvokingRuntimeService()
     {
         TestContext context = CreateContext(

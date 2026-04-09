@@ -9,7 +9,7 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` | `dotnet restore` |
 | `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers |
 | `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests |
-| `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke with `windows.launch_process` helper story and artifact report |
+| `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke with owned helper scenario, terminal `windows.open_target` folder proof and artifact report |
 | `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |
 | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |
 | `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |

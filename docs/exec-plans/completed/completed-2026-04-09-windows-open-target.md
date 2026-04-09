@@ -1,8 +1,9 @@
 # ExecPlan: windows.open_target
 
-Статус: planned
+Статус: completed
+Архивирован: 2026-04-09
 Создан: 2026-04-08
-Актуально на: 2026-04-08
+Актуально на: 2026-04-09
 
 ## 1. Goal
 
@@ -353,9 +354,9 @@ Done when:
 - roadmap row 14 переводится из `запланировано` только по факту зелёного sequential contour;
 - sequential contour `build -> test -> smoke -> refresh-generated-docs -> verify` пройден без дополнительных blocker follow-up.
 
-Текущее состояние на `2026-04-08`:
+Текущее состояние на `2026-04-09`:
 
-- `Package C` не начат; broad verification contour, smoke и docs rollout осознанно отложены до завершения `Package B`.
+- `Package C` закрыт: missing boundary/publication checks добраны, `scripts/smoke.ps1` теперь доказывает `windows.open_target` через deterministic `folder` dry-run/live story без browser/editor assumptions, `windows.open_target` переведён в `SmokeRequired`, а sequential contour `scripts/build.ps1 -> scripts/test.ps1 -> scripts/smoke.ps1 -> scripts/refresh-generated-docs.ps1 -> scripts/codex/verify.ps1` пройден зелёным вместе с docs/generated sync.
 
 ### Implementation checklist
 
@@ -385,11 +386,11 @@ Done when:
 
 `Package C`
 
-- [ ] Добавить L1 tests для request validation, shell failure mapping, runtime service и redaction.
-- [ ] Добавить L2 boundary tests на `blocked / needs_confirmation / dry_run_only / allowed` и publication parity.
-- [ ] Добавить L3 smoke на folder target без browser/editor assumptions.
-- [ ] Синхронизировать observability/generated/product docs в том же цикле.
-- [ ] После implementation прогнать `scripts/build.ps1`, `scripts/test.ps1`, `scripts/smoke.ps1`, `scripts/refresh-generated-docs.ps1`, `scripts/codex/verify.ps1` строго последовательно.
+- [x] Подтвердить L1 coverage для request validation, shell failure mapping, runtime service и redaction и сохранить её зелёной в полном contour.
+- [x] Добавить недостающие L2 boundary tests на `blocked / needs_confirmation / dry_run_only` и publication parity.
+- [x] Добавить L3 smoke на folder target без browser/editor assumptions.
+- [x] Синхронизировать observability/generated/product docs в том же цикле.
+- [x] После implementation прогнать `scripts/build.ps1`, `scripts/test.ps1`, `scripts/smoke.ps1`, `scripts/refresh-generated-docs.ps1`, `scripts/codex/verify.ps1` строго последовательно.
 
 ## 9. L1/L2/L3 test ladder
 
@@ -500,7 +501,7 @@ L3 pass criterion для `windows.open_target` должен быть таким:
 Отдельный dry-run scenario:
 
 - `targetKind = folder`;
-- `target = <throwaway folder under artifacts/smoke/<run_id>/open-target-folder>`;
+- `target = <throwaway folder under external disposable smoke probe root>`;
 - `dryRun = true`;
 - expected `status == "done"` и `decision == "done"` with preview-only payload;
 - expected internal marker `open_target.preview.completed`;
@@ -513,9 +514,9 @@ Smoke не должен пытаться закрывать Explorer или др
 
 Правильный cleanup:
 
-- target folder создаётся внутри `artifacts/smoke/<run_id>/open-target-folder`;
-- folder можно попытаться удалить best-effort после smoke;
-- failure delete не считается smoke failure, если сам tool/result/evidence proof уже состоялся;
+- target folder создаётся во внешнем disposable probe-root вне repo-owned `artifacts/smoke/<run_id>`;
+- probe-folder не удаляется в том же run, если ownership shell handler не доказан;
+- retention/cleanup evidence tree `artifacts/smoke/<run_id>` не должен зависеть от того, удерживает ли Explorer probe-target open;
 - cleanup не должен зависеть от того, открылся ли target в already-running app.
 
 ## 11. Docs sync

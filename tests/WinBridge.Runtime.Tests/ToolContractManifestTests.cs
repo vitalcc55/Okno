@@ -155,7 +155,7 @@ public sealed class ToolContractManifestTests
         Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
         Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
         Assert.Equal(ToolDescriptions.WindowsOpenTargetTool, descriptor.Summary);
-        Assert.False(descriptor.SmokeRequired);
+        Assert.True(descriptor.SmokeRequired);
         Assert.Null(descriptor.PlannedPhase);
         Assert.Null(descriptor.SuggestedAlternative);
         AssertExecutionPolicy(
@@ -239,7 +239,7 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
-    public void WindowsOpenTargetIsImplementedButNotSmokeRequiredBeforePackageC()
+    public void WindowsOpenTargetIsImplementedAndSmokeRequired()
     {
         ToolDescriptor descriptor = Assert.Single(
             ToolContractManifest.Implemented,
@@ -247,7 +247,7 @@ public sealed class ToolContractManifestTests
 
         Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
         Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
-        Assert.DoesNotContain(ToolNames.WindowsOpenTarget, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.Contains(ToolNames.WindowsOpenTarget, ToolContractManifest.SmokeRequiredToolNames);
         Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsOpenTarget);
     }
 
