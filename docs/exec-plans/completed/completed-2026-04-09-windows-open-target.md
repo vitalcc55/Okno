@@ -357,7 +357,7 @@ Done when:
 Текущее состояние на `2026-04-09`:
 
 - `Package C` закрыт: missing boundary/publication checks добраны, `scripts/smoke.ps1` теперь доказывает `windows.open_target` через deterministic `folder` dry-run/live story без browser/editor assumptions, `windows.open_target` переведён в `SmokeRequired`, а sequential contour `scripts/build.ps1 -> scripts/test.ps1 -> scripts/smoke.ps1 -> scripts/refresh-generated-docs.ps1 -> scripts/codex/verify.ps1` пройден зелёным вместе с docs/generated sync.
-- Post-completion review hardening без смены public V1 contract дополнительно зафиксировал четыре внутренних инварианта branch state: unexpected exceptions после входа в allowed live runtime path теперь materialize-ятся через тот же `OpenTargetResultMaterializer` с `failure_stage` и canonical open-target artifact/event trail; document safety policy вынесена в explicit artifact и теперь fail-closed блокирует Python launcher-associated `.py/.pyw/.pyc`; shell failure normalizer учитывает не только legacy `SE_ERR_NOASSOC`, но и `GetLastError(ERROR_NO_ASSOCIATION)`; dedicated STA executor уважает caller cancellation на стадии wait-side blocking, не объявляя поздний native completion фактуальным результатом отменённого запроса.
+- Post-completion review hardening без смены public V1 contract дополнительно зафиксировал шесть внутренних инвариантов branch state: unexpected exceptions после входа в allowed live runtime path теперь materialize-ятся через тот же `OpenTargetResultMaterializer` с `failure_stage` и canonical open-target artifact/event trail; document safety policy вынесена в explicit artifact и fail-closed блокирует не только Python script family `.py/.pyw/.pyc`, но и packaged executable archives `.pyz/.pyzw` и Java `jar`; shell failure normalizer учитывает не только legacy `SE_ERR_NOASSOC`, но и `GetLastError(ERROR_NO_ASSOCIATION)`; dedicated STA executor стал phase-aware и различает `pre-dispatch cancellation` от `cancellation after dispatch`, поэтому отмена больше не маскирует возможный factual shell side effect как чистый `OperationCanceledException`; live path inspection для `document`/`folder` теперь intentionally остаётся fast local-only refinement и деградирует в `Unresolved` для UNC/remote/device-style paths вместо token-blind сетевого preflight; verification control plane запускает CI-like top-level steps в fresh `powershell -NoProfile -NonInteractive` child processes, чтобы process isolation не зависела от user profile contamination.
 
 ### Implementation checklist
 
@@ -401,7 +401,7 @@ Done when:
   - empty `targetKind` / empty `target`;
   - unsupported `targetKind`;
   - relative / drive-relative path for `document` and `folder`;
-  - executable / script / launcher extension under `document`, включая Python launcher-associated `.py`, `.pyw`, `.pyc`;
+  - executable / script / launcher extension under `document`, включая Python launcher-associated `.py`, `.pyw`, `.pyc`, packaged `.pyz` / `.pyzw` и Java executable `jar`;
   - `mailto`, `file`, `ms-settings`, custom scheme under `url`;
   - extra fields `verb`, `workingDirectory`, `environment`, `waitForWindow`, `timeoutMs`;
   - safe preview identity for folder/document vs URL.
@@ -419,6 +419,10 @@ Done when:
   - no mandatory PID/window semantics in success definition;
   - unexpected exceptions after allowed live-path entry still materialize terminal runtime artifact/event with `failure_stage`;
   - artifact/event materialization remains best-effort.
+- `OpenTargetPathInspectorTests`
+  - UNC path and remote-drive path degrade to `Unresolved` without touching filesystem attributes;
+  - local fixed-drive path keeps existing file-vs-directory refinement;
+  - remote/device-style path no longer adds token-blind network latency before shell dispatch.
 - `AuditPayloadRedactorTests`
   - document/folder path redaction to basename only;
   - URL redaction suppresses full URL, query, fragment and keeps only `uri_scheme`;

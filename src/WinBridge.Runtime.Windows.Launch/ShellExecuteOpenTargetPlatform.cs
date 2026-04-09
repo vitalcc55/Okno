@@ -156,12 +156,30 @@ internal interface IShellExecuteStaExecutor
     T Execute<T>(Func<T> callback, CancellationToken cancellationToken);
 }
 
+internal enum ShellExecuteDispatchPhase
+{
+    Pending = 0,
+    CanceledBeforeDispatch = 1,
+    Dispatched = 2,
+}
+
 internal sealed class DedicatedStaShellExecuteExecutor : IShellExecuteStaExecutor
 {
     private const int CoInitApartmentThreaded = 0x2;
     private const int HResultOk = 0;
     private const int HResultFalse = 1;
     private const int RpcEChangedMode = unchecked((int)0x80010106);
+    private readonly Action? _beforeDispatch;
+
+    public DedicatedStaShellExecuteExecutor()
+        : this(null)
+    {
+    }
+
+    internal DedicatedStaShellExecuteExecutor(Action? beforeDispatch)
+    {
+        _beforeDispatch = beforeDispatch;
+    }
 
     public T Execute<T>(Func<T> callback, CancellationToken cancellationToken)
     {
@@ -170,6 +188,8 @@ internal sealed class DedicatedStaShellExecuteExecutor : IShellExecuteStaExecuto
 
         T? result = default;
         ExceptionDispatchInfo? capturedException = null;
+        int dispatchPhase = (int)ShellExecuteDispatchPhase.Pending;
+        using ManualResetEventSlim dispatchPhaseKnown = new(false);
         using ManualResetEventSlim completed = new(false);
         Thread thread = new(() =>
         {
@@ -187,6 +207,16 @@ internal sealed class DedicatedStaShellExecuteExecutor : IShellExecuteStaExecuto
                     throw Marshal.GetExceptionForHR(hr) ?? new InvalidOperationException($"CoInitializeEx failed with HRESULT 0x{hr:X8}.");
                 }
 
+                _beforeDispatch?.Invoke();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    Interlocked.Exchange(ref dispatchPhase, (int)ShellExecuteDispatchPhase.CanceledBeforeDispatch);
+                    dispatchPhaseKnown.Set();
+                    return;
+                }
+
+                Interlocked.Exchange(ref dispatchPhase, (int)ShellExecuteDispatchPhase.Dispatched);
+                dispatchPhaseKnown.Set();
                 result = callback();
             }
             catch (Exception exception)
@@ -200,6 +230,7 @@ internal sealed class DedicatedStaShellExecuteExecutor : IShellExecuteStaExecuto
                     CoUninitialize();
                 }
 
+                dispatchPhaseKnown.Set();
                 completed.Set();
             }
         })
@@ -210,11 +241,39 @@ internal sealed class DedicatedStaShellExecuteExecutor : IShellExecuteStaExecuto
 
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        // Cancellation after dispatch only stops the caller-side wait; the native shell call keeps running
-        // on the dedicated STA thread because ShellExecuteEx itself is not safely abortable here.
-        completed.Wait(cancellationToken);
+
+        WaitUntilDispatchPhaseResolvedOrCompleted(dispatchPhaseKnown, completed, cancellationToken, ref dispatchPhase);
+        ShellExecuteDispatchPhase resolvedPhase = (ShellExecuteDispatchPhase)Volatile.Read(ref dispatchPhase);
+        if (resolvedPhase == ShellExecuteDispatchPhase.CanceledBeforeDispatch)
+        {
+            completed.Wait(CancellationToken.None);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        // After dispatch begins, the OS call is no longer safely abortable here.
+        // From this point the runtime prefers factual completion over reporting a misleading cancellation.
+        completed.Wait(CancellationToken.None);
         capturedException?.Throw();
         return result!;
+    }
+
+    private static void WaitUntilDispatchPhaseResolvedOrCompleted(
+        ManualResetEventSlim dispatchPhaseKnown,
+        ManualResetEventSlim completed,
+        CancellationToken cancellationToken,
+        ref int dispatchPhase)
+    {
+        WaitHandle[] handles =
+        [
+            dispatchPhaseKnown.WaitHandle,
+            completed.WaitHandle,
+            cancellationToken.WaitHandle,
+        ];
+
+        while (Volatile.Read(ref dispatchPhase) == (int)ShellExecuteDispatchPhase.Pending && !completed.IsSet)
+        {
+            _ = WaitHandle.WaitAny(handles);
+        }
     }
 
     [DllImport("ole32.dll")]

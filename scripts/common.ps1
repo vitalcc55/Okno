@@ -56,7 +56,7 @@ function Invoke-ScriptProcessStep {
     )
 
     Invoke-NativeCommand -Description $Description -Command {
-        powershell -ExecutionPolicy Bypass -File $ScriptPath
+        powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $ScriptPath
     }
 }
 

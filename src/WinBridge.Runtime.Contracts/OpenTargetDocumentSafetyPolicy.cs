@@ -6,8 +6,13 @@ internal static class OpenTargetDocumentSafetyPolicy
     // that ShellExecute can hand off to an interpreter or launcher instead of a passive document handler.
     private static readonly HashSet<string> BlockedDocumentExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
+        // ClickOnce / shell bootstrap families
         ".application",
         ".appref-ms",
+        ".lnk",
+        ".url",
+
+        // Native executable / installer / control entrypoints
         ".bat",
         ".cmd",
         ".com",
@@ -16,18 +21,24 @@ internal static class OpenTargetDocumentSafetyPolicy
         ".hta",
         ".js",
         ".jse",
-        ".lnk",
         ".msc",
         ".msi",
         ".ps1",
         ".psd1",
         ".psm1",
+
+        // Python-associated executable families on Windows, including zipapp packaging.
         ".py",
         ".pyc",
         ".pyw",
+        ".pyz",
+        ".pyzw",
+
+        // Java executable archives on Windows can be shell-associated to javaw -jar.
+        ".jar",
+
         ".reg",
         ".scr",
-        ".url",
         ".vb",
         ".vbe",
         ".vbs",

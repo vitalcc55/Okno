@@ -151,7 +151,40 @@ public sealed class ShellExecuteOpenTargetPlatformTests
     }
 
     [Fact]
-    public async Task OpenHonorsCallerCancellationWhileWaitingForStaCompletion()
+    public async Task OpenCancelsBeforeDispatchWithoutExecutingShellCallback()
+    {
+        using ManualResetEventSlim beforeDispatchEntered = new(false);
+        using ManualResetEventSlim releaseBeforeDispatch = new(false);
+        FakeShellExecuteNativeAdapter adapter = new(
+            invocation => new ShellExecuteNativeResult(
+                Succeeded: true,
+                HInstApp: (nint)33,
+                ProcessHandle: nint.Zero,
+                LastError: 0));
+        DedicatedStaShellExecuteExecutor executor = new(() =>
+        {
+            beforeDispatchEntered.Set();
+            releaseBeforeDispatch.Wait();
+        });
+        ShellExecuteOpenTargetPlatform platform = new(adapter, executor);
+        using CancellationTokenSource cts = new();
+
+        Task<OpenTargetPlatformResult> openTask = Task.Run(() => platform.Open(
+            new OpenTargetPlatformRequest(
+                TargetKind: OpenTargetKindValues.Document,
+                Target: @"C:\Docs\report.pdf"),
+            cts.Token));
+
+        Assert.True(beforeDispatchEntered.Wait(TimeSpan.FromSeconds(2)));
+        cts.Cancel();
+        releaseBeforeDispatch.Set();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => openTask);
+        Assert.Equal(0, adapter.ExecuteCallCount);
+    }
+
+    [Fact]
+    public async Task OpenCompletesFactuallyAfterDispatchStartedDespiteCallerCancellation()
     {
         using ManualResetEventSlim callbackEntered = new(false);
         using ManualResetEventSlim releaseCallback = new(false);
@@ -177,10 +210,10 @@ public sealed class ShellExecuteOpenTargetPlatformTests
 
         Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(2)));
         cts.Cancel();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => openTask);
-
         releaseCallback.Set();
+
+        OpenTargetPlatformResult result = await openTask;
+        Assert.True(result.IsAccepted);
     }
 
     private static OpenTargetPlatformResult ExecuteFailure(int errorCode)
@@ -217,12 +250,15 @@ public sealed class ShellExecuteOpenTargetPlatformTests
 
         public int CloseHandleCallCount { get; private set; }
 
+        public int ExecuteCallCount { get; private set; }
+
         public nint LastClosedHandle { get; private set; }
 
         public uint? ProcessIdToReturn { get; init; }
 
         public ShellExecuteNativeResult Execute(ShellExecuteInvocation invocation)
         {
+            ExecuteCallCount++;
             LastInvocation = invocation;
             return executeHandler(invocation);
         }
