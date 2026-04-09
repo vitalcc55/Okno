@@ -4,6 +4,22 @@ namespace WinBridge.Runtime.Contracts;
 
 public static class OpenTargetRequestValidator
 {
+    public static bool TryCreatePreview(
+        OpenTargetRequest request,
+        out OpenTargetPreview? preview,
+        out string? failureCode,
+        out string? reason)
+    {
+        if (TryValidate(request, out OpenTargetClassification classification, out failureCode, out reason))
+        {
+            preview = classification.ToPreview();
+            return true;
+        }
+
+        preview = null;
+        return false;
+    }
+
     public static bool TryValidate(
         OpenTargetRequest request,
         out string? failureCode,

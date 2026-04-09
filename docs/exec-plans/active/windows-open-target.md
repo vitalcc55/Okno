@@ -337,7 +337,7 @@ Done when:
 
 Текущее состояние на `2026-04-08`:
 
-- `Package B` не начат; public MCP boundary, publication и observability rollout остаются следующим workstream-ом.
+- `Package B` закрыт: public MCP boundary, publication и observability rollout для `windows.open_target` собраны без захода в broad verification contour, smoke и docs sync из `Package C`.
 
 ### Package C: Verification, smoke and docs rollout
 
@@ -375,13 +375,13 @@ Done when:
 
 `Package B`
 
-- [ ] Добавить `WindowsOpenTargetToolRegistration` и explicit flat `inputSchema`.
-- [ ] Добавить raw-arguments binding и gated `OpenTarget(...)` handler в `WindowTools`.
-- [ ] Перевести `windows.open_target` в implemented/publication surface без drift между `ToolContractManifest`, `okno.contract` и `tools/list`.
-- [ ] Добавить dedicated `open_target.runtime.completed` event и `launch/open-target-*.json` artifact.
-- [ ] Добавить internal preview marker `open_target.preview.completed`.
-- [ ] Не вводить новую redaction class; reuse `launch_payload`.
-- [ ] Не вводить auto-attach или auto-focus.
+- [x] Добавить `WindowsOpenTargetToolRegistration` и explicit flat `inputSchema`.
+- [x] Добавить raw-arguments binding и gated `OpenTarget(...)` handler в `WindowTools`.
+- [x] Перевести `windows.open_target` в implemented/publication surface без drift между `ToolContractManifest`, `okno.contract` и `tools/list`.
+- [x] Добавить dedicated `open_target.runtime.completed` event и `launch/open-target-*.json` artifact.
+- [x] Добавить internal preview marker `open_target.preview.completed`.
+- [x] Не вводить новую redaction class; reuse `launch_payload`.
+- [x] Не вводить auto-attach или auto-focus.
 
 `Package C`
 

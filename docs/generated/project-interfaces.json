@@ -132,6 +132,24 @@
         }
       },
       {
+        "name": "windows.open_target",
+        "capability": "windows.launch",
+        "lifecycle": "implemented",
+        "safety_class": "os_side_effect",
+        "summary": "\u0417\u0430\u043F\u0440\u0430\u0448\u0438\u0432\u0430\u0435\u0442 shell-open \u0434\u043B\u044F document, folder \u0438\u043B\u0438 http/https URL \u0431\u0435\u0437 \u0441\u043C\u0435\u0448\u0435\u043D\u0438\u044F \u0441 direct process launch, auto-attach \u0438 auto-focus. Success \u0444\u0438\u043A\u0441\u0438\u0440\u0443\u0435\u0442 shell acceptance, \u0430 optional handler process id \u043E\u0441\u0442\u0430\u0451\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E best-effort enrichment.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": false,
+        "execution_policy": {
+          "policy_group": "launch",
+          "risk_level": "medium",
+          "guard_capability": "launch",
+          "supports_dry_run": true,
+          "confirmation_mode": "required",
+          "redaction_class": "launch_payload"
+        }
+      },
+      {
         "name": "windows.uia_snapshot",
         "capability": "windows.uia",
         "lifecycle": "implemented",
@@ -239,6 +257,7 @@
       "windows.focus_window",
       "windows.capture",
       "windows.launch_process",
+      "windows.open_target",
       "windows.uia_snapshot",
       "windows.wait"
     ],

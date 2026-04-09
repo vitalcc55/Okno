@@ -362,7 +362,8 @@ public sealed class WindowSessionToolTests
             new FakeWaitService(),
             waitResultMaterializer,
             new FakeToolExecutionGate(),
-            new FakeProcessLaunchService());
+            new FakeProcessLaunchService(),
+            new FakeOpenTargetService());
 
         return new TestContext(tools, sessionManager);
     }

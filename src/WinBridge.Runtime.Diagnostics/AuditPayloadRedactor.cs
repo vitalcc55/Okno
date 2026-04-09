@@ -171,6 +171,21 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
             return true;
         }
 
+        if (redactionClass == ToolExecutionRedactionClass.LaunchPayload
+            && string.Equals(key, "target_identity", StringComparison.OrdinalIgnoreCase))
+        {
+            string? targetIdentity = ResolveLaunchTargetIdentity(value);
+            if (string.IsNullOrWhiteSpace(targetIdentity))
+            {
+                fieldRedacted = true;
+                return true;
+            }
+
+            sanitizedValue = targetIdentity;
+            fieldRedacted = !string.Equals(targetIdentity, value, StringComparison.Ordinal);
+            return true;
+        }
+
         return false;
     }
 
@@ -358,6 +373,38 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
         }
 
         return executableName;
+    }
+
+    private static string? ResolveLaunchTargetIdentity(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        if (!Path.IsPathFullyQualified(value)
+            && Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
+            && uri.IsAbsoluteUri)
+        {
+            return null;
+        }
+
+        string normalized = value.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        string trimmed = normalized.TrimEnd(Path.DirectorySeparatorChar);
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return null;
+        }
+
+        string targetName = Path.GetFileName(trimmed);
+        if (!string.IsNullOrWhiteSpace(targetName))
+        {
+            return targetName;
+        }
+
+        string[] segments = trimmed
+            .Split([Path.DirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length == 0 ? null : segments[^1];
     }
 
     private static Dictionary<string, object?> CreateRedactedMarker(

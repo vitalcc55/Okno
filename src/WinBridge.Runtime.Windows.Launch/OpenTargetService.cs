@@ -5,17 +5,20 @@ namespace WinBridge.Runtime.Windows.Launch;
 public sealed class OpenTargetService : IOpenTargetService
 {
     private readonly IOpenTargetPlatform _platform;
+    private readonly OpenTargetResultMaterializer _resultMaterializer;
     private readonly TimeProvider _timeProvider;
     private readonly IOpenTargetPathInspector _pathInspector;
 
     internal OpenTargetService(
         IOpenTargetPlatform platform,
         TimeProvider timeProvider,
-        IOpenTargetPathInspector pathInspector)
+        IOpenTargetPathInspector pathInspector,
+        OpenTargetResultMaterializer resultMaterializer)
     {
         _platform = platform;
         _timeProvider = timeProvider;
         _pathInspector = pathInspector;
+        _resultMaterializer = resultMaterializer;
     }
 
     public Task<OpenTargetResult> OpenAsync(OpenTargetRequest request, CancellationToken cancellationToken)
@@ -35,24 +38,25 @@ public sealed class OpenTargetService : IOpenTargetService
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        OpenTargetResult liveResult;
         if (TryValidateResolvedPathKind(request, classification, out OpenTargetResult? kindMismatchResult))
         {
-            return Task.FromResult(kindMismatchResult!);
+            liveResult = kindMismatchResult!;
         }
-
-        OpenTargetPlatformResult platformResult = _platform.Open(
-            new OpenTargetPlatformRequest(
-                TargetKind: classification.TargetKind,
-                Target: request.Target));
-
-        if (platformResult.IsAccepted)
+        else
         {
-            int? handlerProcessId = platformResult.HandlerProcessId is > 0
-                ? platformResult.HandlerProcessId
-                : null;
+            OpenTargetPlatformResult platformResult = _platform.Open(
+                new OpenTargetPlatformRequest(
+                    TargetKind: classification.TargetKind,
+                    Target: request.Target));
 
-            return Task.FromResult(
-                new OpenTargetResult(
+            if (platformResult.IsAccepted)
+            {
+                int? handlerProcessId = platformResult.HandlerProcessId is > 0
+                    ? platformResult.HandlerProcessId
+                    : null;
+
+                liveResult = new OpenTargetResult(
                     Status: OpenTargetStatusValues.Done,
                     Decision: OpenTargetStatusValues.Done,
                     ResultMode: handlerProcessId is null
@@ -63,19 +67,23 @@ public sealed class OpenTargetService : IOpenTargetService
                     UriScheme: classification.UriScheme,
                     AcceptedAtUtc: _timeProvider.GetUtcNow(),
                     HandlerProcessId: handlerProcessId,
-                    ArtifactPath: null));
+                    ArtifactPath: null);
+            }
+            else
+            {
+                liveResult = new OpenTargetResult(
+                    Status: OpenTargetStatusValues.Failed,
+                    Decision: OpenTargetStatusValues.Failed,
+                    FailureCode: platformResult.FailureCode ?? OpenTargetFailureCodeValues.ShellRejectedTarget,
+                    Reason: platformResult.FailureReason ?? "Shell не принял open request для target.",
+                    TargetKind: classification.TargetKind,
+                    TargetIdentity: classification.TargetIdentity,
+                    UriScheme: classification.UriScheme,
+                    ArtifactPath: null);
+            }
         }
 
-        return Task.FromResult(
-            new OpenTargetResult(
-                Status: OpenTargetStatusValues.Failed,
-                Decision: OpenTargetStatusValues.Failed,
-                FailureCode: platformResult.FailureCode ?? OpenTargetFailureCodeValues.ShellRejectedTarget,
-                Reason: platformResult.FailureReason ?? "Shell не принял open request для target.",
-                TargetKind: classification.TargetKind,
-                TargetIdentity: classification.TargetIdentity,
-                UriScheme: classification.UriScheme,
-                ArtifactPath: null));
+        return Task.FromResult(_resultMaterializer.Materialize(liveResult));
     }
 
     private bool TryValidateResolvedPathKind(

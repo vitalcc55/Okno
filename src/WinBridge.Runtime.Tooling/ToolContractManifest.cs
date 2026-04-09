@@ -33,7 +33,7 @@ public static class ToolContractManifest
             ToolDescriptions.WindowsOpenTargetTool,
             null,
             null,
-            true,
+            false,
             CreateExecutionPolicy(
                 ToolExecutionPolicyGroup.Launch,
                 ToolExecutionRiskLevel.Medium,
@@ -43,7 +43,7 @@ public static class ToolContractManifest
                 ToolExecutionRedactionClass.LaunchPayload));
 
     public static string ContractNotes { get; } =
-        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait, public windows.launch_process и честные deferred action tools без hidden enforcement; okno.contract публикует execution_policy metadata для policy-bearing public tools и declared deferred tools.";
+        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait, public windows.launch_process, public windows.open_target и честные deferred action tools без hidden enforcement; okno.contract публикует execution_policy metadata для policy-bearing public tools и declared deferred tools.";
 
     public static IReadOnlyList<ToolDescriptor> All { get; } =
         new[]
@@ -58,6 +58,7 @@ public static class ToolContractManifest
             new ToolDescriptor(ToolNames.WindowsFocusWindow, "windows.shell", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.WindowsFocusWindowTool, null, null, false),
             new ToolDescriptor(ToolNames.WindowsCapture, "windows.capture", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.WindowsCaptureTool, null, null, true),
             FutureLaunchProcessDescriptor,
+            FutureOpenTargetDescriptor,
             new ToolDescriptor(ToolNames.WindowsUiaSnapshot, "windows.uia", ToolLifecycle.Implemented, ToolSafetyClass.ReadOnly, ToolDescriptions.WindowsUiaSnapshotTool, null, null, true),
             new ToolDescriptor(ToolNames.WindowsWait, "windows.wait", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.WindowsWaitTool, null, null, true),
             new ToolDescriptor(ToolNames.WindowsClipboardGet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.ReadOnly, "Читает текущее содержимое clipboard.", "roadmap stage 4", "Clipboard path будет добавлен после skeleton runtime.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.Clipboard, ToolExecutionRiskLevel.Medium, CapabilitySummaryValues.Clipboard, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.ClipboardPayload)),
@@ -72,11 +73,7 @@ public static class ToolContractManifest
     }
 
     internal static IReadOnlyDictionary<string, ToolExecutionPolicyDescriptor> FutureLaunchFamilyPolicyPresets { get; } =
-        new Dictionary<string, ToolExecutionPolicyDescriptor>(StringComparer.Ordinal)
-        {
-            [ToolNames.WindowsOpenTarget] = FutureOpenTargetDescriptor.ExecutionPolicy
-                ?? throw new InvalidOperationException("Execution policy for FutureOpenTargetDescriptor must be configured."),
-        };
+        new Dictionary<string, ToolExecutionPolicyDescriptor>(StringComparer.Ordinal);
 
     public static IReadOnlyList<ToolDescriptor> Implemented { get; } =
         All.Where(descriptor => descriptor.Lifecycle == ToolLifecycle.Implemented).ToArray();

@@ -182,6 +182,27 @@ internal sealed class FakeProcessLaunchService(
     }
 }
 
+internal sealed class FakeOpenTargetService(
+    Func<OpenTargetRequest, CancellationToken, Task<OpenTargetResult>>? handler = null) : IOpenTargetService
+{
+    public int Calls { get; private set; }
+
+    public OpenTargetRequest? LastRequest { get; private set; }
+
+    public Task<OpenTargetResult> OpenAsync(OpenTargetRequest request, CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastRequest = request;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("OpenTarget service не должен вызываться в этом тесте.");
+        }
+
+        return handler(request, cancellationToken);
+    }
+}
+
 internal sealed class FakeToolExecutionGate(
     Func<ToolExecutionPolicyDescriptor, ToolExecutionIntent, ToolExecutionDecision>? handler = null) : IToolExecutionGate
 {

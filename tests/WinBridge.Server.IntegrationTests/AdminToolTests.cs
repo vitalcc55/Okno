@@ -102,7 +102,7 @@ public sealed class AdminToolTests
             ],
             result.Warnings.Select(item => item.Source).ToArray());
         Assert.Contains(ToolNames.WindowsLaunchProcess, result.ImplementedTools);
-        Assert.DoesNotContain(ToolNames.WindowsOpenTarget, result.ImplementedTools);
+        Assert.Contains(ToolNames.WindowsOpenTarget, result.ImplementedTools);
         Assert.False(result.DeferredTools.ContainsKey(ToolNames.WindowsLaunchProcess));
         Assert.False(result.DeferredTools.ContainsKey(ToolNames.WindowsOpenTarget));
     }
@@ -153,6 +153,17 @@ public sealed class AdminToolTests
         Assert.Equal("required", launchPolicy.ConfirmationMode);
         Assert.Equal("launch_payload", launchPolicy.RedactionClass);
 
+        ContractToolDescriptor openTargetDescriptor = Assert.Single(
+            result.ImplementedTools,
+            descriptor => descriptor.Name == ToolNames.WindowsOpenTarget);
+        ContractToolExecutionPolicyDescriptor openTargetPolicy = Assert.IsType<ContractToolExecutionPolicyDescriptor>(openTargetDescriptor.ExecutionPolicy);
+        Assert.Equal("launch", openTargetPolicy.PolicyGroup);
+        Assert.Equal("medium", openTargetPolicy.RiskLevel);
+        Assert.Equal("launch", openTargetPolicy.GuardCapability);
+        Assert.True(openTargetPolicy.SupportsDryRun);
+        Assert.Equal("required", openTargetPolicy.ConfirmationMode);
+        Assert.Equal("launch_payload", openTargetPolicy.RedactionClass);
+
         ContractToolDescriptor inputDescriptor = Assert.Single(
             result.DeferredTools,
             descriptor => descriptor.Name == ToolNames.WindowsInput);
@@ -164,7 +175,6 @@ public sealed class AdminToolTests
         Assert.Equal("required", inputPolicy.ConfirmationMode);
         Assert.Equal("text_payload", inputPolicy.RedactionClass);
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
-        Assert.DoesNotContain(result.ImplementedTools, descriptor => descriptor.Name == ToolNames.WindowsOpenTarget);
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsOpenTarget);
     }
 

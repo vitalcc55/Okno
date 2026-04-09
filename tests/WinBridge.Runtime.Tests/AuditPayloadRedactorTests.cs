@@ -172,6 +172,64 @@ public sealed class AuditPayloadRedactorTests
     }
 
     [Fact]
+    public void RedactOpenTargetRuntimeEventDataKeepsSafePathIdentityAndSuppressesRawPathAndUrl()
+    {
+        AuditPayloadRedactor redactor = new();
+
+        AuditRedactionResult result = redactor.Redact(
+            new AuditPayloadRedactionContext(
+                ToolName: "windows.open_target",
+                EventName: "open_target.runtime.completed",
+                PayloadKind: AuditPayloadKind.EventData,
+                RedactionClass: ToolExecutionRedactionClass.LaunchPayload),
+            new Dictionary<string, string?>
+            {
+                ["status"] = "done",
+                ["target_kind"] = "document",
+                ["target_identity"] = @"C:\Docs\Quarterly\report.pdf",
+                ["target"] = @"C:\Docs\Quarterly\report.pdf",
+                ["url"] = "https://example.test/docs?q=hidden#fragment",
+                ["artifact_path"] = @"C:\artifacts\diagnostics\launch\open-target-20260408T130000000-demo.json",
+            });
+
+        Assert.True(result.RedactionApplied);
+        Assert.Contains("target_identity", result.RedactedFields);
+        Assert.Contains("target", result.RedactedFields);
+        Assert.Contains("url", result.RedactedFields);
+        Assert.Equal("done", result.SanitizedData["status"]);
+        Assert.Equal("document", result.SanitizedData["target_kind"]);
+        Assert.Equal("report.pdf", result.SanitizedData["target_identity"]);
+        Assert.Equal(@"C:\artifacts\diagnostics\launch\open-target-20260408T130000000-demo.json", result.SanitizedData["artifact_path"]);
+        Assert.False(result.SanitizedData.ContainsKey("target"));
+        Assert.False(result.SanitizedData.ContainsKey("url"));
+    }
+
+    [Fact]
+    public void RedactOpenTargetRuntimeEventDataSuppressesUrlLikeTargetIdentityWhenSafeIdentityCannotBeDerived()
+    {
+        AuditPayloadRedactor redactor = new();
+
+        AuditRedactionResult result = redactor.Redact(
+            new AuditPayloadRedactionContext(
+                ToolName: "windows.open_target",
+                EventName: "open_target.runtime.completed",
+                PayloadKind: AuditPayloadKind.EventData,
+                RedactionClass: ToolExecutionRedactionClass.LaunchPayload),
+            new Dictionary<string, string?>
+            {
+                ["target_kind"] = "url",
+                ["target_identity"] = "https://example.test/docs?q=hidden#fragment",
+                ["uri_scheme"] = "https",
+            });
+
+        Assert.True(result.RedactionApplied);
+        Assert.Contains("target_identity", result.RedactedFields);
+        Assert.Equal("url", result.SanitizedData["target_kind"]);
+        Assert.Equal("https", result.SanitizedData["uri_scheme"]);
+        Assert.False(result.SanitizedData.ContainsKey("target_identity"));
+    }
+
+    [Fact]
     public void RedactNonePreservesSafeSummary()
     {
         AuditPayloadRedactor redactor = new();

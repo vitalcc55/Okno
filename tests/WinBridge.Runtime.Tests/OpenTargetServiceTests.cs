@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Windows.Launch;
 
 namespace WinBridge.Runtime.Tests;
@@ -49,6 +50,8 @@ public sealed class OpenTargetServiceTests
         Assert.Equal(OpenTargetFailureCodeValues.UnsupportedTargetKind, result.FailureCode);
         Assert.Equal(0, platform.CallCount);
         Assert.Equal(1, pathInspector.CallCount);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
     }
 
     [Fact]
@@ -71,6 +74,8 @@ public sealed class OpenTargetServiceTests
         Assert.Equal(OpenTargetFailureCodeValues.UnsupportedTargetKind, result.FailureCode);
         Assert.Equal(0, platform.CallCount);
         Assert.Equal(1, pathInspector.CallCount);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
     }
 
     [Fact]
@@ -121,7 +126,8 @@ public sealed class OpenTargetServiceTests
         Assert.Equal("https", result.UriScheme);
         Assert.Equal(timeProvider.GetUtcNow(), result.AcceptedAtUtc);
         Assert.Null(result.HandlerProcessId);
-        Assert.Null(result.ArtifactPath);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.EndsWith(".json", result.ArtifactPath, StringComparison.Ordinal);
         Assert.Equal(1, platform.CallCount);
     }
 
@@ -148,7 +154,7 @@ public sealed class OpenTargetServiceTests
         Assert.Equal("report.pdf", result.TargetIdentity);
         Assert.Equal(4242, result.HandlerProcessId);
         Assert.Equal(timeProvider.GetUtcNow(), result.AcceptedAtUtc);
-        Assert.Null(result.ArtifactPath);
+        Assert.NotNull(result.ArtifactPath);
     }
 
     [Fact]
@@ -175,7 +181,7 @@ public sealed class OpenTargetServiceTests
         Assert.Null(result.UriScheme);
         Assert.Null(result.AcceptedAtUtc);
         Assert.Null(result.HandlerProcessId);
-        Assert.Null(result.ArtifactPath);
+        Assert.NotNull(result.ArtifactPath);
     }
 
     [Fact]
@@ -197,11 +203,27 @@ public sealed class OpenTargetServiceTests
     private static OpenTargetService CreateService(
         FakeOpenTargetPlatform platform,
         TimeProvider? timeProvider = null,
-        FakeOpenTargetPathInspector? pathInspector = null) =>
-        new(
+        FakeOpenTargetPathInspector? pathInspector = null)
+    {
+        string root = CreateWorkingDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: Guid.NewGuid().ToString("N"),
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "open-target-service-tests"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "open-target-service-tests", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "open-target-service-tests", "summary.md"));
+        TimeProvider effectiveTimeProvider = timeProvider ?? TimeProvider.System;
+        AuditLog auditLog = new(options, effectiveTimeProvider);
+        OpenTargetResultMaterializer materializer = new(auditLog, options, effectiveTimeProvider);
+
+        return new OpenTargetService(
             platform,
-            timeProvider ?? TimeProvider.System,
-            pathInspector ?? new FakeOpenTargetPathInspector(_ => OpenTargetResolvedPathKind.Unresolved));
+            effectiveTimeProvider,
+            pathInspector ?? new FakeOpenTargetPathInspector(_ => OpenTargetResolvedPathKind.Unresolved),
+            materializer);
+    }
 
     private static string CreateWorkingDirectory()
     {

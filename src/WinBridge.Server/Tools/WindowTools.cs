@@ -27,6 +27,7 @@ namespace WinBridge.Server.Tools;
 public sealed class WindowTools
 {
     private const string LaunchPreviewCompletedEventName = "launch.preview.completed";
+    private const string OpenTargetPreviewCompletedEventName = "open_target.preview.completed";
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -36,6 +37,7 @@ public sealed class WindowTools
     private readonly AuditLog _auditLog;
     private readonly ICaptureService _captureService;
     private readonly IMonitorManager _monitorManager;
+    private readonly IOpenTargetService _openTargetService;
     private readonly IProcessLaunchService _processLaunchService;
     private readonly ISessionManager _sessionManager;
     private readonly IToolExecutionGate _toolExecutionGate;
@@ -58,11 +60,13 @@ public sealed class WindowTools
         IWaitService waitService,
         WaitResultMaterializer waitResultMaterializer,
         IToolExecutionGate toolExecutionGate,
-        IProcessLaunchService processLaunchService)
+        IProcessLaunchService processLaunchService,
+        IOpenTargetService openTargetService)
     {
         _auditLog = auditLog;
         _captureService = captureService;
         _monitorManager = monitorManager;
+        _openTargetService = openTargetService;
         _processLaunchService = processLaunchService;
         _sessionManager = sessionManager;
         _toolExecutionGate = toolExecutionGate;
@@ -479,6 +483,48 @@ public sealed class WindowTools
             (invocation, decision) => Task.FromResult(CreateRejectedLaunchProcessToolResult(invocation, request, validation, decision)));
     }
 
+    public Task<CallToolResult> OpenTarget(
+        OpenTargetRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteOpenTargetAsync(request, new(true, request, null, null), cancellationToken);
+    }
+
+    public Task<CallToolResult> OpenTarget(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requestContext);
+        OpenTargetTransportBinding binding = BindOpenTargetRequest(requestContext);
+        return ExecuteOpenTargetAsync(binding.Request, binding, cancellationToken);
+    }
+
+    private Task<CallToolResult> ExecuteOpenTargetAsync(
+        OpenTargetRequest request,
+        OpenTargetTransportBinding binding,
+        CancellationToken cancellationToken)
+    {
+        OpenTargetBoundaryValidation validation = ValidateOpenTargetRequest(request, binding);
+        ToolExecutionPolicyDescriptor policy = ToolContractManifest.ResolveExecutionPolicy(ToolNames.WindowsOpenTarget)
+            ?? throw new InvalidOperationException("Execution policy for windows.open_target is not configured.");
+        ToolExecutionIntent intent = new(
+            IsDryRunRequested: request.DryRun,
+            ConfirmationGranted: request.Confirm,
+            PreviewAvailable: validation.IsValid);
+
+        return RuntimeToolExecution.RunGatedAsync(
+            _auditLog,
+            _sessionManager.GetSnapshot(),
+            ToolNames.WindowsOpenTarget,
+            request,
+            policy,
+            intent,
+            _toolExecutionGate,
+            (invocation, decision) => ExecuteAllowedOpenTargetAsync(invocation, request, validation, decision, cancellationToken),
+            (invocation, decision) => Task.FromResult(CreateRejectedOpenTargetToolResult(invocation, request, validation, decision)));
+    }
+
     [McpServerTool(Name = ToolNames.WindowsClipboardGet)]
     public DeferredToolResult ClipboardGet() =>
         Deferred(ToolNames.WindowsClipboardGet);
@@ -738,6 +784,99 @@ public sealed class WindowTools
         return CreateToolResult(failedResult, isError: true);
     }
 
+    private async Task<CallToolResult> ExecuteAllowedOpenTargetAsync(
+        AuditInvocationScope invocation,
+        OpenTargetRequest request,
+        OpenTargetBoundaryValidation validation,
+        ToolExecutionDecision decision,
+        CancellationToken cancellationToken)
+    {
+        if (!validation.IsValid)
+        {
+            return CreateInvalidOpenTargetToolResult(invocation, validation);
+        }
+
+        if (decision.Mode == ToolExecutionMode.DryRun)
+        {
+            OpenTargetResult dryRunResult = CreateAllowedDryRunOpenTargetResult(validation.Preview!, decision);
+            _auditLog.TryRecordRuntimeEvent(
+                eventName: OpenTargetPreviewCompletedEventName,
+                severity: "info",
+                messageHuman: "Dry-run preview подготовлен без factual shell-open side effect.",
+                toolName: ToolNames.WindowsOpenTarget,
+                outcome: "preview_only",
+                windowHwnd: null,
+                data: CreateOpenTargetAuditData(dryRunResult));
+            invocation.CompleteBestEffort(
+                dryRunResult.Status,
+                "Подготовлен dry-run preview shell-open target.",
+                data: CreateOpenTargetAuditData(dryRunResult));
+            return CreateToolResult(dryRunResult, isError: false);
+        }
+
+        try
+        {
+            OpenTargetResult runtimeResult = await _openTargetService
+                .OpenAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+            invocation.CompleteBestEffort(
+                runtimeResult.Status,
+                CreateOpenTargetCompletionMessage(runtimeResult),
+                data: CreateOpenTargetAuditData(runtimeResult));
+            return CreateToolResult(runtimeResult, isError: OpenTargetStatusIsToolError(runtimeResult.Status));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            OpenTargetResult failedResult = CreateUnexpectedOpenTargetFailureResult(request, validation.Preview);
+            invocation.CompleteSanitizedFailure(
+                failedResult.Reason ?? "Server не смог завершить open_target request.",
+                exception,
+                data: CreateOpenTargetAuditData(failedResult));
+            return CreateToolResult(failedResult, isError: true);
+        }
+    }
+
+    private static CallToolResult CreateRejectedOpenTargetToolResult(
+        AuditInvocationScope invocation,
+        OpenTargetRequest request,
+        OpenTargetBoundaryValidation validation,
+        ToolExecutionDecision decision)
+    {
+        if (!validation.IsValid)
+        {
+            return CreateInvalidOpenTargetToolResult(invocation, validation);
+        }
+
+        OpenTargetResult rejectedResult = CreateRejectedOpenTargetResult(validation.Preview!, decision);
+        invocation.Complete(
+            rejectedResult.Status,
+            CreateOpenTargetCompletionMessage(rejectedResult),
+            data: CreateOpenTargetAuditData(rejectedResult));
+        return CreateToolResult(rejectedResult, isError: true);
+    }
+
+    private static CallToolResult CreateInvalidOpenTargetToolResult(
+        AuditInvocationScope invocation,
+        OpenTargetBoundaryValidation validation)
+    {
+        OpenTargetResult failedResult = new(
+            Status: OpenTargetStatusValues.Failed,
+            Decision: OpenTargetStatusValues.Failed,
+            FailureCode: validation.FailureCode ?? OpenTargetFailureCodeValues.InvalidRequest,
+            Reason: validation.Reason ?? "Open target request не прошёл validation.",
+            TargetKind: validation.TargetKind,
+            ArtifactPath: null);
+        invocation.Complete(
+            failedResult.Status,
+            failedResult.Reason ?? "Open target request не прошёл validation.",
+            data: CreateOpenTargetAuditData(failedResult));
+        return CreateToolResult(failedResult, isError: true);
+    }
+
     private DeferredToolResult Deferred(string toolName)
         => RuntimeToolExecution.Run(
             _auditLog,
@@ -799,6 +938,26 @@ public sealed class WindowTools
                 TimeoutMs: request.TimeoutMs));
     }
 
+    private static OpenTargetBoundaryValidation ValidateOpenTargetRequest(
+        OpenTargetRequest request,
+        OpenTargetTransportBinding binding)
+    {
+        if (!binding.IsSuccess)
+        {
+            return new(false, binding.FailureCode, binding.Reason, null, null);
+        }
+
+        if (!OpenTargetRequestValidator.TryCreatePreview(request, out OpenTargetPreview? preview, out string? failureCode, out string? reason))
+        {
+            string? targetKind = string.IsNullOrWhiteSpace(request.TargetKind)
+                ? null
+                : request.TargetKind;
+            return new(false, failureCode, reason, targetKind, null);
+        }
+
+        return new(true, null, null, preview!.TargetKind, preview);
+    }
+
     private static LaunchProcessTransportBinding BindLaunchProcessRequest(
         RequestContext<CallToolRequestParams> requestContext)
     {
@@ -818,6 +977,28 @@ public sealed class WindowTools
                 new LaunchProcessRequest(),
                 LaunchProcessFailureCodeValues.InvalidRequest,
                 $"Transport arguments для launch_process не прошли binding: {exception.Message}");
+        }
+    }
+
+    private static OpenTargetTransportBinding BindOpenTargetRequest(
+        RequestContext<CallToolRequestParams> requestContext)
+    {
+        IDictionary<string, JsonElement>? arguments = requestContext.Params?.Arguments;
+
+        try
+        {
+            JsonElement rawArguments = JsonSerializer.SerializeToElement(arguments);
+            OpenTargetRequest request = rawArguments.Deserialize<OpenTargetRequest>()
+                ?? throw new JsonException("Transport arguments did not deserialize to OpenTargetRequest.");
+            return new(true, request, null, null);
+        }
+        catch (JsonException exception)
+        {
+            return new(
+                false,
+                new OpenTargetRequest(),
+                OpenTargetFailureCodeValues.InvalidRequest,
+                $"Transport arguments для open_target не прошли binding: {exception.Message}");
         }
     }
 
@@ -875,6 +1056,51 @@ public sealed class WindowTools
             "Server не смог завершить launch request.",
             executableIdentity);
 
+    private static OpenTargetResult CreateRejectedOpenTargetResult(
+        OpenTargetPreview preview,
+        ToolExecutionDecision decision) =>
+        new(
+            Status: ToOpenTargetRejectedStatus(decision.Kind),
+            Decision: ToOpenTargetRejectedStatus(decision.Kind),
+            Reason: CreateOpenTargetGateReason(decision.Kind),
+            TargetKind: preview.TargetKind,
+            TargetIdentity: preview.TargetIdentity,
+            UriScheme: preview.UriScheme,
+            Preview: preview,
+            RiskLevel: ToSnakeCase(decision.RiskLevel),
+            GuardCapability: decision.GuardCapability,
+            RequiresConfirmation: decision.RequiresConfirmation,
+            DryRunSupported: decision.DryRunSupported,
+            Reasons: decision.Reasons);
+
+    private static OpenTargetResult CreateAllowedDryRunOpenTargetResult(
+        OpenTargetPreview preview,
+        ToolExecutionDecision decision) =>
+        new(
+            Status: OpenTargetStatusValues.Done,
+            Decision: OpenTargetStatusValues.Done,
+            TargetKind: preview.TargetKind,
+            TargetIdentity: preview.TargetIdentity,
+            UriScheme: preview.UriScheme,
+            Preview: preview,
+            RiskLevel: ToSnakeCase(decision.RiskLevel),
+            GuardCapability: decision.GuardCapability,
+            RequiresConfirmation: decision.RequiresConfirmation,
+            DryRunSupported: decision.DryRunSupported,
+            Reasons: decision.Reasons);
+
+    private static OpenTargetResult CreateUnexpectedOpenTargetFailureResult(
+        OpenTargetRequest request,
+        OpenTargetPreview? preview) =>
+        new(
+            Status: OpenTargetStatusValues.Failed,
+            Decision: OpenTargetStatusValues.Failed,
+            Reason: "Server не смог завершить open_target request.",
+            TargetKind: preview?.TargetKind ?? (string.IsNullOrWhiteSpace(request.TargetKind) ? null : request.TargetKind),
+            TargetIdentity: preview?.TargetIdentity,
+            UriScheme: preview?.UriScheme,
+            ArtifactPath: null);
+
     private static Dictionary<string, string?> CreateLaunchProcessAuditData(LaunchProcessResult result) =>
         new Dictionary<string, string?>
         {
@@ -888,6 +1114,20 @@ public sealed class WindowTools
             ["main_window_observation_status"] = result.MainWindowObservationStatus,
             ["preview_resolution_mode"] = result.Preview?.ResolutionMode,
             ["preview_argument_count"] = result.Preview?.ArgumentCount.ToString(CultureInfo.InvariantCulture),
+        };
+
+    private static Dictionary<string, string?> CreateOpenTargetAuditData(OpenTargetResult result) =>
+        new()
+        {
+            ["status"] = result.Status,
+            ["decision"] = result.Decision,
+            ["result_mode"] = result.ResultMode,
+            ["failure_code"] = result.FailureCode,
+            ["target_kind"] = result.TargetKind,
+            ["target_identity"] = result.TargetIdentity,
+            ["uri_scheme"] = result.UriScheme,
+            ["handler_process_id"] = result.HandlerProcessId?.ToString(CultureInfo.InvariantCulture),
+            ["artifact_path"] = result.ArtifactPath,
         };
 
     private static string CreateLaunchProcessCompletionMessage(LaunchProcessResult result)
@@ -911,6 +1151,25 @@ public sealed class WindowTools
         };
     }
 
+    private static string CreateOpenTargetCompletionMessage(OpenTargetResult result)
+    {
+        if (result.Status == OpenTargetStatusValues.Done && result.Preview is not null && result.AcceptedAtUtc is null)
+        {
+            return "Подготовлен dry-run preview shell-open target.";
+        }
+
+        return result.Status switch
+        {
+            OpenTargetStatusValues.Blocked => "Shell-open target заблокирован shared gate.",
+            OpenTargetStatusValues.NeedsConfirmation => "Shell-open target требует явного подтверждения.",
+            OpenTargetStatusValues.DryRunOnly => "Live shell-open недоступен, но dry-run preview разрешён.",
+            OpenTargetStatusValues.Done when result.ResultMode == OpenTargetResultModeValues.HandlerProcessObserved =>
+                "Shell-open target принят, handler process observed.",
+            OpenTargetStatusValues.Done => "Shell-open target принят.",
+            _ => result.Reason ?? "Open target request завершился ошибкой.",
+        };
+    }
+
     private static string CreateLaunchProcessGateReason(ToolExecutionDecisionKind kind) =>
         kind switch
         {
@@ -920,12 +1179,30 @@ public sealed class WindowTools
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
 
+    private static string CreateOpenTargetGateReason(ToolExecutionDecisionKind kind) =>
+        kind switch
+        {
+            ToolExecutionDecisionKind.Blocked => "Shell-open target заблокирован shared gate.",
+            ToolExecutionDecisionKind.NeedsConfirmation => "Shell-open target требует явного подтверждения.",
+            ToolExecutionDecisionKind.DryRunOnly => "Live shell-open недоступен, но dry-run preview разрешён.",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+
     private static string ToLaunchProcessRejectedStatus(ToolExecutionDecisionKind kind) =>
         kind switch
         {
             ToolExecutionDecisionKind.Blocked => LaunchProcessStatusValues.Blocked,
             ToolExecutionDecisionKind.NeedsConfirmation => LaunchProcessStatusValues.NeedsConfirmation,
             ToolExecutionDecisionKind.DryRunOnly => LaunchProcessStatusValues.DryRunOnly,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+
+    private static string ToOpenTargetRejectedStatus(ToolExecutionDecisionKind kind) =>
+        kind switch
+        {
+            ToolExecutionDecisionKind.Blocked => OpenTargetStatusValues.Blocked,
+            ToolExecutionDecisionKind.NeedsConfirmation => OpenTargetStatusValues.NeedsConfirmation,
+            ToolExecutionDecisionKind.DryRunOnly => OpenTargetStatusValues.DryRunOnly,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
 
@@ -1012,6 +1289,9 @@ public sealed class WindowTools
     private static bool LaunchProcessStatusIsToolError(string status) =>
         !string.Equals(status, LaunchProcessStatusValues.Done, StringComparison.Ordinal);
 
+    private static bool OpenTargetStatusIsToolError(string status) =>
+        !string.Equals(status, OpenTargetStatusValues.Done, StringComparison.Ordinal);
+
     private static Dictionary<string, string?> CreateWaitAuditData(
         string condition,
         long? requestedHwnd,
@@ -1061,6 +1341,19 @@ public sealed class WindowTools
     private readonly record struct LaunchProcessTransportBinding(
         bool IsSuccess,
         LaunchProcessRequest Request,
+        string? FailureCode,
+        string? Reason);
+
+    private readonly record struct OpenTargetBoundaryValidation(
+        bool IsValid,
+        string? FailureCode,
+        string? Reason,
+        string? TargetKind,
+        OpenTargetPreview? Preview);
+
+    private readonly record struct OpenTargetTransportBinding(
+        bool IsSuccess,
+        OpenTargetRequest Request,
         string? FailureCode,
         string? Reason);
 

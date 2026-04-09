@@ -541,6 +541,76 @@ public sealed class AuditLogTests
         Assert.True(Directory.Exists(options.EventsPath));
     }
 
+    [Fact]
+    public void RecordRuntimeEventAddsSafeOpenTargetIdentifiersToSummary()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-open-target-summary",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-open-target-summary"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-open-target-summary", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-open-target-summary", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+
+        auditLog.RecordRuntimeEvent(
+            eventName: "open_target.runtime.completed",
+            severity: "info",
+            messageHuman: "Runtime open target завершён.",
+            toolName: "windows.open_target",
+            outcome: "done",
+            windowHwnd: null,
+            data: new Dictionary<string, string?>
+            {
+                ["target_kind"] = "document",
+                ["target_identity"] = @"C:\Docs\Quarterly\report.pdf",
+                ["handler_process_id"] = "4242",
+                ["artifact_path"] = @"C:\artifacts\diagnostics\launch\open-target-20260408T130000000-demo.json",
+            });
+
+        string summary = File.ReadAllText(options.SummaryPath);
+        Assert.Contains("target_kind=document", summary, StringComparison.Ordinal);
+        Assert.Contains("target_identity=report.pdf", summary, StringComparison.Ordinal);
+        Assert.Contains("handler_process_id=4242", summary, StringComparison.Ordinal);
+        Assert.Contains(@"C:\artifacts\diagnostics\launch\open-target-20260408T130000000-demo.json", summary, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"C:\Docs\Quarterly\report.pdf", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecordRuntimeEventSanitizesOpenTargetFailureMessage()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-open-target-failure-message",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-open-target-failure-message"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-open-target-failure-message", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-open-target-failure-message", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+
+        auditLog.RecordRuntimeEvent(
+            eventName: "open_target.runtime.completed",
+            severity: "warning",
+            messageHuman: "Open target failed for https://example.test/docs?q=hidden#fragment",
+            toolName: "windows.open_target",
+            outcome: "failed",
+            windowHwnd: null,
+            data: new Dictionary<string, string?>
+            {
+                ["failure_code"] = "shell_rejected_target",
+                ["uri_scheme"] = "https",
+            });
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        string summary = File.ReadAllText(options.SummaryPath);
+        Assert.DoesNotContain("https://example.test/docs?q=hidden#fragment", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("https://example.test/docs?q=hidden#fragment", summary, StringComparison.Ordinal);
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));

@@ -185,6 +185,116 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
+    public async Task ToolsListPublishesWindowsOpenTargetWithSchemaAndAnnotations()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument toolsResponse = await session.SendRequestAsync(
+                "tools/list",
+                new { },
+                "tools/list");
+            JsonElement openTargetDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsOpenTarget);
+
+            Assert.False(string.IsNullOrWhiteSpace(openTargetDescriptor.GetProperty("description").GetString()));
+            JsonElement annotations = openTargetDescriptor.GetProperty("annotations");
+            Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
+
+            JsonElement properties = openTargetDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("targetKind").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("target").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("dryRun").GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("confirm").GetProperty("description").GetString()));
+            AssertSchemaTypeContains(properties.GetProperty("targetKind").GetProperty("type"), "string");
+            AssertSchemaTypeContains(properties.GetProperty("target").GetProperty("type"), "string");
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
+    public async Task OpenTargetRejectsUnsupportedExtraFieldAsToolLevelFailedResult()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument response = await CallToolAsync(
+                session,
+                ToolNames.WindowsOpenTarget,
+                new
+                {
+                    targetKind = "document",
+                    target = @"C:\Docs\report.pdf",
+                    workingDirectory = @"C:\Docs",
+                });
+
+            JsonElement result = response.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("isError").GetBoolean());
+            JsonElement payload = result.GetProperty("structuredContent");
+            Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("decision").GetString());
+            Assert.Equal(OpenTargetFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
     public async Task LaunchProcessRejectsEnvironmentOverridesAsToolLevelFailedResult()
     {
         using Process process = StartServer();

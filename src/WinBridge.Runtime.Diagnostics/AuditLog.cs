@@ -401,6 +401,7 @@ public sealed class AuditLog
                 ? "Вызов инструмента завершился неоднозначно."
                 : "Вызов инструмента завершился с ошибкой.",
             "launch.runtime.completed" => "Runtime launch завершился без безопасного раскрытия детали.",
+            "open_target.runtime.completed" => "Runtime open_target завершился без безопасного раскрытия детали.",
             "wait.runtime.completed" => "Runtime wait завершился без безопасного раскрытия детали.",
             "uia.snapshot.runtime.completed" => "Runtime UIA snapshot завершился с ошибкой.",
             _ => "Runtime событие завершилось без безопасного раскрытия детали.",
@@ -412,6 +413,7 @@ public sealed class AuditLog
         {
             "tool.invocation.completed" => outcome is "failed" or "ambiguous",
             "launch.runtime.completed" => outcome is not "done",
+            "open_target.runtime.completed" => outcome is not "done",
             "wait.runtime.completed" => outcome is not "done",
             "uia.snapshot.runtime.completed" => outcome is not "done",
             _ => false,
@@ -475,16 +477,31 @@ public sealed class AuditLog
 
     private static string CreateSummarySuffix(string eventName, IReadOnlyDictionary<string, string?>? data)
     {
-        if (!string.Equals(eventName, "launch.runtime.completed", StringComparison.Ordinal) || data is null)
+        if (data is null)
         {
             return string.Empty;
         }
 
         List<string> parts = [];
-        AddSummaryPart(parts, "executable", data, "executable_identity");
-        AddSummaryPart(parts, "process_id", data, "process_id");
-        AddSummaryPart(parts, "result_mode", data, "result_mode");
-        AddSummaryPart(parts, "artifact_path", data, "artifact_path");
+        if (string.Equals(eventName, "launch.runtime.completed", StringComparison.Ordinal))
+        {
+            AddSummaryPart(parts, "executable", data, "executable_identity");
+            AddSummaryPart(parts, "process_id", data, "process_id");
+            AddSummaryPart(parts, "result_mode", data, "result_mode");
+            AddSummaryPart(parts, "artifact_path", data, "artifact_path");
+        }
+        else if (string.Equals(eventName, "open_target.runtime.completed", StringComparison.Ordinal))
+        {
+            AddSummaryPart(parts, "target_kind", data, "target_kind");
+            AddSummaryPart(parts, "target_identity", data, "target_identity");
+            AddSummaryPart(parts, "uri_scheme", data, "uri_scheme");
+            AddSummaryPart(parts, "handler_process_id", data, "handler_process_id");
+            AddSummaryPart(parts, "artifact_path", data, "artifact_path");
+        }
+        else
+        {
+            return string.Empty;
+        }
 
         return parts.Count == 0
             ? string.Empty

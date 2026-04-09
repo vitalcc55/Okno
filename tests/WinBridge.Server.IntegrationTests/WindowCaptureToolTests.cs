@@ -381,7 +381,8 @@ public sealed class WindowCaptureToolTests
             new FakeWaitService(),
             waitResultMaterializer,
             new FakeToolExecutionGate(),
-            new FakeProcessLaunchService());
+            new FakeProcessLaunchService(),
+            new FakeOpenTargetService());
     }
 
     private static WindowDescriptor CreateWindow(
