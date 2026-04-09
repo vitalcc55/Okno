@@ -114,32 +114,7 @@ internal static class OpenTargetClassifier
         string target,
         out string? failureCode,
         out string? reason)
-    {
-        if (Path.IsPathRooted(target) && !Path.IsPathFullyQualified(target))
-        {
-            failureCode = OpenTargetFailureCodeValues.InvalidRequest;
-            reason = "V1 open_target принимает только absolute path; drive-relative target не поддерживается.";
-            return false;
-        }
-
-        if (Path.IsPathFullyQualified(target))
-        {
-            failureCode = null;
-            reason = null;
-            return true;
-        }
-
-        if (IsAbsoluteUri(target))
-        {
-            failureCode = OpenTargetFailureCodeValues.InvalidRequest;
-            reason = "V1 open_target принимает absolute path для document/folder и не принимает URI в этих targetKind.";
-            return false;
-        }
-
-        failureCode = OpenTargetFailureCodeValues.InvalidRequest;
-        reason = "V1 open_target принимает только absolute path для document/folder; relative target не поддерживается.";
-        return false;
-    }
+        => OpenTargetPathAdmissionPolicy.IsSupportedDocumentOrFolderPath(target, out failureCode, out reason);
 
     private static bool TryClassifyPathTarget(
         string target,
@@ -160,11 +135,6 @@ internal static class OpenTargetClassifier
         reason = null;
         return true;
     }
-
-    private static bool IsAbsoluteUri(string value) =>
-        !Path.IsPathFullyQualified(value)
-        && Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
-        && uri.IsAbsoluteUri;
 
     private static bool IsLauncherLikeDocumentTarget(string target)
         => OpenTargetDocumentSafetyPolicy.IsBlockedDocumentTarget(target);

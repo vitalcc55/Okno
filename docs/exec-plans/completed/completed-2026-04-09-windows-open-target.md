@@ -100,14 +100,15 @@
 
 V1 intentionally narrow:
 
-- `document` — absolute local/UNC document path, который не выглядит как direct executable / script / launcher target;
-- `folder` — absolute local/UNC directory path;
+- `document` — absolute DOS local или UNC document path, который не выглядит как direct executable / script / launcher target;
+- `folder` — absolute DOS local или UNC directory path;
 - `url` — absolute `http` / `https` URL.
 
 V1 intentionally out:
 
 - `mailto:`;
 - `file://` URI;
+- device-style path forms (`\\?\`, `\\.\`, `\\?\UNC\...`);
 - custom URI schemes (`ms-settings:`, `slack:`, `zoommtg:` и т.д.);
 - direct executable targets (`.exe`, `.com`) и launcher/script-like file types (`.bat`, `.cmd`, `.ps1`, `.vbs`, `.js`, `.msi`, `.lnk`, `.url`, `.scr`, `.reg`, `.msc`, `.hta` и аналогичные);
 - public `verb` variants `print`, `edit`, `openas`, `runas`.
@@ -219,7 +220,7 @@ public sealed record OpenTargetResult(
 
 - `targetKind` обязателен и должен быть `document`, `folder` или `url`;
 - `target` обязателен и не должен быть пустым после trim;
-- `document` / `folder` принимают только absolute path; relative path и drive-relative path = `invalid_request`;
+- `document` / `folder` принимают только absolute DOS local или UNC path; relative path, drive-relative path и device-style path forms = `invalid_request`;
 - `document` explicitly reject-ит direct executable / launcher / script-like extensions;
 - `url` принимает только absolute `http` / `https`;
 - `mailto`, `file`, `ms-settings` и любой другой scheme = `unsupported_uri_scheme`;
@@ -400,7 +401,7 @@ Done when:
 - `OpenTargetRequestValidatorTests`
   - empty `targetKind` / empty `target`;
   - unsupported `targetKind`;
-  - relative / drive-relative path for `document` and `folder`;
+  - relative / drive-relative / device-style path for `document` and `folder`;
   - executable / script / launcher extension under `document`, включая Python launcher-associated `.py`, `.pyw`, `.pyc`, packaged `.pyz` / `.pyzw` и Java executable `jar`;
   - `mailto`, `file`, `ms-settings`, custom scheme under `url`;
   - extra fields `verb`, `workingDirectory`, `environment`, `waitForWindow`, `timeoutMs`;
@@ -555,6 +556,7 @@ Conditional docs:
 - `workingDirectory` и `verb` intentionally исключены: official docs не дают достаточно честной и полезной semantics для document/URL V1, а verb surface быстро превращается в separate exec-plan.
 - `mailto` и custom URI schemes intentionally оставлены вне V1: они слишком зависят от machine-local associations, UI state и чувствительных payloads.
 - Conservative document denylist должен оставаться fail-closed и покрывать executable/script/launcher-like extensions; лучше extra rejection, чем скрытый process-launch surrogate через shell-open.
+- Admission boundary для `document` / `folder` intentionally уже, чем “любой fully qualified Windows path”: V1 принимает только DOS local и UNC forms, а device-style `\\?\` / `\\.\` paths считаются вне публичного request surface и reject-ятся на validator boundary.
 - Live kind refinement должен избегать только network-sensitive preflight: UNC и `DRIVE_REMOTE` деградируют в `Unresolved`, но supported local media (`DRIVE_FIXED`, `DRIVE_REMOVABLE`, `DRIVE_CDROM`, `DRIVE_RAMDISK`) сохраняют truthful file-vs-directory refinement.
 - `launch_payload` redaction для `open_target` должен скрывать raw full path, raw URL, query, fragment и любые будущие verb-like fields; для URL safe identity в audit/result = only `uri_scheme`.
 - Evidence contract должен быть additive: при нестабильности open-target runtime seam сначала откатывается public publication и related docs surface, а shared gate/readiness/redaction foundation не трогается.

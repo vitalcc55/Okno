@@ -232,6 +232,28 @@ public sealed class OpenTargetContractFreezeTests
     }
 
     [Theory]
+    [InlineData("document", @"\\?\C:\Docs\readme.txt")]
+    [InlineData("folder", @"\\?\C:\Docs")]
+    [InlineData("document", @"\\.\C:\Docs\readme.txt")]
+    [InlineData("folder", @"\\.\C:\Docs")]
+    [InlineData("document", @"\\?\UNC\server\share\readme.txt")]
+    [InlineData("folder", @"\\?\UNC\server\share\docs")]
+    public void OpenTargetRequestValidatorRejectsDeviceStylePaths(string targetKind, string target)
+    {
+        OpenTargetRequest request = new()
+        {
+            TargetKind = targetKind,
+            Target = target,
+        };
+
+        bool isValid = OpenTargetRequestValidator.TryValidate(request, out string? failureCode, out string? reason);
+
+        Assert.False(isValid);
+        Assert.Equal(OpenTargetFailureCodeValues.InvalidRequest, failureCode);
+        Assert.Contains("local/UNC", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
     [InlineData("document", "C:readme.txt")]
     [InlineData("folder", "C:workspace")]
     public void OpenTargetRequestValidatorRejectsDriveRelativePaths(string targetKind, string target)
