@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
 using WinBridge.Runtime;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
@@ -185,6 +186,74 @@ public sealed class OpenTargetServiceTests
     }
 
     [Fact]
+    public async Task OpenAsyncMaterializesTerminalFailureWhenPathInspectionThrows()
+    {
+        FakeOpenTargetPlatform platform = new(_ => throw new InvalidOperationException("platform should not be called"));
+        FakeOpenTargetPathInspector pathInspector = new(_ => throw new IOException("boom"));
+        OpenTargetService service = CreateService(platform, pathInspector: pathInspector);
+
+        OpenTargetResult result = await service.OpenAsync(
+            new OpenTargetRequest
+            {
+                TargetKind = OpenTargetKindValues.Document,
+                Target = @"C:\Docs\report.pdf",
+            },
+            CancellationToken.None);
+
+        Assert.Equal(OpenTargetStatusValues.Failed, result.Status);
+        Assert.Null(result.FailureCode);
+        Assert.Equal(OpenTargetKindValues.Document, result.TargetKind);
+        Assert.Equal("report.pdf", result.TargetIdentity);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
+        using (JsonDocument artifact = JsonDocument.Parse(File.ReadAllText(result.ArtifactPath)))
+        {
+            JsonElement diagnostics = artifact.RootElement.GetProperty("failure_diagnostics");
+            Assert.Equal("path_inspection", diagnostics.GetProperty("failure_stage").GetString());
+            Assert.Equal("System.IO.IOException", diagnostics.GetProperty("exception_type").GetString());
+        }
+
+        string eventsPath = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(result.ArtifactPath)!)!, "events.jsonl");
+        string[] eventLines = File.ReadAllLines(eventsPath);
+        Assert.Single(eventLines);
+        Assert.Contains("\"failure_stage\":\"path_inspection\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"exception_type\":\"System.IO.IOException\"", eventLines[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OpenAsyncMaterializesTerminalFailureWhenPlatformThrows()
+    {
+        FakeOpenTargetPlatform platform = new(_ => throw new InvalidOperationException("boom"));
+        OpenTargetService service = CreateService(platform);
+
+        OpenTargetResult result = await service.OpenAsync(
+            new OpenTargetRequest
+            {
+                TargetKind = OpenTargetKindValues.Url,
+                Target = "https://example.test/docs",
+            },
+            CancellationToken.None);
+
+        Assert.Equal(OpenTargetStatusValues.Failed, result.Status);
+        Assert.Null(result.FailureCode);
+        Assert.Equal(OpenTargetKindValues.Url, result.TargetKind);
+        Assert.Equal("https", result.UriScheme);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
+        using (JsonDocument artifact = JsonDocument.Parse(File.ReadAllText(result.ArtifactPath)))
+        {
+            JsonElement diagnostics = artifact.RootElement.GetProperty("failure_diagnostics");
+            Assert.Equal("platform_open", diagnostics.GetProperty("failure_stage").GetString());
+            Assert.Equal("System.InvalidOperationException", diagnostics.GetProperty("exception_type").GetString());
+        }
+
+        string[] eventLines = File.ReadAllLines(Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(result.ArtifactPath)!)!, "events.jsonl"));
+        Assert.Single(eventLines);
+        Assert.Contains("\"failure_stage\":\"platform_open\"", eventLines[0], StringComparison.Ordinal);
+        Assert.Contains("\"exception_type\":\"System.InvalidOperationException\"", eventLines[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddWinBridgeRuntimeRegistersOpenTargetServiceAndPlatform()
     {
         string root = CreateWorkingDirectory();
@@ -242,12 +311,15 @@ public sealed class OpenTargetServiceTests
     {
         public OpenTargetPlatformRequest? LastRequest { get; private set; }
 
+        public CancellationToken LastCancellationToken { get; private set; }
+
         public int CallCount { get; private set; }
 
-        public OpenTargetPlatformResult Open(OpenTargetPlatformRequest request)
+        public OpenTargetPlatformResult Open(OpenTargetPlatformRequest request, CancellationToken cancellationToken)
         {
             CallCount++;
             LastRequest = request;
+            LastCancellationToken = cancellationToken;
             return openHandler(request);
         }
     }

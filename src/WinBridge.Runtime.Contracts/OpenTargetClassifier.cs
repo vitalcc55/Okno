@@ -2,35 +2,6 @@ namespace WinBridge.Runtime.Contracts;
 
 internal static class OpenTargetClassifier
 {
-    private static readonly HashSet<string> LauncherLikeDocumentExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".application",
-        ".appref-ms",
-        ".bat",
-        ".cpl",
-        ".cmd",
-        ".com",
-        ".exe",
-        ".hta",
-        ".js",
-        ".jse",
-        ".lnk",
-        ".msc",
-        ".msi",
-        ".ps1",
-        ".psd1",
-        ".psm1",
-        ".reg",
-        ".scr",
-        ".url",
-        ".vb",
-        ".vbe",
-        ".vbs",
-        ".ws",
-        ".wsf",
-        ".wsh",
-    };
-
     internal static bool TryClassify(
         OpenTargetRequest request,
         out OpenTargetClassification classification,
@@ -196,10 +167,7 @@ internal static class OpenTargetClassifier
         && uri.IsAbsoluteUri;
 
     private static bool IsLauncherLikeDocumentTarget(string target)
-    {
-        string extension = Path.GetExtension(target);
-        return !string.IsNullOrWhiteSpace(extension) && LauncherLikeDocumentExtensions.Contains(extension);
-    }
+        => OpenTargetDocumentSafetyPolicy.IsBlockedDocumentTarget(target);
 
     private static string? TryResolveSafePathIdentity(string path)
     {

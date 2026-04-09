@@ -47,6 +47,19 @@ function Invoke-Step {
     }
 }
 
+function Invoke-ScriptProcessStep {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Description,
+        [Parameter(Mandatory)]
+        [string] $ScriptPath
+    )
+
+    Invoke-NativeCommand -Description $Description -Command {
+        powershell -ExecutionPolicy Bypass -File $ScriptPath
+    }
+}
+
 function Get-LatestFile {
     param(
         [Parameter(Mandatory)]

@@ -13,6 +13,7 @@ internal sealed class ShellExecuteOpenTargetPlatform : IOpenTargetPlatform
     private const int ErrorFileNotFound = 2;
     private const int ErrorPathNotFound = 3;
     private const int ErrorAccessDenied = 5;
+    private const int ErrorNoAssociation = 1155;
     private const int SeErrAssocIncomplete = 27;
     private const int SeErrNoAssoc = 31;
 
@@ -34,7 +35,7 @@ internal sealed class ShellExecuteOpenTargetPlatform : IOpenTargetPlatform
         _staExecutor = staExecutor;
     }
 
-    public OpenTargetPlatformResult Open(OpenTargetPlatformRequest request)
+    public OpenTargetPlatformResult Open(OpenTargetPlatformRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request.Target);
 
@@ -43,7 +44,7 @@ internal sealed class ShellExecuteOpenTargetPlatform : IOpenTargetPlatform
             ShellExecuteInvocation invocation = CreateInvocation(request);
             ShellExecuteNativeResult nativeResult = _nativeAdapter.Execute(invocation);
             return MapNativeResult(nativeResult);
-        });
+        }, cancellationToken);
     }
 
     private static ShellExecuteInvocation CreateInvocation(OpenTargetPlatformRequest request) =>
@@ -57,9 +58,7 @@ internal sealed class ShellExecuteOpenTargetPlatform : IOpenTargetPlatform
 
     private OpenTargetPlatformResult MapNativeResult(ShellExecuteNativeResult nativeResult)
     {
-        int shellCode = nativeResult.HInstApp != nint.Zero
-            ? unchecked((int)nativeResult.HInstApp.ToInt64())
-            : nativeResult.LastError;
+        int shellCode = TryGetShellCode(nativeResult);
 
         if (nativeResult.Succeeded && shellCode > 32)
         {
@@ -85,26 +84,48 @@ internal sealed class ShellExecuteOpenTargetPlatform : IOpenTargetPlatform
                 HandlerProcessId: handlerProcessId);
         }
 
-        return shellCode switch
+        return MapFailureResult(shellCode, nativeResult.LastError);
+    }
+
+    private static OpenTargetPlatformResult MapFailureResult(int shellCode, int lastError)
+    {
+        if (MatchesFailureCode(shellCode, lastError, ErrorFileNotFound, ErrorPathNotFound))
         {
-            ErrorFileNotFound or ErrorPathNotFound => new OpenTargetPlatformResult(
+            return new OpenTargetPlatformResult(
                 IsAccepted: false,
                 FailureCode: OpenTargetFailureCodeValues.TargetNotFound,
-                FailureReason: "Shell-open target не найден."),
-            ErrorAccessDenied => new OpenTargetPlatformResult(
+                FailureReason: "Shell-open target не найден.");
+        }
+
+        if (MatchesFailureCode(shellCode, lastError, ErrorAccessDenied))
+        {
+            return new OpenTargetPlatformResult(
                 IsAccepted: false,
                 FailureCode: OpenTargetFailureCodeValues.TargetAccessDenied,
-                FailureReason: "Shell-open target отклонён из-за access denied."),
-            SeErrAssocIncomplete or SeErrNoAssoc => new OpenTargetPlatformResult(
+                FailureReason: "Shell-open target отклонён из-за access denied.");
+        }
+
+        if (MatchesFailureCode(shellCode, lastError, SeErrAssocIncomplete, SeErrNoAssoc, ErrorNoAssociation))
+        {
+            return new OpenTargetPlatformResult(
                 IsAccepted: false,
                 FailureCode: OpenTargetFailureCodeValues.NoAssociation,
-                FailureReason: "Для shell-open target не найдена готовая application association."),
-            _ => new OpenTargetPlatformResult(
-                IsAccepted: false,
-                FailureCode: OpenTargetFailureCodeValues.ShellRejectedTarget,
-                FailureReason: "Shell не принял open request для target."),
-        };
+                FailureReason: "Для shell-open target не найдена готовая application association.");
+        }
+
+        return new OpenTargetPlatformResult(
+            IsAccepted: false,
+            FailureCode: OpenTargetFailureCodeValues.ShellRejectedTarget,
+            FailureReason: "Shell не принял open request для target.");
     }
+
+    private static bool MatchesFailureCode(int shellCode, int lastError, params int[] expectedCodes) =>
+        expectedCodes.Contains(shellCode) || expectedCodes.Contains(lastError);
+
+    private static int TryGetShellCode(ShellExecuteNativeResult nativeResult) =>
+        nativeResult.HInstApp != nint.Zero
+            ? unchecked((int)nativeResult.HInstApp.ToInt64())
+            : nativeResult.LastError;
 }
 
 internal readonly record struct ShellExecuteInvocation(
@@ -132,7 +153,7 @@ internal interface IShellExecuteNativeAdapter
 
 internal interface IShellExecuteStaExecutor
 {
-    T Execute<T>(Func<T> callback);
+    T Execute<T>(Func<T> callback, CancellationToken cancellationToken);
 }
 
 internal sealed class DedicatedStaShellExecuteExecutor : IShellExecuteStaExecutor
@@ -142,9 +163,10 @@ internal sealed class DedicatedStaShellExecuteExecutor : IShellExecuteStaExecuto
     private const int HResultFalse = 1;
     private const int RpcEChangedMode = unchecked((int)0x80010106);
 
-    public T Execute<T>(Func<T> callback)
+    public T Execute<T>(Func<T> callback, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(callback);
+        cancellationToken.ThrowIfCancellationRequested();
 
         T? result = default;
         ExceptionDispatchInfo? capturedException = null;
@@ -188,7 +210,9 @@ internal sealed class DedicatedStaShellExecuteExecutor : IShellExecuteStaExecuto
 
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        completed.Wait();
+        // Cancellation after dispatch only stops the caller-side wait; the native shell call keeps running
+        // on the dedicated STA thread because ShellExecuteEx itself is not safely abortable here.
+        completed.Wait(cancellationToken);
         capturedException?.Throw();
         return result!;
     }

@@ -20,7 +20,8 @@ public sealed class ShellExecuteOpenTargetPlatformTests
         OpenTargetPlatformResult result = platform.Open(
             new OpenTargetPlatformRequest(
                 TargetKind: OpenTargetKindValues.Document,
-                Target: @"C:\Docs\report.pdf"));
+                Target: @"C:\Docs\report.pdf"),
+            CancellationToken.None);
 
         Assert.True(result.IsAccepted);
         Assert.NotNull(adapter.LastInvocation);
@@ -47,7 +48,8 @@ public sealed class ShellExecuteOpenTargetPlatformTests
         OpenTargetPlatformResult result = platform.Open(
             new OpenTargetPlatformRequest(
                 TargetKind: OpenTargetKindValues.Url,
-                Target: "https://example.test/docs"));
+                Target: "https://example.test/docs"),
+            CancellationToken.None);
 
         Assert.True(result.IsAccepted);
         Assert.Null(result.HandlerProcessId);
@@ -72,7 +74,8 @@ public sealed class ShellExecuteOpenTargetPlatformTests
         OpenTargetPlatformResult result = platform.Open(
             new OpenTargetPlatformRequest(
                 TargetKind: OpenTargetKindValues.Folder,
-                Target: @"C:\Workspace"));
+                Target: @"C:\Workspace"),
+            CancellationToken.None);
 
         Assert.True(result.IsAccepted);
         Assert.Equal(4242, result.HandlerProcessId);
@@ -103,6 +106,27 @@ public sealed class ShellExecuteOpenTargetPlatformTests
     }
 
     [Fact]
+    public void OpenMapsExtendedNoAssociationErrorToNoAssociation()
+    {
+        OpenTargetPlatformResult result = ExecuteFailure(shellCode: 0, lastError: 1155);
+
+        Assert.False(result.IsAccepted);
+        Assert.Equal(OpenTargetFailureCodeValues.NoAssociation, result.FailureCode);
+    }
+
+    [Theory]
+    [InlineData(0, 2, OpenTargetFailureCodeValues.TargetNotFound)]
+    [InlineData(0, 3, OpenTargetFailureCodeValues.TargetNotFound)]
+    [InlineData(0, 5, OpenTargetFailureCodeValues.TargetAccessDenied)]
+    public void OpenMapsExtendedWin32FailureCodesWhenShellCodeIsUnavailable(int shellCode, int lastError, string expectedFailureCode)
+    {
+        OpenTargetPlatformResult result = ExecuteFailure(shellCode, lastError);
+
+        Assert.False(result.IsAccepted);
+        Assert.Equal(expectedFailureCode, result.FailureCode);
+    }
+
+    [Fact]
     public void OpenMapsAccessDeniedToTargetAccessDenied()
     {
         OpenTargetPlatformResult result = ExecuteFailure(5);
@@ -126,24 +150,65 @@ public sealed class ShellExecuteOpenTargetPlatformTests
         Assert.Equal(OpenTargetFailureCodeValues.ShellRejectedTarget, result.FailureCode);
     }
 
+    [Fact]
+    public async Task OpenHonorsCallerCancellationWhileWaitingForStaCompletion()
+    {
+        using ManualResetEventSlim callbackEntered = new(false);
+        using ManualResetEventSlim releaseCallback = new(false);
+        FakeShellExecuteNativeAdapter adapter = new(
+            invocation =>
+            {
+                callbackEntered.Set();
+                releaseCallback.Wait();
+                return new ShellExecuteNativeResult(
+                    Succeeded: true,
+                    HInstApp: (nint)33,
+                    ProcessHandle: nint.Zero,
+                    LastError: 0);
+            });
+        ShellExecuteOpenTargetPlatform platform = new(adapter, new DedicatedStaShellExecuteExecutor());
+        using CancellationTokenSource cts = new();
+
+        Task<OpenTargetPlatformResult> openTask = Task.Run(() => platform.Open(
+            new OpenTargetPlatformRequest(
+                TargetKind: OpenTargetKindValues.Document,
+                Target: @"C:\Docs\report.pdf"),
+            cts.Token));
+
+        Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(2)));
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => openTask);
+
+        releaseCallback.Set();
+    }
+
     private static OpenTargetPlatformResult ExecuteFailure(int errorCode)
+        => ExecuteFailure(errorCode, errorCode);
+
+    private static OpenTargetPlatformResult ExecuteFailure(int shellCode, int lastError)
     {
         FakeShellExecuteNativeAdapter adapter = new(
             invocation => new ShellExecuteNativeResult(
                 Succeeded: false,
-                HInstApp: (nint)errorCode,
+                HInstApp: (nint)shellCode,
                 ProcessHandle: nint.Zero,
-                LastError: errorCode));
+                LastError: lastError));
         ShellExecuteOpenTargetPlatform platform = new(adapter, new InlineStaExecutor());
         return platform.Open(
             new OpenTargetPlatformRequest(
                 TargetKind: OpenTargetKindValues.Document,
-                Target: @"C:\Docs\report.pdf"));
+                Target: @"C:\Docs\report.pdf"),
+            CancellationToken.None);
     }
 
     private sealed class InlineStaExecutor : IShellExecuteStaExecutor
     {
-        public T Execute<T>(Func<T> callback) => callback();
+        public T Execute<T>(Func<T> callback, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return callback();
+        }
     }
 
     private sealed class FakeShellExecuteNativeAdapter(Func<ShellExecuteInvocation, ShellExecuteNativeResult> executeHandler) : IShellExecuteNativeAdapter

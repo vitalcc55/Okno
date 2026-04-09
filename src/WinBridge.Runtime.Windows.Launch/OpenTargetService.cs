@@ -4,6 +4,9 @@ namespace WinBridge.Runtime.Windows.Launch;
 
 public sealed class OpenTargetService : IOpenTargetService
 {
+    private const string PathInspectionFailureStage = "path_inspection";
+    private const string PlatformOpenFailureStage = "platform_open";
+
     private readonly IOpenTargetPlatform _platform;
     private readonly OpenTargetResultMaterializer _resultMaterializer;
     private readonly TimeProvider _timeProvider;
@@ -38,52 +41,67 @@ public sealed class OpenTargetService : IOpenTargetService
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        OpenTargetResult liveResult;
-        if (TryValidateResolvedPathKind(request, classification, out OpenTargetResult? kindMismatchResult))
+        string failureStage = PathInspectionFailureStage;
+        try
         {
-            liveResult = kindMismatchResult!;
-        }
-        else
-        {
-            OpenTargetPlatformResult platformResult = _platform.Open(
-                new OpenTargetPlatformRequest(
-                    TargetKind: classification.TargetKind,
-                    Target: request.Target));
-
-            if (platformResult.IsAccepted)
+            OpenTargetResult liveResult;
+            if (TryValidateResolvedPathKind(request, classification, out OpenTargetResult? kindMismatchResult))
             {
-                int? handlerProcessId = platformResult.HandlerProcessId is > 0
-                    ? platformResult.HandlerProcessId
-                    : null;
-
-                liveResult = new OpenTargetResult(
-                    Status: OpenTargetStatusValues.Done,
-                    Decision: OpenTargetStatusValues.Done,
-                    ResultMode: handlerProcessId is null
-                        ? OpenTargetResultModeValues.TargetOpenRequested
-                        : OpenTargetResultModeValues.HandlerProcessObserved,
-                    TargetKind: classification.TargetKind,
-                    TargetIdentity: classification.TargetIdentity,
-                    UriScheme: classification.UriScheme,
-                    AcceptedAtUtc: _timeProvider.GetUtcNow(),
-                    HandlerProcessId: handlerProcessId,
-                    ArtifactPath: null);
+                liveResult = kindMismatchResult!;
             }
             else
             {
-                liveResult = new OpenTargetResult(
-                    Status: OpenTargetStatusValues.Failed,
-                    Decision: OpenTargetStatusValues.Failed,
-                    FailureCode: platformResult.FailureCode ?? OpenTargetFailureCodeValues.ShellRejectedTarget,
-                    Reason: platformResult.FailureReason ?? "Shell не принял open request для target.",
-                    TargetKind: classification.TargetKind,
-                    TargetIdentity: classification.TargetIdentity,
-                    UriScheme: classification.UriScheme,
-                    ArtifactPath: null);
-            }
-        }
+                failureStage = PlatformOpenFailureStage;
+                OpenTargetPlatformResult platformResult = _platform.Open(
+                    new OpenTargetPlatformRequest(
+                        TargetKind: classification.TargetKind,
+                        Target: request.Target),
+                    cancellationToken);
 
-        return Task.FromResult(_resultMaterializer.Materialize(liveResult));
+                if (platformResult.IsAccepted)
+                {
+                    int? handlerProcessId = platformResult.HandlerProcessId is > 0
+                        ? platformResult.HandlerProcessId
+                        : null;
+
+                    liveResult = new OpenTargetResult(
+                        Status: OpenTargetStatusValues.Done,
+                        Decision: OpenTargetStatusValues.Done,
+                        ResultMode: handlerProcessId is null
+                            ? OpenTargetResultModeValues.TargetOpenRequested
+                            : OpenTargetResultModeValues.HandlerProcessObserved,
+                        TargetKind: classification.TargetKind,
+                        TargetIdentity: classification.TargetIdentity,
+                        UriScheme: classification.UriScheme,
+                        AcceptedAtUtc: _timeProvider.GetUtcNow(),
+                        HandlerProcessId: handlerProcessId,
+                        ArtifactPath: null);
+                }
+                else
+                {
+                    liveResult = new OpenTargetResult(
+                        Status: OpenTargetStatusValues.Failed,
+                        Decision: OpenTargetStatusValues.Failed,
+                        FailureCode: platformResult.FailureCode ?? OpenTargetFailureCodeValues.ShellRejectedTarget,
+                        Reason: platformResult.FailureReason ?? "Shell не принял open request для target.",
+                        TargetKind: classification.TargetKind,
+                        TargetIdentity: classification.TargetIdentity,
+                        UriScheme: classification.UriScheme,
+                        ArtifactPath: null);
+                }
+            }
+
+            return Task.FromResult(_resultMaterializer.Materialize(liveResult));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            OpenTargetResult failedResult = CreateUnexpectedRuntimeFailureResult(classification);
+            return Task.FromResult(_resultMaterializer.MaterializeTerminalFailure(failedResult, failureStage, exception));
+        }
     }
 
     private bool TryValidateResolvedPathKind(
@@ -129,4 +147,14 @@ public sealed class OpenTargetService : IOpenTargetService
 
         return false;
     }
+
+    private static OpenTargetResult CreateUnexpectedRuntimeFailureResult(OpenTargetClassification classification) =>
+        new(
+            Status: OpenTargetStatusValues.Failed,
+            Decision: OpenTargetStatusValues.Failed,
+            Reason: "Runtime open_target завершился внутренней ошибкой после входа в live path.",
+            TargetKind: classification.TargetKind,
+            TargetIdentity: classification.TargetIdentity,
+            UriScheme: classification.UriScheme,
+            ArtifactPath: null);
 }

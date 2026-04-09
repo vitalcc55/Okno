@@ -5,6 +5,11 @@
 ## 2026-04-09 14:52
 
 - После повторного полного proof-pass exec-plan [docs/exec-plans/completed/completed-2026-04-09-windows-open-target.md](docs/exec-plans/completed/completed-2026-04-09-windows-open-target.md) архивирован из `docs/exec-plans/active` в `docs/exec-plans/completed`, чтобы lifecycle снова оставался консистентным: `windows.open_target` уже закрыт end-to-end, поэтому в `active` больше не должен висеть как живой workstream. В том же цикле проверен актуальный branch state через `scripts/codex/verify.ps1`, который остаётся зелёным после smoke/docs rollout и package-level hardening.
+- Post-completion review hardening по той же ветке `windows.open_target` закрыл ещё четыре подтверждённых класса дефектов без расширения public V1 surface: exceptional live-path после allowed preflight больше не обходит `OpenTargetResultMaterializer` и всегда получает typed terminal-failure artifact/event trail с `failure_stage`, explicit document safety policy теперь fail-closed блокирует Python launcher-associated `.py/.pyw/.pyc` под `targetKind=document`, Win32 shell normalizer распознаёт `GetLastError(ERROR_NO_ASSOCIATION)` вместе с legacy `SE_ERR_NOASSOC`, а dedicated STA executor перестал игнорировать caller cancellation на стадии wait-side blocking. В том же цикле completed exec-plan обновлён factual note-ами про этот internal hardening, а узкий runtime verification contour по `OpenTarget*` tests снова пройден зелёным.
+
+## 2026-04-09 16:06
+
+- В том же review-hardening цикле стабилизирован локальный verification control plane: `scripts/ci.ps1` больше не исполняет `bootstrap/build/test/smoke/refresh-generated-docs` в одной общей PowerShell-сессии, а запускает каждый top-level step в fresh `powershell -ExecutionPolicy Bypass -File ...` процессе через shared helper в `scripts/common.ps1`. Причина была orchestration-level, а не продуктовой: standalone `scripts/smoke.ps1` проходил зелёно, но combined `scripts/codex/verify.ps1` ловил session-contamination flake на `windows.wait(visual_changed)` после тестового шага. После process-isolation fix полный sequential contour снова подтверждён зелёным через `scripts/codex/verify.ps1`.
 
 ## 2026-04-09 13:48
 

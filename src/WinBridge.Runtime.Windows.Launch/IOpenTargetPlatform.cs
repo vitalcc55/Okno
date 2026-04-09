@@ -2,7 +2,7 @@ namespace WinBridge.Runtime.Windows.Launch;
 
 internal interface IOpenTargetPlatform
 {
-    OpenTargetPlatformResult Open(OpenTargetPlatformRequest request);
+    OpenTargetPlatformResult Open(OpenTargetPlatformRequest request, CancellationToken cancellationToken);
 }
 
 internal readonly record struct OpenTargetPlatformRequest(

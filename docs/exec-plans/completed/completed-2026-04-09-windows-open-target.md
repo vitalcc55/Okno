@@ -357,6 +357,7 @@ Done when:
 Текущее состояние на `2026-04-09`:
 
 - `Package C` закрыт: missing boundary/publication checks добраны, `scripts/smoke.ps1` теперь доказывает `windows.open_target` через deterministic `folder` dry-run/live story без browser/editor assumptions, `windows.open_target` переведён в `SmokeRequired`, а sequential contour `scripts/build.ps1 -> scripts/test.ps1 -> scripts/smoke.ps1 -> scripts/refresh-generated-docs.ps1 -> scripts/codex/verify.ps1` пройден зелёным вместе с docs/generated sync.
+- Post-completion review hardening без смены public V1 contract дополнительно зафиксировал четыре внутренних инварианта branch state: unexpected exceptions после входа в allowed live runtime path теперь materialize-ятся через тот же `OpenTargetResultMaterializer` с `failure_stage` и canonical open-target artifact/event trail; document safety policy вынесена в explicit artifact и теперь fail-closed блокирует Python launcher-associated `.py/.pyw/.pyc`; shell failure normalizer учитывает не только legacy `SE_ERR_NOASSOC`, но и `GetLastError(ERROR_NO_ASSOCIATION)`; dedicated STA executor уважает caller cancellation на стадии wait-side blocking, не объявляя поздний native completion фактуальным результатом отменённого запроса.
 
 ### Implementation checklist
 
@@ -400,7 +401,7 @@ Done when:
   - empty `targetKind` / empty `target`;
   - unsupported `targetKind`;
   - relative / drive-relative path for `document` and `folder`;
-  - executable / script / launcher extension under `document`;
+  - executable / script / launcher extension under `document`, включая Python launcher-associated `.py`, `.pyw`, `.pyc`;
   - `mailto`, `file`, `ms-settings`, custom scheme under `url`;
   - extra fields `verb`, `workingDirectory`, `environment`, `waitForWindow`, `timeoutMs`;
   - safe preview identity for folder/document vs URL.
@@ -408,7 +409,7 @@ Done when:
   - success without process handle;
   - success with process id;
   - `SE_ERR_FNF` / `SE_ERR_PNF` -> `target_not_found`;
-  - `SE_ERR_NOASSOC` / `SE_ERR_ASSOCINCOMPLETE` -> `no_association`;
+  - `SE_ERR_NOASSOC` / `SE_ERR_ASSOCINCOMPLETE` / `GetLastError(ERROR_NO_ASSOCIATION)` -> `no_association`;
   - access denied mapping;
   - generic reject -> `shell_rejected_target`;
   - no unexpected UI flags drift (`SEE_MASK_FLAG_NO_UI` present).
@@ -416,6 +417,7 @@ Done when:
   - `target_open_requested` vs `handler_process_observed`;
   - no `HandlerProcessId` on accepted-without-process path;
   - no mandatory PID/window semantics in success definition;
+  - unexpected exceptions after allowed live-path entry still materialize terminal runtime artifact/event with `failure_stage`;
   - artifact/event materialization remains best-effort.
 - `AuditPayloadRedactorTests`
   - document/folder path redaction to basename only;

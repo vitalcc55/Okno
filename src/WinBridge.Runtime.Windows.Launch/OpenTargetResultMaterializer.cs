@@ -32,23 +32,36 @@ internal sealed class OpenTargetResultMaterializer
     }
 
     public OpenTargetResult Materialize(OpenTargetResult result)
+        => Materialize(result, failureStage: null, failureException: null);
+
+    public OpenTargetResult MaterializeTerminalFailure(
+        OpenTargetResult result,
+        string? failureStage,
+        Exception failureException) =>
+        Materialize(result, failureStage, failureException);
+
+    private OpenTargetResult Materialize(
+        OpenTargetResult result,
+        string? failureStage,
+        Exception? failureException)
     {
         ArgumentNullException.ThrowIfNull(result);
 
         DateTimeOffset capturedAtUtc = _timeProvider.GetUtcNow();
+        OpenTargetFailureDiagnostics? failureDiagnostics = CreateFailureDiagnostics(failureStage, failureException);
 
         try
         {
-            string artifactPath = _artifactWriter.Write(result, capturedAtUtc, failureDiagnostics: null);
+            string artifactPath = _artifactWriter.Write(result, capturedAtUtc, failureDiagnostics);
             OpenTargetResult materialized = result with { ArtifactPath = artifactPath };
-            TryRecordRuntimeEvent(materialized);
+            TryRecordRuntimeEvent(materialized, failureDiagnostics);
             return materialized;
         }
         catch (OpenTargetArtifactException exception)
         {
-            OpenTargetFailureDiagnostics failureDiagnostics = CreateFailureDiagnostics("artifact_write", exception.InnerException ?? exception);
+            OpenTargetFailureDiagnostics artifactFailureDiagnostics = CreateFailureDiagnostics("artifact_write", exception.InnerException ?? exception)!;
             OpenTargetResult materialized = result with { ArtifactPath = null };
-            TryRecordRuntimeEvent(materialized, failureDiagnostics);
+            TryRecordRuntimeEvent(materialized, artifactFailureDiagnostics);
             return materialized;
         }
     }
@@ -62,7 +75,9 @@ internal sealed class OpenTargetResultMaterializer
             ? (result.Status == OpenTargetStatusValues.Done
                 ? "Runtime open_target завершён."
                 : result.Reason ?? "Runtime open_target завершился без подтверждённого результата.")
-            : "Runtime open_target завершён, но diagnostics artifact не materialized.";
+            : string.Equals(failureDiagnostics.FailureStage, "artifact_write", StringComparison.Ordinal)
+                ? "Runtime open_target завершён, но diagnostics artifact не materialized."
+                : result.Reason ?? "Runtime open_target завершился внутренней ошибкой после входа в live path.";
 
         _auditLog.TryRecordRuntimeEvent(
             eventName: RuntimeCompletedEventName,
@@ -88,9 +103,16 @@ internal sealed class OpenTargetResultMaterializer
             });
     }
 
-    private static OpenTargetFailureDiagnostics CreateFailureDiagnostics(string failureStage, Exception exception) =>
-        new(
+    private static OpenTargetFailureDiagnostics? CreateFailureDiagnostics(string? failureStage, Exception? exception)
+    {
+        if (string.IsNullOrWhiteSpace(failureStage) && exception is null)
+        {
+            return null;
+        }
+
+        return new OpenTargetFailureDiagnostics(
             FailureStage: failureStage,
-            ExceptionType: exception.GetType().FullName,
-            ExceptionMessageSuppressed: true);
+            ExceptionType: exception?.GetType().FullName,
+            ExceptionMessageSuppressed: exception is not null);
+    }
 }
