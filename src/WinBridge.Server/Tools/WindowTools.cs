@@ -878,7 +878,7 @@ public sealed class WindowTools
     }
 
     private DeferredToolResult Deferred(string toolName)
-        => RuntimeToolExecution.Run(
+        => RuntimeToolExecution.RunDeferred(
             _auditLog,
             _sessionManager.GetSnapshot(),
             toolName,

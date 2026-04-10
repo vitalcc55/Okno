@@ -208,6 +208,12 @@ Metadata строятся не из исходного pre-capture target snapsh
 
 То есть это не полный visual subsystem, а первый рабочий observe foundation.
 
+При этом `region capture` остаётся осмысленным следующим узким follow-up внутри capture family:
+
+- он полезен для verify-after-action и для дешёвого visual proof на небольшом фрагменте;
+- он может стать мостом к будущему OCR fallback, не делая OCR primary mode;
+- его не нужно смешивать с broad browser-aware или vision-heavy subsystem раньше shipped action core.
+
 ## Внешние источники и что именно из них взято
 
 ### 1. MCP Tools specification

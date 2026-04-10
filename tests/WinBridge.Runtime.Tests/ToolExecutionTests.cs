@@ -122,6 +122,60 @@ public sealed class ToolExecutionTests
     }
 
     [Fact]
+    public void RunDeferredAllowsDeferredPolicyBearingDescriptor()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-deferred-allowed");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-deferred-allowed", DateTimeOffset.UtcNow);
+
+        string result = ToolExecution.RunDeferred(
+            auditLog,
+            snapshot,
+            ToolNames.WindowsInput,
+            new { deferred = true },
+            invocation =>
+            {
+                invocation.Complete("unsupported", "deferred");
+                return "deferred";
+            });
+
+        Assert.Equal("deferred", result);
+
+        string[] lines = File.ReadAllLines(options.EventsPath);
+        Assert.Equal(2, lines.Length);
+        Assert.Contains("\"outcome\":\"unsupported\"", lines[1], StringComparison.Ordinal);
+        Assert.Contains($"\"tool_name\":\"{ToolNames.WindowsInput}\"", lines[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RunDeferredRejectsImplementedDescriptor()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-deferred-reject");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-deferred-reject", DateTimeOffset.UtcNow);
+        bool callbackCalled = false;
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => ToolExecution.RunDeferred(
+                auditLog,
+                snapshot,
+                ToolNames.WindowsLaunchProcess,
+                new { dryRun = true },
+                _ =>
+                {
+                    callbackCalled = true;
+                    return 0;
+                }));
+
+        Assert.False(callbackCalled);
+        Assert.Contains(ToolNames.WindowsLaunchProcess, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("RunDeferred", exception.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(options.EventsPath));
+    }
+
+    [Fact]
     public void RunGatedRoutesRejectedDecisionWithoutCallingAllowedCallback()
     {
         string root = CreateTempDirectory();

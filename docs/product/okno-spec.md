@@ -363,6 +363,10 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - `coordinateSpace = physical_pixels`.
 - `effectiveDpi` и derived `dpiScale` только для `window` capture.
 
+Узкий follow-up внутри той же capture family:
+- future `windows.region_capture` должен оставаться отдельным visual tool для небольшого explicit region/crop proof после actions и для low-noise visual fallback;
+- он не должен подменять `windows.capture`, поглощать OCR внутрь себя или размывать split `desktop/window capture`.
+
 ### `windows.uia_snapshot`
 Аргументы:
 - `hwnd`: optional explicit top-level window target;

@@ -23,3 +23,4 @@
 - `IMonitorManager` остаётся единственным source of truth для monitor inventory и public `monitorId`.
 - Все side effects на ОС должны быть явными и отличимыми от read-only tools.
 - Stub-tools допустимы только если честно возвращают `unsupported`/`deferred`, а не имитируют успех.
+- Для каждого deferred public tool integration coverage обязана доказывать одно из двух состояний: либо tool не публикуется как callable, либо invocation возвращает честный structured `unsupported/deferred` path без generic transport/invocation error.

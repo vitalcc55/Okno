@@ -26,6 +26,7 @@ Repo plugin `plugins/okno/` уже согласован как source of truth, 
 - `scripts/codex/write-okno-plugin-repo-root-hint.ps1` создаёт валидный hint file в repo source plugin.
 - Cache-like plugin copy вне repo tree может resolve-ить repo root через hint file.
 - Документация явно отделяет repo fix от home cache reinstall/restart шага.
+- Acceptance считается закрытым только после proof для cache-installed copy, restart Codex/new thread и минимум одного read-only tool call (`okno.health` или `okno.contract`) уже из fresh-thread materialization path.
 
 ## Внешние шаги после repo fix
 
@@ -33,3 +34,4 @@ Repo plugin `plugins/okno/` уже согласован как source of truth, 
 2. Обновить install/cache copy plugin `okno` из repo marketplace.
 3. Перезапустить Codex и открыть новый тред.
 4. Подтвердить, что cached `.mcp.json` и cached plugin files содержат новый launcher/resolver/hint.
+5. Из нового треда выполнить минимум один read-only tool call (`okno.health` или `okno.contract`) и зафиксировать, что materialized plugin surface реально поднялся после restart.

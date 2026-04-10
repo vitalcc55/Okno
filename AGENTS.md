@@ -18,12 +18,14 @@
 - `src/WinBridge.Runtime.Session` — session state и attach semantics.
 - `src/WinBridge.Runtime.Windows.Shell` — top-level shell/window capability (`list/find/focus`).
 - `src/WinBridge.Runtime.Windows.Capture` — первый реализованный observe/capture slice (`window` / `desktop` monitor capture), PNG artifacts, `Windows.Graphics.Capture` как основной путь с native fallback.
-- `src/WinBridge.Runtime.Windows.UIA` / `Input` / `Clipboard` / `Waiting` — следующие capability seams; пока без production implementation.
+- `src/WinBridge.Runtime.Windows.UIA` — shipped `windows.uia_snapshot` и future `windows.uia_action`.
+- `src/WinBridge.Runtime.Waiting` — shipped `windows.wait`.
+- `src/WinBridge.Runtime.Windows.Input` / `Clipboard` — следующие action seams; пока без production implementation.
 - `src/WinBridge.Server` — MCP host, tool registration, transport boundary.
 - `tests/WinBridge.Runtime.Tests` — unit и structural checks.
 - `tests/WinBridge.Server.IntegrationTests` — stdio/MCP smoke и integration checks.
 - `scripts/` — единые entry points для bootstrap, verify, smoke, local CI и runbooks.
-- `docs/product` — продуктовый source of truth (`vision`, `v1 spec`, `roadmap`).
+- `docs/product` — продуктовый source of truth (`vision`, `spec`, `roadmap`).
 - `docs/architecture` — фактическая архитектура и observability-модель.
 - `docs/generated` — инвентаризации стека, команд, интерфейсов и test matrix.
 - `docs/bootstrap/bootstrap-status.json` — generated bootstrap status; не редактировать вручную.
@@ -40,6 +42,8 @@
 - `references/` использовать как secondary engineering source: сначала internal docs/spec/exec-plan, затем official Microsoft/MCP/OpenAI docs, и только потом reference repos для pattern comparison; reference repos не переопределяют platform semantics и contract honesty `Okno`.
 - Для текущего продукта не подменять GUI-слой shell-автоматизацией; shell допустим только для repo operations, test harness и локальных dev-команд.
 - Built-in OpenAI `computer use` не считать replacement для `Okno`: current local integration path остаётся repo-local MCP/plugin surface, а future compatibility должна приходить отдельным adapter-слоем без протекания OpenAI-specific contracts в `WinBridge.Runtime` / `WinBridge.Server`.
+- Если меняется plugin install surface (`plugins/okno`, launcher, install hint, marketplace/install model), acceptance обязан включать proof для cache-installed copy, restart Codex/new thread и минимум один реальный read-only tool call (`okno.health` или `okno.contract`) уже из fresh-thread materialization path.
+- Deferred public tools допустимы только при одном из двух условий: либо tool не публикуется как callable, либо integration tests доказывают честный `unsupported/deferred` invocation path без generic transport/invocation error.
 - Любая новая нетривиальная задача должна обновлять ExecPlan и соответствующие generated docs по факту проверок, а не по догадке.
 - Если меняется tool contract или observability schema, синхронизируй [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md) и [docs/architecture/observability.md](docs/architecture/observability.md) в том же цикле.
 - Verification-first loop уже нормализован: `scripts/bootstrap.ps1` -> `scripts/build.ps1` -> `scripts/test.ps1` -> `scripts/smoke.ps1` -> `scripts/refresh-generated-docs.ps1`; для полного локального контура используй `scripts/ci.ps1`.

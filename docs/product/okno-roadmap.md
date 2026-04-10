@@ -60,31 +60,34 @@ _Живой delivery roadmap проекта: текущий capability map, по
 | 07 | `src/WinBridge.Runtime.Windows.Launch` + `windows.launch_process` | direct process launch через `ProcessStartInfo`, preview, factual result modes, launch artifacts | `реализовано` | `90%` | `Ядро` |
 | 08 | `src/WinBridge.Runtime.Windows.Launch` + `windows.open_target` | shell-open для `document` / `folder` / `url(http/https)`, safe preview, factual result, open-target artifacts | `реализовано` | `90%` | `Ядро` |
 | 09 | `src/WinBridge.Runtime.Windows.Input` + `windows.input` (`click` first + action schema freeze) | первый public action slice, coordinate model, modifier support, post-action verification contract | `декларировано` | `15%` | `R2-следом` |
-| 10 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2-следом` |
-| 11 | `src/WinBridge.Runtime.Windows.Input` + `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`) | расширение action coverage после `click` и clipboard | `декларировано` | `10%` | `R2` |
-| 12 | `src/WinBridge.Runtime.Windows.UIA` + `windows.uia_action` | semantic action layer поверх shipped `uia_snapshot` и gate/readiness foundation | `декларировано` | `10%` | `R2` |
-| 13 | proposed `windows.dialog` | common dialogs: open/save/confirm, path input, accept/close flow | `запланировано` | `0%` | `R2` |
-| 14 | proposed `windows.surface_lifecycle` | claim/reconcile/close only owned shell/window/dialog surfaces after `launch_process` / `open_target`; fail-closed на reused unowned surface | `запланировано` | `0%` | `R2-R3` |
-| 15 | proposed `windows.menu` / `windows.taskbar` / `windows.tray` | desktop surfaces beyond core window automation | `запланировано` | `0%` | `R2-R3` |
-| 16 | `scripts/*` + `docs/generated/*` + smoke/verify control plane | bootstrap/build/test/smoke/refresh-generated-docs/ci, generated surface sync, deterministic local proof loop | `частично` | `70%` | `Операции` |
-| 17 | proposed `daemon` / `overlay` / `virtual desktop` / richer shell modes | background companion, visualizer, virtual desktop support, deeper shell/runtime modes | `запланировано` | `0%` | `R3+` |
+| 10 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, low-noise visual proof and future OCR fallback bridge | `запланировано` | `0%` | `R2-следом` |
+| 11 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2-следом` |
+| 12 | `src/WinBridge.Runtime.Windows.Input` + `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`) | расширение action coverage после `click`, `region_capture` и clipboard | `декларировано` | `10%` | `R2` |
+| 13 | `src/WinBridge.Runtime.Windows.UIA` + `windows.uia_action` | semantic action layer поверх shipped `uia_snapshot` и gate/readiness foundation | `декларировано` | `10%` | `R2` |
+| 14 | proposed `windows.dialog` | common dialogs: open/save/confirm, path input, accept/close flow | `запланировано` | `0%` | `R2` |
+| 15 | proposed `windows.surface_lifecycle` | claim/reconcile/close only owned shell/window/dialog surfaces after `launch_process` / `open_target`; fail-closed на reused unowned surface | `запланировано` | `0%` | `R2-R3` |
+| 16 | proposed `windows.menu` / `windows.taskbar` / `windows.tray` | desktop surfaces beyond core window automation | `запланировано` | `0%` | `R2-R3` |
+| 17 | `scripts/*` + `docs/generated/*` + smoke/verify control plane | bootstrap/build/test/smoke/refresh-generated-docs/ci, generated surface sync, deterministic local proof loop | `частично` | `70%` | `Операции` |
+| 18 | proposed `daemon` / `overlay` / `virtual desktop` / richer shell modes | background companion, visualizer, virtual desktop support, deeper shell/runtime modes | `запланировано` | `0%` | `R3+` |
 
 ## 5. Ближайший порядок доставки
 
 Текущий practical order такой:
 
 1. `windows.input` (`click` first + action schema freeze)
-2. `windows.clipboard_get` / `windows.clipboard_set`
-3. `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`)
-4. `windows.uia_action`
-5. `windows.dialog`
-6. `windows.surface_lifecycle`
-7. `windows.menu` / `windows.taskbar` / `windows.tray`
+2. `windows.region_capture`
+3. `windows.clipboard_get` / `windows.clipboard_set`
+4. `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`)
+5. `windows.uia_action`
+6. `windows.dialog`
+7. `windows.surface_lifecycle`
+8. `windows.menu` / `windows.taskbar` / `windows.tray`
 
 Почему именно так:
 
 - reference repos показывают, что зрелые runtimes почти всегда быстро приходят к app/window/input/dialog/menu families;
 - official OpenAI `computer use` loop делает input vocabulary и quiet action semantics важнее, чем поздние shell niceties;
+- reference repos и текущий `observe/capture` stack показывают, что narrow `region_capture` даёт более дешёвый verify-after-action loop и полезен как мост к visual fallback, не размывая capture family в OCR/browser subsystem;
 - уже shipped `launch_process` и `open_target` закрыли start/open baseline, поэтому next product value теперь в action layer;
 - `surface_lifecycle` важен, но без shipped input/clipboard/dialog он не даст полноценный teardown path.
 
@@ -105,6 +108,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
   - `type`
   - `keypress`
 - `windows.capture` и `windows.wait` должны оставаться отдельными explicit steps;
+- narrow follow-up вроде `windows.region_capture` должен усиливать visual proof после actions, но не превращать visual stack в primary OCR-first mode раньше времени;
 - `windows.launch_process` и `windows.open_target` должны оставаться split;
 - future OpenAI adapter — это отдельный слой поверх `Okno`, а не причина размывать core runtime contract.
 
@@ -126,6 +130,7 @@ Roadmap не должен:
 - не решать cleanup reused shell surfaces внутри `windows.open_target`;
 - не тащить broad OCR/browser/remote/daemon work раньше core action layer;
 - не ослаблять typed result/evidence model ради convenience shortcuts.
+- не раздувать `windows.region_capture` в broad OCR/browser subsystem раньше узкого verify-after-action use case.
 
 ## 9. Verification policy
 

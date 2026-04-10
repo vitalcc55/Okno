@@ -561,6 +561,78 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
+    public async Task DeferredActionToolsReturnStructuredUnsupportedPayloadWithoutTransportError()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        string[] expectedDeferredTools =
+        [
+            ToolNames.WindowsClipboardGet,
+            ToolNames.WindowsClipboardSet,
+            ToolNames.WindowsInput,
+            ToolNames.WindowsUiaAction,
+        ];
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            Assert.Equal(
+                expectedDeferredTools,
+                ToolContractManifest.Deferred.Select(item => item.Name).ToArray());
+
+            foreach (string toolName in expectedDeferredTools)
+            {
+                using JsonDocument response = await session.CallToolAsync(
+                    toolName,
+                    CreateDeferredInvocationArguments(toolName));
+
+                Assert.False(
+                    response.RootElement.TryGetProperty("error", out _),
+                    $"Deferred tool '{toolName}' must not fail through transport-level error.");
+
+                JsonElement result = response.RootElement.GetProperty("result");
+                Assert.True(result.TryGetProperty("content", out JsonElement content));
+                Assert.Equal(JsonValueKind.Array, content.ValueKind);
+                Assert.True(content.GetArrayLength() > 0);
+
+                using JsonDocument payload = JsonDocument.Parse(GetToolTextPayload(response));
+                JsonElement root = payload.RootElement;
+                ToolDescriptor descriptor = ToolContractManifest.Deferred.Single(item => item.Name == toolName);
+
+                Assert.Equal(toolName, root.GetProperty("toolName").GetString());
+                Assert.Equal("unsupported", root.GetProperty("status").GetString());
+                Assert.Equal(descriptor.PlannedPhase, root.GetProperty("plannedPhase").GetString());
+                Assert.Equal(descriptor.SuggestedAlternative, root.GetProperty("suggestedAlternative").GetString());
+                Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("reason").GetString()));
+            }
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
     public async Task WindowsWaitRejectsExpectedTextForNonTextAppearsThroughStdio()
     {
         using Process process = StartServer();
@@ -874,6 +946,16 @@ public sealed class McpProtocolSmokeTests
             .GetProperty("content")[0]
             .GetProperty("text")
             .GetString()!;
+
+    private static object CreateDeferredInvocationArguments(string toolName) =>
+        toolName switch
+        {
+            ToolNames.WindowsClipboardGet => new { },
+            ToolNames.WindowsClipboardSet => new { value = "smoke" },
+            ToolNames.WindowsInput => new { actionsJson = "[]" },
+            ToolNames.WindowsUiaAction => new { elementId = "root", action = "invoke" },
+            _ => throw new InvalidOperationException($"Неизвестный deferred tool '{toolName}' для smoke invocation contract."),
+        };
 
     private static async Task WaitForExitAsync(Process process)
     {

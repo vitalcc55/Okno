@@ -48,6 +48,27 @@ public static class ToolExecution
         }
     }
 
+    public static TResult RunDeferred<TResult>(
+        AuditLog auditLog,
+        SessionSnapshot snapshot,
+        string toolName,
+        object? request,
+        Func<AuditInvocationScope, TResult> callback)
+    {
+        ToolExecutionPolicyDescriptor? executionPolicy = EnsureDeferredExecutionAllowed(toolName);
+        using AuditInvocationScope invocation = auditLog.BeginInvocation(toolName, request, snapshot, executionPolicy);
+
+        try
+        {
+            return callback(invocation);
+        }
+        catch (Exception exception)
+        {
+            invocation.Fail(exception);
+            throw;
+        }
+    }
+
     public static TResult RunGated<TResult>(
         AuditLog auditLog,
         SessionSnapshot snapshot,
@@ -122,5 +143,17 @@ public static class ToolExecution
 
         throw new InvalidOperationException(
             $"Tool '{toolName}' declares execution policy and must use {nameof(RunGated)}/{nameof(RunGatedAsync)} to enforce the shared safety gate.");
+    }
+
+    private static ToolExecutionPolicyDescriptor? EnsureDeferredExecutionAllowed(string toolName)
+    {
+        ToolDescriptor? descriptor = ToolContractManifest.All.SingleOrDefault(item => string.Equals(item.Name, toolName, StringComparison.Ordinal));
+        if (descriptor is null || descriptor.Lifecycle != ToolLifecycle.Deferred)
+        {
+            throw new InvalidOperationException(
+                $"Tool '{toolName}' is not a deferred descriptor and cannot use {nameof(RunDeferred)}.");
+        }
+
+        return descriptor.ExecutionPolicy;
     }
 }
