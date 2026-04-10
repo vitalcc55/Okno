@@ -2,6 +2,12 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-04-10 13:32
+
+- Исправлен repo-side install surface для Codex plugin `okno`: root-cause оказался не только в stale home cache, но и в том, что plugin launcher внутри репозитория был корректен лишь для source checkout и не умел честно разрешать repo root из cache-installed copy. Теперь plugin root содержит resolver `plugins/okno/resolve-okno-repo-root.ps1`, launcher `plugins/okno/run-okno-mcp.ps1` сначала пытается найти repo по ancestor search, а для install cache принимает explicit repo-root hint через untracked `plugins/okno/.okno-repo-root.txt` или `OKNO_REPO_ROOT`.
+- В repo control plane добавлен helper `scripts/codex/write-okno-plugin-repo-root-hint.ps1`, который materialize-ит machine-local repo-root hint в source plugin без возврата к tracked absolute paths в `.mcp.json`; `.gitignore`, `README.md`, `plugins/okno/README.md` и active exec-plan [docs/exec-plans/active/okno-plugin-install-surface.md](docs/exec-plans/active/okno-plugin-install-surface.md) синхронизированы с этой моделью.
+- Generated command inventory теперь явно включает repo-side prepare step для plugin install surface, чтобы следующий инженер видел границу ответственности: внутри репозитория source-of-truth уже готовит install-safe launcher contract, а снаружи остаются только refresh/reinstall cache copy plugin и restart Codex/new thread.
+
 ## 2026-04-10 12:18
 
 - После shipped `windows.open_target` в roadmap добавлен отдельный planned slice `windows.surface_lifecycle`: follow-up нужен не для самого shell-open, а для безопасного claim/reconcile/close только owned shell/window/dialog surfaces после `launch_process` / `open_target`. Решение зафиксировано отдельно, а не как hidden расширение `windows.open_target`, потому что reused Explorer/browser window or tab не даёт ownership автоматически и cleanup здесь должен оставаться fail-closed.

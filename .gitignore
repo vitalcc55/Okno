@@ -75,6 +75,7 @@ project.fragment.lock.json
 artifacts/
 .tmp/
 references/
+plugins/okno/.okno-repo-root.txt
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

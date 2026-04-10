@@ -100,6 +100,8 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 
 Этот plugin добавляет repo-local MCP identity `okno` и bundled skill surface, не переписывая legacy home-level `windows` server в локальном Codex config.
 
+Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после перемещения checkout или после изменения plugin layout нужно обновить repo-root hint командой `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex.
+
 ## OpenAI interop
 
 `Okno` не должен конкурировать с `shell`, `skills`, `MCP` или `computer use` из OpenAI ecosystem. Для этого репозитория правильная модель такая:
