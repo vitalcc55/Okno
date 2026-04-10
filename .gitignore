@@ -74,6 +74,7 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 .tmp/
+references/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

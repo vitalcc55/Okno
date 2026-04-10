@@ -502,6 +502,10 @@ Invariant:
 - на factual live path `resultMode = target_open_requested | handler_process_observed`, `acceptedAtUtc`, optional `handlerProcessId`, `targetKind`, optional `targetIdentity`, optional `uriScheme`;
 - optional `artifactPath` для JSON evidence в diagnostics run directory; при `artifact_write` failure observability остаётся best-effort и factual open-target result не downcast-ится.
 
+Отдельная оговорка:
+- `windows.open_target` не должен скрыто делать teardown/cleanup opened shell surface;
+- safe close допустим только в отдельном будущем ownership/lifecycle slice, когда runtime способен доказать, что surface действительно owned этим launch/open flow, а не reused existing Explorer/browser window or tab.
+
 ---
 
 ## 4.7. Clipboard primitives

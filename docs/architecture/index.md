@@ -23,6 +23,7 @@ Product-ready delivery target на текущем этапе только оди
 - [openai-computer-use-interop.md](openai-computer-use-interop.md)
 - [observe-capture.md](observe-capture.md)
 - [observability.md](observability.md)
+- [reference-research-policy.md](reference-research-policy.md)
 - [engineering-principles.md](engineering-principles.md)
 - [adr-0001-stack-choice.md](adr-0001-stack-choice.md)
 - [../product/index.md](../product/index.md)

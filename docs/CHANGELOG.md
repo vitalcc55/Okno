@@ -2,6 +2,12 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-04-10 12:18
+
+- После shipped `windows.open_target` в roadmap добавлен отдельный planned slice `windows.surface_lifecycle`: follow-up нужен не для самого shell-open, а для безопасного claim/reconcile/close только owned shell/window/dialog surfaces после `launch_process` / `open_target`. Решение зафиксировано отдельно, а не как hidden расширение `windows.open_target`, потому что reused Explorer/browser window or tab не даёт ownership автоматически и cleanup здесь должен оставаться fail-closed.
+- Product spec [docs/product/okno-spec.md](docs/product/okno-spec.md) дополнительно закрепил эту границу: `windows.open_target` не включает hidden teardown/cleanup, а safe close остаётся задачей будущего ownership/lifecycle slice.
+- В архитектурный контур добавлена policy [docs/architecture/reference-research-policy.md](docs/architecture/reference-research-policy.md): она фиксирует, как использовать локальный `references/` cache и внешние reference repos без подмены source of truth проекта, и явно задаёт иерархию `Okno docs -> official Microsoft/MCP/OpenAI docs -> reference repos -> локальные эксперименты`. В том же цикле `AGENTS.md` и architecture index синхронизированы с новой policy и с локальным, но git-ignored, reference cache.
+
 ## 2026-04-09 14:52
 
 - После повторного полного proof-pass exec-plan [docs/exec-plans/completed/completed-2026-04-09-windows-open-target.md](docs/exec-plans/completed/completed-2026-04-09-windows-open-target.md) архивирован из `docs/exec-plans/active` в `docs/exec-plans/completed`, чтобы lifecycle снова оставался консистентным: `windows.open_target` уже закрыт end-to-end, поэтому в `active` больше не должен висеть как живой workstream. В том же цикле проверен актуальный branch state через `scripts/codex/verify.ps1`, который остаётся зелёным после smoke/docs rollout и package-level hardening.

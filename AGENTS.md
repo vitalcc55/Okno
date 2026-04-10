@@ -5,6 +5,7 @@
 - `Okno` — продуктовое имя проекта. Внутренний codename и namespace-слой пока остаются `WinBridge`.
 - Source of truth по продукту больше не лежит в корне: используй [docs/product/index.md](docs/product/index.md), [docs/product/okno-spec.md](docs/product/okno-spec.md), [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md), [docs/product/okno-vision.md](docs/product/okno-vision.md).
 - Source of truth по OpenAI interop: [docs/architecture/openai-computer-use-interop.md](docs/architecture/openai-computer-use-interop.md), [docs/exec-plans/active/openai-computer-use-interop.md](docs/exec-plans/active/openai-computer-use-interop.md).
+- Source of truth по policy использования reference repos и official docs: [docs/architecture/reference-research-policy.md](docs/architecture/reference-research-policy.md).
 - Операционный source of truth для bootstrap: [docs/exec-plans/active/bootstrap-harness.md](docs/exec-plans/active/bootstrap-harness.md), [docs/generated/commands.md](docs/generated/commands.md), [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md), [docs/generated/stack-research.md](docs/generated/stack-research.md), `docs/bootstrap/bootstrap-status.json`.
 - Source of truth для tool contract: `src/WinBridge.Runtime.Tooling/ToolNames.cs` + `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`.
 
@@ -26,6 +27,7 @@
 - `docs/architecture` — фактическая архитектура и observability-модель.
 - `docs/generated` — инвентаризации стека, команд, интерфейсов и test matrix.
 - `docs/bootstrap/bootstrap-status.json` — generated bootstrap status; не редактировать вручную.
+- `references/` — локальный игнорируемый cache reference repos для инженерного сравнения; не является частью shipped surface и не коммитится.
 - `artifacts/diagnostics` (включая `captures/`) и `artifacts/smoke` — локальные evidence packs; не коммитятся, но считаются каноническим investigation path.
 
 ## Guardrails
@@ -35,6 +37,7 @@
 - `windows.capture` уже считается реализованным observe tool: при изменениях сохраняй MCP contract `structuredContent + image/png + local capture artifact` и синхронизируй smoke/tests/docs в том же цикле.
 - Для новых capability slices (`focus`, `clipboard`, `input`, `wait`, `uia`, будущие observe/action tools) сначала применяй universal policy из [docs/architecture/capability-design-policy.md](docs/architecture/capability-design-policy.md): identity, fallback, false-success, scenario matrix и verification ladder должны быть определены до реализации.
 - `docs/generated/*` и `docs/bootstrap/bootstrap-status.json` могут обновляться автоматически после `refresh-generated-docs.ps1` и `ci.ps1`. Если они изменились без ручной правки, это ожидаемое generated behavior, а не неожиданный user diff.
+- `references/` использовать как secondary engineering source: сначала internal docs/spec/exec-plan, затем official Microsoft/MCP/OpenAI docs, и только потом reference repos для pattern comparison; reference repos не переопределяют platform semantics и contract honesty `Okno`.
 - Для V1 не подменять GUI-слой shell-автоматизацией; shell допустим только для repo operations, test harness и локальных dev-команд.
 - Built-in OpenAI `computer use` не считать replacement для `Okno`: current local integration path остаётся repo-local MCP/plugin surface, а future compatibility должна приходить отдельным adapter-слоем без протекания OpenAI-specific contracts в `WinBridge.Runtime` / `WinBridge.Server`.
 - Любая новая нетривиальная задача должна обновлять ExecPlan и соответствующие generated docs по факту проверок, а не по догадке.
