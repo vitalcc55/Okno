@@ -4,7 +4,7 @@
 
 ## Текущий срез репозитория
 
-`Okno` больше не пустой spec-only репозиторий. Текущий bootstrap закрепляет boring baseline для Windows-native MCP runtime.
+`Okno` больше не пустой репозиторий со спецификацией без реализации. Текущий runtime уже закрепляет boring baseline для Windows-native MCP.
 
 ## Языки и рантаймы
 

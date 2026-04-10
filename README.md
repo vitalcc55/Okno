@@ -113,7 +113,7 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 Практический вывод:
 
 - для текущего `Codex app/CLI/IDE` primary local path остаётся `shell + Okno MCP/plugin`;
-- built-in OpenAI `computer use` не является блокером для V1 и не требует перестройки core runtime;
+- built-in OpenAI `computer use` не является блокером для текущего продукта и не требует перестройки core runtime;
 - compatibility work нужно закладывать через action/schema discipline будущего `windows.input` и отдельный adapter-слой поверх `Okno`, а не через смешение OpenAI-specific логики с `WinBridge.Runtime` или `WinBridge.Server`.
 
 ## Где читать дальше

@@ -240,7 +240,7 @@ Input — это fallback и исполнительный слой, но не о
 
 ## 4. Целевой интерфейс инструментов
 
-## 4.1. V1 core tools
+## 4.1. Текущее ядро инструментов
 
 Обязательное ядро:
 - `windows.list_monitors`
@@ -256,7 +256,7 @@ Input — это fallback и исполнительный слой, но не о
 - `windows.clipboard_get`
 - `windows.clipboard_set`
 
-## 4.2. V2 expanded tools
+## 4.2. Следующая волна расширения
 
 Следующий полезный набор:
 - `windows.launch_process`
@@ -269,7 +269,7 @@ Input — это fallback и исполнительный слой, но не о
 - `windows.ocr`
 - `windows.process` (минимально read-only + safe control)
 
-## 4.3. V3 agent-grade tools
+## 4.3. Дальняя агентная эволюция
 
 Более зрелый уровень:
 - `windows.observe` — богатый snapshot состояния;
@@ -280,9 +280,9 @@ Input — это fallback и исполнительный слой, но не о
 
 ---
 
-## 5. План развития по версиям
+## 5. План развития по волнам зрелости
 
-## V1 — Solid core runtime
+## Текущая волна — Solid core runtime
 
 ### Цель
 
@@ -314,7 +314,7 @@ Input — это fallback и исполнительный слой, но не о
 - смотреть на `Windows-MCP` и `Windows-MCP.Net` для набора практичных инструментов;
 - ориентироваться на Peekaboo по UX/ритму команд и итераций.
 
-### Что V1 уже должен позволять мне делать
+### Что текущий продукт уже должен позволять мне делать
 
 - открыть/найти нужное окно;
 - сделать скрин и отправить состояние пользователю;
@@ -325,7 +325,7 @@ Input — это fallback и исполнительный слой, но не о
 
 ---
 
-## V2 — Unified browser + desktop agent runtime
+## Следующая волна — Unified browser + desktop agent runtime
 
 ### Цель
 
@@ -347,7 +347,7 @@ Input — это fallback и исполнительный слой, но не о
 
 Я начинаю работать не с набором отдельных tool calls, а с более цельным Windows interaction model.
 
-### Что V2 должен уметь лучше V1
+### Что следующая волна должна уметь лучше текущего состояния
 
 - легче переключаться между browser и desktop задачами;
 - устойчивее проходить длинные сценарии;
@@ -356,7 +356,7 @@ Input — это fallback и исполнительный слой, но не о
 
 ---
 
-## V3 — Agent-native Okno
+## Дальняя волна — Agent-native Okno
 
 ### Цель
 
@@ -377,7 +377,7 @@ Input — это fallback и исполнительный слой, но не о
 - action journaling и replay-friendly traces;
 - better packaging and self-diagnostics.
 
-### V3-ощущение
+### Итоговое ощущение зрелости
 
 Это уже не “Windows automation via random MCP tools”, а мой собственный зрелый control runtime.
 
@@ -479,7 +479,7 @@ Input — это fallback и исполнительный слой, но не о
 - semantic-first;
 - input-second;
 - verify-always;
-- без размывания V1 вокруг внешнего API.
+- без размывания текущего shipped runtime вокруг внешнего API.
 
 ---
 
@@ -534,7 +534,7 @@ OCR полезен как fallback, но не как главный semantic lay
 
 ### Короткая формула развития
 
-- **V1:** надёжное ядро
-- **V2:** единый browser+desktop runtime
-- **V3:** зрелый agent-native Windows control layer
+- **Текущее состояние:** надёжное ядро
+- **Следующая волна:** единый browser+desktop runtime
+- **Дальняя волна:** зрелый agent-native Windows control layer
 

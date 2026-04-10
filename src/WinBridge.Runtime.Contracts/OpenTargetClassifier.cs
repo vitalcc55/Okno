@@ -50,7 +50,7 @@ internal static class OpenTargetClassifier
         {
             classification = default;
             failureCode = OpenTargetFailureCodeValues.UnsupportedTargetKind;
-            reason = "V1 open_target с targetKind=document не принимает executable, script или launcher-like targets.";
+            reason = "Текущий open_target contract с targetKind=document не принимает executable, script или launcher-like targets.";
             return false;
         }
 
@@ -97,7 +97,7 @@ internal static class OpenTargetClassifier
         {
             classification = default;
             failureCode = OpenTargetFailureCodeValues.UnsupportedUriScheme;
-            reason = "V1 open_target поддерживает только http/https URL и не принимает mailto/file/custom schemes.";
+            reason = "Текущий open_target contract поддерживает только http/https URL и не принимает mailto/file/custom schemes.";
             return false;
         }
 

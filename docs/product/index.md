@@ -13,7 +13,7 @@
 ## Как использовать
 
 - `okno-vision.md` — north star и архитектурный вектор продукта.
-- `okno-spec.md` — продуктовый контракт V1.
+- `okno-spec.md` — текущий продуктовый контракт.
 - `okno-roadmap.md` — порядок реализации и delivery milestones.
 
 ## Transport policy
@@ -26,7 +26,7 @@
 
 - `shell`, `skills`, `MCP` и `computer use` рассматриваются как соседние слои, а не как одна и та же feature под разными именами.
 - Для текущего продукта `Okno` остаётся Windows-native runtime и MCP surface, а built-in `computer use` рассматривается как будущая compatibility track.
-- Текущий локальный integration path для Codex остаётся plugin/MCP поверх этого репозитория; adapter к OpenAI `computer use` должен быть отдельным слоем и не должен менять ближайший V1 roadmap.
+- Текущий локальный integration path для Codex остаётся plugin/MCP поверх этого репозитория; adapter к OpenAI `computer use` должен быть отдельным слоем и не должен менять ближайший roadmap продукта.
 - Source of truth по этой теме лежит в [../architecture/openai-computer-use-interop.md](../architecture/openai-computer-use-interop.md) и дополняется roadmap в [okno-roadmap.md](okno-roadmap.md).
 
 ## Примечание о codename

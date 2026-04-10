@@ -80,7 +80,7 @@ public static class OpenTargetRequestValidator
             .First();
 
         failureCode = OpenTargetFailureCodeValues.InvalidRequest;
-        reason = $"Дополнительное поле '{key}' не входит в frozen V1 request surface open_target.";
+        reason = $"Дополнительное поле '{key}' не входит в текущий request surface open_target.";
         return false;
     }
 }

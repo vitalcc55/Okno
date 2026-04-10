@@ -35,20 +35,20 @@ public static class LaunchProcessRequestValidator
         {
             case LaunchProcessExecutableTargetKind.AbsoluteUri:
                 failureCode = LaunchProcessFailureCodeValues.UnsupportedTargetKind;
-                reason = "V1 launch_process не принимает URI target; передай executable path или bare executable name.";
+                reason = "Текущий launch_process contract не принимает URI target; передай executable path или bare executable name.";
                 return false;
             case LaunchProcessExecutableTargetKind.RelativePath:
             case LaunchProcessExecutableTargetKind.DriveRelativePath:
                 failureCode = LaunchProcessFailureCodeValues.InvalidRequest;
-                reason = "V1 launch_process принимает только absolute path или bare executable name; relative executable path не поддерживается.";
+                reason = "Текущий launch_process contract принимает только absolute path или bare executable name; relative executable path не поддерживается.";
                 return false;
             case LaunchProcessExecutableTargetKind.Directory:
                 failureCode = LaunchProcessFailureCodeValues.UnsupportedTargetKind;
-                reason = "V1 launch_process не принимает directory target в поле executable.";
+                reason = "Текущий launch_process contract не принимает directory target в поле executable.";
                 return false;
             case LaunchProcessExecutableTargetKind.UnsupportedFileType:
                 failureCode = LaunchProcessFailureCodeValues.UnsupportedTargetKind;
-                reason = "V1 launch_process принимает только direct executable target; document/shell-open file types должны идти через отдельный launch_process/open_target split.";
+                reason = "Текущий launch_process contract принимает только direct executable target; document/shell-open file types должны идти через отдельный launch_process/open_target split.";
                 return false;
         }
 
@@ -98,7 +98,7 @@ public static class LaunchProcessRequestValidator
         if (additionalProperties.Keys.Any(static key => string.Equals(key, "environment", StringComparison.OrdinalIgnoreCase)))
         {
             failureCode = LaunchProcessFailureCodeValues.UnsupportedEnvironmentOverrides;
-            reason = "Параметр environment для launch_process в V1 не поддерживается.";
+            reason = "Параметр environment для launch_process в текущем contract не поддерживается.";
             return false;
         }
 
@@ -107,7 +107,7 @@ public static class LaunchProcessRequestValidator
             .First();
 
         failureCode = LaunchProcessFailureCodeValues.InvalidRequest;
-        reason = $"Дополнительное поле '{key}' не входит в frozen V1 request surface launch_process.";
+        reason = $"Дополнительное поле '{key}' не входит в текущий request surface launch_process.";
         return false;
     }
 

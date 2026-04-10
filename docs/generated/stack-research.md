@@ -119,5 +119,5 @@
 - Verification-first loop материализован как команды, а не как устная договорённость.
 - Evidence pack хранится в артефактах запуска, а не только в чате.
 - `shell`, `skills`, `MCP` и `computer use` трактуются как соседние слои, а не как взаимозаменяемые части одного продукта.
-- Текущий локальный integration path для Codex остаётся `shell + Okno(MCP/plugin) + skills`; built-in `computer use` не считается немедленной зависимостью для `Okno V1`.
+- Текущий локальный integration path для Codex остаётся `shell + Okno(MCP/plugin) + skills`; built-in `computer use` не считается немедленной зависимостью для текущего `Okno`.
 - Future OpenAI interop фиксируется как compatibility track для `windows.input` и отдельного adapter-слоя, а не как причина смешивать OpenAI-specific contracts с `WinBridge.Runtime`.

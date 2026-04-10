@@ -1,8 +1,8 @@
-# ADR-0001: выбор стека для V1
+# ADR-0001: выбор базового стека продукта
 
 ## Контекст
 
-Репозиторий находится в greenfield-состоянии. Продуктовый контракт в [../product/okno-spec.md](../product/okno-spec.md) прямо фиксирует V1 как локальный Windows-native MCP runtime с `UIA-first` семантикой, `STDIO` transport и фокусом на надёжность, а не на скорость прототипирования.
+Репозиторий уже строится как локальный Windows-native MCP runtime с `UIA-first` семантикой, `STDIO` transport и фокусом на надёжность, а не на скорость прототипирования.
 
 ## Кандидаты
 
@@ -19,7 +19,7 @@
 
 ## Решение
 
-Выбран `C# / .NET 8` как boring baseline для V1. Это совпадает с продуктовой спецификацией и даёт наиболее естественную базу для Win32/UIA interop, официального C# MCP SDK и строгого test/build loop.
+Выбран `C# / .NET 8` как boring baseline для текущего продукта. Это совпадает с продуктовой спецификацией и даёт наиболее естественную базу для Win32/UIA interop, официального C# MCP SDK и строгого test/build loop.
 
 ## Почему отклонены альтернативы
 
@@ -30,4 +30,4 @@
 
 - Используем `net8.0-windows` и закрепляем SDK через `global.json`, чтобы не зависеть от установленного preview SDK.
 - Принимаем зависимость от официального C# MCP SDK, включая документированный риск experimental APIs.
-- В bootstrap делаем реальный vertical slice по window/session/observability, а сложные UIA/capture/input сервисы оставляем в backlog V1 roadmap.
+- В bootstrap делаем реальный vertical slice по window/session/observability, а сложные UIA/capture/input сервисы оставляем в backlog текущего roadmap.

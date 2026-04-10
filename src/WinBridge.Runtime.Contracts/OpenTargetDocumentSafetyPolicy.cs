@@ -2,7 +2,7 @@ namespace WinBridge.Runtime.Contracts;
 
 internal static class OpenTargetDocumentSafetyPolicy
 {
-    // V1 document admission stays fail-closed against known launcher/script targets
+    // Текущая document admission policy остаётся fail-closed против launcher/script targets
     // that ShellExecute can hand off to an interpreter or launcher instead of a passive document handler.
     private static readonly HashSet<string> BlockedDocumentExtensions = new(StringComparer.OrdinalIgnoreCase)
     {

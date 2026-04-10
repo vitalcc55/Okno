@@ -32,6 +32,6 @@
 
 ## Что пока только задокументировано
 
-- UIA/capture/input/clipboard milestones из V1 roadmap
+- UIA/capture/input/clipboard milestones из текущего roadmap
 - расширение observability до OTel exporter
 - HTTP transport после product-ready `STDIO`

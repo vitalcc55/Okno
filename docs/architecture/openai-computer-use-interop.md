@@ -4,7 +4,7 @@
 
 Этот документ фиксирует, как `Okno` должен соотноситься с `shell`, `skills`, `MCP` и `computer use` в экосистеме OpenAI, и как future compatibility нужно встраивать без поломки текущего Windows-native продукта.
 
-Он намеренно не меняет ближайший V1 delivery order и не объявляет built-in `computer use` текущим runtime requirement.
+Он намеренно не меняет ближайший delivery order и не объявляет built-in `computer use` текущим runtime requirement.
 
 ## Ключевая позиция
 
@@ -21,7 +21,7 @@
 ## Что это значит для текущего продукта
 
 - Для локального `Codex app/CLI/IDE` основной путь остаётся `shell + Okno(MCP/plugin) + skills`.
-- Built-in `computer use` не нужен для того, чтобы `Okno V1` уже был полезным.
+- Built-in `computer use` не нужен для того, чтобы текущий `Okno` уже был полезным.
 - Current repo-local plugin `okno` остаётся каноническим local integration entry point.
 - Любой будущий bridge к OpenAI `computer use` должен быть adapter-слоем поверх `Okno`, а не частью core runtime.
 
@@ -89,7 +89,7 @@ Adapter должен:
 - маппить внешний action vocabulary на `Okno`;
 - хранить coordinate-space / capture remap metadata;
 - не менять core semantics shipped tools;
-- оставаться опциональным слоем, который можно развивать отдельно от V1 runtime.
+- оставаться опциональным слоем, который можно развивать отдельно от текущего runtime.
 
 ## Activation criteria
 
