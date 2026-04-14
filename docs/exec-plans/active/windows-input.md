@@ -35,9 +35,10 @@
   - `supports_dry_run=false`
   - `confirmation_mode=required`
   - `redaction_class=text_payload`
+- deferred public registration уже использует schema-preserving `actions[]` envelope и structured `unsupported` result, но implemented lifecycle, live gated handler и runtime dispatch по-прежнему не опубликованы.
 - shared gate уже обязателен для policy-bearing tools: raw `ToolExecution.Run(...)`/`RunAsync(...)` для `windows.input` fail-fast запрещён, нужен только `RunGated(...)` / `RunGatedAsync(...)`.
-- shared readiness для `input` пока честно unfinished: `RuntimeGuardPolicy.BuildInput(...)` всегда возвращает deferred blocked capability и одновременно прокидывает environment/integrity/uiAccess blockers.
-- runtime seam для input пока пустой: [src/WinBridge.Runtime.Windows.Input/IInputService.cs](../../../src/WinBridge.Runtime.Windows.Input/IInputService.cs).
+- shared readiness для `input` больше не placeholder blocked: `RuntimeGuardPolicy.BuildInput(...)` уже выражает reusable `ready/degraded/blocked/unknown` baseline, а target-specific integrity/focus checks ещё остаются на future runtime boundary.
+- runtime seam для input больше не пустой: [src/WinBridge.Runtime.Windows.Input/IInputService.cs](../../../src/WinBridge.Runtime.Windows.Input/IInputService.cs) уже фиксирует contract-level `ExecuteAsync(...)`, но concrete dispatch implementation ещё отсутствует.
 - sibling rollout patterns уже materialized:
   - `windows.wait` показал canonical target resolution, artifact/event model и `structuredContent + TextContentBlock` boundary.
   - `windows.launch_process` показал gated public action tool с preview-freeze/result modes/materializer lifecycle.
@@ -327,14 +328,28 @@ Important decision:
 ### 6.2. Pointer action DTO shape
 
 ```csharp
-public sealed record InputPoint(int X, int Y);
+public sealed record InputPoint
+{
+    public int X { get; init; }
+    public int Y { get; init; }
+}
 
-public sealed record InputCaptureReference(
-    Bounds Bounds,
-    int PixelWidth,
-    int PixelHeight,
-    int? EffectiveDpi = null,
-    DateTimeOffset? CapturedAtUtc = null);
+public sealed record InputBounds
+{
+    public int Left { get; init; }
+    public int Top { get; init; }
+    public int Right { get; init; }
+    public int Bottom { get; init; }
+}
+
+public sealed record InputCaptureReference
+{
+    public InputBounds? Bounds { get; init; }
+    public int PixelWidth { get; init; }
+    public int PixelHeight { get; init; }
+    public int? EffectiveDpi { get; init; }
+    public DateTimeOffset? CapturedAtUtc { get; init; }
+}
 
 public sealed record InputAction
 {
@@ -357,6 +372,8 @@ Validation policy:
 
 - public Package C schema advertises only `move`, `click`, `double_click` literals;
 - `drag` / `scroll` / `type` / `keypress` live shipping is deferred, but their structural slots stay reserved in DTO/validator architecture;
+- request binding preserves `missing` / `explicit null` / `invalid token` / `non-object token` distinction across the frozen `InputRequest` / `InputAction` / nested input DTO hierarchy before validator runs, so malformed `actions`, action objects, token-like fields, `keys`, `point`, `path`, `captureReference`, `bounds` and capture geometry reject as typed `invalid_request` instead of surfacing serializer exceptions;
+- DTO layer preserves field presence for action-specific fields and coordinate objects, so validator can reject `provided-but-empty/null` forbidden fields and partial coordinate objects without banning explicit zero coordinates;
 - extra properties reject-ятся fail-closed;
 - batch execution is ordered and fail-fast on first non-success action;
 - max batch size V1 = `16` actions to avoid giant unverified side-effect bursts.
@@ -605,18 +622,38 @@ Follow-up requirement before keyboard wave:
 
 ### Package A — Contract freeze
 
+Статус: `done`
+
 Scope:
 
 - freeze one-tool `InputRequest` / `InputAction` / `InputResult` structure;
 - decide shipped subset vs reserved literals;
 - define coordinate-space, button, modifier, status, result-mode and failure-code value sets;
 - refactor shared `BuildInput(...)` readiness from always-blocked placeholder to reusable baseline;
-- keep handler unpublished while runtime and tests are still incomplete.
+- keep live runtime dispatch and implemented publication off while runtime and tests are still incomplete; schema-preserving deferred registration is allowed if it stays honest `unsupported`.
 
 Done when:
 
-- another engineer can implement runtime without reopening design forks on `single tool vs zoo`, `right_click`, `capture_pixels`, `active fallback`, `verify_needed`, `dry-run=false`;
+- another engineer can implement runtime without reopening design forks on `single tool vs zoo`, `click(button=right)`, `capture_pixels`, `no active fallback`, `verify_needed`, `dry-run=false`;
 - `RuntimeGuardPolicyTests` express real input-readiness matrix instead of placeholder blocked status.
+
+#### Package A Checklist
+
+- [x] Frozen `InputRequest`, `InputAction`, `InputResult`, value sets and validator architecture in `src/WinBridge.Runtime.Contracts/Input*.cs`.
+- [x] Structural freeze kept separate from future shipped subset via validator policy; Package A code accepts `move` / `click` / `double_click` / `drag` / `scroll` / `type` / `keypress`, while click-first subset remains a later allowlist.
+- [x] Action-specific allowed/required fields are centralized in `InputActionContractCatalog` and reused by validator/schema materialization, so keyboard, pointer, scroll and drag action shapes cannot drift independently.
+- [x] Scalar constraints are centralized in `InputActionScalarConstraints` and mirrored by validator/schema materialization where JSON Schema can express them: non-whitespace `key` / `direction`, positive `repeat`, non-zero `delta`, and positive capture pixel dimensions.
+- [x] Contract boundary preserves field presence and validity for forbidden/required fields across `InputRequest`, `InputAction` and nested input DTOs, so whitespace placeholders, explicit `null`, non-object values, invalid scalar/list tokens and partial `actions` / `point` / `path` / `captureReference` / `bounds` / capture-geometry shapes reject as typed `invalid_request` without banning explicit zero coordinates.
+- [x] Deferred public `windows.input` publication uses manual schema-preserving registration with action `oneOf` branches and nested required fields while still returning structured `unsupported`, so Package A can keep the frozen `actions[]` MCP envelope without relying on reflection binding for malformed action elements.
+- [x] Capture-reference bounds validation uses direct edge ordering instead of overflowing `int` derived dimensions.
+- [x] Shared `BuildInput(...)` no longer uses deferred placeholder semantics and now exposes `ready` / `degraded` / `blocked` / `unknown` based on environment readiness.
+- [x] `CapabilityNotImplemented` no longer appears in healthy `input` readiness summaries; medium integrity without `uiAccess` is now `degraded`, not permanently blocked.
+- [x] Added dedicated `ResolveInputTarget(...)` seam with `explicit -> attached` policy and no active fallback.
+- [x] Kept `windows.input` deferred, but aligned the public deferred MCP schema with the frozen `actions[]` envelope instead of leaving legacy `actionsJson`.
+- [x] Synced product/interop/tooling wording with Package A decisions: one tool, `click(button=right)`, `capture_pixels` + `screen`, `verify_needed`, `supports_dry_run=false`.
+- [ ] Live MCP handler, request binding into runtime execution path and `RunGatedAsync(...)` rollout remain deferred to Package C.
+- [ ] Runtime dispatch, target integrity/focus preflight, artifacts/events and result materialization remain deferred to Package B/D.
+- [ ] Smoke, fresh-host acceptance and promotion from deferred registration to implemented contract remain deferred to Package E.
 
 ### Package B — Runtime/input service
 
@@ -639,7 +676,7 @@ Done when:
 
 Scope:
 
-- add `WindowsInputToolRegistration` and replace deferred stub in `WindowTools`;
+- replace schema-preserving deferred registration with live public handler and implemented tool semantics;
 - implement raw JSON bind, `AdditionalProperties` drift rejection and shipped-subset schema;
 - route only through `RunGatedAsync(...)`;
 - materialize `blocked` / `needs_confirmation` payloads in the same style as launch/open boundary;

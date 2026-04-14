@@ -244,6 +244,147 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
+    public async Task ToolsListPublishesDeferredWindowsInputWithFrozenRequestSchema()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument toolsResponse = await session.SendRequestAsync(
+                "tools/list",
+                new { },
+                "tools/list");
+            JsonElement inputDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsInput);
+
+            Assert.False(string.IsNullOrWhiteSpace(inputDescriptor.GetProperty("description").GetString()));
+            JsonElement properties = inputDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            Assert.True(properties.TryGetProperty("actions", out JsonElement actionsProperty));
+            Assert.True(properties.TryGetProperty("hwnd", out JsonElement hwndProperty));
+            Assert.True(properties.TryGetProperty("confirm", out JsonElement confirmProperty));
+            Assert.False(properties.TryGetProperty("actionsJson", out _));
+            Assert.False(string.IsNullOrWhiteSpace(actionsProperty.GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(hwndProperty.GetProperty("description").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(confirmProperty.GetProperty("description").GetString()));
+            AssertSchemaTypeContains(actionsProperty.GetProperty("type"), "array");
+            JsonElement actionItemProperties = actionsProperty.GetProperty("items").GetProperty("properties");
+            Assert.True(actionItemProperties.TryGetProperty("type", out _));
+            Assert.True(actionItemProperties.TryGetProperty("point", out _));
+            Assert.True(actionItemProperties.TryGetProperty("path", out _));
+            Assert.True(actionItemProperties.TryGetProperty("coordinateSpace", out _));
+            Assert.True(actionItemProperties.TryGetProperty("button", out _));
+            Assert.True(actionItemProperties.TryGetProperty("keys", out _));
+            Assert.True(actionItemProperties.TryGetProperty("text", out _));
+            Assert.True(actionItemProperties.TryGetProperty("key", out _));
+            Assert.True(actionItemProperties.TryGetProperty("repeat", out _));
+            Assert.True(actionItemProperties.TryGetProperty("delta", out _));
+            Assert.True(actionItemProperties.TryGetProperty("direction", out _));
+            Assert.True(actionItemProperties.TryGetProperty("captureReference", out _));
+
+            JsonElement actionBranches = actionsProperty.GetProperty("items").GetProperty("oneOf");
+            Assert.Equal(InputActionContractCatalog.All.Count, actionBranches.GetArrayLength());
+
+            JsonElement clickBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Click);
+            AssertSchemaRequiredContains(clickBranch, "type", "point", "coordinateSpace");
+            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "point");
+            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "coordinateSpace");
+            Assert.True(clickBranch.GetProperty("properties").TryGetProperty("button", out _));
+            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "button");
+            Assert.True(clickBranch.GetProperty("properties").TryGetProperty("keys", out _));
+            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "keys");
+            Assert.True(clickBranch.GetProperty("properties").TryGetProperty("captureReference", out _));
+            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "captureReference");
+            Assert.False(clickBranch.GetProperty("properties").TryGetProperty("text", out _));
+
+            JsonElement typeBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Type);
+            AssertSchemaRequiredContains(typeBranch, "type", "text");
+            AssertSchemaPropertyDoesNotAllowNull(typeBranch, "text");
+            Assert.False(typeBranch.GetProperty("properties").TryGetProperty("key", out _));
+
+            JsonElement keypressBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Keypress);
+            AssertSchemaRequiredContains(keypressBranch, "type", "key");
+            AssertSchemaPropertyDoesNotAllowNull(keypressBranch, "key");
+            AssertSchemaStringPropertyRejectsWhitespaceOnly(keypressBranch, "key");
+            Assert.True(keypressBranch.GetProperty("properties").TryGetProperty("repeat", out _));
+            AssertSchemaPropertyDoesNotAllowNull(keypressBranch, "repeat");
+            AssertSchemaIntegerPropertyHasMinimum(keypressBranch, "repeat", 1);
+            Assert.False(keypressBranch.GetProperty("properties").TryGetProperty("text", out _));
+
+            JsonElement dragBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Drag);
+            AssertSchemaRequiredContains(dragBranch, "type", "path", "coordinateSpace");
+            AssertSchemaPropertyDoesNotAllowNull(dragBranch, "path");
+            AssertSchemaPropertyDoesNotAllowNull(dragBranch, "coordinateSpace");
+
+            JsonElement scrollBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Scroll);
+            AssertSchemaRequiredContains(scrollBranch, "type", "point", "coordinateSpace", "delta", "direction");
+            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "point");
+            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "coordinateSpace");
+            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "delta");
+            AssertSchemaIntegerPropertyRejectsConst(scrollBranch, "delta", 0);
+            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "direction");
+            AssertSchemaStringPropertyRejectsWhitespaceOnly(scrollBranch, "direction");
+            Assert.True(scrollBranch.GetProperty("properties").TryGetProperty("keys", out _));
+            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "keys");
+            Assert.True(scrollBranch.GetProperty("properties").TryGetProperty("captureReference", out _));
+            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "captureReference");
+
+            JsonElement pointSchema = actionItemProperties.GetProperty("point");
+            AssertSchemaRequiredContains(pointSchema, "x", "y");
+            AssertSchemaPropertyDoesNotAllowNull(pointSchema, "x");
+            AssertSchemaPropertyDoesNotAllowNull(pointSchema, "y");
+
+            JsonElement captureReferenceSchema = actionItemProperties.GetProperty("captureReference");
+            AssertSchemaRequiredContains(captureReferenceSchema, "bounds", "pixelWidth", "pixelHeight");
+            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "bounds");
+            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "pixelWidth");
+            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "pixelHeight");
+            AssertSchemaIntegerPropertyHasMinimum(captureReferenceSchema, "pixelWidth", 1);
+            AssertSchemaIntegerPropertyHasMinimum(captureReferenceSchema, "pixelHeight", 1);
+            AssertSchemaPropertyAllowsNull(captureReferenceSchema, "effectiveDpi");
+            AssertSchemaPropertyAllowsNull(captureReferenceSchema, "capturedAtUtc");
+            AssertSchemaRequiredContains(
+                captureReferenceSchema.GetProperty("properties").GetProperty("bounds"),
+                "left",
+                "top",
+                "right",
+                "bottom");
+            JsonElement boundsSchema = captureReferenceSchema.GetProperty("properties").GetProperty("bounds");
+            AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "left");
+            AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "top");
+            AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "right");
+            AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "bottom");
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
     public async Task OpenTargetRejectsUnsupportedExtraFieldAsToolLevelFailedResult()
     {
         using Process process = StartServer();
@@ -633,6 +774,59 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
+    public async Task WindowsInputDeferredCallMaterializesMalformedActionElementWithoutTransportError()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument response = await session.CallToolAsync(
+                ToolNames.WindowsInput,
+                new
+                {
+                    actions = new object[]
+                    {
+                        "bad",
+                    },
+                });
+
+            Assert.False(
+                response.RootElement.TryGetProperty("error", out _),
+                "Deferred windows.input must not fail through transport-level error for malformed action element.");
+
+            using JsonDocument payload = JsonDocument.Parse(GetToolTextPayload(response));
+            JsonElement root = payload.RootElement;
+            Assert.Equal(ToolNames.WindowsInput, root.GetProperty("toolName").GetString());
+            Assert.Equal("unsupported", root.GetProperty("status").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
     public async Task WindowsWaitRejectsExpectedTextForNonTextAppearsThroughStdio()
     {
         using Process process = StartServer();
@@ -952,7 +1146,18 @@ public sealed class McpProtocolSmokeTests
         {
             ToolNames.WindowsClipboardGet => new { },
             ToolNames.WindowsClipboardSet => new { value = "smoke" },
-            ToolNames.WindowsInput => new { actionsJson = "[]" },
+            ToolNames.WindowsInput => new
+            {
+                actions = new[]
+                {
+                    new
+                    {
+                        type = InputActionTypeValues.Click,
+                        point = new { x = 10, y = 20 },
+                        coordinateSpace = InputCoordinateSpaceValues.Screen,
+                    },
+                },
+            },
             ToolNames.WindowsUiaAction => new { elementId = "root", action = "invoke" },
             _ => throw new InvalidOperationException($"Неизвестный deferred tool '{toolName}' для smoke invocation contract."),
         };
@@ -1443,6 +1648,78 @@ public sealed class McpProtocolSmokeTests
         }
 
         Assert.Contains(expectedType, typeElement.EnumerateArray().Select(item => item.GetString()));
+    }
+
+    private static JsonElement FindActionSchemaBranch(JsonElement branches, string actionType)
+    {
+        foreach (JsonElement branch in branches.EnumerateArray())
+        {
+            JsonElement typeSchema = branch.GetProperty("properties").GetProperty("type");
+            if (typeSchema.GetProperty("enum").EnumerateArray().Any(item => string.Equals(item.GetString(), actionType, StringComparison.Ordinal)))
+            {
+                return branch;
+            }
+        }
+
+        throw new InvalidOperationException($"Schema branch for action type '{actionType}' was not found.");
+    }
+
+    private static void AssertSchemaRequiredContains(JsonElement schema, params string[] requiredFields)
+    {
+        string[] actual = schema.GetProperty("required")
+            .EnumerateArray()
+            .Select(item => item.GetString()!)
+            .ToArray();
+
+        foreach (string requiredField in requiredFields)
+        {
+            Assert.Contains(requiredField, actual);
+        }
+    }
+
+    private static void AssertSchemaPropertyDoesNotAllowNull(JsonElement schema, string propertyName)
+    {
+        JsonElement propertySchema = schema.GetProperty("properties").GetProperty(propertyName);
+        Assert.False(SchemaTypeAllowsNull(propertySchema.GetProperty("type")), $"Schema property '{propertyName}' must not allow null.");
+        if (propertySchema.TryGetProperty("enum", out JsonElement enumValues))
+        {
+            Assert.DoesNotContain(enumValues.EnumerateArray(), item => item.ValueKind == JsonValueKind.Null);
+        }
+    }
+
+    private static void AssertSchemaPropertyAllowsNull(JsonElement schema, string propertyName)
+    {
+        JsonElement propertySchema = schema.GetProperty("properties").GetProperty(propertyName);
+        Assert.True(SchemaTypeAllowsNull(propertySchema.GetProperty("type")), $"Schema property '{propertyName}' must allow null.");
+    }
+
+    private static void AssertSchemaIntegerPropertyHasMinimum(JsonElement schema, string propertyName, int minimum)
+    {
+        JsonElement propertySchema = schema.GetProperty("properties").GetProperty(propertyName);
+        Assert.Equal(minimum, propertySchema.GetProperty("minimum").GetInt32());
+    }
+
+    private static void AssertSchemaIntegerPropertyRejectsConst(JsonElement schema, string propertyName, int constValue)
+    {
+        JsonElement propertySchema = schema.GetProperty("properties").GetProperty(propertyName);
+        Assert.Equal(constValue, propertySchema.GetProperty("not").GetProperty("const").GetInt32());
+    }
+
+    private static void AssertSchemaStringPropertyRejectsWhitespaceOnly(JsonElement schema, string propertyName)
+    {
+        JsonElement propertySchema = schema.GetProperty("properties").GetProperty(propertyName);
+        Assert.Equal(1, propertySchema.GetProperty("minLength").GetInt32());
+        Assert.Equal(@"\S", propertySchema.GetProperty("pattern").GetString());
+    }
+
+    private static bool SchemaTypeAllowsNull(JsonElement typeElement)
+    {
+        if (typeElement.ValueKind == JsonValueKind.String)
+        {
+            return string.Equals(typeElement.GetString(), "null", StringComparison.Ordinal);
+        }
+
+        return typeElement.EnumerateArray().Any(item => string.Equals(item.GetString(), "null", StringComparison.Ordinal));
     }
 
     private static string GetReasonSignature(JsonElement reason) =>

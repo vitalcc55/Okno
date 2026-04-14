@@ -10,5 +10,7 @@ public interface IWindowTargetResolver
 
     UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow);
 
+    InputTargetResolution ResolveInputTarget(long? explicitHwnd, WindowDescriptor? attachedWindow);
+
     WaitTargetResolution ResolveWaitTarget(long? explicitHwnd, WindowDescriptor? attachedWindow);
 }

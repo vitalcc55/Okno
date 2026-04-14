@@ -533,8 +533,7 @@ public sealed class WindowTools
     public DeferredToolResult ClipboardSet(string value) =>
         Deferred(ToolNames.WindowsClipboardSet);
 
-    [McpServerTool(Name = ToolNames.WindowsInput)]
-    public DeferredToolResult Input(string actionsJson = "[]") =>
+    public DeferredToolResult Input() =>
         Deferred(ToolNames.WindowsInput);
 
     [Description(ToolDescriptions.WindowsUiaSnapshotTool)]

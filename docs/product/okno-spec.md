@@ -50,7 +50,8 @@ _Технический продуктовый контракт Okno под Wind
 - Move / drag.
 - Scroll.
 - Type.
-- Keypress / hotkey.
+- Keypress.
+- Hotkey как later extension после текущей keyboard wave.
 
 ### Ожидание и проверка
 - Ждать появления/исчезновения элемента.
@@ -62,7 +63,7 @@ _Технический продуктовый контракт Okno под Wind
 ### Текст и clipboard
 - Уметь вставлять текст через clipboard.
 - Уметь читать/задавать clipboard.
-- Уметь выбирать между `type` и `paste` по моей команде.
+- На текущем shipped path уметь различать `type` и clipboard workflow; explicit `paste` внутри `windows.input` остаётся later extension.
 
 ### Диалоги
 - Обнаруживать модальные окна / поверхностные диалоги хотя бы на базовом уровне.
@@ -225,23 +226,38 @@ Python можно использовать:
 
 Win32 input primitives (`SendInput`-style модель) как fallback-слой.
 
-### Что должно быть в текущем shipped scope
+### Что должно быть в structural action family
 
 - `click`
 - `double_click`
-- `right_click`
+- `click(button=right)`
 - `move`
 - `drag`
 - `scroll`
 - `type`
 - `keypress`
+
+### Что остаётся later extension поверх structural freeze
+
 - `hotkey`
+- `paste`
+
+### Что входит в click-first live subset
+
+- `move`
+- `click`
+- `double_click`
+- `click(button=right)`
 
 ### Что важно
 
 - нормализация координат;
 - работа только в явном контексте окна/экрана;
 - понятные ошибки при проблемах с фокусом;
+- `windows.input` остаётся одним ordered batch tool, а не zoo из отдельных `click`/`scroll`/`type`;
+- допустимые coordinate spaces для click-first wave: `capture_pixels` и `screen`;
+- normal success-path для coordinate input = `verify_needed`, а не скрытый auto-wait или “API вызвался успешно”;
+- public `dryRun` для `windows.input` не публикуется.
 - awareness of integrity/focus issues.
 
 ---
@@ -282,7 +298,7 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 Нужны:
 - `windows.clipboard_get`
 - `windows.clipboard_set`
-- `paste` как операция внутри `windows.input`
+- future `paste` как later extension внутри `windows.input`, а не часть текущего Package A freeze
 
 ---
 
@@ -417,19 +433,34 @@ Invariant:
 
 ### `windows.input`
 Аргументы:
-- sequence of actions.
+- ordered `actions[]`.
+- optional explicit `hwnd`.
+- `confirm` для shared gate.
 
-Поддержать:
+Структурно зарезервированная action family:
 - move;
 - click;
 - double_click;
-- right_click;
+- `click(button=right)`;
 - drag;
 - scroll;
 - type;
 - keypress;
+
+Later additive extensions:
 - hotkey;
 - paste.
+
+Текущий click-first live subset:
+- move;
+- click;
+- double_click;
+- `click(button=right)`.
+
+Инварианты:
+- это один tool, а не набор отдельных action tools;
+- active-window fallback для input запрещён: target policy = `explicit -> attached`;
+- `windows.capture` и `windows.wait` остаются отдельными explicit steps.
 
 ---
 
@@ -586,7 +617,7 @@ Invariant:
 ## 5.7. Clipboard service
 
 Отвечает за:
-- get/set/paste.
+- get/set и later paste orchestration.
 
 ## 5.8. Audit/log service
 

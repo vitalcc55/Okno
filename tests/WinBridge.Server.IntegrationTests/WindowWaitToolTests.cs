@@ -419,6 +419,9 @@ public sealed class WindowWaitToolTests
         public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw exception;
 
+        public InputTargetResolution ResolveInputTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
+            throw exception;
+
         public WaitTargetResolution ResolveWaitTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw exception;
     }

@@ -50,6 +50,7 @@ public static class GuardReasonCodeValues
     public const string WaitUiaConditionsUnavailable = "wait_uia_conditions_unavailable";
     public const string InputUipiBarrierPresent = "input_uipi_barrier_present";
     public const string InputIntegrityLimited = "input_integrity_limited";
+    public const string InputReadyProfile = "input_ready_profile";
     public const string ClipboardIntegrityLimited = "clipboard_integrity_limited";
     public const string LaunchReadyProfile = "launch_ready_profile";
     public const string LaunchIntegrityLimited = "launch_integrity_limited";

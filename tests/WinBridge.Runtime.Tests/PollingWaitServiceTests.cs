@@ -1398,6 +1398,9 @@ public sealed class PollingWaitServiceTests
         public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw new NotSupportedException();
 
+        public InputTargetResolution ResolveInputTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
+            throw new NotSupportedException();
+
         public WaitTargetResolution ResolveWaitTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw new NotSupportedException();
     }

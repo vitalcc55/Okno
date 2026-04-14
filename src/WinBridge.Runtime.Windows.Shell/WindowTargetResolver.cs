@@ -47,6 +47,33 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
             MapWaitTargetFailureCode(resolution.FailureCode));
     }
 
+    public InputTargetResolution ResolveInputTarget(long? explicitHwnd, WindowDescriptor? attachedWindow)
+    {
+        IReadOnlyList<WindowDescriptor> liveWindows = windowManager.ListWindows(includeInvisible: true);
+        if (explicitHwnd is long hwnd)
+        {
+            if (hwnd <= 0)
+            {
+                return new(FailureCode: InputTargetFailureValues.StaleExplicitTarget);
+            }
+
+            WindowDescriptor? explicitWindow = ResolveExplicitOrAttachedWindowCore(hwnd, attachedWindow: null, liveWindows);
+            return explicitWindow is null
+                ? new(FailureCode: InputTargetFailureValues.StaleExplicitTarget)
+                : new(explicitWindow, InputTargetSourceValues.Explicit);
+        }
+
+        if (attachedWindow is not null)
+        {
+            WindowDescriptor? resolvedAttachedWindow = ResolveExplicitOrAttachedWindowCore(explicitHwnd: null, attachedWindow, liveWindows);
+            return resolvedAttachedWindow is null
+                ? new(FailureCode: InputTargetFailureValues.StaleAttachedTarget)
+                : new(resolvedAttachedWindow, InputTargetSourceValues.Attached);
+        }
+
+        return new(FailureCode: InputTargetFailureValues.MissingTarget);
+    }
+
     private static WindowDescriptor? ResolveExplicitOrAttachedWindowCore(
         long? explicitHwnd,
         WindowDescriptor? attachedWindow,

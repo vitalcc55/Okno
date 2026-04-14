@@ -61,7 +61,7 @@ Future `windows.input` нужно проектировать так, чтобы 
 
 При этом остаются Okno-native расширения:
 
-- `right_click`
+- `click(button=right)` как quiet path для правой кнопки, а не отдельный public action literal
 - `hotkey`
 - `paste`
 

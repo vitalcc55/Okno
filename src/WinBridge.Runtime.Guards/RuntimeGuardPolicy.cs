@@ -626,31 +626,101 @@ internal static class RuntimeGuardPolicy
         ReadinessDomainStatus integrity,
         ReadinessDomainStatus uiAccess)
     {
-        GuardReason? environmentBlocker = CreateSessionEnvironmentReason(
+        GuardReason? environmentReason = CreateSessionEnvironmentReason(
             CapabilitySummaryValues.Input,
             desktopSession,
             sessionAlignment,
-            "Future input path дополнительно упирается в unusable interactive desktop/session.");
-        environmentBlocker ??= CreateCapabilityPrerequisiteUnknownReason(
-            CapabilitySummaryValues.Input,
-            integrity,
-            "Future input path не смог подтвердить integrity prerequisites.");
-        environmentBlocker ??= CreateCapabilityPrerequisiteUnknownReason(
-            CapabilitySummaryValues.Input,
-            uiAccess,
-            "Future input path не смог подтвердить uiAccess prerequisites.");
-        environmentBlocker ??= CreateCapabilityConstraintReason(
-            CapabilitySummaryValues.Input,
-            integrity,
-            GuardReasonCodeValues.InputIntegrityLimited,
-            "Future input path ограничен текущим integrity profile.");
-        environmentBlocker ??= CreateCapabilityConstraintReason(
-            CapabilitySummaryValues.Input,
-            uiAccess,
-            GuardReasonCodeValues.InputUipiBarrierPresent,
-            "Future input path не может обещать higher-integrity interaction без uiAccess.");
+            "Input path требует usable interactive desktop/session без hidden recovery.");
+        if (environmentReason is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Input,
+                Status: environmentReason.Code == GuardReasonCodeValues.CapabilityPrerequisitesUnknown
+                    ? GuardStatusValues.Unknown
+                    : GuardStatusValues.Blocked,
+                Reasons: [environmentReason]);
+        }
 
-        return CreateDeferredBlockedCapability(CapabilitySummaryValues.Input, environmentBlocker);
+        GuardReason? integrityUnknownReason = CreateCapabilityPrerequisiteUnknownReason(
+            CapabilitySummaryValues.Input,
+            integrity,
+            "Input path не смог подтвердить integrity prerequisites.");
+        if (integrityUnknownReason is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Input,
+                Status: GuardStatusValues.Unknown,
+                Reasons: [integrityUnknownReason]);
+        }
+
+        if (IsBlocked(integrity))
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Input,
+                Status: GuardStatusValues.Blocked,
+                Reasons:
+                [
+                    CreateReason(
+                        GuardReasonCodeValues.InputIntegrityLimited,
+                        GuardSeverityValues.Blocked,
+                        CapabilitySummaryValues.Input,
+                        "Общий input baseline требует как минимум medium integrity profile для coordinate input path. " + FirstReasonMessage(integrity))
+                ]);
+        }
+
+        if (IsDegraded(integrity))
+        {
+            GuardReason? uiAccessUnknownReason = CreateCapabilityPrerequisiteUnknownReason(
+                CapabilitySummaryValues.Input,
+                uiAccess,
+                "Input path не смог подтвердить uiAccess prerequisites для medium-integrity profile.");
+            if (uiAccessUnknownReason is not null)
+            {
+                return new(
+                    Capability: CapabilitySummaryValues.Input,
+                    Status: GuardStatusValues.Unknown,
+                    Reasons: [uiAccessUnknownReason]);
+            }
+
+            if (IsReady(uiAccess))
+            {
+                return new(
+                    Capability: CapabilitySummaryValues.Input,
+                    Status: GuardStatusValues.Ready,
+                    Reasons:
+                    [
+                        CreateReason(
+                            GuardReasonCodeValues.InputReadyProfile,
+                            GuardSeverityValues.Info,
+                            CapabilitySummaryValues.Input,
+                            "Общий input baseline подтверждён: interactive desktop/session стабильны, medium integrity дополнен uiAccess, а target-specific focus/UIPI/protected-UI checks остаются на runtime boundary.")
+                    ]);
+            }
+
+            return new(
+                Capability: CapabilitySummaryValues.Input,
+                Status: GuardStatusValues.Degraded,
+                Reasons:
+                [
+                    CreateReason(
+                        GuardReasonCodeValues.InputUipiBarrierPresent,
+                        GuardSeverityValues.Warning,
+                        CapabilitySummaryValues.Input,
+                        "Общий input baseline допускает только equal-or-lower target path: medium integrity без uiAccess не подтверждает safe interaction с higher-integrity или protected UI targets.")
+                ]);
+        }
+
+        return new(
+            Capability: CapabilitySummaryValues.Input,
+            Status: GuardStatusValues.Ready,
+            Reasons:
+            [
+                CreateReason(
+                    GuardReasonCodeValues.InputReadyProfile,
+                    GuardSeverityValues.Info,
+                    CapabilitySummaryValues.Input,
+                    "Общий input baseline подтверждён: interactive desktop/session стабильны, а текущий integrity profile достаточен для coordinate input path без отдельного shared safety follow-up.")
+            ]);
     }
 
     private static CapabilityGuardSummary BuildClipboard(
@@ -1065,6 +1135,9 @@ internal static class RuntimeGuardPolicy
 
     private static bool IsDegraded(ReadinessDomainStatus domain) =>
         string.Equals(domain.Status, GuardStatusValues.Degraded, StringComparison.Ordinal);
+
+    private static bool IsReady(ReadinessDomainStatus domain) =>
+        string.Equals(domain.Status, GuardStatusValues.Ready, StringComparison.Ordinal);
 
     private static UiaBoundaryState GetUiaBoundaryState(UiaCapabilityProbeResult facts)
     {

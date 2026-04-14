@@ -54,4 +54,9 @@ public static class ToolDescriptions
     public const string OpenTargetTargetParameter = "Сам target для shell-open. Для document и folder допустим только absolute local/UNC path. Для url допустим только absolute http/https URL. Текущий contract не принимает mailto, file://, custom schemes, verb и workingDirectory.";
     public const string OpenTargetDryRunParameter = "Если true, invocation запрашивает dry-run path через shared execution gate и safe preview без live ShellExecuteExW call.";
     public const string OpenTargetConfirmParameter = "Если true, invocation сообщает shared execution gate, что обязательное user confirmation уже получено.";
+
+    public const string WindowsInputTool = "Замороженный Package A contract для ordered batch input actions: один tool `windows.input` с `actions[]`, строгой target policy `explicit -> attached`, coordinate spaces `capture_pixels`/`screen`, status model `blocked/needs_confirmation/verify_needed/failed/done` и без hidden focus/capture/dry-run semantics до click-first runtime rollout.";
+    public const string InputActionsParameter = "Ordered batch input actions. Package A freeze-ит structural envelope `move`, `click`, `double_click`, `drag`, `scroll`, `type`, `keypress`; public click-first subset будет опубликован отдельно в Package C.";
+    public const string InputHwndParameter = "Явный HWND target для window-scoped input. Если не передан, будущий runtime сможет использовать только attached window; active-window fallback для input запрещён.";
+    public const string InputConfirmParameter = "Если true, invocation сообщает shared execution gate, что обязательное user confirmation уже получено. Public dryRun для windows.input не поддерживается.";
 }

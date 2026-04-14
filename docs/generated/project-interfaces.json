@@ -214,9 +214,9 @@
         "capability": "windows.input",
         "lifecycle": "deferred",
         "safety_class": "os_side_effect",
-        "summary": "\u0412\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u0442 \u043D\u0438\u0437\u043A\u043E\u0443\u0440\u043E\u0432\u043D\u0435\u0432\u0443\u044E \u043F\u043E\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C input-\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439.",
+        "summary": "\u0417\u0430\u043C\u043E\u0440\u043E\u0436\u0435\u043D\u043D\u044B\u0439 Package A contract \u0434\u043B\u044F ordered batch input actions: \u043E\u0434\u0438\u043D tool \u0060windows.input\u0060 \u0441 \u0060actions[]\u0060, \u0441\u0442\u0440\u043E\u0433\u043E\u0439 target policy \u0060explicit -\u003E attached\u0060, coordinate spaces \u0060capture_pixels\u0060/\u0060screen\u0060, status model \u0060blocked/needs_confirmation/verify_needed/failed/done\u0060 \u0438 \u0431\u0435\u0437 hidden focus/capture/dry-run semantics \u0434\u043E click-first runtime rollout.",
         "planned_phase": "roadmap stage 5",
-        "suggested_alternative": "Low-level input \u0432\u0432\u043E\u0434\u0438\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u043E\u0441\u043B\u0435 capture/text path.",
+        "suggested_alternative": "\u0414\u043E click-first runtime rollout \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 \u044F\u0432\u043D\u044B\u0439 activate/capture/wait loop \u0438 \u043E\u0440\u0438\u0435\u043D\u0442\u0438\u0440\u0443\u0439\u0441\u044F \u043D\u0430 \u0437\u0430\u043C\u043E\u0440\u043E\u0436\u0435\u043D\u043D\u044B\u0439 contract \u0438\u0437 okno.contract.",
         "smoke_required": false,
         "execution_policy": {
           "policy_group": "input",

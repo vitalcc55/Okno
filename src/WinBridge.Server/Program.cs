@@ -22,6 +22,9 @@ McpServerTool launchProcessTool = WindowsLaunchProcessToolRegistration.Create(
 McpServerTool openTargetTool = WindowsOpenTargetToolRegistration.Create(
     () => hostServices?.GetRequiredService<WindowTools>()
         ?? throw new InvalidOperationException("WindowTools service is not available yet."));
+McpServerTool inputTool = WindowsInputToolRegistration.Create(
+    () => hostServices?.GetRequiredService<WindowTools>()
+        ?? throw new InvalidOperationException("WindowTools service is not available yet."));
 builder.Logging.ClearProviders();
 builder.Services.AddWinBridgeRuntime(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);
 builder.Services.AddWinBridgeRuntimeWindowsUia(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);
@@ -30,7 +33,7 @@ builder.Services.AddSingleton<WindowTools>();
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithTools([launchProcessTool, openTargetTool])
+    .WithTools([launchProcessTool, openTargetTool, inputTool])
     .WithToolsFromAssembly(typeof(Program).Assembly);
 
 using IHost host = builder.Build();

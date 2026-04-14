@@ -69,7 +69,7 @@ public sealed class AdminToolTests
             GuardStatusValues.Degraded,
             Assert.Single(result.Readiness.Capabilities, item => item.Capability == CapabilitySummaryValues.Wait).Status);
         Assert.Equal(
-            GuardStatusValues.Blocked,
+            GuardStatusValues.Degraded,
             Assert.Single(result.Readiness.Capabilities, item => item.Capability == CapabilitySummaryValues.Input).Status);
         Assert.Equal(
             GuardStatusValues.Blocked,
@@ -80,7 +80,6 @@ public sealed class AdminToolTests
 
         Assert.Equal(
             [
-                CapabilitySummaryValues.Input,
                 CapabilitySummaryValues.Clipboard,
             ],
             result.BlockedCapabilities.Select(item => item.Capability).ToArray());
@@ -90,6 +89,7 @@ public sealed class AdminToolTests
                 GuardReasonCodeValues.IntegrityRequiresEqualOrLowerTarget,
                 GuardReasonCodeValues.UiaWorkerLaunchabilityUnverified,
                 GuardReasonCodeValues.WaitShellVisualAvailable,
+                GuardReasonCodeValues.InputUipiBarrierPresent,
                 GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
             ],
             result.Warnings.Select(item => item.Code).ToArray());
@@ -98,6 +98,7 @@ public sealed class AdminToolTests
                 ReadinessDomainValues.Integrity,
                 CapabilitySummaryValues.Uia,
                 CapabilitySummaryValues.Wait,
+                CapabilitySummaryValues.Input,
                 CapabilitySummaryValues.Launch,
             ],
             result.Warnings.Select(item => item.Source).ToArray());
@@ -277,18 +278,13 @@ public sealed class AdminToolTests
                     ]),
                 new(
                     Capability: CapabilitySummaryValues.Input,
-                    Status: GuardStatusValues.Blocked,
+                    Status: GuardStatusValues.Degraded,
                     Reasons:
                     [
                         new(
-                            Code: GuardReasonCodeValues.CapabilityNotImplemented,
-                            Severity: GuardSeverityValues.Blocked,
-                            MessageHuman: "Эта capability пока не реализована в текущем runtime surface и не может считаться готовой.",
-                            Source: CapabilitySummaryValues.Input),
-                        new(
-                            Code: GuardReasonCodeValues.InputIntegrityLimited,
-                            Severity: GuardSeverityValues.Blocked,
-                            MessageHuman: "Future input path ограничен текущим integrity profile. Текущий token имеет medium integrity; interaction с higher-integrity target нельзя обещать по умолчанию.",
+                            Code: GuardReasonCodeValues.InputUipiBarrierPresent,
+                            Severity: GuardSeverityValues.Warning,
+                            MessageHuman: "Общий input baseline допускает только equal-or-lower target path: medium integrity без uiAccess не подтверждает safe interaction с higher-integrity или protected UI targets.",
                             Source: CapabilitySummaryValues.Input)
                     ]),
                 new(
