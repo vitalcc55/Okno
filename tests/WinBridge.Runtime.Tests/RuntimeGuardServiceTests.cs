@@ -75,7 +75,7 @@ public sealed class RuntimeGuardServiceTests
                 GuardStatusValues.Ready,
                 GuardStatusValues.Degraded,
                 GuardStatusValues.Degraded,
-                GuardStatusValues.Blocked,
+                GuardStatusValues.Ready,
                 GuardStatusValues.Blocked,
                 GuardStatusValues.Ready,
             ],
@@ -94,7 +94,6 @@ public sealed class RuntimeGuardServiceTests
             snapshot.Warnings.Select(item => item.Code).ToArray());
         Assert.Equal(
             [
-                CapabilitySummaryValues.Input,
                 CapabilitySummaryValues.Clipboard,
             ],
             snapshot.BlockedCapabilities.Select(item => item.Capability).ToArray());

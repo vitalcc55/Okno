@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Runtime.Guards;
 
@@ -19,7 +20,11 @@ internal sealed class Win32RuntimeGuardPlatform : IRuntimeGuardPlatform
         new(
             DesktopSession: ProbeDesktopSession(),
             SessionAlignment: ProbeSessionAlignment(),
-            Token: ProbeToken());
+            Token: ProbeToken())
+        {
+            InputAsyncStateReadability = InputAsyncStateReadinessBaselineEvaluator.Probe(
+                InputAsyncStateReadabilityProbe.ProbeForCurrentThread),
+        };
 
     private static DesktopSessionProbeResult ProbeDesktopSession()
     {

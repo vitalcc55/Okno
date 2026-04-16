@@ -172,6 +172,25 @@ public sealed class WaitContractAndPolicyTests
     }
 
     [Fact]
+    public void ResolveWaitTargetRejectsExplicitWindowWithoutStableIdentity()
+    {
+        WindowDescriptor explicitWindow = CreateWindow(hwnd: 101, title: "Explicit", isForeground: false) with
+        {
+            ProcessId = null,
+            ThreadId = null,
+            ClassName = null,
+        };
+        WindowDescriptor activeWindow = CreateWindow(hwnd: 303, title: "Active", isForeground: true);
+        WindowTargetResolver resolver = new(new FakeWindowManager([explicitWindow, activeWindow]));
+
+        WaitTargetResolution resolution = resolver.ResolveWaitTarget(explicitWindow.Hwnd, attachedWindow: null);
+
+        Assert.Null(resolution.Window);
+        Assert.Null(resolution.Source);
+        Assert.Equal(WaitTargetFailureValues.StaleExplicitTarget, resolution.FailureCode);
+    }
+
+    [Fact]
     public void ResolveWaitTargetUsesAttachedWindowWhenExplicitIsMissing()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 202, title: "Attached", isForeground: false);
@@ -205,6 +224,24 @@ public sealed class WaitContractAndPolicyTests
     public void ResolveWaitTargetReturnsMissingTargetWhenForegroundWindowDoesNotExist()
     {
         WindowTargetResolver resolver = new(new FakeWindowManager([]));
+
+        WaitTargetResolution resolution = resolver.ResolveWaitTarget(explicitHwnd: null, attachedWindow: null);
+
+        Assert.Null(resolution.Window);
+        Assert.Null(resolution.Source);
+        Assert.Equal(WaitTargetFailureValues.MissingTarget, resolution.FailureCode);
+    }
+
+    [Fact]
+    public void ResolveWaitTargetReturnsMissingTargetWhenForegroundWindowLacksStableIdentity()
+    {
+        WindowDescriptor activeWindow = CreateWindow(hwnd: 303, title: "Active", isForeground: true) with
+        {
+            ProcessId = null,
+            ThreadId = null,
+            ClassName = null,
+        };
+        WindowTargetResolver resolver = new(new FakeWindowManager([activeWindow]));
 
         WaitTargetResolution resolution = resolver.ResolveWaitTarget(explicitHwnd: null, attachedWindow: null);
 

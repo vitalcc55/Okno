@@ -553,7 +553,7 @@ Planned shared readiness shape:
 Target-specific hard block stays in runtime:
 
 - higher-integrity target than current process
-- cross-session / protected UI target
+- cross-session target and protected-UI paths that the runtime can already prove through non-default desktop or current-token `uiAccess` / integrity evidence; Package B does not add a separate target-side protected-UI probe without a primary-source-backed signal
 - target not foreground / not usable
 
 ### 8.4. Dry-run semantics
@@ -652,10 +652,14 @@ Done when:
 - [x] Kept `windows.input` deferred, but aligned the public deferred MCP schema with the frozen `actions[]` envelope instead of leaving legacy `actionsJson`.
 - [x] Synced product/interop/tooling wording with Package A decisions: one tool, `click(button=right)`, `capture_pixels` + `screen`, `verify_needed`, `supports_dry_run=false`.
 - [ ] Live MCP handler, request binding into runtime execution path and `RunGatedAsync(...)` rollout remain deferred to Package C.
-- [ ] Runtime dispatch, target integrity/focus preflight, artifacts/events and result materialization remain deferred to Package B/D.
+- [x] Internal Package B runtime slice now exists without public rollout: `Win32InputService` + `Win32InputPlatform` execute `move`, `click`, `double_click` and `click(button=right)` through `ResolveInputTarget(...)`, per-action target revalidation, foreground/minimized/session/integrity preflight, `capture_pixels -> screen` translation-only remap, factual cursor verification and fail-fast batch results.
+- [x] Live pointer batches are now serialized through an internal input execution gate, and every irreversible click dispatch revalidates the live target immediately before dispatch through a refreshed coordinate-space-aware dispatch plan; `capture_pixels` can update the authoritative screen point on admissible origin drift for single-click gestures, while `double_click` now splits into pre-gesture plan refresh before the first move and a stable-point execution phase where both taps fail closed if boundary revalidation would retarget the gesture. Final click dispatch proves the factual cursor position, that the live foreground window still matches the same admitted target `HWND` and stable identity, and only then derives ambient async-state readability from that live foreground owner immediately before `SendInput`.
+- [ ] Runtime artifacts/events and result materialization remain deferred to Package D.
 - [ ] Smoke, fresh-host acceptance and promotion from deferred registration to implemented contract remain deferred to Package E.
 
 ### Package B — Runtime/input service
+
+Статус: `done`
 
 Scope:
 
@@ -671,6 +675,22 @@ Done when:
 - runtime can execute click-first actions end-to-end without public publication;
 - `verify_needed` vs `failed` is determined honestly;
 - higher-integrity or wrong-foreground target is rejected before dispatch.
+
+Package B checklist:
+
+- [x] Landed `Win32InputService`, `IInputPlatform` and `Win32InputPlatform` as runtime-only slice.
+- [x] Added translation-only `capture_pixels -> screen` mapping plus direct `screen` path with overflow-safe stale-geometry and out-of-bounds rejection.
+- [x] Implemented click-first runtime subset only: `move`, `click`, `double_click`, `click(button=right)`.
+- [x] Static subset exclusions that are already known from the request (`keys[]`, `click(button=middle)` and future click-first policy exclusions) are rejected in one pre-execution pass before any cursor move or click side effect can occur.
+- [x] Reuse `ResolveInputTarget(...)` once at request start and `ResolveLiveWindowByIdentity(...)` before each action; no active fallback and no hidden focus/restore/attach. Stable-identity admission stays input-specific for paths that actually revalidate by identity; shared explicit `HWND` lookup used by focus/activate/capture remains a weaker live-window lookup and is not implicitly tightened by Package B.
+- [x] Added target-specific preflight for foreground, minimized state, session match and equal-or-lower integrity unless current token has `uiAccess`; minimized now has explicit precedence over generic foreground loss.
+- [x] Enforced fail-fast per-action factual results with cursor post-move verification, refreshed dispatch-plan revalidation (`screen` vs `capture_pixels`) and two explicit pointer boundaries: one before any `SetCursorPos` and one before button dispatch. Both boundaries prove the admitted target still owns the live foreground window in the same identity-resolution used at admission time; the move boundary blocks held ambient input before any cursor side effect, while the final click boundary additionally proves that the cursor still sits at the resolved point. The ambient-input proof is tri-state (`neutral` / `non-neutral` / `unknown`): Package B blocks pointer side effects when keyboard modifiers or mouse buttons are already held, and also fail-closes when the runtime cannot honestly prove that it is reading async input state from the active input desktop. Async-state mode selection is now derived from the same live foreground snapshot that passed the target-level proof, so same-process vs cross-process readability no longer rides on stale orchestration metadata. The same active-desktop async-state readability probe is now shared with guard/readiness logic, so `input=ready` no longer over-promises more than the live dispatch boundary can prove. Logical `button=left/right` semantics are preserved end-to-end even on swapped-button systems through one internal mapper reused by both ambient proof and Win32 dispatch. Partial `SendInput` insertion is treated as partial side effect, not a clean no-op: Package B performs best-effort button-up compensation and returns an honest failure classification if only part of the click sequence was inserted, and cancellation/reporting now follow the same factual model through one committed side-effect context plus explicit cancellation observation context: before the first side effect runtime still cancels by exception, but after any committed cursor move or tap Package B re-observes cancellation before the next irreversible step, including refreshed helper-path retarget moves, and before final success-return, materializing a partial `InputResult` from the last committed action owner and committed `resolved_screen_point` instead of mutable loop state. The loop now also has an explicit `enter action side-effect phase` boundary immediately before the first move of every shipped action, so `BetweenActions` cancellation cannot drift through setup and still start a new pointer side effect. The cancellation policy distinguishes in-flight action cancellation, between-actions cancellation and after-batch-completed-before-success-return cancellation, and the remaining exception-based observation at loop start is aligned with that same lifecycle model instead of forcing every late cancel into `InFlightAction`. `double_click` reporting comes from explicit irreversible phase state rather than boolean flags, so cancellation after the first tap and after the second tap materialize different factual reasons. `double_click` now refreshes plan only in a pre-gesture phase and then fails closed on both taps if boundary revalidation would require retargeting to a different screen point.
+- [x] Registered internal-only `IInputService` / `IInputPlatform` in runtime DI; `WindowTools.cs`, deferred public registration, smoke and docs publication remain untouched.
+- [x] L1 proof completed with targeted input-runtime tests, existing contract/guard regression floor and full `WinBridge.Runtime.Tests`.
+- [x] Package B intentionally stops at runtime-only execution semantics; public handler, observability rollout and publication remain untouched.
+- [ ] Public handler / `RunGatedAsync(...)` boundary remains Package C.
+- [ ] Runtime event / artifact / materializer rollout remains Package D.
+- [ ] Smoke / fresh-host acceptance / public publication remains Package E.
 
 ### Package C — Server/public tool
 
@@ -701,6 +721,12 @@ Done when:
 
 - investigation path matches existing launch/open/wait conventions;
 - artifact/event write failures remain best-effort and do not downcast factual runtime result.
+
+Residual risk to carry from Package B:
+
+- partial dispatch / dispatch evidence taxonomy should be reviewed explicitly before Package D materializes artifacts/events;
+- current Package B already distinguishes clean failure vs partial side effect for click dispatch, but observability rollout must preserve that distinction instead of collapsing it into one generic `failed` evidence shape;
+- if Package D introduces retries, compensation metadata or richer failure stages, it must do so on top of Package B committed-side-effect model rather than rebuilding side-effect ownership from top-level result only.
 
 ### Package E — Smoke/docs finalization
 

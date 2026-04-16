@@ -6,6 +6,7 @@ using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Windows.Input;
 using WinBridge.Runtime.Windows.Launch;
 using WinBridge.Runtime.Windows.Shell;
 
@@ -29,6 +30,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWaitVisualProbe>(sp => sp.GetRequiredService<GraphicsCaptureService>());
         services.AddSingleton<IWindowManager, Win32WindowManager>();
         services.AddSingleton<IWindowTargetResolver, WindowTargetResolver>();
+        services.AddSingleton<IInputPlatform, Win32InputPlatform>();
+        services.AddSingleton<IInputService, Win32InputService>();
         services.AddSingleton(WindowActivationOptions.Default);
         services.AddSingleton<IWindowActivationPlatform, Win32WindowActivationPlatform>();
         services.AddSingleton<IWindowActivationService, WindowActivationService>();

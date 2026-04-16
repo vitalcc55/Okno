@@ -227,6 +227,25 @@ public sealed class WindowSessionToolTests
     }
 
     [Fact]
+    public void FocusWindowUsesExplicitHwndEvenWhenStableIdentitySignalsAreMissing()
+    {
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 401, title: "Weak explicit") with
+        {
+            ProcessId = null,
+            ThreadId = null,
+            ClassName = null,
+        };
+        TestContext context = CreateContext(
+            windows: [targetWindow],
+            focusResults: new Dictionary<long, bool> { [targetWindow.Hwnd] = true });
+
+        FocusWindowResult result = context.Tools.FocusWindow(hwnd: targetWindow.Hwnd);
+
+        Assert.Equal("done", result.Status);
+        Assert.Equal(targetWindow.Hwnd, result.Window?.Hwnd);
+    }
+
+    [Fact]
     public void FocusWindowUsesAttachedWindowWhenHwndIsMissing()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 402, title: "Attached target");

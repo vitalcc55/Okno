@@ -1,2 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinBridge.Runtime.Contracts\WinBridge.Runtime.Contracts.csproj" />
+    <ProjectReference Include="..\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
+  </ItemGroup>
+
 </Project>

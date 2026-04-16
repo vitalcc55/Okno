@@ -41,6 +41,20 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
     {
         IReadOnlyList<WindowDescriptor> liveWindows = windowManager.ListWindows(includeInvisible: true);
         TargetResolutionCore resolution = ResolveCapabilityTargetCore(explicitHwnd, attachedWindow, liveWindows);
+        if (resolution.Window is WindowDescriptor candidate
+            && !WindowIdentityValidator.TryValidateStableIdentity(candidate, out _))
+        {
+            string? failureCode = resolution.Source switch
+            {
+                TargetResolutionSource.Explicit => WaitTargetFailureValues.StaleExplicitTarget,
+                TargetResolutionSource.Attached => WaitTargetFailureValues.StaleAttachedTarget,
+                TargetResolutionSource.Active => WaitTargetFailureValues.MissingTarget,
+                _ => MapWaitTargetFailureCode(resolution.FailureCode),
+            };
+
+            return new(FailureCode: failureCode);
+        }
+
         return new(
             resolution.Window,
             MapWaitTargetSource(resolution.Source),
@@ -57,7 +71,12 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
                 return new(FailureCode: InputTargetFailureValues.StaleExplicitTarget);
             }
 
-            WindowDescriptor? explicitWindow = ResolveExplicitOrAttachedWindowCore(hwnd, attachedWindow: null, liveWindows);
+            WindowDescriptor? explicitWindow = liveWindows.FirstOrDefault(candidate => candidate.Hwnd == hwnd);
+            if (explicitWindow is null || !WindowIdentityValidator.TryValidateStableIdentity(explicitWindow, out _))
+            {
+                return new(FailureCode: InputTargetFailureValues.StaleExplicitTarget);
+            }
+
             return explicitWindow is null
                 ? new(FailureCode: InputTargetFailureValues.StaleExplicitTarget)
                 : new(explicitWindow, InputTargetSourceValues.Explicit);

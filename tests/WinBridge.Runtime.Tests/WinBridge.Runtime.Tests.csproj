@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Waiting\WinBridge.Runtime.Waiting.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Capture\WinBridge.Runtime.Windows.Capture.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Display\WinBridge.Runtime.Windows.Display.csproj" />
+    <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Input\WinBridge.Runtime.Windows.Input.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.UIA\WinBridge.Runtime.Windows.UIA.csproj" />
     <ProjectReference Include="..\..\src\WinBridge.Runtime.Windows.Launch\WinBridge.Runtime.Windows.Launch.csproj" />

@@ -1,3 +1,5 @@
+using WinBridge.Runtime.Windows.Shell;
+
 namespace WinBridge.Runtime.Guards;
 
 internal sealed record RuntimeGuardRawFacts(
@@ -5,6 +7,9 @@ internal sealed record RuntimeGuardRawFacts(
     SessionAlignmentProbeResult SessionAlignment,
     TokenProbeResult Token)
 {
+    public InputAsyncStateReadabilityProbeResult InputAsyncStateReadability { get; init; } = new(
+        InputAsyncStateReadabilityStatus.Readable);
+
     public CaptureCapabilityProbeResult Capture { get; init; } = new(
         FactResolved: false,
         WindowsGraphicsCaptureSupported: false);

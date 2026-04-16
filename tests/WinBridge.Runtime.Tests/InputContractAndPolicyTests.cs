@@ -1191,6 +1191,55 @@ public sealed class InputContractAndPolicyTests
     }
 
     [Fact]
+    public void ResolveInputTargetRejectsExplicitWindowWithoutStableIdentity()
+    {
+        WindowDescriptor explicitWindow = new(
+            Hwnd: 101,
+            Title: "Explicit",
+            ProcessName: "okno-tests",
+            ProcessId: null,
+            ThreadId: null,
+            ClassName: null,
+            Bounds: new Bounds(10, 20, 210, 220),
+            IsForeground: true,
+            IsVisible: true,
+            WindowState: WindowStateValues.Normal,
+            MonitorId: "display-source:0000000100000000:1",
+            MonitorFriendlyName: "Primary monitor");
+        WindowTargetResolver resolver = new(new FakeWindowManager([explicitWindow]));
+
+        InputTargetResolution resolution = resolver.ResolveInputTarget(explicitWindow.Hwnd, attachedWindow: null);
+
+        Assert.Null(resolution.Window);
+        Assert.Null(resolution.Source);
+        Assert.Equal(InputTargetFailureValues.StaleExplicitTarget, resolution.FailureCode);
+    }
+
+    [Fact]
+    public void ResolveExplicitOrAttachedWindowAllowsExplicitHwndWithoutStableIdentity()
+    {
+        WindowDescriptor explicitWindow = new(
+            Hwnd: 101,
+            Title: "Explicit",
+            ProcessName: "okno-tests",
+            ProcessId: null,
+            ThreadId: null,
+            ClassName: null,
+            Bounds: new Bounds(10, 20, 210, 220),
+            IsForeground: true,
+            IsVisible: true,
+            WindowState: WindowStateValues.Normal,
+            MonitorId: "display-source:0000000100000000:1",
+            MonitorFriendlyName: "Primary monitor");
+        WindowTargetResolver resolver = new(new FakeWindowManager([explicitWindow]));
+
+        WindowDescriptor? resolution = resolver.ResolveExplicitOrAttachedWindow(explicitWindow.Hwnd, attachedWindow: null);
+
+        Assert.NotNull(resolution);
+        Assert.Equal(explicitWindow.Hwnd, resolution!.Hwnd);
+    }
+
+    [Fact]
     public void ResolveInputTargetUsesAttachedWindowWhenExplicitIsMissing()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 202, title: "Attached", isForeground: true);

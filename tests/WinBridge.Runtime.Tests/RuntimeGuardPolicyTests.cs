@@ -1,6 +1,7 @@
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Guards;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Runtime.Tests;
 
@@ -685,6 +686,77 @@ public sealed class RuntimeGuardPolicyTests
         Assert.Equal(GuardStatusValues.Ready, capability.Status);
         Assert.Equal(GuardReasonCodeValues.InputReadyProfile, Assert.Single(capability.Reasons).Code);
         Assert.DoesNotContain(capability.Reasons, item => item.Code == GuardReasonCodeValues.CapabilityNotImplemented);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesMarksInputDegradedWhenAmbientAsyncStateProofIsUnreadable()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts() with
+        {
+            InputAsyncStateReadability = new InputAsyncStateReadabilityProbeResult(
+                Status: InputAsyncStateReadabilityStatus.Unreadable,
+                Reason: "Current thread cannot prove async input-state readability on the active input desktop."),
+        };
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Input);
+
+        Assert.Equal(GuardStatusValues.Degraded, capability.Status);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesKeepsInputBlockedWhenIntegrityIsBelowMediumEvenIfAsyncStateIsUnreadable()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            token: new TokenProbeResult(
+                IntegrityResolved: true,
+                IntegrityLevel: RuntimeIntegrityLevel.Low,
+                IntegrityRid: 0x1000,
+                ElevationResolved: true,
+                IsElevated: false,
+                ElevationType: TokenElevationTypeValue.Limited,
+                UiAccessResolved: true,
+                UiAccess: false)) with
+        {
+            InputAsyncStateReadability = new InputAsyncStateReadabilityProbeResult(
+                Status: InputAsyncStateReadabilityStatus.Unreadable,
+                Reason: "Ambient async-state proof is unreadable."),
+        };
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Input);
+
+        Assert.Equal(GuardStatusValues.Blocked, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.InputIntegrityLimited, Assert.Single(capability.Reasons).Code);
+    }
+
+    [Fact]
+    public void BuildCapabilitiesKeepsInputBlockedWhenIntegrityIsBelowMediumEvenIfAsyncStateIsUnknown()
+    {
+        RuntimeGuardRawFacts facts = CreateFacts(
+            token: new TokenProbeResult(
+                IntegrityResolved: true,
+                IntegrityLevel: RuntimeIntegrityLevel.Low,
+                IntegrityRid: 0x1000,
+                ElevationResolved: true,
+                IsElevated: false,
+                ElevationType: TokenElevationTypeValue.Limited,
+                UiAccessResolved: true,
+                UiAccess: false)) with
+        {
+            InputAsyncStateReadability = new InputAsyncStateReadabilityProbeResult(
+                Status: InputAsyncStateReadabilityStatus.Unknown,
+                Reason: "Ambient async-state proof is unknown."),
+        };
+
+        CapabilityGuardSummary capability = Assert.Single(
+            RuntimeGuardPolicy.BuildCapabilities(facts, CreateTopology(), RuntimeGuardPolicy.BuildDomains(facts)),
+            item => item.Capability == CapabilitySummaryValues.Input);
+
+        Assert.Equal(GuardStatusValues.Blocked, capability.Status);
+        Assert.Equal(GuardReasonCodeValues.InputIntegrityLimited, Assert.Single(capability.Reasons).Code);
     }
 
     [Fact]

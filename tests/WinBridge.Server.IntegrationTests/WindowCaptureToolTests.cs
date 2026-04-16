@@ -38,6 +38,27 @@ public sealed class WindowCaptureToolTests
     }
 
     [Fact]
+    public async Task CaptureUsesExplicitHwndEvenWhenStableIdentitySignalsAreMissing()
+    {
+        WindowDescriptor explicitWindow = CreateWindow(hwnd: 202, title: "Weak explicit") with
+        {
+            ProcessId = null,
+            ThreadId = null,
+            ClassName = null,
+        };
+        FakeCaptureService captureService = new(CreateCaptureResult(explicitWindow, "window"));
+        WindowTools tools = CreateTools(
+            windows: [explicitWindow],
+            captureService: captureService,
+            attachedWindow: null);
+
+        CallToolResult result = await tools.Capture(hwnd: explicitWindow.Hwnd);
+
+        Assert.False(result.IsError);
+        Assert.Equal(explicitWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
+    }
+
+    [Fact]
     public async Task CaptureUsesAttachedWindowWhenHwndIsMissing()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 303, title: "Attached");

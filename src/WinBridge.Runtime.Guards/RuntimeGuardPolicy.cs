@@ -1,6 +1,7 @@
 using System.Globalization;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Runtime.Guards;
 
@@ -31,7 +32,7 @@ internal static class RuntimeGuardPolicy
             BuildCapture(facts, topology, desktopSession, sessionAlignment),
             BuildUia(facts, desktopSession, sessionAlignment),
             BuildWait(facts, desktopSession, sessionAlignment),
-            BuildInput(desktopSession, sessionAlignment, integrity, uiAccess),
+            BuildInput(facts.InputAsyncStateReadability, desktopSession, sessionAlignment, integrity, uiAccess),
             BuildClipboard(desktopSession, sessionAlignment, integrity),
             BuildLaunch(desktopSession, sessionAlignment, integrity),
         ];
@@ -621,6 +622,7 @@ internal static class RuntimeGuardPolicy
     }
 
     private static CapabilityGuardSummary BuildInput(
+        InputAsyncStateReadabilityProbeResult inputAsyncStateReadability,
         ReadinessDomainStatus desktopSession,
         ReadinessDomainStatus sessionAlignment,
         ReadinessDomainStatus integrity,
@@ -668,6 +670,31 @@ internal static class RuntimeGuardPolicy
                 ]);
         }
 
+        if (inputAsyncStateReadability.Status == InputAsyncStateReadabilityStatus.Unknown)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Input,
+                Status: GuardStatusValues.Unknown,
+                Reasons:
+                [
+                    CreateReason(
+                        GuardReasonCodeValues.CapabilityPrerequisitesUnknown,
+                        GuardSeverityValues.Warning,
+                        CapabilitySummaryValues.Input,
+                        "Input path не смог подтвердить ambient async-state proof prerequisites для финального click dispatch. "
+                        + (inputAsyncStateReadability.Reason ?? "Desktop/input-state readability сейчас не доказуема."))
+                ]);
+        }
+
+        GuardReason? asyncStateDegradedReason = inputAsyncStateReadability.Status == InputAsyncStateReadabilityStatus.Unreadable
+            ? CreateReason(
+                GuardReasonCodeValues.InputAmbientStateUnreadable,
+                GuardSeverityValues.Warning,
+                CapabilitySummaryValues.Input,
+                "Input path не может обещать click dispatch как ready subset, потому что ambient async-state proof на active input desktop сейчас недоступен. "
+                + (inputAsyncStateReadability.Reason ?? string.Empty).Trim())
+            : null;
+
         if (IsDegraded(integrity))
         {
             GuardReason? uiAccessUnknownReason = CreateCapabilityPrerequisiteUnknownReason(
@@ -684,6 +711,14 @@ internal static class RuntimeGuardPolicy
 
             if (IsReady(uiAccess))
             {
+                if (asyncStateDegradedReason is not null)
+                {
+                    return new(
+                        Capability: CapabilitySummaryValues.Input,
+                        Status: GuardStatusValues.Degraded,
+                        Reasons: [asyncStateDegradedReason]);
+                }
+
                 return new(
                     Capability: CapabilitySummaryValues.Input,
                     Status: GuardStatusValues.Ready,
@@ -694,6 +729,22 @@ internal static class RuntimeGuardPolicy
                             GuardSeverityValues.Info,
                             CapabilitySummaryValues.Input,
                             "Общий input baseline подтверждён: interactive desktop/session стабильны, medium integrity дополнен uiAccess, а target-specific focus/UIPI/protected-UI checks остаются на runtime boundary.")
+                    ]);
+            }
+
+            if (asyncStateDegradedReason is not null)
+            {
+                return new(
+                    Capability: CapabilitySummaryValues.Input,
+                    Status: GuardStatusValues.Degraded,
+                    Reasons:
+                    [
+                        asyncStateDegradedReason,
+                        CreateReason(
+                            GuardReasonCodeValues.InputUipiBarrierPresent,
+                            GuardSeverityValues.Warning,
+                            CapabilitySummaryValues.Input,
+                            "Общий input baseline допускает только equal-or-lower target path: medium integrity без uiAccess не подтверждает safe interaction с higher-integrity или protected UI targets.")
                     ]);
             }
 
@@ -708,6 +759,14 @@ internal static class RuntimeGuardPolicy
                         CapabilitySummaryValues.Input,
                         "Общий input baseline допускает только equal-or-lower target path: medium integrity без uiAccess не подтверждает safe interaction с higher-integrity или protected UI targets.")
                 ]);
+        }
+
+        if (asyncStateDegradedReason is not null)
+        {
+            return new(
+                Capability: CapabilitySummaryValues.Input,
+                Status: GuardStatusValues.Degraded,
+                Reasons: [asyncStateDegradedReason]);
         }
 
         return new(
