@@ -1,6 +1,7 @@
 . (Join-Path $PSScriptRoot 'common.ps1')
 
 $repoRoot = Get-RepoRoot -ScriptRoot $PSScriptRoot
+${null} = Initialize-WinBridgeExecutionContext -RepoRoot $repoRoot -DefaultRunId ("ci-" + (Get-Date -Format 'yyyyMMddTHHmmssfff')) -UseArtifactsRoot
 Set-Location $repoRoot
 
 Invoke-ScriptProcessStep -Description 'bootstrap step' -ScriptPath (Join-Path $PSScriptRoot 'bootstrap.ps1')

@@ -7,13 +7,15 @@
 | Command | Purpose |
 | --- | --- |
 | `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` | `dotnet restore` |
-| `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers |
-| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests |
-| `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke with owned helper scenario, terminal `windows.open_target` folder proof and artifact report |
+| `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers into .NET artifacts root |
+| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests with staged server/helper bundle |
+| `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke with staged run bundle, owned helper scenario, terminal `windows.open_target` folder proof and artifact report |
 | `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |
 | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |
 | `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/bootstrap.ps1` | Codex bootstrap handshake |
+| `powershell -ExecutionPolicy Bypass -File scripts/codex/prepare-okno-test-bundle.ps1` | stage immutable server/helper run bundle for integration and smoke |
+| `powershell -ExecutionPolicy Bypass -File scripts/codex/resolve-okno-test-bundle.ps1` | resolve or materialize the effective staged bundle for the current verification context |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1` | stamp repo-root hint into plugin install surface before reinstall or refresh |
 | `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |

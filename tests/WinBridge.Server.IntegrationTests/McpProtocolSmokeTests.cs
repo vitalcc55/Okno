@@ -55,6 +55,7 @@ public sealed class McpProtocolSmokeTests
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan ProcessExitTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan HelperWindowTimeout = TimeSpan.FromSeconds(10);
+    private static readonly Lazy<RuntimeBundlePaths> RuntimeBundle = new(ResolveRuntimeBundlePaths, LazyThreadSafetyMode.ExecutionAndPublication);
     private const int SwMinimize = 6;
 
     [Fact]
@@ -1759,25 +1760,93 @@ public sealed class McpProtocolSmokeTests
     private static bool MinimizeWindow(long hwnd) =>
         ShowWindowAsync(new IntPtr(hwnd), SwMinimize);
 
-    private static string GetServerDllPath() =>
-        Path.Combine(
-            GetRepositoryRoot(),
-            "src",
-            "WinBridge.Server",
-            "bin",
-            "Debug",
-            "net8.0-windows10.0.19041.0",
-            "Okno.Server.dll");
+    private static string GetServerDllPath() => RuntimeBundle.Value.ServerDll;
 
-    private static string GetHelperWindowExePath() =>
-        Path.Combine(
-            GetRepositoryRoot(),
-            "tests",
-            "WinBridge.SmokeWindowHost",
-            "bin",
-            "Debug",
-            "net8.0-windows10.0.19041.0",
-            "WinBridge.SmokeWindowHost.exe");
+    private static string GetHelperWindowExePath() => RuntimeBundle.Value.HelperExe;
+
+    private static RuntimeBundlePaths ResolveRuntimeBundlePaths()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string resolverScriptPath = Path.Combine(repoRoot, "scripts", "codex", "resolve-okno-test-bundle.ps1");
+
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = "powershell",
+            WorkingDirectory = repoRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-ExecutionPolicy");
+        startInfo.ArgumentList.Add("Bypass");
+        startInfo.ArgumentList.Add("-File");
+        startInfo.ArgumentList.Add(resolverScriptPath);
+        startInfo.ArgumentList.Add("-RepoRoot");
+        startInfo.ArgumentList.Add(repoRoot);
+        startInfo.ArgumentList.Add("-AssemblyBaseDirectory");
+        startInfo.ArgumentList.Add(AppContext.BaseDirectory);
+
+        using Process process = new() { StartInfo = startInfo };
+        process.Start();
+
+        string stdout = process.StandardOutput.ReadToEnd();
+        string stderr = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Не удалось resolve staged test bundle через '{resolverScriptPath}'. ExitCode={process.ExitCode}. stderr='{stderr.Trim()}', stdout='{stdout.Trim()}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(stdout))
+        {
+            throw new InvalidOperationException(
+                $"Resolver script '{resolverScriptPath}' completed without payload.");
+        }
+
+        using JsonDocument resolution = JsonDocument.Parse(stdout);
+        JsonElement root = resolution.RootElement;
+        string? manifestPath = null;
+        if (root.TryGetProperty("manifestPath", out JsonElement manifestPathElement) &&
+            manifestPathElement.ValueKind == JsonValueKind.String)
+        {
+            manifestPath = manifestPathElement.GetString();
+        }
+
+        string serverDll = RequireResolverPath(root, "serverDll", resolverScriptPath);
+        string helperExe = RequireResolverPath(root, "helperExe", resolverScriptPath);
+
+        return new RuntimeBundlePaths(
+            manifestPath,
+            serverDll,
+            helperExe);
+    }
+
+    private static string RequireResolverPath(JsonElement payload, string propertyName, string resolverScriptPath)
+    {
+        if (!payload.TryGetProperty(propertyName, out JsonElement propertyElement) ||
+            propertyElement.ValueKind != JsonValueKind.String)
+        {
+            throw new InvalidOperationException(
+                $"Resolver script '{resolverScriptPath}' did not provide '{propertyName}'.");
+        }
+
+        string? path = propertyElement.GetString();
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            throw new InvalidOperationException(
+                $"Resolved path '{path ?? "<empty>"}' for '{propertyName}' from '{resolverScriptPath}' was not found.");
+        }
+
+        return Path.GetFullPath(path);
+    }
 
     private static string GetRepositoryRoot()
     {
@@ -1787,14 +1856,18 @@ public sealed class McpProtocolSmokeTests
             return root;
         }
 
-        string current = AppContext.BaseDirectory;
-        for (int i = 0; i < 6; i++)
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null)
         {
-            current = Directory.GetParent(current)?.FullName
-                ?? throw new InvalidOperationException("Не удалось вычислить корень репозитория.");
+            if (File.Exists(Path.Combine(current.FullName, "WinBridge.sln")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
         }
 
-        return current;
+        throw new InvalidOperationException("Не удалось вычислить корень репозитория.");
     }
 
     [DllImport("user32.dll")]
@@ -1805,4 +1878,9 @@ public sealed class McpProtocolSmokeTests
 
     [DllImport("shcore.dll", EntryPoint = "GetProcessDpiAwareness")]
     private static extern int GetProcessDpiAwarenessNative(IntPtr processHandle, out int awareness);
+
+    private sealed record RuntimeBundlePaths(
+        string? ManifestPath,
+        string ServerDll,
+        string HelperExe);
 }

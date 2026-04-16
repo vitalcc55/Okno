@@ -1,14 +1,16 @@
 ﻿. (Join-Path $PSScriptRoot 'common.ps1')
 
 $repoRoot = Get-RepoRoot -ScriptRoot $PSScriptRoot
+${null} = Initialize-WinBridgeExecutionContext -RepoRoot $repoRoot -UseArtifactsRoot
 Set-Location $repoRoot
 
 $runId = Get-Date -Format 'yyyyMMddTHHmmssfff'
 $artifactRoot = Join-Path $repoRoot "artifacts\\smoke\\$runId"
 $reportPath = Join-Path $artifactRoot 'report.json'
 $summaryPath = Join-Path $artifactRoot 'summary.md'
-$serverDll = & (Join-Path $repoRoot 'scripts\codex\resolve-okno-server-dll.ps1') -RepoRoot $repoRoot
-$helperExe = Join-Path $repoRoot 'tests\WinBridge.SmokeWindowHost\bin\Debug\net8.0-windows10.0.19041.0\WinBridge.SmokeWindowHost.exe'
+$bundle = Use-OknoTestBundle -RepoRoot $repoRoot
+$serverDll = [string]$bundle.serverDll
+$helperExe = [string]$bundle.helperExe
 $contractPath = Join-Path $artifactRoot 'project-interfaces.json'
 $script:NextMcpRequestId = 1
 New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null

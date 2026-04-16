@@ -1,9 +1,9 @@
 ﻿. (Join-Path $PSScriptRoot 'common.ps1')
 
 $repoRoot = Get-RepoRoot -ScriptRoot $PSScriptRoot
+${null} = Initialize-WinBridgeExecutionContext -RepoRoot $repoRoot -UseArtifactsRoot
 Set-Location $repoRoot
 
-$serverDll = & (Join-Path $repoRoot 'scripts\codex\resolve-okno-server-dll.ps1') -RepoRoot $repoRoot
 $projectInterfacesJsonPath = Join-Path $repoRoot 'docs\generated\project-interfaces.json'
 $projectInterfacesMarkdownPath = Join-Path $repoRoot 'docs\generated\project-interfaces.md'
 $commandsMarkdownPath = Join-Path $repoRoot 'docs\generated\commands.md'
@@ -11,9 +11,10 @@ $testMatrixMarkdownPath = Join-Path $repoRoot 'docs\generated\test-matrix.md'
 $stackInventoryMarkdownPath = Join-Path $repoRoot 'docs\generated\stack-inventory.md'
 $bootstrapStatusJsonPath = Join-Path $repoRoot 'docs\bootstrap\bootstrap-status.json'
 
-Invoke-NativeCommand -Description 'dotnet build before generated docs refresh' -Command {
-    dotnet build WinBridge.sln --no-restore
-}
+Invoke-WinBridgeSolutionBuild -Description 'dotnet build before generated docs refresh'
+
+$bundle = Use-OknoTestBundle -RepoRoot $repoRoot
+$serverDll = [string]$bundle.serverDll
 
 Invoke-NativeCommand -Description 'tool contract export' -Command {
     dotnet "$serverDll" --export-tool-contract-json "$projectInterfacesJsonPath" --export-tool-contract-markdown "$projectInterfacesMarkdownPath"
@@ -78,13 +79,15 @@ function New-CommandsMarkdown {
         '| Command | Purpose |',
         '| --- | --- |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` | `dotnet restore` |',
-        '| `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers |',
-        '| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers into .NET artifacts root |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests with staged server/helper bundle |',
         "| $smokeCommandLiteral | $smokeCommandPurpose |",
         '| `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/bootstrap.ps1` | Codex bootstrap handshake |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/prepare-okno-test-bundle.ps1` | stage immutable server/helper run bundle for integration and smoke |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/resolve-okno-test-bundle.ps1` | resolve or materialize the effective staged bundle for the current verification context |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1` | stamp repo-root hint into plugin install surface before reinstall or refresh |',
         '| `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |',
@@ -131,7 +134,7 @@ function New-TestMatrixMarkdown {
         '| --- | --- | --- |',
         '| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |',
         '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, launch exporter drift, launch runtime/status/evidence policy, display identity pipeline, monitor id formatting, activation decision logic, wait runtime/status/evidence policy, UIA runtime packaging/evidence, session dedupe, session mutation |',
-        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol, public `windows.launch_process` and `windows.open_target` schema/result mapping, honest deferred-tool `unsupported` invocation path, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
+        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol through staged server/helper bundle with run-aware resolver semantics, public `windows.launch_process` and `windows.open_target` schema/result mapping, honest deferred-tool `unsupported` invocation path, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
         "| Smoke | $smokeCommandLiteral | $smokeCoverageNarrative |",
         '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke |',
         '',

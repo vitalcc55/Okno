@@ -1,8 +1,7 @@
 . (Join-Path $PSScriptRoot 'common.ps1')
 
 $repoRoot = Get-RepoRoot -ScriptRoot $PSScriptRoot
+${null} = Initialize-WinBridgeExecutionContext -RepoRoot $repoRoot -UseArtifactsRoot
 Set-Location $repoRoot
 
-Invoke-NativeCommand -Description 'dotnet build' -Command {
-    dotnet build WinBridge.sln --no-restore
-}
+Invoke-WinBridgeSolutionBuild -Description 'dotnet build'
