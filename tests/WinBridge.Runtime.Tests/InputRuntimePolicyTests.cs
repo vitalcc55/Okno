@@ -442,6 +442,26 @@ public sealed class InputRuntimePolicyTests
     }
 
     [Fact]
+    public void AsyncStateReadabilityProbeDoesNotThrowOnRealWin32Platform()
+    {
+        Exception? exception = Record.Exception(
+            () => InputAsyncStateReadabilityProbe.ProbeForCurrentThread(
+                InputAsyncStateReadabilityMode.CrossProcessForeground));
+
+        Assert.Null(exception);
+
+        InputAsyncStateReadabilityProbeResult result = InputAsyncStateReadabilityProbe.ProbeForCurrentThread(
+            InputAsyncStateReadabilityMode.CrossProcessForeground);
+        Assert.Contains(
+            result.Status,
+            [
+                InputAsyncStateReadabilityStatus.Readable,
+                InputAsyncStateReadabilityStatus.Unreadable,
+                InputAsyncStateReadabilityStatus.Unknown,
+            ]);
+    }
+
+    [Fact]
     public void AsyncStateReadabilityProbeAcceptsHookControlWithoutJournalRecordForCrossProcessPath()
     {
         FakeInputAsyncStateReadabilityPlatform platform = new()

@@ -126,16 +126,16 @@ internal static class InputAsyncStateReadabilityProbe
         }
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "OpenInputDesktop", SetLastError = true)]
     private static extern IntPtr OpenInputDesktopNative(uint dwFlags, bool fInherit, uint dwDesiredAccess);
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "CloseDesktop", SetLastError = true)]
     private static extern bool CloseDesktopNative(IntPtr hDesktop);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", EntryPoint = "GetThreadDesktop")]
     private static extern IntPtr GetThreadDesktopNative(uint dwThreadId);
 
-    [DllImport("kernel32.dll")]
+    [DllImport("kernel32.dll", EntryPoint = "GetCurrentThreadId")]
     private static extern uint GetCurrentThreadIdNative();
 
     [DllImport("user32.dll", SetLastError = true)]
