@@ -7,7 +7,8 @@ namespace WinBridge.Runtime.Windows.Input;
 internal sealed class Win32InputService(
     IWindowTargetResolver windowTargetResolver,
     IInputPlatform platform,
-    TimeProvider timeProvider) : IInputService
+    TimeProvider timeProvider,
+    InputResultMaterializer? resultMaterializer = null) : IInputService
 {
     private static readonly string[] SupportedActionTypes =
     [.. InputClickFirstSubsetContract.SupportedActionTypes];
@@ -22,18 +23,26 @@ internal sealed class Win32InputService(
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(context);
 
+        InputResult Materialize(InputResult result, string? failureStage = null, Exception? failureException = null) =>
+            resultMaterializer is null
+                ? result
+                : resultMaterializer.Materialize(request, context, result, failureStage, failureException);
+
+        InputResult MaterializeFactual(InputResult result, string? failureStage = null, Exception? failureException = null) =>
+            Materialize(result, failureStage ?? ResolveFailureStage(result.FailureCode), failureException);
+
         if (!InputRequestValidator.TryValidateSupportedSubset(request, SupportedActionTypes, out string? failureCode, out string? reason))
         {
-            return CreateFailureResult(
+            return MaterializeFactual(CreateFailureResult(
                 failureCode ?? InputFailureCodeValues.InvalidRequest,
-                reason ?? "Input request не прошёл validation.");
+                reason ?? "Input request не прошёл validation."));
         }
 
         if (!InputClickFirstRuntimeSubsetPolicy.TryValidateRequest(request, out failureCode, out reason))
         {
-            return CreateFailureResult(
+            return MaterializeFactual(CreateFailureResult(
                 failureCode ?? InputFailureCodeValues.InvalidRequest,
-                reason ?? "Input request не входит в click-first runtime subset Package B.");
+                reason ?? "Input request не входит в click-first runtime subset Package B."));
         }
 
         await using IAsyncDisposable executionLease = await InputExecutionGate.EnterAsync(cancellationToken).ConfigureAwait(false);
@@ -41,10 +50,10 @@ internal sealed class Win32InputService(
         InputTargetResolution targetResolution = windowTargetResolver.ResolveInputTarget(request.Hwnd, context.AttachedWindow);
         if (targetResolution.Window is not WindowDescriptor targetWindow || string.IsNullOrWhiteSpace(targetResolution.Source))
         {
-            return CreateFailureResult(
+            return MaterializeFactual(CreateFailureResult(
                 targetResolution.FailureCode ?? InputFailureCodeValues.MissingTarget,
                 CreateTargetFailureReason(targetResolution.FailureCode),
-                targetSource: targetResolution.Source);
+                targetSource: targetResolution.Source));
         }
 
         InputBatchExecutionState batch = new(
@@ -61,7 +70,7 @@ internal sealed class Win32InputService(
 
                 if (batch.TryMaterializeCancellationBetweenActions(cancellationToken, out cancellationResult))
                 {
-                    return cancellationResult;
+                    return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -77,10 +86,10 @@ internal sealed class Win32InputService(
                         out failureCode,
                         out reason))
                 {
-                    return batch.MaterializeCurrentActionFailure(
+                    return MaterializeFactual(batch.MaterializeCurrentActionFailure(
                         failureCode!,
                         reason!,
-                        targetWindow.Hwnd);
+                        targetWindow.Hwnd));
                 }
 
                 batch.UpdateTargetHwnd(liveTargetWindow!.Hwnd);
@@ -88,10 +97,10 @@ internal sealed class Win32InputService(
                 if (!InputCoordinateMapper.TryBuildDispatchPlan(action, liveTargetWindow, out InputPointerDispatchPlan? dispatchPlan, out failureCode, out reason)
                     || dispatchPlan is null)
                 {
-                    return batch.MaterializeCurrentActionFailure(
+                    return MaterializeFactual(batch.MaterializeCurrentActionFailure(
                         failureCode!,
                         reason!,
-                        liveTargetWindow.Hwnd);
+                        liveTargetWindow.Hwnd));
                 }
 
                 if (string.Equals(action.Type, InputActionTypeValues.DoubleClick, StringComparison.Ordinal))
@@ -105,12 +114,15 @@ internal sealed class Win32InputService(
                             out liveTargetWindow,
                             out dispatchPlan,
                             out failureCode,
-                            out reason))
+                            out reason,
+                            out string? preparationFailureStage))
                     {
-                        return shortCircuitResult ?? batch.MaterializeCurrentActionFailure(
-                            failureCode!,
-                            reason!,
-                            liveTargetWindow?.Hwnd ?? targetWindow.Hwnd);
+                        return MaterializeFactual(
+                            shortCircuitResult ?? batch.MaterializeCurrentActionFailure(
+                                failureCode!,
+                                reason!,
+                                liveTargetWindow?.Hwnd ?? targetWindow.Hwnd),
+                            preparationFailureStage);
                     }
 
                     batch.UpdateExpectedTarget(liveTargetWindow!);
@@ -119,7 +131,7 @@ internal sealed class Win32InputService(
 
                 if (!batch.TryEnterActionSideEffectPhase(cancellationToken, out cancellationResult))
                 {
-                    return cancellationResult!;
+                    return MaterializeFactual(cancellationResult!, InputFailureStageValues.CancellationAfterCommittedSideEffect);
                 }
 
                 CursorMoveAttemptResult moveResult = TryMoveCursorAndVerify(liveTargetWindow!, dispatchPlan!.ResolvedScreenPoint);
@@ -131,16 +143,16 @@ internal sealed class Win32InputService(
                         batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterMove);
                     }
 
-                    return batch.MaterializeCurrentActionFailure(
+                    return MaterializeFactual(batch.MaterializeCurrentActionFailure(
                         moveResult.FailureCode!,
                         moveResult.Reason!,
-                        liveTargetWindow.Hwnd);
+                        liveTargetWindow.Hwnd));
                 }
 
                 batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterMove);
                 if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
                 {
-                    return cancellationResult;
+                    return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
                 }
 
                 if (string.Equals(action.Type, InputActionTypeValues.Move, StringComparison.Ordinal))
@@ -163,12 +175,15 @@ internal sealed class Win32InputService(
                             out liveTargetWindow,
                             out dispatchPlan,
                             out failureCode,
-                            out reason))
+                            out reason,
+                            out string? failureStage))
                     {
-                        return shortCircuitResult ?? batch.MaterializeCurrentActionFailure(
-                            failureCode!,
-                            reason!,
-                            liveTargetWindow?.Hwnd ?? targetWindow.Hwnd);
+                        return MaterializeFactual(
+                            shortCircuitResult ?? batch.MaterializeCurrentActionFailure(
+                                failureCode!,
+                                reason!,
+                                liveTargetWindow?.Hwnd ?? targetWindow.Hwnd),
+                            failureStage);
                     }
 
                     batch.UpdateTargetHwnd(liveTargetWindow!.Hwnd);
@@ -176,7 +191,7 @@ internal sealed class Win32InputService(
                     batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterDoubleClickFirstTap);
                     if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
                     {
-                        return cancellationResult;
+                        return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
                     }
 
                     batch.UpdateExpectedTarget(liveTargetWindow);
@@ -192,12 +207,15 @@ internal sealed class Win32InputService(
                             out liveTargetWindow,
                             out dispatchPlan,
                             out failureCode,
-                            out reason))
+                            out reason,
+                            out failureStage))
                     {
-                        return shortCircuitResult ?? batch.MaterializeCurrentActionFailure(
-                            failureCode!,
-                            reason!,
-                            liveTargetWindow?.Hwnd ?? targetWindow.Hwnd);
+                        return MaterializeFactual(
+                            shortCircuitResult ?? batch.MaterializeCurrentActionFailure(
+                                failureCode!,
+                                reason!,
+                                liveTargetWindow?.Hwnd ?? targetWindow.Hwnd),
+                            failureStage);
                     }
 
                     batch.UpdateTargetHwnd(liveTargetWindow!.Hwnd);
@@ -205,7 +223,7 @@ internal sealed class Win32InputService(
                     batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterDoubleClickSecondTap);
                     if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
                     {
-                        return cancellationResult;
+                        return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
                     }
 
                     batch.UpdateExpectedTarget(liveTargetWindow);
@@ -223,12 +241,15 @@ internal sealed class Win32InputService(
                         out liveTargetWindow,
                         out dispatchPlan,
                         out failureCode,
-                        out reason))
+                        out reason,
+                        out string? clickFailureStage))
                 {
-                    return shortCircuitResult ?? batch.MaterializeCurrentActionFailure(
-                        failureCode!,
-                        reason!,
-                        liveTargetWindow?.Hwnd ?? targetWindow.Hwnd);
+                    return MaterializeFactual(
+                        shortCircuitResult ?? batch.MaterializeCurrentActionFailure(
+                            failureCode!,
+                            reason!,
+                            liveTargetWindow?.Hwnd ?? targetWindow.Hwnd),
+                        clickFailureStage);
                 }
 
                 batch.UpdateTargetHwnd(liveTargetWindow!.Hwnd);
@@ -236,7 +257,7 @@ internal sealed class Win32InputService(
                 batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterClickTap);
                 if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
                 {
-                    return cancellationResult;
+                    return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
                 }
 
                 batch.UpdateExpectedTarget(liveTargetWindow);
@@ -245,7 +266,9 @@ internal sealed class Win32InputService(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && batch.CommittedSideEffectContext is not null)
         {
-            return batch.MaterializeExceptionCancellation(cancellationToken);
+            return MaterializeFactual(
+                batch.MaterializeExceptionCancellation(cancellationToken),
+                InputFailureStageValues.CancellationAfterCommittedSideEffect);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -254,22 +277,28 @@ internal sealed class Win32InputService(
         catch (Exception exception) when (batch.HasCommittedSideEffectForCurrentAction)
         {
             throw new InputExecutionFailureException(
-                batch.MaterializeUnexpectedFailureAfterCommittedSideEffect(),
+                MaterializeFactual(
+                    batch.MaterializeUnexpectedFailureAfterCommittedSideEffect(),
+                    InputFailureStageValues.RuntimeUnhandledAfterCommittedSideEffect,
+                    exception),
                 exception);
         }
         catch (Exception exception) when (batch.CompletedActionCount > 0)
         {
             throw new InputExecutionFailureException(
-                batch.MaterializeUnexpectedFailureAfterCompletedActions(),
+                MaterializeFactual(
+                    batch.MaterializeUnexpectedFailureAfterCompletedActions(),
+                    InputFailureStageValues.RuntimeUnhandledAfterCompletedActions,
+                    exception),
                 exception);
         }
 
         if (batch.TryMaterializeCancellationAfterBatchCompleted(cancellationToken, out InputResult? finalCancellationResult))
         {
-            return finalCancellationResult;
+            return MaterializeFactual(finalCancellationResult, InputFailureStageValues.CancellationAfterBatchCompleted);
         }
 
-        return batch.CreateFinalVerifyNeededResult();
+        return Materialize(batch.CreateFinalVerifyNeededResult());
     }
 
     private CursorMoveAttemptResult TryMoveCursorAndVerify(
@@ -335,9 +364,11 @@ internal sealed class Win32InputService(
         [NotNullWhen(true)] out WindowDescriptor? liveTargetWindow,
         out InputPointerDispatchPlan? validatedDispatchPlan,
         out string? failureCode,
-        out string? reason)
+        out string? reason,
+        out string? failureStage)
     {
         shortCircuitResult = null;
+        failureStage = null;
 
         if (!TryResolveAdmissibleTarget(
                 batch,
@@ -347,26 +378,33 @@ internal sealed class Win32InputService(
                 out failureCode,
                 out reason))
         {
+            failureStage = ResolveFailureStage(failureCode);
             return false;
         }
 
         batch.UpdateTargetHwnd(liveTargetWindow!.Hwnd);
 
-        if (!TryAcceptValidatedDispatchPlan(
+        InputDispatchPlanBoundaryResult acceptance = AcceptValidatedDispatchPlan(
                 batch,
                 liveTargetWindow,
                 dispatchPlan,
                 validatedDispatchPlan!,
                 refreshPolicy,
                 moveCursorWhenRefreshed: true,
-                cancellationToken,
-                out shortCircuitResult,
-                out validatedDispatchPlan,
-                out failureCode,
-                out reason))
+                cancellationToken);
+        if (!acceptance.IsSuccess)
         {
+            shortCircuitResult = acceptance.ShortCircuitResult;
+            liveTargetWindow = acceptance.LiveTargetWindow;
+            validatedDispatchPlan = acceptance.DispatchPlan;
+            failureCode = acceptance.FailureCode;
+            reason = acceptance.Reason;
+            failureStage = acceptance.FailureStage;
             return false;
         }
+
+        liveTargetWindow = acceptance.LiveTargetWindow!;
+        validatedDispatchPlan = acceptance.DispatchPlan;
 
         InputClickDispatchResult dispatchResult = platform.DispatchClick(
             new InputClickDispatchContext(
@@ -377,11 +415,13 @@ internal sealed class Win32InputService(
         {
             failureCode = dispatchResult.FailureCode ?? InputFailureCodeValues.InputDispatchFailed;
             reason = dispatchResult.Reason ?? $"Button dispatch для '{button}' не был подтверждён платформой.";
+            failureStage = MapClickDispatchFailureStage(dispatchResult.OutcomeKind);
             return false;
         }
 
         failureCode = null;
         reason = null;
+        failureStage = null;
         return true;
     }
 
@@ -394,9 +434,11 @@ internal sealed class Win32InputService(
         [NotNullWhen(true)] out WindowDescriptor? liveTargetWindow,
         out InputPointerDispatchPlan? preparedDispatchPlan,
         out string? failureCode,
-        out string? reason)
+        out string? reason,
+        out string? failureStage)
     {
         shortCircuitResult = null;
+        failureStage = null;
 
         if (!TryResolveAdmissibleTarget(
                 batch,
@@ -407,62 +449,69 @@ internal sealed class Win32InputService(
                 out reason))
         {
             preparedDispatchPlan = null;
+            failureStage = ResolveFailureStage(failureCode);
             return false;
         }
 
         batch.UpdateTargetHwnd(liveTargetWindow!.Hwnd);
 
-        if (!TryAcceptValidatedDispatchPlan(
+        InputDispatchPlanBoundaryResult acceptance = AcceptValidatedDispatchPlan(
                 batch,
                 liveTargetWindow,
                 dispatchPlan,
                 validatedDispatchPlan!,
                 refreshPolicy,
                 moveCursorWhenRefreshed: false,
-                cancellationToken,
-                out shortCircuitResult,
-                out preparedDispatchPlan,
-                out failureCode,
-                out reason))
+                cancellationToken);
+        if (!acceptance.IsSuccess)
         {
+            shortCircuitResult = acceptance.ShortCircuitResult;
+            liveTargetWindow = acceptance.LiveTargetWindow;
+            preparedDispatchPlan = acceptance.DispatchPlan;
+            failureCode = acceptance.FailureCode;
+            reason = acceptance.Reason;
+            failureStage = acceptance.FailureStage;
             return false;
         }
+
+        liveTargetWindow = acceptance.LiveTargetWindow!;
+        preparedDispatchPlan = acceptance.DispatchPlan;
+        failureStage = null;
 
         return true;
     }
 
-    private bool TryAcceptValidatedDispatchPlan(
+    private InputDispatchPlanBoundaryResult AcceptValidatedDispatchPlan(
         InputBatchExecutionState batch,
         WindowDescriptor admittedTargetWindow,
         InputPointerDispatchPlan originalDispatchPlan,
         InputPointerDispatchPlan refreshedDispatchPlan,
         InputDispatchPlanRefreshPolicy refreshPolicy,
         bool moveCursorWhenRefreshed,
-        CancellationToken cancellationToken,
-        out InputResult? shortCircuitResult,
-        out InputPointerDispatchPlan? acceptedDispatchPlan,
-        out string? failureCode,
-        out string? reason)
+        CancellationToken cancellationToken)
     {
-        shortCircuitResult = null;
-
         if (!SamePoint(originalDispatchPlan.ResolvedScreenPoint, refreshedDispatchPlan.ResolvedScreenPoint))
         {
             if (refreshPolicy == InputDispatchPlanRefreshPolicy.RequireStablePoint)
             {
-                acceptedDispatchPlan = null;
-                failureCode = InputFailureCodeValues.CaptureReferenceStale;
-                reason = "Gesture требует сохранить одну и ту же resolved screen point; boundary refresh потребовал бы retarget.";
-                return false;
+                return InputDispatchPlanBoundaryResult.Failure(
+                    admittedTargetWindow,
+                    dispatchPlan: null,
+                    failureCode: InputFailureCodeValues.CaptureReferenceStale,
+                    reason: "Gesture требует сохранить одну и ту же resolved screen point; boundary refresh потребовал бы retarget.",
+                    failureStage: InputFailureStageValues.CoordinateMapping);
             }
 
             if (moveCursorWhenRefreshed
-                && batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out shortCircuitResult))
+                && batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out InputResult? postMoveCancellationResult))
             {
-                acceptedDispatchPlan = null;
-                failureCode = shortCircuitResult.FailureCode;
-                reason = shortCircuitResult.Reason;
-                return false;
+                return InputDispatchPlanBoundaryResult.Failure(
+                    admittedTargetWindow,
+                    dispatchPlan: null,
+                    failureCode: postMoveCancellationResult.FailureCode,
+                    reason: postMoveCancellationResult.Reason,
+                    failureStage: InputFailureStageValues.CancellationAfterCommittedSideEffect,
+                    shortCircuitResult: postMoveCancellationResult);
             }
 
             if (moveCursorWhenRefreshed)
@@ -478,10 +527,12 @@ internal sealed class Win32InputService(
                         batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterMove);
                     }
 
-                    acceptedDispatchPlan = null;
-                    failureCode = refreshedMoveResult.FailureCode;
-                    reason = refreshedMoveResult.Reason;
-                    return false;
+                    return InputDispatchPlanBoundaryResult.Failure(
+                        admittedTargetWindow,
+                        dispatchPlan: null,
+                        failureCode: refreshedMoveResult.FailureCode,
+                        reason: refreshedMoveResult.Reason,
+                        failureStage: InputFailureStageValues.CursorMove);
                 }
             }
 
@@ -491,19 +542,19 @@ internal sealed class Win32InputService(
             }
 
             if (moveCursorWhenRefreshed
-                && batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out shortCircuitResult))
+                && batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out InputResult? shortCircuitResult))
             {
-                acceptedDispatchPlan = null;
-                failureCode = shortCircuitResult.FailureCode;
-                reason = shortCircuitResult.Reason;
-                return false;
+                return InputDispatchPlanBoundaryResult.Failure(
+                    admittedTargetWindow,
+                    dispatchPlan: null,
+                    failureCode: shortCircuitResult.FailureCode,
+                    reason: shortCircuitResult.Reason,
+                    failureStage: InputFailureStageValues.CancellationAfterCommittedSideEffect,
+                    shortCircuitResult: shortCircuitResult);
             }
         }
 
-        acceptedDispatchPlan = refreshedDispatchPlan;
-        failureCode = null;
-        reason = null;
-        return true;
+        return InputDispatchPlanBoundaryResult.Success(admittedTargetWindow, refreshedDispatchPlan);
     }
 
     private bool TryResolveAdmissibleTarget(
@@ -584,10 +635,77 @@ internal sealed class Win32InputService(
         string? FailureCode,
         string? Reason);
 
+    private readonly record struct InputDispatchPlanBoundaryResult(
+        bool IsSuccess,
+        InputResult? ShortCircuitResult,
+        WindowDescriptor? LiveTargetWindow,
+        InputPointerDispatchPlan? DispatchPlan,
+        string? FailureCode,
+        string? Reason,
+        string? FailureStage)
+    {
+        public static InputDispatchPlanBoundaryResult Success(
+            WindowDescriptor liveTargetWindow,
+            InputPointerDispatchPlan dispatchPlan) =>
+            new(
+                IsSuccess: true,
+                ShortCircuitResult: null,
+                LiveTargetWindow: liveTargetWindow,
+                DispatchPlan: dispatchPlan,
+                FailureCode: null,
+                Reason: null,
+                FailureStage: null);
+
+        public static InputDispatchPlanBoundaryResult Failure(
+            WindowDescriptor liveTargetWindow,
+            InputPointerDispatchPlan? dispatchPlan,
+            string? failureCode,
+            string? reason,
+            string? failureStage,
+            InputResult? shortCircuitResult = null) =>
+            new(
+                IsSuccess: false,
+                ShortCircuitResult: shortCircuitResult,
+                LiveTargetWindow: liveTargetWindow,
+                DispatchPlan: dispatchPlan,
+                FailureCode: failureCode,
+                Reason: reason,
+                FailureStage: failureStage);
+    }
+
     private static string MapStaleTargetFailureCode(string? targetSource) =>
         string.Equals(targetSource, InputTargetSourceValues.Attached, StringComparison.Ordinal)
             ? InputFailureCodeValues.StaleAttachedTarget
             : InputFailureCodeValues.StaleExplicitTarget;
+
+    private static string? MapClickDispatchFailureStage(InputClickDispatchOutcomeKind outcomeKind) =>
+        outcomeKind switch
+        {
+            InputClickDispatchOutcomeKind.CleanFailure => InputFailureStageValues.ClickDispatchCleanFailure,
+            InputClickDispatchOutcomeKind.PartialDispatchCompensated => InputFailureStageValues.ClickDispatchPartialCompensated,
+            InputClickDispatchOutcomeKind.PartialDispatchUncompensated => InputFailureStageValues.ClickDispatchPartialUncompensated,
+            _ => InputFailureStageValues.InputDispatch,
+        };
+
+    private static string? ResolveFailureStage(string? failureCode) =>
+        failureCode switch
+        {
+            InputFailureCodeValues.InvalidRequest
+                or InputFailureCodeValues.UnsupportedActionType
+                or InputFailureCodeValues.UnsupportedCoordinateSpace => InputFailureStageValues.RequestValidation,
+            InputFailureCodeValues.MissingTarget
+                or InputFailureCodeValues.StaleExplicitTarget
+                or InputFailureCodeValues.StaleAttachedTarget => InputFailureStageValues.TargetResolution,
+            InputFailureCodeValues.TargetNotForeground
+                or InputFailureCodeValues.TargetMinimized
+                or InputFailureCodeValues.TargetIntegrityBlocked => InputFailureStageValues.TargetPreflight,
+            InputFailureCodeValues.CaptureReferenceRequired
+                or InputFailureCodeValues.CaptureReferenceStale
+                or InputFailureCodeValues.PointOutOfBounds => InputFailureStageValues.CoordinateMapping,
+            InputFailureCodeValues.CursorMoveFailed => InputFailureStageValues.CursorMove,
+            InputFailureCodeValues.InputDispatchFailed => InputFailureStageValues.InputDispatch,
+            _ => null,
+        };
 
     private static string CreateTargetFailureReason(string? failureCode) =>
         failureCode switch

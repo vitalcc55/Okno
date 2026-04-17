@@ -299,6 +299,7 @@
     "artifacts/diagnostics/\u003Crun_id\u003E/launch/\u003Claunch_id\u003E.json",
     "artifacts/diagnostics/\u003Crun_id\u003E/uia/\u003Csnapshot_id\u003E.json",
     "artifacts/diagnostics/\u003Crun_id\u003E/wait/\u003Cwait_id\u003E.json",
+    "artifacts/diagnostics/\u003Crun_id\u003E/input/input-*.json",
     "artifacts/diagnostics/\u003Crun_id\u003E/wait/visual/\u003Cvisual_wait_artifact\u003E.png",
     "artifacts/smoke/\u003Crun_id\u003E/report.json",
     "artifacts/smoke/\u003Crun_id\u003E/summary.md"

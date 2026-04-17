@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Windows.Input;
 using WinBridge.Runtime.Windows.Shell;
 
@@ -42,6 +44,161 @@ public sealed class Win32InputServiceTests
         InputActionResult actionResult = Assert.Single(result.Actions!);
         Assert.Equal(InputStatusValues.VerifyNeeded, actionResult.Status);
         Assert.Equal(new InputPoint(140, 260), actionResult.ResolvedScreenPoint);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncMaterializesArtifactWhenMaterializerIsProvided()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-materialized");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                ],
+            },
+            new InputExecutionContext(),
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.VerifyNeeded, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        Assert.True(File.Exists(result.ArtifactPath));
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"event_name\":\"input.runtime.completed\"", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesPartialDispatchEvidenceInArtifact()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-partial-dispatch");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            ClickDispatchResults =
+            [
+                new InputClickDispatchResult(
+                    Success: false,
+                    OutcomeKind: InputClickDispatchOutcomeKind.PartialDispatchUncompensated,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "Partial dispatch with already committed events."),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                ],
+            },
+            new InputExecutionContext(),
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Equal(0, result.FailedActionIndex);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        JsonElement rootElement = artifact.RootElement;
+        Assert.Equal(
+            InputFailureStageValues.ClickDispatchPartialUncompensated,
+            rootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "partial_dispatch_uncompensated",
+            rootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncMaterializesRefreshedMoveCancellationStage()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-refreshed-move-cancel");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        WindowDescriptor shiftedWindow = targetWindow with
+        {
+            Bounds = new Bounds(101, 201, 421, 561),
+            IsForeground = true,
+        };
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, shiftedWindow]);
+        using CancellationTokenSource cancellation = new();
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            OnMoveSideEffect = moveCount =>
+            {
+                if (moveCount == 2)
+                {
+                    cancellation.Cancel();
+                }
+            },
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    new InputAction
+                    {
+                        Type = InputActionTypeValues.Click,
+                        CoordinateSpace = InputCoordinateSpaceValues.CapturePixels,
+                        Point = new InputPoint(0, 0),
+                        CaptureReference = new InputCaptureReference(
+                            new InputBounds(100, 200, 420, 560),
+                            320,
+                            360,
+                            96,
+                            DateTimeOffset.UtcNow),
+                    },
+                ],
+            },
+            new InputExecutionContext(),
+            cancellation.Token);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.CancellationAfterCommittedSideEffect,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"failure_stage\":\"cancellation_after_committed_side_effect\"", eventLine, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1567,10 +1724,12 @@ public sealed class Win32InputServiceTests
 
         IInputService service = provider.GetRequiredService<IInputService>();
         IInputPlatform platform = provider.GetRequiredService<IInputPlatform>();
+        InputResultMaterializer materializer = provider.GetRequiredService<InputResultMaterializer>();
 
         Assert.False(typeof(IInputService).IsPublic);
         Assert.IsType<Win32InputService>(service);
         Assert.IsType<Win32InputPlatform>(platform);
+        Assert.NotNull(materializer);
     }
 
     private static WindowDescriptor CreateWindow() =>
@@ -1628,6 +1787,23 @@ public sealed class Win32InputServiceTests
             IntegrityResolved: true,
             Reason: null);
 
+    private static AuditLogOptions CreateAuditLogOptions(string root, string runId) =>
+        new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: runId,
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", runId),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", runId, "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", runId, "summary.md"));
+
+    private static string CreateTempDirectory()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
     private sealed class FakeWindowTargetResolver(
         InputTargetResolution resolution,
         IReadOnlyList<WindowDescriptor?> liveWindows) : IWindowTargetResolver
@@ -1667,6 +1843,7 @@ public sealed class Win32InputServiceTests
     private sealed class FakeInputPlatform : IInputPlatform, IDisposable
     {
         private readonly Queue<bool> _clickResults = new();
+        private readonly Queue<InputClickDispatchResult> _clickDispatchResults = new();
         private readonly Queue<IReadOnlyList<string>> _ambientInputsBeforePointerSideEffect = new();
         private readonly Queue<IReadOnlyList<string>> _ambientModifiersBeforeDispatch = new();
         private readonly Queue<InputTargetSecurityInfo> _targetSecuritySequence = new();
@@ -1698,6 +1875,18 @@ public sealed class Win32InputServiceTests
                 foreach (bool item in value)
                 {
                     _clickResults.Enqueue(item);
+                }
+            }
+        }
+
+        public IReadOnlyList<InputClickDispatchResult> ClickDispatchResults
+        {
+            init
+            {
+                _clickDispatchResults.Clear();
+                foreach (InputClickDispatchResult item in value)
+                {
+                    _clickDispatchResults.Enqueue(item);
                 }
             }
         }
@@ -1911,6 +2100,11 @@ public sealed class Win32InputServiceTests
             {
                 _firstDispatchEntered.Set();
                 _releaseBlockedDispatch.Wait();
+            }
+
+            if (_clickDispatchResults.Count > 0)
+            {
+                return _clickDispatchResults.Dequeue();
             }
 
             bool success = _clickResults.Count == 0 || _clickResults.Dequeue();

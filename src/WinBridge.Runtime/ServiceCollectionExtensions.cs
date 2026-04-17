@@ -31,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWindowManager, Win32WindowManager>();
         services.AddSingleton<IWindowTargetResolver, WindowTargetResolver>();
         services.AddSingleton<IInputPlatform, Win32InputPlatform>();
+        services.AddSingleton<InputResultMaterializer>();
         services.AddSingleton<IInputService, Win32InputService>();
         services.AddSingleton(WindowActivationOptions.Default);
         services.AddSingleton<IWindowActivationPlatform, Win32WindowActivationPlatform>();

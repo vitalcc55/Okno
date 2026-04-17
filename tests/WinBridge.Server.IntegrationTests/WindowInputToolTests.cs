@@ -43,6 +43,9 @@ public sealed class WindowInputToolTests
         Assert.Equal(attachedWindow.Hwnd, payload.GetProperty("targetHwnd").GetInt64());
         Assert.Equal(0, context.InputService.Calls);
         Assert.Equal(1, context.Gate.Calls);
+        Assert.DoesNotContain(
+            File.ReadAllLines(context.AuditOptions.EventsPath),
+            line => line.Contains("\"event_name\":\"input.runtime.completed\"", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -74,6 +77,9 @@ public sealed class WindowInputToolTests
         Assert.True(payload.GetProperty("requiresConfirmation").GetBoolean());
         Assert.Equal(0, context.InputService.Calls);
         Assert.Equal(1, context.Gate.Calls);
+        Assert.DoesNotContain(
+            File.ReadAllLines(context.AuditOptions.EventsPath),
+            line => line.Contains("\"event_name\":\"input.runtime.completed\"", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -106,6 +112,9 @@ public sealed class WindowInputToolTests
         Assert.Equal(InputFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
         Assert.Equal(0, context.InputService.Calls);
         Assert.Equal(0, context.Gate.Calls);
+        Assert.DoesNotContain(
+            File.ReadAllLines(context.AuditOptions.EventsPath),
+            line => line.Contains("\"event_name\":\"input.runtime.completed\"", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -296,6 +305,7 @@ public sealed class WindowInputToolTests
     public async Task InputAllowedLiveReturnsRuntimePayload()
     {
         WindowDescriptor attachedWindow = CreateWindow();
+        string artifactPath = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"), "input.json");
         FakeInputService inputService = new(
             (_, inputContext, _) => Task.FromResult(
                 new InputResult(
@@ -315,7 +325,8 @@ public sealed class WindowInputToolTests
                             RequestedPoint: new InputPoint(100, 100),
                             ResolvedScreenPoint: new InputPoint(100, 100),
                             Button: InputButtonValues.Left),
-                    ])));
+                    ],
+                    ArtifactPath: artifactPath)));
         TestContext context = CreateContext(
             decision: CreateDecision(
                 ToolExecutionDecisionKind.Allowed,
@@ -339,6 +350,7 @@ public sealed class WindowInputToolTests
         Assert.Equal(InputStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
         Assert.Equal(InputStatusValues.VerifyNeeded, payload.GetProperty("decision").GetString());
         Assert.Equal(1, payload.GetProperty("completedActionCount").GetInt32());
+        Assert.Equal(artifactPath, payload.GetProperty("artifactPath").GetString());
         Assert.Equal(1, context.InputService.Calls);
         Assert.True(context.Gate.LastIntent?.ConfirmationGranted);
         Assert.Equal(attachedWindow.Hwnd, context.InputService.LastContext?.AttachedWindow?.Hwnd);

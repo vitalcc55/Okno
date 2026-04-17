@@ -61,7 +61,7 @@ public static class ToolContractManifest
                 ToolExecutionRedactionClass.TextPayload));
 
     public static string ContractNotes { get; } =
-        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait, public windows.launch_process, public windows.open_target и public click-first `windows.input` boundary без hidden enforcement. Для `windows.input` сейчас опубликован только implemented subset `move`, `click`, `double_click`, `click(button=right)`; artifacts/events/materializer rollout остаются отдельным follow-up.";
+        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait, public windows.launch_process, public windows.open_target и public click-first `windows.input` boundary без hidden enforcement. Для `windows.input` сейчас опубликован только implemented subset `move`, `click`, `double_click`, `click(button=right)`; artifacts/events/materializer уже закрыты Package D через `input.runtime.completed` и `artifacts/diagnostics/<run_id>/input/input-*.json`, а smoke/fresh-host acceptance остаются Package E.";
 
     public static IReadOnlyList<ToolDescriptor> All { get; } =
         new[]

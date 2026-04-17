@@ -18,7 +18,8 @@
 
 - `Okno` уже закрывает observe/verify/guardrails слой.
 - `windows.input` уже имеет implemented public click-first MCP boundary для `move`, `click`, `double_click` и `click(button=right)`.
-- Package D/E для `windows.input` ещё остаются открыты: runtime artifacts/events/materializer, smoke proof и fresh-host acceptance не считаются закрытыми этим interop plan.
+- Package D observability уже landed для `windows.input`: runtime artifacts/events/materializer materialize-ят `input.runtime.completed` и `artifacts/diagnostics/<run_id>/input/input-*.json`.
+- Package E smoke/fresh-host acceptance для `windows.input` ещё остаётся pending и не считается закрытым этим interop plan.
 - repo-local plugin `okno` уже даёт текущий локальный integration path для Codex.
 - safety baseline уже даёт execution-policy foundation для будущих action tools.
 
@@ -33,7 +34,8 @@
 
 - shipped `windows.input` в `click`-first объёме;
 - action schema freeze для `windows.input`;
-- Package D/E proof для input observability и smoke/fresh-host acceptance;
+- Package D observability landed для input artifacts/events/materializer;
+- Package E proof для smoke/fresh-host acceptance;
 - docs/spec/roadmap синхронизированы с этой boundary;
 - отдельный adapter package можно строить без изменения core runtime contracts.
 

@@ -39,6 +39,11 @@
 - `windows.open_target`
 - `windows.input` click-first public boundary
 
+Current `windows.input` state for this compatibility layer:
+
+- Package D observability is already landed: factual input runtime results produce `input.runtime.completed` and `artifacts/diagnostics/<run_id>/input/input-*.json`.
+- Package E smoke/fresh-host acceptance is still pending, so the adapter track must not claim production-ready OpenAI compatibility yet.
+
 ### Что не должно входить в core runtime
 
 - Responses API-specific payloads
@@ -97,9 +102,11 @@ Adapter должен:
 
 1. `windows.input` shipped хотя бы в `click`-first объёме;
 2. action schema `windows.input` зафиксирована;
-3. сохранён split `windows.launch_process` / `windows.open_target`;
-4. есть отдельный exec-plan для adapter layer;
-5. future interop не ломает local-first MCP/plugin path.
+3. Package D observability для `windows.input` landed и расследуется через `input.runtime.completed` / `input/input-*.json`;
+4. Package E smoke/fresh-host acceptance для `windows.input` закрыт фактическим proof;
+5. сохранён split `windows.launch_process` / `windows.open_target`;
+6. есть отдельный exec-plan для adapter layer;
+7. future interop не ломает local-first MCP/plugin path.
 
 ## Что не делать раньше времени
 

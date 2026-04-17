@@ -37,7 +37,7 @@ public sealed class WindowTools
 
     private readonly AuditLog _auditLog;
     private readonly ICaptureService _captureService;
-    private readonly IInputService _inputService;
+    private readonly IInputService? _inputService;
     private readonly IMonitorManager _monitorManager;
     private readonly IOpenTargetService _openTargetService;
     private readonly IProcessLaunchService _processLaunchService;
@@ -49,6 +49,38 @@ public sealed class WindowTools
     private readonly IWindowActivationService _windowActivationService;
     private readonly IWindowManager _windowManager;
     private readonly IWindowTargetResolver _windowTargetResolver;
+
+    public WindowTools(
+        AuditLog auditLog,
+        ISessionManager sessionManager,
+        IWindowManager windowManager,
+        ICaptureService captureService,
+        IMonitorManager monitorManager,
+        IWindowActivationService windowActivationService,
+        IWindowTargetResolver windowTargetResolver,
+        IUiAutomationService uiAutomationService,
+        IWaitService waitService,
+        WaitResultMaterializer waitResultMaterializer,
+        IToolExecutionGate toolExecutionGate,
+        IProcessLaunchService processLaunchService,
+        IOpenTargetService openTargetService)
+        : this(
+            auditLog,
+            sessionManager,
+            windowManager,
+            captureService,
+            monitorManager,
+            windowActivationService,
+            windowTargetResolver,
+            uiAutomationService,
+            waitService,
+            waitResultMaterializer,
+            toolExecutionGate,
+            inputService: null,
+            processLaunchService,
+            openTargetService)
+    {
+    }
 
     internal WindowTools(
         AuditLog auditLog,
@@ -62,7 +94,7 @@ public sealed class WindowTools
         IWaitService waitService,
         WaitResultMaterializer waitResultMaterializer,
         IToolExecutionGate toolExecutionGate,
-        IInputService inputService,
+        IInputService? inputService,
         IProcessLaunchService processLaunchService,
         IOpenTargetService openTargetService)
     {
@@ -938,7 +970,9 @@ public sealed class WindowTools
         try
         {
             InputExecutionContext executionContext = new(context.AttachedWindow);
-            InputResult runtimeResult = await _inputService
+            IInputService inputService = _inputService
+                ?? throw new InvalidOperationException("Input service is not configured for windows.input manual registration boundary.");
+            InputResult runtimeResult = await inputService
                 .ExecuteAsync(context.Request, executionContext, cancellationToken)
                 .ConfigureAwait(false);
             invocation.CompleteBestEffort(

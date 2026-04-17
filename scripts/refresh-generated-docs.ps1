@@ -111,6 +111,7 @@ function New-CommandsMarkdown {
         '- `artifacts/diagnostics/<run_id>/launch/<launch_id>.json`',
         '- `artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json`',
         '- `artifacts/diagnostics/<run_id>/wait/<wait_id>.json`',
+        '- `artifacts/diagnostics/<run_id>/input/input-*.json`',
         '- `artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png`',
         '- `artifacts/smoke/<run_id>/report.json`',
         '- `artifacts/smoke/<run_id>/summary.md`'
@@ -399,6 +400,7 @@ function New-BootstrapStatusJson {
         '    "capture_artifact": "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",',
         '    "uia_artifact": "artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json",',
         '    "wait_artifact": "artifacts/diagnostics/<run_id>/wait/<wait_id>.json",',
+        '    "input_artifact": "artifacts/diagnostics/<run_id>/input/input-*.json",',
         '    "wait_visual_artifact": "artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png",',
         '    "smoke_report": "artifacts/smoke/<run_id>/report.json",',
         '    "smoke_summary": "artifacts/smoke/<run_id>/summary.md"',

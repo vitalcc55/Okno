@@ -1,6 +1,6 @@
 # ExecPlan: windows.input
 
-Статус: active; Package C implemented, Package D/E pending
+Статус: active; Package D implemented, Package E pending
 Создан: 2026-04-10
 
 ## 1. Goal
@@ -35,7 +35,7 @@
   - `supports_dry_run=false`
   - `confirmation_mode=required`
   - `redaction_class=text_payload`
-- implemented public registration публикует только shipped subset `move` / `click` / `double_click` / `click(button=right)` through `button=left/right`; `drag` / `scroll` / `type` / `keypress`, runtime artifacts/events, smoke proof and fresh-host acceptance остаются deferred до Package D/E.
+- implemented public registration публикует только shipped subset `move` / `click` / `double_click` / `click(button=right)` through `button=left/right`; `drag` / `scroll` / `type` / `keypress`, smoke proof and fresh-host acceptance остаются deferred до Package E, while runtime artifacts/events are now materialized by Package D.
 - shared gate уже обязателен для policy-bearing tools: raw `ToolExecution.Run(...)`/`RunAsync(...)` для `windows.input` fail-fast запрещён, нужен только `RunGated(...)` / `RunGatedAsync(...)`.
 - shared readiness для `input` больше не placeholder blocked: `RuntimeGuardPolicy.BuildInput(...)` уже выражает reusable `ready/degraded/blocked/unknown` baseline, а target-specific integrity/focus checks ещё остаются на future runtime boundary.
 - runtime seam для input больше не пустой: internal [src/WinBridge.Runtime.Windows.Input/IInputService.cs](../../../src/WinBridge.Runtime.Windows.Input/IInputService.cs) ведёт к concrete `Win32InputService`, но raw side-effect seam не является public .NET API и не заменяет server-side `RunGatedAsync(...)` boundary.
@@ -662,8 +662,8 @@ Done when:
 - [x] Live MCP handler, request binding into runtime execution path and `RunGatedAsync(...)` rollout now use the existing `IInputService` as the only execution path, with tool-level `invalid_request` materialization, request-scoped attached-window snapshot for implicit targeting, and no raw transport/binder failure for malformed nested `actions[]` payloads.
 - [x] Internal Package B runtime slice now exists without public rollout: `Win32InputService` + `Win32InputPlatform` execute `move`, `click`, `double_click` and `click(button=right)` through `ResolveInputTarget(...)`, per-action target revalidation, foreground/minimized/session/integrity preflight, `capture_pixels -> screen` translation-only remap, factual cursor verification and fail-fast batch results.
 - [x] Live pointer batches are now serialized through an internal input execution gate, and every irreversible click dispatch revalidates the live target immediately before dispatch through a refreshed coordinate-space-aware dispatch plan; `capture_pixels` can update the authoritative screen point on admissible origin drift for single-click gestures, while `double_click` now splits into pre-gesture plan refresh before the first move and a stable-point execution phase where both taps fail closed if boundary revalidation would retarget the gesture. Final click dispatch proves the factual cursor position, that the live foreground window still matches the same admitted target `HWND` and stable identity, and only then derives ambient async-state readability from that live foreground owner immediately before `SendInput`.
-- [ ] Runtime artifacts/events and result materialization remain deferred to Package D.
-- [ ] Smoke, fresh-host acceptance and promotion from deferred registration to implemented contract remain deferred to Package E.
+- [x] Runtime artifacts/events and result materialization landed in Package D without changing Package A contract freeze.
+- [ ] Smoke, fresh-host acceptance, `SmokeRequired` promotion and roadmap/spec promotion remain deferred to Package E.
 
 ### Package B — Runtime/input service
 
@@ -697,8 +697,8 @@ Package B checklist:
 - [x] L1 proof completed with targeted input-runtime tests, existing contract/guard regression floor and full `WinBridge.Runtime.Tests`.
 - [x] Package B intentionally stops at runtime-only execution semantics; public handler, observability rollout and publication remain untouched.
 - [x] Public handler / `RunGatedAsync(...)` boundary now routes through the shared gate and returns canonical `blocked` / `needs_confirmation` / live runtime payloads without reopening Package B runtime semantics.
-- [ ] Runtime event / artifact / materializer rollout remains Package D.
-- [ ] Smoke / fresh-host acceptance / public publication remains Package E.
+- [x] Runtime event / artifact / materializer rollout landed in Package D without reopening Package B dispatch semantics.
+- [ ] Smoke / fresh-host acceptance / smoke-backed publication proof remains Package E.
 
 ### Package C — Server/public tool
 
@@ -729,6 +729,8 @@ Package C checklist:
 
 ### Package D — Observability
 
+Статус: `done`
+
 Scope:
 
 - add `input.runtime.completed` runtime event;
@@ -741,11 +743,23 @@ Done when:
 - investigation path matches existing launch/open/wait conventions;
 - artifact/event write failures remain best-effort and do not downcast factual runtime result.
 
-Residual risk to carry from Package B:
+Package D checklist:
 
-- partial dispatch / dispatch evidence taxonomy should be reviewed explicitly before Package D materializes artifacts/events;
-- current Package B already distinguishes clean failure vs partial side effect for click dispatch, but observability rollout must preserve that distinction instead of collapsing it into one generic `failed` evidence shape;
-- if Package D introduces retries, compensation metadata or richer failure stages, it must do so on top of Package B committed-side-effect model rather than rebuilding side-effect ownership from top-level result only.
+- [x] Added runtime-owned `InputResultMaterializer` inside `src/WinBridge.Runtime.Windows.Input`; `Win32InputService` materializes factual runtime results before returning them to the server boundary.
+- [x] Added JSON evidence family `artifacts/diagnostics/<run_id>/input/input-*.json` with sanitized request summary, target summary, factual result payload, per-action factual results and safe `failure_diagnostics`.
+- [x] Added best-effort `input.runtime.completed` event with `status`, `decision`, `result_mode`, `failure_code`, `target_hwnd`, `target_source`, `completed_action_count`, `failed_action_index`, `action_types`, `coordinate_spaces`, `artifact_path`, `failure_stage`, `exception_type` and `committed_side_effect_evidence`.
+- [x] Preserved Package B partial dispatch / committed side-effect evidence through `click_dispatch_clean_failure`, `click_dispatch_partial_compensated`, `click_dispatch_partial_uncompensated` and conservative committed evidence markers instead of collapsing everything into generic `failed`.
+- [x] Review follow-up closed helper-boundary stage drift: dispatch-plan refresh helpers now propagate semantic `failure_stage` with factual failure results, including refreshed-move cancellation after committed side effect.
+- [x] Public `okno.contract` notes now match Package D state: input artifacts/events/materializer are landed, while smoke/fresh-host acceptance remains Package E.
+- [x] Artifact/event write failures stay best-effort: factual `InputResult` is not downcast; artifact write failure only clears `ArtifactPath` and records safe `artifact_write` diagnostics when the audit sink is healthy.
+- [x] Server Package C boundary remains a pass-through over factual runtime result plus `tool.invocation.completed`; pre-gate invalid/blocked/needs-confirmation paths do not emit `input.runtime.completed`.
+- [x] No Package A/B/C public/runtime semantics changed: no schema changes, no new shipped actions, no retry/compensation behavior, no `SmokeRequired` change and no smoke/fresh-host acceptance.
+
+Package B evidence risk closed by Package D:
+
+- partial dispatch / dispatch evidence taxonomy was reviewed and materialized explicitly instead of collapsing clean dispatch failure and partial committed side effects into one generic `failed` evidence shape;
+- Package D did not introduce retries or new compensation behavior; richer failure stages sit on top of Package B committed-side-effect ownership;
+- Package E should treat this as a smoke proof checkpoint: failed click dispatch evidence must preserve `failure_stage` and `committed_side_effect_evidence` when the artifact/event path is healthy.
 
 ### Package E — Smoke/docs finalization
 

@@ -182,6 +182,9 @@ public sealed class AdminToolTests
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsOpenTarget);
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsInput);
+        Assert.Contains("artifacts/events/materializer уже закрыты Package D", result.Notes, StringComparison.Ordinal);
+        Assert.Contains("smoke/fresh-host acceptance", result.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("artifacts/events/materializer rollout остаются отдельным follow-up", result.Notes, StringComparison.Ordinal);
     }
 
     private static RuntimeGuardAssessment CreateAssessment(FakeMonitorManager monitorManager)
