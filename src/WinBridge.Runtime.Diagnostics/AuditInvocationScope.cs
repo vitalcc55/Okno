@@ -96,6 +96,32 @@ public sealed class AuditInvocationScope : IDisposable
         _completed = true;
     }
 
+    public void CompleteSanitizedFailureBestEffort(
+        string publicMessage,
+        Exception exception,
+        long? windowHwnd = null,
+        IReadOnlyDictionary<string, string?>? data = null)
+    {
+        if (_completed)
+        {
+            return;
+        }
+
+        try
+        {
+            Dictionary<string, string?> payload = data is null
+                ? []
+                : new Dictionary<string, string?>(data, StringComparer.Ordinal);
+
+            _auditLog.WriteToolCompleted(_toolContext, "failed", publicMessage, windowHwnd, payload, exception);
+        }
+        catch (Exception)
+        {
+        }
+
+        _completed = true;
+    }
+
     public void Dispose()
     {
         if (!_completed)

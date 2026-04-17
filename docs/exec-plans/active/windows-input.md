@@ -1,6 +1,6 @@
 # ExecPlan: windows.input
 
-Статус: planned  
+Статус: active; Package C implemented, Package D/E pending
 Создан: 2026-04-10
 
 ## 1. Goal
@@ -28,17 +28,17 @@
 ## 3. Current repo state
 
 - `Okno` уже shipped как observe/verify/guardrails runtime: `list_monitors`, `list_windows`, `attach_window`, `focus_window`, `activate_window`, `capture`, `windows.uia_snapshot`, `windows.wait`, `okno.health`, `windows.launch_process`, `windows.open_target`.
-- `windows.input` уже объявлен в [src/WinBridge.Runtime.Tooling/ToolNames.cs](../../../src/WinBridge.Runtime.Tooling/ToolNames.cs) и [src/WinBridge.Runtime.Tooling/ToolContractManifest.cs](../../../src/WinBridge.Runtime.Tooling/ToolContractManifest.cs) как deferred tool с frozen execution policy:
+- `windows.input` уже опубликован в [src/WinBridge.Runtime.Tooling/ToolNames.cs](../../../src/WinBridge.Runtime.Tooling/ToolNames.cs) и [src/WinBridge.Runtime.Tooling/ToolContractManifest.cs](../../../src/WinBridge.Runtime.Tooling/ToolContractManifest.cs) как implemented public click-first MCP tool с frozen execution policy:
   - `policy_group=input`
   - `risk_level=destructive`
   - `guard_capability=input`
   - `supports_dry_run=false`
   - `confirmation_mode=required`
   - `redaction_class=text_payload`
-- deferred public registration уже использует schema-preserving `actions[]` envelope и structured `unsupported` result, но implemented lifecycle, live gated handler и runtime dispatch по-прежнему не опубликованы.
+- implemented public registration публикует только shipped subset `move` / `click` / `double_click` / `click(button=right)` through `button=left/right`; `drag` / `scroll` / `type` / `keypress`, runtime artifacts/events, smoke proof and fresh-host acceptance остаются deferred до Package D/E.
 - shared gate уже обязателен для policy-bearing tools: raw `ToolExecution.Run(...)`/`RunAsync(...)` для `windows.input` fail-fast запрещён, нужен только `RunGated(...)` / `RunGatedAsync(...)`.
 - shared readiness для `input` больше не placeholder blocked: `RuntimeGuardPolicy.BuildInput(...)` уже выражает reusable `ready/degraded/blocked/unknown` baseline, а target-specific integrity/focus checks ещё остаются на future runtime boundary.
-- runtime seam для input больше не пустой: [src/WinBridge.Runtime.Windows.Input/IInputService.cs](../../../src/WinBridge.Runtime.Windows.Input/IInputService.cs) уже фиксирует contract-level `ExecuteAsync(...)`, но concrete dispatch implementation ещё отсутствует.
+- runtime seam для input больше не пустой: internal [src/WinBridge.Runtime.Windows.Input/IInputService.cs](../../../src/WinBridge.Runtime.Windows.Input/IInputService.cs) ведёт к concrete `Win32InputService`, но raw side-effect seam не является public .NET API и не заменяет server-side `RunGatedAsync(...)` boundary.
 - verification control plane больше не должен запускать server/helper напрямую из `src/**/bin` и `tests/**/bin`: official scripts and MCP integration harness теперь обязаны materialize-ить staged run bundle под `.tmp/.codex/...`, чтобы mutable build cache не делился с live runtime process.
 - build/run isolation теперь держится не на отдельных heuristics, а на одном execution-context resolver: `run id`, `run root`, `artifacts root`, assembly provenance, explicit env overrides и auto-materialization должны вычисляться одинаково во всех bundle entry point'ах и в MCP integration harness; explicit override paths для bundle/server/helper обязаны fail-fast на stale target и не переходить в silent auto-repair, explicit parameters должны быть сильнее ambient session state, а reuse existing bundle допустим только если совпадают и effective context, и freshness текущих source outputs.
 - execution-context resolver должен работать на уровне целого request'а, а не набора несвязанных field precedence-веток: optional PowerShell args нельзя прокидывать вниз как `-Param $null`, потому что binder превращает отсутствие поля в ложный explicit override и ломает derivation `AssemblyBaseDirectory -> artifacts_root`, а также partial explicit context requests (`RunId`/`RunRoot`) против ambient session state. В practical terms это значит, что bundle entry points и integration harness обязаны передавать в shared resolver только реально заданные поля request'а; current regression contour отдельно охраняет `RunId` isolation от ambient artifacts env и assembly-derived provenance поверх ambient DLL env.
@@ -288,6 +288,7 @@ Initial V1 failure codes:
 - `unsupported_action_type`
 - `unsupported_coordinate_space`
 - `missing_target`
+- `target_preflight_failed`
 - `stale_explicit_target`
 - `stale_attached_target`
 - `target_not_foreground`
@@ -658,7 +659,7 @@ Done when:
 - [x] Added dedicated `ResolveInputTarget(...)` seam with `explicit -> attached` policy and no active fallback.
 - [x] Kept `windows.input` deferred, but aligned the public deferred MCP schema with the frozen `actions[]` envelope instead of leaving legacy `actionsJson`.
 - [x] Synced product/interop/tooling wording with Package A decisions: one tool, `click(button=right)`, `capture_pixels` + `screen`, `verify_needed`, `supports_dry_run=false`.
-- [ ] Live MCP handler, request binding into runtime execution path and `RunGatedAsync(...)` rollout remain deferred to Package C.
+- [x] Live MCP handler, request binding into runtime execution path and `RunGatedAsync(...)` rollout now use the existing `IInputService` as the only execution path, with tool-level `invalid_request` materialization, request-scoped attached-window snapshot for implicit targeting, and no raw transport/binder failure for malformed nested `actions[]` payloads.
 - [x] Internal Package B runtime slice now exists without public rollout: `Win32InputService` + `Win32InputPlatform` execute `move`, `click`, `double_click` and `click(button=right)` through `ResolveInputTarget(...)`, per-action target revalidation, foreground/minimized/session/integrity preflight, `capture_pixels -> screen` translation-only remap, factual cursor verification and fail-fast batch results.
 - [x] Live pointer batches are now serialized through an internal input execution gate, and every irreversible click dispatch revalidates the live target immediately before dispatch through a refreshed coordinate-space-aware dispatch plan; `capture_pixels` can update the authoritative screen point on admissible origin drift for single-click gestures, while `double_click` now splits into pre-gesture plan refresh before the first move and a stable-point execution phase where both taps fail closed if boundary revalidation would retarget the gesture. Final click dispatch proves the factual cursor position, that the live foreground window still matches the same admitted target `HWND` and stable identity, and only then derives ambient async-state readability from that live foreground owner immediately before `SendInput`.
 - [ ] Runtime artifacts/events and result materialization remain deferred to Package D.
@@ -695,11 +696,13 @@ Package B checklist:
 - [x] Registered internal-only `IInputService` / `IInputPlatform` in runtime DI; `WindowTools.cs`, deferred public registration, smoke and docs publication remain untouched.
 - [x] L1 proof completed with targeted input-runtime tests, existing contract/guard regression floor and full `WinBridge.Runtime.Tests`.
 - [x] Package B intentionally stops at runtime-only execution semantics; public handler, observability rollout and publication remain untouched.
-- [ ] Public handler / `RunGatedAsync(...)` boundary remains Package C.
+- [x] Public handler / `RunGatedAsync(...)` boundary now routes through the shared gate and returns canonical `blocked` / `needs_confirmation` / live runtime payloads without reopening Package B runtime semantics.
 - [ ] Runtime event / artifact / materializer rollout remains Package D.
 - [ ] Smoke / fresh-host acceptance / public publication remains Package E.
 
 ### Package C — Server/public tool
+
+Статус: `done`
 
 Scope:
 
@@ -714,6 +717,15 @@ Done when:
 - public schema is quiet and honest;
 - no unsupported literal is advertised as shipped;
 - `windows.input` becomes callable as MCP tool without bypassing shared gate.
+
+Package C checklist:
+
+- [x] `windows.input` flipped from deferred public registration to implemented MCP tool registration, while keeping `SmokeRequired=false` until Package E.
+- [x] Manual `tools/list` schema now publishes only the shipped click-first subset: `move`, `click`, `double_click`, `click(button=right)` through `button=left/right`, with `captureReference` for `capture_pixels` and without `drag` / `scroll` / `type` / `keypress` / `keys[]` / `dryRun`.
+- [x] Public boundary binds raw JSON into frozen `InputRequest` / `InputAction` DTOs, rejects malformed nested shapes as tool-level `failed + invalid_request` instead of transport-level errors, materializes deterministic target-preflight failures before shared gate, and uses a contract-owned malformed-safe bounded audit request summary so rejected keyboard-like payloads, rejected enum-like literals and nested `JsonExtensionData` from `point` / `captureReference` / `bounds` do not leak into `tool.invocation.started`.
+- [x] Live execution path uses only `RunGatedAsync(...)` plus the existing `IInputService`; rejected decisions materialize `blocked` / `needs_confirmation` in the same payload style as launch/open, and allowed live calls return factual `InputResult` unchanged. Unexpected current-action runtime faults travel through a typed factual failure carrier only after a committed side effect for the current action; setup faults after already completed previous actions materialize a batch-level partial result without a pseudo-failed current action, while clean first-action setup faults stay on the generic exception path with `exception_type` preserved by the boundary.
+- [x] `ToolContractManifest`, `okno.contract`, `okno.health`, exporter output and generated contract docs now publish `windows.input` as implemented policy-bearing click-first surface instead of deferred `unsupported`.
+- [x] L2/server boundary coverage now includes dedicated `WindowInputToolTests` plus stdio assertions for `tools/list`, `okno.contract` and malformed `windows.input` requests.
 
 ### Package D — Observability
 

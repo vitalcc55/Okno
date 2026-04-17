@@ -245,7 +245,7 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
-    public async Task ToolsListPublishesDeferredWindowsInputWithFrozenRequestSchema()
+    public async Task ToolsListPublishesImplementedWindowsInputWithClickFirstRequestSchema()
     {
         using Process process = StartServer();
 
@@ -294,19 +294,19 @@ public sealed class McpProtocolSmokeTests
             JsonElement actionItemProperties = actionsProperty.GetProperty("items").GetProperty("properties");
             Assert.True(actionItemProperties.TryGetProperty("type", out _));
             Assert.True(actionItemProperties.TryGetProperty("point", out _));
-            Assert.True(actionItemProperties.TryGetProperty("path", out _));
             Assert.True(actionItemProperties.TryGetProperty("coordinateSpace", out _));
             Assert.True(actionItemProperties.TryGetProperty("button", out _));
-            Assert.True(actionItemProperties.TryGetProperty("keys", out _));
-            Assert.True(actionItemProperties.TryGetProperty("text", out _));
-            Assert.True(actionItemProperties.TryGetProperty("key", out _));
-            Assert.True(actionItemProperties.TryGetProperty("repeat", out _));
-            Assert.True(actionItemProperties.TryGetProperty("delta", out _));
-            Assert.True(actionItemProperties.TryGetProperty("direction", out _));
             Assert.True(actionItemProperties.TryGetProperty("captureReference", out _));
+            Assert.False(actionItemProperties.TryGetProperty("path", out _));
+            Assert.False(actionItemProperties.TryGetProperty("keys", out _));
+            Assert.False(actionItemProperties.TryGetProperty("text", out _));
+            Assert.False(actionItemProperties.TryGetProperty("key", out _));
+            Assert.False(actionItemProperties.TryGetProperty("repeat", out _));
+            Assert.False(actionItemProperties.TryGetProperty("delta", out _));
+            Assert.False(actionItemProperties.TryGetProperty("direction", out _));
 
             JsonElement actionBranches = actionsProperty.GetProperty("items").GetProperty("oneOf");
-            Assert.Equal(InputActionContractCatalog.All.Count, actionBranches.GetArrayLength());
+            Assert.Equal(3, actionBranches.GetArrayLength());
 
             JsonElement clickBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Click);
             AssertSchemaRequiredContains(clickBranch, "type", "point", "coordinateSpace");
@@ -314,43 +314,17 @@ public sealed class McpProtocolSmokeTests
             AssertSchemaPropertyDoesNotAllowNull(clickBranch, "coordinateSpace");
             Assert.True(clickBranch.GetProperty("properties").TryGetProperty("button", out _));
             AssertSchemaPropertyDoesNotAllowNull(clickBranch, "button");
-            Assert.True(clickBranch.GetProperty("properties").TryGetProperty("keys", out _));
-            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "keys");
             Assert.True(clickBranch.GetProperty("properties").TryGetProperty("captureReference", out _));
             AssertSchemaPropertyDoesNotAllowNull(clickBranch, "captureReference");
             Assert.False(clickBranch.GetProperty("properties").TryGetProperty("text", out _));
 
-            JsonElement typeBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Type);
-            AssertSchemaRequiredContains(typeBranch, "type", "text");
-            AssertSchemaPropertyDoesNotAllowNull(typeBranch, "text");
-            Assert.False(typeBranch.GetProperty("properties").TryGetProperty("key", out _));
+            JsonElement moveBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Move);
+            AssertSchemaRequiredContains(moveBranch, "type", "point", "coordinateSpace");
+            Assert.False(moveBranch.GetProperty("properties").TryGetProperty("button", out _));
 
-            JsonElement keypressBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Keypress);
-            AssertSchemaRequiredContains(keypressBranch, "type", "key");
-            AssertSchemaPropertyDoesNotAllowNull(keypressBranch, "key");
-            AssertSchemaStringPropertyRejectsWhitespaceOnly(keypressBranch, "key");
-            Assert.True(keypressBranch.GetProperty("properties").TryGetProperty("repeat", out _));
-            AssertSchemaPropertyDoesNotAllowNull(keypressBranch, "repeat");
-            AssertSchemaIntegerPropertyHasMinimum(keypressBranch, "repeat", 1);
-            Assert.False(keypressBranch.GetProperty("properties").TryGetProperty("text", out _));
-
-            JsonElement dragBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Drag);
-            AssertSchemaRequiredContains(dragBranch, "type", "path", "coordinateSpace");
-            AssertSchemaPropertyDoesNotAllowNull(dragBranch, "path");
-            AssertSchemaPropertyDoesNotAllowNull(dragBranch, "coordinateSpace");
-
-            JsonElement scrollBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Scroll);
-            AssertSchemaRequiredContains(scrollBranch, "type", "point", "coordinateSpace", "delta", "direction");
-            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "point");
-            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "coordinateSpace");
-            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "delta");
-            AssertSchemaIntegerPropertyRejectsConst(scrollBranch, "delta", 0);
-            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "direction");
-            AssertSchemaStringPropertyRejectsWhitespaceOnly(scrollBranch, "direction");
-            Assert.True(scrollBranch.GetProperty("properties").TryGetProperty("keys", out _));
-            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "keys");
-            Assert.True(scrollBranch.GetProperty("properties").TryGetProperty("captureReference", out _));
-            AssertSchemaPropertyDoesNotAllowNull(scrollBranch, "captureReference");
+            JsonElement doubleClickBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.DoubleClick);
+            AssertSchemaRequiredContains(doubleClickBranch, "type", "point", "coordinateSpace");
+            Assert.False(doubleClickBranch.GetProperty("properties").TryGetProperty("button", out _));
 
             JsonElement pointSchema = actionItemProperties.GetProperty("point");
             AssertSchemaRequiredContains(pointSchema, "x", "y");
@@ -636,7 +610,7 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
-    public async Task OknoContractPublishesDeferredExecutionPolicyWithSnakeCaseDescriptorFields()
+    public async Task OknoContractPublishesImplementedInputExecutionPolicyWithSnakeCaseDescriptorFields()
     {
         using Process process = StartServer();
 
@@ -669,7 +643,7 @@ public sealed class McpProtocolSmokeTests
                 .EnumerateArray()
                 .Single(item => item.GetProperty("name").GetString() == ToolNames.OknoContract);
             JsonElement inputDescriptor = contractPayload.RootElement
-                .GetProperty("deferredTools")
+                .GetProperty("implementedTools")
                 .EnumerateArray()
                 .Single(item => item.GetProperty("name").GetString() == ToolNames.WindowsInput);
 
@@ -682,7 +656,7 @@ public sealed class McpProtocolSmokeTests
             Assert.False(implementedDescriptor.TryGetProperty("plannedPhase", out _));
             Assert.False(implementedDescriptor.TryGetProperty("suggestedAlternative", out _));
             Assert.False(implementedDescriptor.TryGetProperty("executionPolicy", out _));
-            Assert.Equal("roadmap stage 5", inputDescriptor.GetProperty("planned_phase").GetString());
+            Assert.Equal(JsonValueKind.Null, inputDescriptor.GetProperty("planned_phase").ValueKind);
             Assert.False(inputDescriptor.TryGetProperty("plannedPhase", out _));
             Assert.Equal("os_side_effect", inputDescriptor.GetProperty("safety_class").GetString());
             Assert.False(inputDescriptor.TryGetProperty("safetyClass", out _));
@@ -715,7 +689,6 @@ public sealed class McpProtocolSmokeTests
         [
             ToolNames.WindowsClipboardGet,
             ToolNames.WindowsClipboardSet,
-            ToolNames.WindowsInput,
             ToolNames.WindowsUiaAction,
         ];
 
@@ -775,7 +748,7 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
-    public async Task WindowsInputDeferredCallMaterializesMalformedActionElementWithoutTransportError()
+    public async Task WindowsInputCallMaterializesMalformedActionElementAsToolLevelFailedResult()
     {
         using Process process = StartServer();
 
@@ -813,12 +786,14 @@ public sealed class McpProtocolSmokeTests
 
             Assert.False(
                 response.RootElement.TryGetProperty("error", out _),
-                "Deferred windows.input must not fail through transport-level error for malformed action element.");
+                "Implemented windows.input must not fail through transport-level error for malformed action element.");
 
-            using JsonDocument payload = JsonDocument.Parse(GetToolTextPayload(response));
-            JsonElement root = payload.RootElement;
-            Assert.Equal(ToolNames.WindowsInput, root.GetProperty("toolName").GetString());
-            Assert.Equal("unsupported", root.GetProperty("status").GetString());
+            JsonElement result = response.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("isError").GetBoolean());
+            JsonElement root = result.GetProperty("structuredContent");
+            Assert.Equal(InputStatusValues.Failed, root.GetProperty("status").GetString());
+            Assert.Equal(InputStatusValues.Failed, root.GetProperty("decision").GetString());
+            Assert.Equal(InputFailureCodeValues.InvalidRequest, root.GetProperty("failureCode").GetString());
         }
         finally
         {
@@ -1147,18 +1122,6 @@ public sealed class McpProtocolSmokeTests
         {
             ToolNames.WindowsClipboardGet => new { },
             ToolNames.WindowsClipboardSet => new { value = "smoke" },
-            ToolNames.WindowsInput => new
-            {
-                actions = new[]
-                {
-                    new
-                    {
-                        type = InputActionTypeValues.Click,
-                        point = new { x = 10, y = 20 },
-                        coordinateSpace = InputCoordinateSpaceValues.Screen,
-                    },
-                },
-            },
             ToolNames.WindowsUiaAction => new { elementId = "root", action = "invoke" },
             _ => throw new InvalidOperationException($"Неизвестный deferred tool '{toolName}' для smoke invocation contract."),
         };

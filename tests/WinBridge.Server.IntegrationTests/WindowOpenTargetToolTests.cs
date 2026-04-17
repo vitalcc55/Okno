@@ -288,6 +288,7 @@ public sealed class WindowOpenTargetToolTests
                 new FakeWaitService(),
                 waitResultMaterializer,
                 gate,
+                new FakeInputService(),
                 new FakeProcessLaunchService(),
                 effectiveOpenTargetService),
             gate,

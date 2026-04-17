@@ -6,6 +6,7 @@ public static class InputFailureCodeValues
     public const string UnsupportedActionType = "unsupported_action_type";
     public const string UnsupportedCoordinateSpace = "unsupported_coordinate_space";
     public const string MissingTarget = "missing_target";
+    public const string TargetPreflightFailed = "target_preflight_failed";
     public const string StaleExplicitTarget = "stale_explicit_target";
     public const string StaleAttachedTarget = "stale_attached_target";
     public const string TargetNotForeground = "target_not_foreground";

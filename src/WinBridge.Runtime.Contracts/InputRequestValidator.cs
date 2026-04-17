@@ -4,6 +4,8 @@ namespace WinBridge.Runtime.Contracts;
 
 public static class InputRequestValidator
 {
+    public const int MaxActionCount = 16;
+
     public static bool TryValidateStructure(
         InputRequest request,
         out string? failureCode,
@@ -72,10 +74,10 @@ public static class InputRequestValidator
             return false;
         }
 
-        if (request.Actions.Count > 16)
+        if (request.Actions.Count > MaxActionCount)
         {
             failureCode = InputFailureCodeValues.InvalidRequest;
-            reason = "Текущий contract windows.input допускает не более 16 действий в одном пакете.";
+            reason = $"Текущий contract windows.input допускает не более {MaxActionCount} действий в одном пакете.";
             return false;
         }
 

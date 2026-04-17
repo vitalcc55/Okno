@@ -10,11 +10,7 @@ internal sealed class Win32InputService(
     TimeProvider timeProvider) : IInputService
 {
     private static readonly string[] SupportedActionTypes =
-    [
-        InputActionTypeValues.Move,
-        InputActionTypeValues.Click,
-        InputActionTypeValues.DoubleClick,
-    ];
+    [.. InputClickFirstSubsetContract.SupportedActionTypes];
 
     private static readonly TimeSpan DoubleClickDelay = TimeSpan.FromMilliseconds(50);
 
@@ -250,6 +246,22 @@ internal sealed class Win32InputService(
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && batch.CommittedSideEffectContext is not null)
         {
             return batch.MaterializeExceptionCancellation(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (batch.HasCommittedSideEffectForCurrentAction)
+        {
+            throw new InputExecutionFailureException(
+                batch.MaterializeUnexpectedFailureAfterCommittedSideEffect(),
+                exception);
+        }
+        catch (Exception exception) when (batch.CompletedActionCount > 0)
+        {
+            throw new InputExecutionFailureException(
+                batch.MaterializeUnexpectedFailureAfterCompletedActions(),
+                exception);
         }
 
         if (batch.TryMaterializeCancellationAfterBatchCompleted(cancellationToken, out InputResult? finalCancellationResult))

@@ -37,6 +37,11 @@ internal sealed class InputBatchExecutionState
 
     public InputCommittedSideEffectContext? CommittedSideEffectContext { get; private set; }
 
+    public bool HasCommittedSideEffectForCurrentAction =>
+        CurrentAction is not null
+        && CommittedSideEffectContext is not null
+        && CommittedSideEffectContext.ActionIndex == CurrentAction.ActionIndex;
+
     public void BeginAction(int actionIndex, InputAction action, string? effectiveButton)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -197,6 +202,55 @@ internal sealed class InputBatchExecutionState
         }
 
         return MaterializeCancellationResult(decision);
+    }
+
+    public InputResult MaterializeUnexpectedFailureAfterCommittedSideEffect()
+    {
+        InputActionExecutionState current = EnsureCurrentAction();
+        if (!HasCommittedSideEffectForCurrentAction)
+        {
+            throw new InvalidOperationException("Unexpected failure after side effect требует committed side effect context текущего action.");
+        }
+
+        const string reason = "Runtime столкнулся с unexpected failure после committed input side effect; retry без явной проверки результата небезопасен.";
+
+        actionResults.Add(CreateFailedActionResult(
+            current.Action,
+            InputFailureCodeValues.InputDispatchFailed,
+            reason,
+            ResolveFailureResolvedScreenPoint(),
+            CommittedSideEffectContext!.Button));
+
+        return new(
+            Status: InputStatusValues.Failed,
+            Decision: InputStatusValues.Failed,
+            FailureCode: InputFailureCodeValues.InputDispatchFailed,
+            Reason: reason,
+            TargetHwnd: current.TargetHwnd ?? initialTargetHwnd,
+            TargetSource: TargetSource,
+            CompletedActionCount: CompletedActionCount,
+            FailedActionIndex: current.ActionIndex,
+            Actions: actionResults);
+    }
+
+    public InputResult MaterializeUnexpectedFailureAfterCompletedActions()
+    {
+        if (CompletedActionCount <= 0)
+        {
+            throw new InvalidOperationException("Batch-level unexpected failure materialization требует хотя бы один completed action.");
+        }
+
+        const string reason = "Runtime столкнулся с unexpected failure before the next input side effect; previously completed actions may already be visible, so retrying the full batch without verification is unsafe.";
+        return new(
+            Status: InputStatusValues.Failed,
+            Decision: InputStatusValues.Failed,
+            FailureCode: InputFailureCodeValues.InputDispatchFailed,
+            Reason: reason,
+            TargetHwnd: initialTargetHwnd,
+            TargetSource: TargetSource,
+            CompletedActionCount: CompletedActionCount,
+            FailedActionIndex: null,
+            Actions: actionResults);
     }
 
     public InputResult CreateInitialFailureResult(

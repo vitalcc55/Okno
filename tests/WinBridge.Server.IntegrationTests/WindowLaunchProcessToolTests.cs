@@ -400,6 +400,7 @@ public sealed class WindowLaunchProcessToolTests
                 new FakeWaitService(),
                 waitResultMaterializer,
                 gate,
+                new FakeInputService(),
                 effectiveLaunchService,
                 new FakeOpenTargetService()),
             gate,

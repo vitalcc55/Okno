@@ -150,6 +150,24 @@
         }
       },
       {
+        "name": "windows.input",
+        "capability": "windows.input",
+        "lifecycle": "implemented",
+        "safety_class": "os_side_effect",
+        "summary": "Public click-first boundary \u0434\u043B\u044F ordered batch input actions: \u043E\u0434\u0438\u043D tool \u0060windows.input\u0060 \u0441 \u0060actions[]\u0060, \u0441\u0442\u0440\u043E\u0433\u043E\u0439 target policy \u0060explicit -\u003E attached\u0060, coordinate spaces \u0060capture_pixels\u0060/\u0060screen\u0060, status model \u0060blocked/needs_confirmation/verify_needed/failed/done\u0060 \u0438 \u0431\u0435\u0437 hidden focus/capture/dry-run semantics. \u0422\u0435\u043A\u0443\u0449\u0438\u0439 shipped subset: \u0060move\u0060, \u0060click\u0060, \u0060double_click\u0060, \u0060click(button=right)\u0060.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": false,
+        "execution_policy": {
+          "policy_group": "input",
+          "risk_level": "destructive",
+          "guard_capability": "input",
+          "supports_dry_run": false,
+          "confirmation_mode": "required",
+          "redaction_class": "text_payload"
+        }
+      },
+      {
         "name": "windows.uia_snapshot",
         "capability": "windows.uia",
         "lifecycle": "implemented",
@@ -210,24 +228,6 @@
         }
       },
       {
-        "name": "windows.input",
-        "capability": "windows.input",
-        "lifecycle": "deferred",
-        "safety_class": "os_side_effect",
-        "summary": "\u0417\u0430\u043C\u043E\u0440\u043E\u0436\u0435\u043D\u043D\u044B\u0439 Package A contract \u0434\u043B\u044F ordered batch input actions: \u043E\u0434\u0438\u043D tool \u0060windows.input\u0060 \u0441 \u0060actions[]\u0060, \u0441\u0442\u0440\u043E\u0433\u043E\u0439 target policy \u0060explicit -\u003E attached\u0060, coordinate spaces \u0060capture_pixels\u0060/\u0060screen\u0060, status model \u0060blocked/needs_confirmation/verify_needed/failed/done\u0060 \u0438 \u0431\u0435\u0437 hidden focus/capture/dry-run semantics \u0434\u043E click-first runtime rollout.",
-        "planned_phase": "roadmap stage 5",
-        "suggested_alternative": "\u0414\u043E click-first runtime rollout \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 \u044F\u0432\u043D\u044B\u0439 activate/capture/wait loop \u0438 \u043E\u0440\u0438\u0435\u043D\u0442\u0438\u0440\u0443\u0439\u0441\u044F \u043D\u0430 \u0437\u0430\u043C\u043E\u0440\u043E\u0436\u0435\u043D\u043D\u044B\u0439 contract \u0438\u0437 okno.contract.",
-        "smoke_required": false,
-        "execution_policy": {
-          "policy_group": "input",
-          "risk_level": "destructive",
-          "guard_capability": "input",
-          "supports_dry_run": false,
-          "confirmation_mode": "required",
-          "redaction_class": "text_payload"
-        }
-      },
-      {
         "name": "windows.uia_action",
         "capability": "windows.uia",
         "lifecycle": "deferred",
@@ -258,6 +258,7 @@
       "windows.capture",
       "windows.launch_process",
       "windows.open_target",
+      "windows.input",
       "windows.uia_snapshot",
       "windows.wait"
     ],
@@ -277,7 +278,6 @@
     "deferred_phase_map": {
       "windows.clipboard_get": "roadmap stage 4",
       "windows.clipboard_set": "roadmap stage 4",
-      "windows.input": "roadmap stage 5",
       "windows.uia_action": "roadmap stage 7"
     }
   },

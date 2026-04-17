@@ -291,6 +291,7 @@ public sealed class WindowWaitToolTests
                 waitService,
                 waitResultMaterializer,
                 new FakeToolExecutionGate(),
+                new FakeInputService(),
                 new FakeProcessLaunchService(),
                 new FakeOpenTargetService()),
             options.EventsPath);

@@ -16,6 +16,7 @@ using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Windows.Input;
 using WinBridge.Runtime.Windows.Launch;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Runtime.Windows.UIA;
@@ -36,6 +37,7 @@ public sealed class WindowTools
 
     private readonly AuditLog _auditLog;
     private readonly ICaptureService _captureService;
+    private readonly IInputService _inputService;
     private readonly IMonitorManager _monitorManager;
     private readonly IOpenTargetService _openTargetService;
     private readonly IProcessLaunchService _processLaunchService;
@@ -48,7 +50,7 @@ public sealed class WindowTools
     private readonly IWindowManager _windowManager;
     private readonly IWindowTargetResolver _windowTargetResolver;
 
-    public WindowTools(
+    internal WindowTools(
         AuditLog auditLog,
         ISessionManager sessionManager,
         IWindowManager windowManager,
@@ -60,11 +62,13 @@ public sealed class WindowTools
         IWaitService waitService,
         WaitResultMaterializer waitResultMaterializer,
         IToolExecutionGate toolExecutionGate,
+        IInputService inputService,
         IProcessLaunchService processLaunchService,
         IOpenTargetService openTargetService)
     {
         _auditLog = auditLog;
         _captureService = captureService;
+        _inputService = inputService;
         _monitorManager = monitorManager;
         _openTargetService = openTargetService;
         _processLaunchService = processLaunchService;
@@ -533,8 +537,52 @@ public sealed class WindowTools
     public DeferredToolResult ClipboardSet(string value) =>
         Deferred(ToolNames.WindowsClipboardSet);
 
-    public DeferredToolResult Input() =>
-        Deferred(ToolNames.WindowsInput);
+    public Task<CallToolResult> Input(
+        InputRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteInputAsync(request, new(true, request, null, null), cancellationToken);
+    }
+
+    public Task<CallToolResult> Input(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requestContext);
+        InputTransportBinding binding = BindInputRequest(requestContext);
+        return ExecuteInputAsync(binding.Request, binding, cancellationToken);
+    }
+
+    private Task<CallToolResult> ExecuteInputAsync(
+        InputRequest request,
+        InputTransportBinding binding,
+        CancellationToken cancellationToken)
+    {
+        ToolExecutionPolicyDescriptor policy = ToolContractManifest.ResolveExecutionPolicy(ToolNames.WindowsInput)
+            ?? throw new InvalidOperationException("Execution policy for windows.input is not configured.");
+        InputInvocationContext context = CreateInputInvocationContext(request, binding);
+        if (!context.Validation.IsValid)
+        {
+            return Task.FromResult(CreatePreGateInvalidInputToolResult(policy, context));
+        }
+
+        ToolExecutionIntent intent = new(
+            IsDryRunRequested: false,
+            ConfirmationGranted: request.Confirm,
+            PreviewAvailable: false);
+
+        return RuntimeToolExecution.RunGatedAsync(
+            _auditLog,
+            context.Snapshot,
+            ToolNames.WindowsInput,
+            context.AuditRequest,
+            policy,
+            intent,
+            _toolExecutionGate,
+            (invocation, decision) => ExecuteAllowedInputAsync(invocation, context, decision, cancellationToken),
+            (invocation, decision) => Task.FromResult(CreateRejectedInputToolResult(invocation, context, decision)));
+    }
 
     [Description(ToolDescriptions.WindowsUiaSnapshotTool)]
     [McpServerTool(
@@ -876,6 +924,89 @@ public sealed class WindowTools
         return CreateToolResult(failedResult, isError: true);
     }
 
+    private async Task<CallToolResult> ExecuteAllowedInputAsync(
+        AuditInvocationScope invocation,
+        InputInvocationContext context,
+        ToolExecutionDecision decision,
+        CancellationToken cancellationToken)
+    {
+        if (!context.Validation.IsValid)
+        {
+            return CreateInvalidInputToolResult(invocation, context);
+        }
+
+        try
+        {
+            InputExecutionContext executionContext = new(context.AttachedWindow);
+            InputResult runtimeResult = await _inputService
+                .ExecuteAsync(context.Request, executionContext, cancellationToken)
+                .ConfigureAwait(false);
+            invocation.CompleteBestEffort(
+                runtimeResult.Status,
+                CreateInputCompletionMessage(runtimeResult),
+                data: CreateInputAuditData(runtimeResult));
+            return CreateToolResult(runtimeResult, isError: InputStatusIsToolError(runtimeResult.Status));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (InputExecutionFailureException exception)
+        {
+            InputResult failedResult = exception.Result;
+            invocation.CompleteSanitizedFailureBestEffort(
+                failedResult.Reason ?? "Server не смог завершить windows.input request.",
+                exception.InnerException ?? exception,
+                failedResult.TargetHwnd,
+                data: CreateInputAuditData(failedResult));
+            return CreateToolResult(failedResult, isError: true);
+        }
+        catch (Exception exception)
+        {
+            InputResult failedResult = CreateUnexpectedInputFailureResult(context);
+            invocation.CompleteSanitizedFailureBestEffort(
+                failedResult.Reason ?? "Server не смог завершить windows.input request.",
+                exception,
+                failedResult.TargetHwnd,
+                data: CreateInputAuditData(failedResult));
+            return CreateToolResult(failedResult, isError: true);
+        }
+    }
+
+    private static CallToolResult CreateRejectedInputToolResult(
+        AuditInvocationScope invocation,
+        InputInvocationContext context,
+        ToolExecutionDecision decision)
+    {
+        if (!context.Validation.IsValid)
+        {
+            return CreateInvalidInputToolResult(invocation, context);
+        }
+
+        InputResult rejectedResult = CreateRejectedInputResult(context, decision);
+        invocation.CompleteBestEffort(
+            rejectedResult.Status,
+            CreateInputCompletionMessage(rejectedResult),
+            data: CreateInputAuditData(rejectedResult));
+        return CreateToolResult(rejectedResult, isError: true);
+    }
+
+    private static CallToolResult CreateInvalidInputToolResult(
+        AuditInvocationScope invocation,
+        InputInvocationContext context)
+    {
+        InputResult failedResult = CreateInputFailureResult(
+            context,
+            context.Validation.FailureCode ?? InputFailureCodeValues.InvalidRequest,
+            context.Validation.Reason ?? "Input request не прошёл validation.");
+        invocation.CompleteBestEffort(
+            failedResult.Status,
+            failedResult.Reason ?? "Input request не прошёл validation.",
+            failedResult.TargetHwnd,
+            data: CreateInputAuditData(failedResult));
+        return CreateToolResult(failedResult, isError: true);
+    }
+
     private DeferredToolResult Deferred(string toolName)
         => RuntimeToolExecution.RunDeferred(
             _auditLog,
@@ -957,6 +1088,98 @@ public sealed class WindowTools
         return new(true, null, null, preview!.TargetKind, preview);
     }
 
+    private InputInvocationContext CreateInputInvocationContext(
+        InputRequest request,
+        InputTransportBinding binding)
+    {
+        InputBoundaryValidation validation = ValidateInputRequest(request, binding);
+        SessionSnapshot snapshot = _sessionManager.GetSnapshot();
+        WindowDescriptor? attachedWindow = snapshot.AttachedWindow?.Window;
+        InputTargetResolution targetResolution = new();
+        long? effectiveTargetHwnd = request.Hwnd ?? attachedWindow?.Hwnd;
+        string? targetSource = null;
+
+        if (validation.IsValid)
+        {
+            try
+            {
+                targetResolution = _windowTargetResolver.ResolveInputTarget(request.Hwnd, attachedWindow);
+                effectiveTargetHwnd = targetResolution.Window?.Hwnd ?? effectiveTargetHwnd;
+                targetSource = targetResolution.Source;
+                if (targetResolution.Window is null)
+                {
+                    validation = new(
+                        false,
+                        targetResolution.FailureCode ?? InputFailureCodeValues.MissingTarget,
+                        CreateInputTargetFailureReason(targetResolution.FailureCode));
+                }
+            }
+            catch (Exception)
+            {
+                validation = new(
+                    false,
+                    InputFailureCodeValues.TargetPreflightFailed,
+                    CreateInputTargetFailureReason(InputFailureCodeValues.TargetPreflightFailed));
+            }
+        }
+
+        return new(
+            Request: request,
+            AuditRequest: InputClickFirstSubsetContract.CreateAuditRequestSummary(request),
+            Snapshot: snapshot,
+            AttachedWindow: attachedWindow,
+            EffectiveTargetHwnd: effectiveTargetHwnd,
+            TargetSource: targetSource,
+            Validation: validation);
+    }
+
+    private static InputBoundaryValidation ValidateInputRequest(
+        InputRequest request,
+        InputTransportBinding binding)
+    {
+        if (!binding.IsSuccess)
+        {
+            return new(false, binding.FailureCode, binding.Reason);
+        }
+
+        if (!InputRequestValidator.TryValidateSupportedSubset(
+                request,
+                InputClickFirstSubsetContract.SupportedActionTypes,
+                out string? failureCode,
+                out string? reason))
+        {
+            return new(false, failureCode, reason);
+        }
+
+        if (!InputClickFirstSubsetContract.TryValidateRequest(request, out failureCode, out reason))
+        {
+            return new(false, failureCode, reason);
+        }
+
+        return new(true, null, null);
+    }
+
+    private CallToolResult CreatePreGateInvalidInputToolResult(
+        ToolExecutionPolicyDescriptor policy,
+        InputInvocationContext context)
+    {
+        using AuditInvocationScope invocation = _auditLog.BeginInvocation(
+            ToolNames.WindowsInput,
+            context.AuditRequest,
+            context.Snapshot,
+            policy);
+
+        try
+        {
+            return CreateInvalidInputToolResult(invocation, context);
+        }
+        catch (Exception exception)
+        {
+            invocation.Fail(exception, context.EffectiveTargetHwnd);
+            throw;
+        }
+    }
+
     private static LaunchProcessTransportBinding BindLaunchProcessRequest(
         RequestContext<CallToolRequestParams> requestContext)
     {
@@ -998,6 +1221,28 @@ public sealed class WindowTools
                 new OpenTargetRequest(),
                 OpenTargetFailureCodeValues.InvalidRequest,
                 $"Transport arguments для open_target не прошли binding: {exception.Message}");
+        }
+    }
+
+    private static InputTransportBinding BindInputRequest(
+        RequestContext<CallToolRequestParams> requestContext)
+    {
+        IDictionary<string, JsonElement>? arguments = requestContext.Params?.Arguments;
+
+        try
+        {
+            JsonElement rawArguments = JsonSerializer.SerializeToElement(arguments);
+            InputRequest request = rawArguments.Deserialize<InputRequest>()
+                ?? throw new JsonException("Transport arguments did not deserialize to InputRequest.");
+            return new(true, request, null, null);
+        }
+        catch (JsonException exception)
+        {
+            return new(
+                false,
+                new InputRequest(),
+                InputFailureCodeValues.InvalidRequest,
+                $"Transport arguments для windows.input не прошли binding: {exception.Message}");
         }
     }
 
@@ -1100,6 +1345,51 @@ public sealed class WindowTools
             UriScheme: preview?.UriScheme,
             ArtifactPath: null);
 
+    private static InputResult CreateRejectedInputResult(
+        InputInvocationContext context,
+        ToolExecutionDecision decision) =>
+        new(
+            Status: ToInputRejectedStatus(decision.Kind),
+            Decision: ToInputRejectedStatus(decision.Kind),
+            Reason: CreateInputGateReason(decision.Kind),
+            TargetHwnd: context.EffectiveTargetHwnd,
+            TargetSource: context.TargetSource,
+            RiskLevel: ToSnakeCase(decision.RiskLevel),
+            GuardCapability: decision.GuardCapability,
+            RequiresConfirmation: decision.RequiresConfirmation,
+            DryRunSupported: decision.DryRunSupported,
+            Reasons: decision.Reasons);
+
+    private static InputResult CreateInputFailureResult(
+        InputInvocationContext context,
+        string failureCode,
+        string reason) =>
+        new(
+            Status: InputStatusValues.Failed,
+            Decision: InputStatusValues.Failed,
+            FailureCode: failureCode,
+            Reason: reason,
+            TargetHwnd: context.EffectiveTargetHwnd,
+            TargetSource: context.TargetSource);
+
+    private static InputResult CreateUnexpectedInputFailureResult(InputInvocationContext context) =>
+        new(
+            Status: InputStatusValues.Failed,
+            Decision: InputStatusValues.Failed,
+            Reason: "Server не смог завершить windows.input request.",
+            TargetHwnd: context.EffectiveTargetHwnd,
+            TargetSource: context.TargetSource);
+
+    private static string CreateInputTargetFailureReason(string? failureCode) =>
+        failureCode switch
+        {
+            InputFailureCodeValues.StaleExplicitTarget => "Explicit target больше не совпадает с live window identity.",
+            InputFailureCodeValues.StaleAttachedTarget => "Attached target больше не совпадает с live window identity.",
+            InputFailureCodeValues.MissingTarget => "windows.input требует explicit или attached target без active fallback.",
+            InputFailureCodeValues.TargetPreflightFailed => "Server не смог выполнить target preflight для windows.input.",
+            _ => "Server не смог разрешить target для windows.input.",
+        };
+
     private static Dictionary<string, string?> CreateLaunchProcessAuditData(LaunchProcessResult result) =>
         new Dictionary<string, string?>
         {
@@ -1113,6 +1403,20 @@ public sealed class WindowTools
             ["main_window_observation_status"] = result.MainWindowObservationStatus,
             ["preview_resolution_mode"] = result.Preview?.ResolutionMode,
             ["preview_argument_count"] = result.Preview?.ArgumentCount.ToString(CultureInfo.InvariantCulture),
+        };
+
+    private static Dictionary<string, string?> CreateInputAuditData(InputResult result) =>
+        new()
+        {
+            ["status"] = result.Status,
+            ["decision"] = result.Decision,
+            ["result_mode"] = result.ResultMode,
+            ["failure_code"] = result.FailureCode,
+            ["target_hwnd"] = result.TargetHwnd?.ToString(CultureInfo.InvariantCulture),
+            ["target_source"] = result.TargetSource,
+            ["completed_action_count"] = result.CompletedActionCount.ToString(CultureInfo.InvariantCulture),
+            ["failed_action_index"] = result.FailedActionIndex?.ToString(CultureInfo.InvariantCulture),
+            ["artifact_path"] = result.ArtifactPath,
         };
 
     private static Dictionary<string, string?> CreateOpenTargetAuditData(OpenTargetResult result) =>
@@ -1150,6 +1454,16 @@ public sealed class WindowTools
         };
     }
 
+    private static string CreateInputCompletionMessage(InputResult result) =>
+        result.Status switch
+        {
+            InputStatusValues.Blocked => "Input request заблокирован shared gate.",
+            InputStatusValues.NeedsConfirmation => "Input request требует явного подтверждения.",
+            InputStatusValues.VerifyNeeded => "Input request выполнен и требует явной post-action проверки.",
+            InputStatusValues.Done => "Input request успешно завершён.",
+            _ => result.Reason ?? "Input request завершился ошибкой.",
+        };
+
     private static string CreateOpenTargetCompletionMessage(OpenTargetResult result)
     {
         if (result.Status == OpenTargetStatusValues.Done && result.Preview is not null && result.AcceptedAtUtc is null)
@@ -1178,6 +1492,15 @@ public sealed class WindowTools
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
 
+    private static string CreateInputGateReason(ToolExecutionDecisionKind kind) =>
+        kind switch
+        {
+            ToolExecutionDecisionKind.Blocked => "Input request заблокирован shared gate.",
+            ToolExecutionDecisionKind.NeedsConfirmation => "Input request требует явного подтверждения.",
+            ToolExecutionDecisionKind.DryRunOnly => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+
     private static string CreateOpenTargetGateReason(ToolExecutionDecisionKind kind) =>
         kind switch
         {
@@ -1193,6 +1516,15 @@ public sealed class WindowTools
             ToolExecutionDecisionKind.Blocked => LaunchProcessStatusValues.Blocked,
             ToolExecutionDecisionKind.NeedsConfirmation => LaunchProcessStatusValues.NeedsConfirmation,
             ToolExecutionDecisionKind.DryRunOnly => LaunchProcessStatusValues.DryRunOnly,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+
+    private static string ToInputRejectedStatus(ToolExecutionDecisionKind kind) =>
+        kind switch
+        {
+            ToolExecutionDecisionKind.Blocked => InputStatusValues.Blocked,
+            ToolExecutionDecisionKind.NeedsConfirmation => InputStatusValues.NeedsConfirmation,
+            ToolExecutionDecisionKind.DryRunOnly => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
 
@@ -1285,6 +1617,10 @@ public sealed class WindowTools
     private static bool UiaSnapshotStatusIsToolError(string status) =>
         !string.Equals(status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal);
 
+    private static bool InputStatusIsToolError(string status) =>
+        !string.Equals(status, InputStatusValues.Done, StringComparison.Ordinal)
+        && !string.Equals(status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal);
+
     private static bool LaunchProcessStatusIsToolError(string status) =>
         !string.Equals(status, LaunchProcessStatusValues.Done, StringComparison.Ordinal);
 
@@ -1353,6 +1689,26 @@ public sealed class WindowTools
     private readonly record struct OpenTargetTransportBinding(
         bool IsSuccess,
         OpenTargetRequest Request,
+        string? FailureCode,
+        string? Reason);
+
+    private readonly record struct InputInvocationContext(
+        InputRequest Request,
+        object AuditRequest,
+        SessionSnapshot Snapshot,
+        WindowDescriptor? AttachedWindow,
+        long? EffectiveTargetHwnd,
+        string? TargetSource,
+        InputBoundaryValidation Validation);
+
+    private readonly record struct InputBoundaryValidation(
+        bool IsValid,
+        string? FailureCode,
+        string? Reason);
+
+    private readonly record struct InputTransportBinding(
+        bool IsSuccess,
+        InputRequest Request,
         string? FailureCode,
         string? Reason);
 

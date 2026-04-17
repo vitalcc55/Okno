@@ -35,9 +35,9 @@
 - `windows.uia_snapshot`
 - `windows.wait`
 - `okno.health`
-- будущий `windows.launch_process`
-- будущий `windows.open_target`
-- будущий `windows.input`
+- `windows.launch_process`
+- `windows.open_target`
+- `windows.input` click-first public boundary
 
 ### Что не должно входить в core runtime
 
@@ -49,7 +49,7 @@
 
 ## Input compatibility target
 
-Future `windows.input` нужно проектировать так, чтобы vocabulary было совместимо с типовым GUI action loop:
+`windows.input` уже shipped в click-first public boundary и дальше должен расширяться так, чтобы vocabulary оставалось совместимо с типовым GUI action loop:
 
 - `move`
 - `click`
@@ -61,7 +61,7 @@ Future `windows.input` нужно проектировать так, чтобы 
 
 При этом остаются Okno-native расширения:
 
-- `click(button=right)` как quiet path для правой кнопки, а не отдельный public action literal
+- `click(button=right)` уже shipped как quiet path для правой кнопки, а не отдельный public action literal
 - `hotkey`
 - `paste`
 

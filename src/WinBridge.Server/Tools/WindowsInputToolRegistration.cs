@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using WinBridge.Runtime.Contracts;
@@ -10,12 +9,6 @@ namespace WinBridge.Server.Tools;
 
 internal static class WindowsInputToolRegistration
 {
-    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
-
     public static McpServerTool Create(Func<WindowTools> getWindowTools)
     {
         ArgumentNullException.ThrowIfNull(getWindowTools);
@@ -23,7 +16,7 @@ internal static class WindowsInputToolRegistration
         ValueTask<CallToolResult> Handler(
             RequestContext<CallToolRequestParams> requestContext,
             CancellationToken cancellationToken) =>
-            ValueTask.FromResult(CreateToolResult(getWindowTools().Input()));
+            new(getWindowTools().Input(requestContext, cancellationToken));
 
         McpServerTool tool = McpServerTool.Create(
             (Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>>)Handler,
@@ -42,24 +35,6 @@ internal static class WindowsInputToolRegistration
         return tool;
     }
 
-    private static CallToolResult CreateToolResult(DeferredToolResult payload)
-    {
-        JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, PayloadJsonOptions);
-
-        return new CallToolResult
-        {
-            IsError = false,
-            StructuredContent = structuredContent,
-            Content =
-            [
-                new TextContentBlock
-                {
-                    Text = JsonSerializer.Serialize(payload, PayloadJsonOptions),
-                },
-            ],
-        };
-    }
-
     private static JsonElement CreateInputSchema()
     {
         JsonObject schema = new()
@@ -73,18 +48,18 @@ internal static class WindowsInputToolRegistration
                     ["type"] = "array",
                     ["minItems"] = 1,
                     ["maxItems"] = 16,
-                    ["description"] = "Ordered batch of frozen Package A input actions. Runtime dispatch is deferred; schema is frozen for Package B/C.",
+                    ["description"] = ToolDescriptions.InputActionsParameter,
                     ["items"] = CreateActionItemSchema(),
                 },
                 ["hwnd"] = new JsonObject
                 {
                     ["type"] = CreateTypeSet("integer", "null"),
-                    ["description"] = "Optional explicit HWND. Input target policy is explicit -> attached; no active fallback.",
+                    ["description"] = ToolDescriptions.InputHwndParameter,
                 },
                 ["confirm"] = new JsonObject
                 {
                     ["type"] = "boolean",
-                    ["description"] = "Reserved confirmation flag for the shared execution gate; supports_dry_run=false.",
+                    ["description"] = ToolDescriptions.InputConfirmParameter,
                 },
             },
             ["required"] = CreateStringArray("actions"),
@@ -97,7 +72,7 @@ internal static class WindowsInputToolRegistration
     private static JsonObject CreateActionItemSchema()
     {
         JsonArray branches = [];
-        foreach (InputActionContract contract in InputActionContractCatalog.All)
+        foreach (InputActionContract contract in InputClickFirstSubsetContract.Actions)
         {
             branches.Add(CreateActionBranch(contract));
         }
@@ -105,14 +80,14 @@ internal static class WindowsInputToolRegistration
         return new JsonObject
         {
             ["type"] = "object",
-            ["properties"] = CreateActionProperties(AllActionFields(), requiredFields: InputActionField.None),
+            ["properties"] = CreateActionProperties(AllActionFields()),
             ["oneOf"] = branches,
         };
     }
 
     private static JsonObject CreateActionBranch(InputActionContract contract)
     {
-        JsonObject properties = CreateActionProperties(contract.AllowedFields, contract.RequiredFields);
+        JsonObject properties = CreateActionProperties(contract.AllowedFields);
         properties["type"] = CreateTypePropertySchema(contract.ActionType);
 
         JsonObject branch = new()
@@ -132,7 +107,7 @@ internal static class WindowsInputToolRegistration
         return branch;
     }
 
-    private static JsonObject CreateActionProperties(InputActionField fields, InputActionField requiredFields)
+    private static JsonObject CreateActionProperties(InputActionField fields)
     {
         JsonObject properties = [];
 
@@ -149,12 +124,6 @@ internal static class WindowsInputToolRegistration
         {
             InputActionField.Type => CreateTypePropertySchema(),
             InputActionField.Point => CreatePointSchema(nullable: false),
-            InputActionField.Path => new JsonObject
-            {
-                ["type"] = "array",
-                ["minItems"] = 2,
-                ["items"] = CreatePointSchema(nullable: false),
-            },
             InputActionField.CoordinateSpace => new JsonObject
             {
                 ["type"] = "string",
@@ -164,49 +133,8 @@ internal static class WindowsInputToolRegistration
             InputActionField.Button => new JsonObject
             {
                 ["type"] = "string",
-                ["enum"] = CreateStringArray(InputButtonValues.Left, InputButtonValues.Right, InputButtonValues.Middle),
-                ["description"] = "Pointer button: left, right, or middle. Right click is click(button=right), not a separate action literal.",
-            },
-            InputActionField.Keys => new JsonObject
-            {
-                ["type"] = "array",
-                ["items"] = new JsonObject
-                {
-                    ["type"] = "string",
-                    ["enum"] = CreateStringArray(InputModifierKeyValues.Ctrl, InputModifierKeyValues.Alt, InputModifierKeyValues.Shift, InputModifierKeyValues.Win),
-                },
-                ["description"] = "Optional modifier keys for pointer actions.",
-            },
-            InputActionField.Text => new JsonObject
-            {
-                ["type"] = "string",
-                ["description"] = "Literal text payload for type actions; whitespace is preserved.",
-            },
-            InputActionField.Key => new JsonObject
-            {
-                ["type"] = "string",
-                ["minLength"] = 1,
-                ["pattern"] = InputActionScalarConstraints.NonWhitespacePattern,
-                ["description"] = "Key identifier for keypress actions.",
-            },
-            InputActionField.Repeat => new JsonObject
-            {
-                ["type"] = "integer",
-                ["minimum"] = InputActionScalarConstraints.MinimumRepeat,
-                ["description"] = "Optional repeat count for keypress actions.",
-            },
-            InputActionField.Delta => new JsonObject
-            {
-                ["type"] = "integer",
-                ["not"] = new JsonObject { ["const"] = InputActionScalarConstraints.InvalidScrollDelta },
-                ["description"] = "Scroll delta for scroll actions.",
-            },
-            InputActionField.Direction => new JsonObject
-            {
-                ["type"] = "string",
-                ["minLength"] = 1,
-                ["pattern"] = InputActionScalarConstraints.NonWhitespacePattern,
-                ["description"] = "Scroll direction for scroll actions.",
+                ["enum"] = CreateStringArray(InputButtonValues.Left, InputButtonValues.Right),
+                ["description"] = "Pointer button: left or right. Right click is click(button=right), not a separate action literal.",
             },
             InputActionField.CaptureReference => CreateCaptureReferenceSchema(nullable: false),
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, null),
@@ -217,11 +145,14 @@ internal static class WindowsInputToolRegistration
         JsonObject schema = new()
         {
             ["type"] = "string",
-            ["description"] = "Action literal: move, click, double_click, drag, scroll, type, or keypress.",
+            ["description"] = "Action literal: move, click, or double_click.",
         };
 
         schema["enum"] = actionType is null
-            ? CreateStringArray(InputActionTypeValues.Move, InputActionTypeValues.Click, InputActionTypeValues.DoubleClick, InputActionTypeValues.Drag, InputActionTypeValues.Scroll, InputActionTypeValues.Type, InputActionTypeValues.Keypress)
+            ? CreateStringArray(
+                InputActionTypeValues.Move,
+                InputActionTypeValues.Click,
+                InputActionTypeValues.DoubleClick)
             : CreateStringArray(actionType);
 
         return schema;
@@ -264,8 +195,16 @@ internal static class WindowsInputToolRegistration
                     },
                     ["required"] = CreateStringArray("left", "top", "right", "bottom"),
                 },
-                ["pixelWidth"] = new JsonObject { ["type"] = "integer", ["minimum"] = InputActionScalarConstraints.MinimumCapturePixelDimension },
-                ["pixelHeight"] = new JsonObject { ["type"] = "integer", ["minimum"] = InputActionScalarConstraints.MinimumCapturePixelDimension },
+                ["pixelWidth"] = new JsonObject
+                {
+                    ["type"] = "integer",
+                    ["minimum"] = InputActionScalarConstraints.MinimumCapturePixelDimension,
+                },
+                ["pixelHeight"] = new JsonObject
+                {
+                    ["type"] = "integer",
+                    ["minimum"] = InputActionScalarConstraints.MinimumCapturePixelDimension,
+                },
                 ["effectiveDpi"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
                 ["capturedAtUtc"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
             },
@@ -289,7 +228,10 @@ internal static class WindowsInputToolRegistration
                 {
                     ["properties"] = new JsonObject
                     {
-                        ["coordinateSpace"] = new JsonObject { ["enum"] = CreateStringArray(InputCoordinateSpaceValues.CapturePixels) },
+                        ["coordinateSpace"] = new JsonObject
+                        {
+                            ["enum"] = CreateStringArray(InputCoordinateSpaceValues.CapturePixels),
+                        },
                     },
                     ["required"] = CreateStringArray("coordinateSpace"),
                 },
@@ -306,7 +248,10 @@ internal static class WindowsInputToolRegistration
             {
                 ["properties"] = new JsonObject
                 {
-                    ["coordinateSpace"] = new JsonObject { ["enum"] = CreateStringArray(InputCoordinateSpaceValues.Screen) },
+                    ["coordinateSpace"] = new JsonObject
+                    {
+                        ["enum"] = CreateStringArray(InputCoordinateSpaceValues.Screen),
+                    },
                 },
                 ["required"] = CreateStringArray("coordinateSpace"),
             },
@@ -358,7 +303,7 @@ internal static class WindowsInputToolRegistration
     private static InputActionField AllActionFields()
     {
         InputActionField result = InputActionField.None;
-        foreach (InputActionContract contract in InputActionContractCatalog.All)
+        foreach (InputActionContract contract in InputClickFirstSubsetContract.Actions)
         {
             result |= contract.AllowedFields;
         }

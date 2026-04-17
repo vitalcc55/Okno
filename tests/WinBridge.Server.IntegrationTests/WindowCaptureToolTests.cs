@@ -402,6 +402,7 @@ public sealed class WindowCaptureToolTests
             new FakeWaitService(),
             waitResultMaterializer,
             new FakeToolExecutionGate(),
+            new FakeInputService(),
             new FakeProcessLaunchService(),
             new FakeOpenTargetService());
     }

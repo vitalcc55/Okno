@@ -368,6 +368,7 @@ public sealed class WindowUiaSnapshotToolTests
                 new FakeWaitService(),
                 waitResultMaterializer,
                 new FakeToolExecutionGate(),
+                new FakeInputService(),
                 new FakeProcessLaunchService(),
                 new FakeOpenTargetService()),
             options.EventsPath);

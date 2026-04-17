@@ -42,8 +42,26 @@ public static class ToolContractManifest
                 ToolExecutionConfirmationMode.Required,
                 ToolExecutionRedactionClass.LaunchPayload));
 
+    internal static ToolDescriptor FutureInputDescriptor { get; } =
+        new(
+            ToolNames.WindowsInput,
+            "windows.input",
+            ToolLifecycle.Implemented,
+            ToolSafetyClass.OsSideEffect,
+            ToolDescriptions.WindowsInputTool,
+            null,
+            null,
+            false,
+            CreateExecutionPolicy(
+                ToolExecutionPolicyGroup.Input,
+                ToolExecutionRiskLevel.Destructive,
+                CapabilitySummaryValues.Input,
+                supportsDryRun: false,
+                ToolExecutionConfirmationMode.Required,
+                ToolExecutionRedactionClass.TextPayload));
+
     public static string ContractNotes { get; } =
-        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait, public windows.launch_process, public windows.open_target и честные deferred action tools без hidden enforcement; для windows.input Package A уже замораживает one-tool contract, readiness baseline и execution_policy metadata, но public publication/runtime dispatch остаются отложенными.";
+        "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait, public windows.launch_process, public windows.open_target и public click-first `windows.input` boundary без hidden enforcement. Для `windows.input` сейчас опубликован только implemented subset `move`, `click`, `double_click`, `click(button=right)`; artifacts/events/materializer rollout остаются отдельным follow-up.";
 
     public static IReadOnlyList<ToolDescriptor> All { get; } =
         new[]
@@ -59,11 +77,11 @@ public static class ToolContractManifest
             new ToolDescriptor(ToolNames.WindowsCapture, "windows.capture", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.WindowsCaptureTool, null, null, true),
             FutureLaunchProcessDescriptor,
             FutureOpenTargetDescriptor,
+            FutureInputDescriptor,
             new ToolDescriptor(ToolNames.WindowsUiaSnapshot, "windows.uia", ToolLifecycle.Implemented, ToolSafetyClass.ReadOnly, ToolDescriptions.WindowsUiaSnapshotTool, null, null, true),
             new ToolDescriptor(ToolNames.WindowsWait, "windows.wait", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.WindowsWaitTool, null, null, true),
             new ToolDescriptor(ToolNames.WindowsClipboardGet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.ReadOnly, "Читает текущее содержимое clipboard.", "roadmap stage 4", "Clipboard path будет добавлен после skeleton runtime.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.Clipboard, ToolExecutionRiskLevel.Medium, CapabilitySummaryValues.Clipboard, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.ClipboardPayload)),
             new ToolDescriptor(ToolNames.WindowsClipboardSet, "windows.clipboard", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Записывает новое содержимое в clipboard.", "roadmap stage 4", "До clipboard-сервиса используй безопасные stub calls.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.Clipboard, ToolExecutionRiskLevel.High, CapabilitySummaryValues.Clipboard, supportsDryRun: true, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.ClipboardPayload)),
-            new ToolDescriptor(ToolNames.WindowsInput, "windows.input", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.WindowsInputTool, "roadmap stage 5", "До click-first runtime rollout используй явный activate/capture/wait loop и ориентируйся на замороженный contract из okno.contract.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.Input, ToolExecutionRiskLevel.Destructive, CapabilitySummaryValues.Input, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.TextPayload)),
             new ToolDescriptor(ToolNames.WindowsUiaAction, "windows.uia", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, "Выполняет semantic UIA action по element id.", "roadmap stage 7", "Semantic UIA actions запланированы после snapshot layer.", false, CreateExecutionPolicy(ToolExecutionPolicyGroup.UiaAction, ToolExecutionRiskLevel.High, CapabilitySummaryValues.Uia, supportsDryRun: false, ToolExecutionConfirmationMode.Required, ToolExecutionRedactionClass.TargetMetadata)),
         };
 

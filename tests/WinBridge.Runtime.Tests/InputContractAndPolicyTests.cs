@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Text.Json;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Windows.Shell;
@@ -75,8 +76,25 @@ public sealed class InputContractAndPolicyTests
         Assert.Equal("verify_needed", InputStatusValues.VerifyNeeded);
         Assert.Equal("dispatch_only", InputResultModeValues.DispatchOnly);
         Assert.Equal("postcondition_verified", InputResultModeValues.PostconditionVerified);
-        Assert.Equal("invalid_request", InputFailureCodeValues.InvalidRequest);
-        Assert.Equal("target_not_foreground", InputFailureCodeValues.TargetNotForeground);
+        Assert.Equal(
+            [
+                "invalid_request",
+                "unsupported_action_type",
+                "unsupported_coordinate_space",
+                "missing_target",
+                "target_preflight_failed",
+                "stale_explicit_target",
+                "stale_attached_target",
+                "target_not_foreground",
+                "target_minimized",
+                "target_integrity_blocked",
+                "capture_reference_required",
+                "capture_reference_stale",
+                "point_out_of_bounds",
+                "cursor_move_failed",
+                "input_dispatch_failed",
+            ],
+            GetPublicStringConstants(typeof(InputFailureCodeValues)));
     }
 
     [Fact]
@@ -1314,6 +1332,12 @@ public sealed class InputContractAndPolicyTests
     private static InputRequest DeserializeRequest(string json) =>
         JsonSerializer.Deserialize<InputRequest>(json)
         ?? throw new InvalidOperationException("JSON did not deserialize to InputRequest.");
+
+    private static string[] GetPublicStringConstants(Type type) =>
+        type.GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field.IsLiteral && field.FieldType == typeof(string))
+            .Select(field => (string)field.GetRawConstantValue()!)
+            .ToArray();
 
     private static WindowDescriptor CreateWindow(
         long hwnd,

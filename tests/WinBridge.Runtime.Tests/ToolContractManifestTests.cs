@@ -41,7 +41,7 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
-    public void ImplementedDescriptorsOnlyPublishExecutionPolicyForLaunchFamily()
+    public void ImplementedDescriptorsOnlyPublishExecutionPolicyForPolicyBearingTools()
     {
         Assert.All(
             ToolContractManifest.Implemented,
@@ -70,6 +70,19 @@ public sealed class ToolContractManifestTests
                         supportsDryRun: true,
                         ToolExecutionConfirmationMode.Required,
                         ToolExecutionRedactionClass.LaunchPayload);
+                    return;
+                }
+
+                if (descriptor.Name == ToolNames.WindowsInput)
+                {
+                    AssertExecutionPolicy(
+                        descriptor.ExecutionPolicy,
+                        ToolExecutionPolicyGroup.Input,
+                        ToolExecutionRiskLevel.Destructive,
+                        CapabilitySummaryValues.Input,
+                        supportsDryRun: false,
+                        ToolExecutionConfirmationMode.Required,
+                        ToolExecutionRedactionClass.TextPayload);
                     return;
                 }
 
@@ -252,11 +265,23 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
+    public void WindowsInputIsImplementedAndNotSmokeRequired()
+    {
+        ToolDescriptor descriptor = Assert.Single(
+            ToolContractManifest.Implemented,
+            item => item.Name == ToolNames.WindowsInput);
+
+        Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
+        Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
+        Assert.DoesNotContain(ToolNames.WindowsInput, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsInput);
+    }
+
+    [Fact]
     public void DeferredActionDescriptorsUseExpectedExecutionPolicyMetadata()
     {
         ToolDescriptor clipboardGet = Assert.Single(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsClipboardGet);
         ToolDescriptor clipboardSet = Assert.Single(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsClipboardSet);
-        ToolDescriptor input = Assert.Single(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsInput);
         ToolDescriptor uiaAction = Assert.Single(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsUiaAction);
 
         AssertExecutionPolicy(
@@ -275,14 +300,6 @@ public sealed class ToolContractManifestTests
             supportsDryRun: true,
             ToolExecutionConfirmationMode.Required,
             ToolExecutionRedactionClass.ClipboardPayload);
-        AssertExecutionPolicy(
-            input.ExecutionPolicy,
-            ToolExecutionPolicyGroup.Input,
-            ToolExecutionRiskLevel.Destructive,
-            "input",
-            supportsDryRun: false,
-            ToolExecutionConfirmationMode.Required,
-            ToolExecutionRedactionClass.TextPayload);
         AssertExecutionPolicy(
             uiaAction.ExecutionPolicy,
             ToolExecutionPolicyGroup.UiaAction,

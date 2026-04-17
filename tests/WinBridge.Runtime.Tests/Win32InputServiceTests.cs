@@ -730,6 +730,135 @@ public sealed class Win32InputServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsyncThrowsFactualFailureCarrierWhenUnexpectedExceptionOccursAfterCommittedClickSideEffect()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            DispatchClickException = new InvalidOperationException("unexpected dispatch exception"),
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputExecutionFailureException exception = await Assert.ThrowsAsync<InputExecutionFailureException>(
+            () => service.ExecuteAsync(
+                new InputRequest
+                {
+                    Hwnd = targetWindow.Hwnd,
+                    Actions =
+                    [
+                        CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                    ],
+                },
+                new InputExecutionContext(),
+                CancellationToken.None));
+
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
+        InputResult result = exception.Result;
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Equal(0, result.CompletedActionCount);
+        Assert.Equal(0, result.FailedActionIndex);
+        InputActionResult actionResult = Assert.Single(result.Actions!);
+        Assert.Equal(InputStatusValues.Failed, actionResult.Status);
+        Assert.Equal(new InputPoint(140, 260), actionResult.ResolvedScreenPoint);
+        Assert.Equal(InputButtonValues.Left, actionResult.Button);
+        Assert.Equal([InputButtonValues.Left], platform.ClickButtons);
+        Assert.Equal([new InputPoint(140, 260)], platform.DispatchPoints);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPropagatesCleanFirstActionSetupExceptionWithoutFactualCarrier()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            OnTargetSecurityProbe = probeCount =>
+            {
+                if (probeCount == 1)
+                {
+                    throw new InvalidOperationException("unexpected setup exception");
+                }
+            },
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.ExecuteAsync(
+                new InputRequest
+                {
+                    Hwnd = targetWindow.Hwnd,
+                    Actions =
+                    [
+                        CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                    ],
+                },
+                new InputExecutionContext(),
+                CancellationToken.None));
+
+        Assert.Empty(platform.MovedPoints);
+        Assert.Empty(platform.ClickButtons);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncDoesNotReusePreviousCommittedSideEffectForNextActionUnexpectedSetupFailure()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            OnTargetSecurityProbe = probeCount =>
+            {
+                if (probeCount == 2)
+                {
+                    throw new InvalidOperationException("unexpected setup exception");
+                }
+            },
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputExecutionFailureException exception = await Assert.ThrowsAsync<InputExecutionFailureException>(
+            () => service.ExecuteAsync(
+                new InputRequest
+                {
+                    Hwnd = targetWindow.Hwnd,
+                    Actions =
+                    [
+                        CreateAction(InputActionTypeValues.Move, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                        CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(150, 270)),
+                    ],
+                },
+                new InputExecutionContext(),
+                CancellationToken.None));
+
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
+        InputResult result = exception.Result;
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Equal(1, result.CompletedActionCount);
+        Assert.Null(result.FailedActionIndex);
+        InputActionResult completedAction = Assert.Single(result.Actions!);
+        Assert.Equal(InputStatusValues.VerifyNeeded, completedAction.Status);
+        Assert.Equal(new InputPoint(140, 260), completedAction.ResolvedScreenPoint);
+        Assert.Contains("before the next input side effect", result.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal([new InputPoint(140, 260)], platform.MovedPoints);
+        Assert.Empty(platform.ClickButtons);
+    }
+
+    [Fact]
     public async Task ExecuteAsyncFailsWhenAdmittedTargetIsNoLongerForegroundAtFinalDispatchBoundary()
     {
         WindowDescriptor targetWindow = CreateWindow();
@@ -1439,6 +1568,7 @@ public sealed class Win32InputServiceTests
         IInputService service = provider.GetRequiredService<IInputService>();
         IInputPlatform platform = provider.GetRequiredService<IInputPlatform>();
 
+        Assert.False(typeof(IInputService).IsPublic);
         Assert.IsType<Win32InputService>(service);
         Assert.IsType<Win32InputPlatform>(platform);
     }
@@ -1558,6 +1688,7 @@ public sealed class Win32InputServiceTests
         public Action<int>? OnMoveSideEffect { get; set; }
         public Action<int>? OnDispatchSideEffect { get; set; }
         public Action<int>? OnTargetSecurityProbe { get; set; }
+        public Exception? DispatchClickException { get; set; }
 
         public IReadOnlyList<bool> ClickResults
         {
@@ -1772,6 +1903,10 @@ public sealed class Win32InputServiceTests
             ClickButtons.Add(context.LogicalButton);
             DispatchPoints.Add(context.ExpectedScreenPoint);
             OnDispatchSideEffect?.Invoke(ClickButtons.Count);
+            if (DispatchClickException is not null)
+            {
+                throw DispatchClickException;
+            }
             if (BlockFirstDispatch && ClickButtons.Count == 1)
             {
                 _firstDispatchEntered.Set();

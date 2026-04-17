@@ -2,6 +2,7 @@ using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Guards;
 using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Windows.Input;
 using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Launch;
 using WinBridge.Runtime.Windows.Shell;
@@ -200,6 +201,33 @@ internal sealed class FakeOpenTargetService(
         }
 
         return handler(request, cancellationToken);
+    }
+}
+
+internal sealed class FakeInputService(
+    Func<InputRequest, InputExecutionContext, CancellationToken, Task<InputResult>>? handler = null) : IInputService
+{
+    public int Calls { get; private set; }
+
+    public InputRequest? LastRequest { get; private set; }
+
+    public InputExecutionContext? LastContext { get; private set; }
+
+    public Task<InputResult> ExecuteAsync(
+        InputRequest request,
+        InputExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastRequest = request;
+        LastContext = context;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("Input service не должен вызываться в этом тесте.");
+        }
+
+        return handler(request, context, cancellationToken);
     }
 }
 

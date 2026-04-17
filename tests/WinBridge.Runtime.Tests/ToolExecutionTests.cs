@@ -132,7 +132,7 @@ public sealed class ToolExecutionTests
         string result = ToolExecution.RunDeferred(
             auditLog,
             snapshot,
-            ToolNames.WindowsInput,
+            ToolNames.WindowsClipboardGet,
             new { deferred = true },
             invocation =>
             {
@@ -145,7 +145,7 @@ public sealed class ToolExecutionTests
         string[] lines = File.ReadAllLines(options.EventsPath);
         Assert.Equal(2, lines.Length);
         Assert.Contains("\"outcome\":\"unsupported\"", lines[1], StringComparison.Ordinal);
-        Assert.Contains($"\"tool_name\":\"{ToolNames.WindowsInput}\"", lines[1], StringComparison.Ordinal);
+        Assert.Contains($"\"tool_name\":\"{ToolNames.WindowsClipboardGet}\"", lines[1], StringComparison.Ordinal);
     }
 
     [Fact]

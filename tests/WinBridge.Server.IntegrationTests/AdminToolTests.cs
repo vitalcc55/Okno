@@ -104,8 +104,10 @@ public sealed class AdminToolTests
             result.Warnings.Select(item => item.Source).ToArray());
         Assert.Contains(ToolNames.WindowsLaunchProcess, result.ImplementedTools);
         Assert.Contains(ToolNames.WindowsOpenTarget, result.ImplementedTools);
+        Assert.Contains(ToolNames.WindowsInput, result.ImplementedTools);
         Assert.False(result.DeferredTools.ContainsKey(ToolNames.WindowsLaunchProcess));
         Assert.False(result.DeferredTools.ContainsKey(ToolNames.WindowsOpenTarget));
+        Assert.False(result.DeferredTools.ContainsKey(ToolNames.WindowsInput));
     }
 
     [Fact]
@@ -166,7 +168,7 @@ public sealed class AdminToolTests
         Assert.Equal("launch_payload", openTargetPolicy.RedactionClass);
 
         ContractToolDescriptor inputDescriptor = Assert.Single(
-            result.DeferredTools,
+            result.ImplementedTools,
             descriptor => descriptor.Name == ToolNames.WindowsInput);
         ContractToolExecutionPolicyDescriptor inputPolicy = Assert.IsType<ContractToolExecutionPolicyDescriptor>(inputDescriptor.ExecutionPolicy);
         Assert.Equal("input", inputPolicy.PolicyGroup);
@@ -175,8 +177,11 @@ public sealed class AdminToolTests
         Assert.False(inputPolicy.SupportsDryRun);
         Assert.Equal("required", inputPolicy.ConfirmationMode);
         Assert.Equal("text_payload", inputPolicy.RedactionClass);
+        Assert.Null(inputDescriptor.PlannedPhase);
+        Assert.Null(inputDescriptor.SuggestedAlternative);
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsLaunchProcess);
         Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsOpenTarget);
+        Assert.DoesNotContain(result.DeferredTools, descriptor => descriptor.Name == ToolNames.WindowsInput);
     }
 
     private static RuntimeGuardAssessment CreateAssessment(FakeMonitorManager monitorManager)

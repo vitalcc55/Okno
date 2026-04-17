@@ -141,7 +141,7 @@ public sealed class ToolContractExporterTests
     }
 
     [Fact]
-    public void ExportJsonPublishesDeferredExecutionPolicyMetadata()
+    public void ExportJsonPublishesImplementedInputExecutionPolicyMetadata()
     {
         string root = CreateTempDirectory();
         string jsonPath = Path.Combine(root, "project-interfaces.json");
@@ -151,7 +151,7 @@ public sealed class ToolContractExporterTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
         JsonElement inputTool = document.RootElement
             .GetProperty("tools")
-            .GetProperty("deferred")
+            .GetProperty("implemented")
             .EnumerateArray()
             .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsInput);
 
@@ -162,6 +162,7 @@ public sealed class ToolContractExporterTests
         Assert.False(policy.GetProperty("supports_dry_run").GetBoolean());
         Assert.Equal("required", policy.GetProperty("confirmation_mode").GetString());
         Assert.Equal("text_payload", policy.GetProperty("redaction_class").GetString());
+        Assert.Equal("implemented", inputTool.GetProperty("lifecycle").GetString());
     }
 
     [Fact]
