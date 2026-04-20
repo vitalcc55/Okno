@@ -134,14 +134,14 @@ function New-TestMatrixMarkdown {
         '| Layer | Command | Coverage now |',
         '| --- | --- | --- |',
         '| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |',
-        '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, launch exporter drift, launch runtime/status/evidence policy, display identity pipeline, monitor id formatting, activation decision logic, wait runtime/status/evidence policy, UIA runtime packaging/evidence, session dedupe, session mutation |',
-        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol through staged server/helper bundle with run-aware resolver semantics, public `windows.launch_process` and `windows.open_target` schema/result mapping, honest deferred-tool `unsupported` invocation path, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
+        '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, launch exporter drift, launch runtime/status/evidence policy, input contract/runtime/materializer policy, display identity pipeline, monitor id formatting, activation decision logic, wait runtime/status/evidence policy, UIA runtime packaging/evidence, session dedupe, session mutation |',
+        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol through staged server/helper bundle with run-aware resolver semantics, public `windows.launch_process`, `windows.open_target` and click-first `windows.input` schema/result mapping, honest deferred-tool `unsupported` invocation path, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
         "| Smoke | $smokeCommandLiteral | $smokeCoverageNarrative |",
         '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke |',
         '',
         '## Чего пока не хватает',
         '',
-        '- Production-coverage для следующих slices: input, clipboard.',
+        '- Production-coverage для следующих slices: clipboard и broad input actions beyond click-first.',
         '- Отдельный monitor-select contract beyond `windows.list_monitors` + `monitorId` targeting, если позже понадобится richer multi-monitor workflow.',
         '- Boundary tests на проектные зависимости, если слоёв станет больше.',
         '- Coverage reporting как отдельный отчётный шаг.'
@@ -216,10 +216,10 @@ function New-StackInventoryMarkdown {
             Status = $(if ($runtimeProjectSet.ContainsKey('src/WinBridge.Runtime.Waiting') -and ($implementedToolNames -contains 'windows.wait')) { 'Работает' } else { 'Подготовлены' })
         },
         @{
-            Label = 'Future capability seams'
+            Label = 'Input and clipboard capability seams'
             Path = 'src/WinBridge.Runtime.Windows.Input, src/WinBridge.Runtime.Windows.Clipboard'
             Stack = $targetFramework
-            Status = $(if (($deferredToolNames -contains 'windows.input') -and ($deferredToolNames -contains 'windows.clipboard_get') -and ($deferredToolNames -contains 'windows.clipboard_set')) { 'Подготовлены' } else { 'См. manifest' })
+            Status = $(if (($implementedToolNames -contains 'windows.input') -and ($deferredToolNames -contains 'windows.clipboard_get') -and ($deferredToolNames -contains 'windows.clipboard_set')) { 'Input click-first работает; clipboard deferred' } else { 'См. manifest' })
         },
         @{
             Label = 'MCP host'
@@ -292,7 +292,7 @@ function New-StackInventoryMarkdown {
     $lines += ''
     $lines += '- Docker/Compose/devcontainer'
     $lines += '- HTTP transport как рабочий delivery mode'
-    $lines += '- input/clipboard production implementations'
+    $lines += '- clipboard production implementation and broad input actions beyond click-first'
     $lines += '- external observability backend'
 
     return $lines -join [Environment]::NewLine
@@ -360,7 +360,7 @@ function Convert-ToJsonStringLiteral {
 function New-BootstrapStatusJson {
     $runtimeProjects = @(Get-RuntimeProjectDirectories)
     $deferredScope = @(
-        'Input',
+        'Input broad actions beyond click-first',
         'Clipboard',
         'HTTP transport'
     )

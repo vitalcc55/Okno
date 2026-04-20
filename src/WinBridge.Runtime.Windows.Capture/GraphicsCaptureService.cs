@@ -25,6 +25,7 @@ public sealed class GraphicsCaptureService(
     private const int GraphicsCaptureBufferCount = 1;
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
     private const uint D3D11SdkVersion = 7;
+    private const int DwmwaExtendedFrameBounds = 9;
     private static readonly TimeSpan WindowsGraphicsCaptureTimeout = TimeSpan.FromSeconds(3);
     private static readonly DirectXPixelFormat GraphicsCapturePixelFormat = DirectXPixelFormat.B8G8R8A8UIntNormalized;
     private static readonly Guid GraphicsCaptureItemInteropId = typeof(IGraphicsCaptureItemInterop).GUID;
@@ -50,6 +51,7 @@ public sealed class GraphicsCaptureService(
                 cancellationToken).ConfigureAwait(false);
             string artifactPath = WriteArtifact(execution.Capture.PngBytes, execution.Target);
 
+            DateTimeOffset capturedAtUtc = DateTimeOffset.UtcNow;
             CaptureMetadata metadata = new(
                 Scope: target.Scope.ToContractValue(),
                 TargetKind: execution.Target.TargetKind,
@@ -60,7 +62,7 @@ public sealed class GraphicsCaptureService(
                 CoordinateSpace: execution.Target.CoordinateSpace,
                 PixelWidth: execution.Capture.PixelWidth,
                 PixelHeight: execution.Capture.PixelHeight,
-                CapturedAtUtc: DateTimeOffset.UtcNow,
+                CapturedAtUtc: capturedAtUtc,
                 ArtifactPath: artifactPath,
                 MimeType: "image/png",
                 ByteSize: execution.Capture.PngBytes.Length,
@@ -69,7 +71,9 @@ public sealed class GraphicsCaptureService(
                 DpiScale: execution.Target.DpiScale,
                 MonitorId: execution.Target.Monitor?.Descriptor.MonitorId,
                 MonitorFriendlyName: execution.Target.Monitor?.Descriptor.FriendlyName,
-                MonitorGdiDeviceName: execution.Target.Monitor?.Descriptor.GdiDeviceName);
+                MonitorGdiDeviceName: execution.Target.Monitor?.Descriptor.GdiDeviceName,
+                FrameBounds: execution.Target.FrameBounds,
+                CaptureReference: TryCreateCaptureReference(target.Scope, execution.Target, execution.Capture, capturedAtUtc));
 
             return new CaptureResult(metadata, execution.Capture.PngBytes);
         }
@@ -133,30 +137,32 @@ public sealed class GraphicsCaptureService(
                 resolvedTarget,
                 cancellationToken,
                 cancellationToken).ConfigureAwait(false);
-            CaptureResolvedTarget authoritativeTarget = BuildAuthoritativeWgcTarget(
-                request,
-                resolvedTarget,
-                outcome.AcceptedContentSize);
-            SoftwareBitmap? bitmap = outcome.Bitmap;
-            try
+            using (outcome)
             {
-                WindowDescriptor authoritativeWindow = authoritativeTarget.Window
-                    ?? throw new CaptureOperationException("Runtime не смог материализовать authoritative window capture target.");
-                WaitVisualComparisonData comparisonData = WaitVisualComparisonDataBuilder.CreateFromSoftwareBitmap(bitmap, cancellationToken);
-                WaitVisualEvidenceFrame evidenceFrame = new SoftwareBitmapWaitVisualEvidenceFrame(
-                    authoritativeWindow,
-                    bitmap);
-                bitmap = null;
-                return new WaitVisualSample(
-                    authoritativeWindow,
-                    outcome.Bitmap.PixelWidth,
-                    outcome.Bitmap.PixelHeight,
-                    comparisonData,
-                    evidenceFrame);
-            }
-            finally
-            {
-                bitmap?.Dispose();
+                WindowDescriptor authoritativeWindow = BuildAuthoritativeWgcProbeWindow(
+                    request,
+                    resolvedTarget);
+                WaitVisualComparisonData comparisonData = WaitVisualComparisonDataBuilder.CreateFromSoftwareBitmap(
+                    outcome.Bitmap,
+                    cancellationToken);
+                SoftwareBitmap evidenceBitmap = outcome.DetachBitmap();
+                try
+                {
+                    WaitVisualEvidenceFrame evidenceFrame = new SoftwareBitmapWaitVisualEvidenceFrame(
+                        authoritativeWindow,
+                        evidenceBitmap);
+                    return new WaitVisualSample(
+                        authoritativeWindow,
+                        evidenceFrame.PixelWidth,
+                        evidenceFrame.PixelHeight,
+                        comparisonData,
+                        evidenceFrame);
+                }
+                catch
+                {
+                    evidenceBitmap.Dispose();
+                    throw;
+                }
             }
         }
         catch (WgcAcquisitionException exception)
@@ -224,12 +230,12 @@ public sealed class GraphicsCaptureService(
                 resolvedTarget,
                 cancellationToken,
                 timeoutSource.Token).ConfigureAwait(false);
-            CaptureResolvedTarget authoritativeTarget = BuildAuthoritativeWgcTarget(
-                request,
-                resolvedTarget,
-                outcome.AcceptedContentSize);
-            try
+            using (outcome)
             {
+                CaptureResolvedTarget authoritativeTarget = BuildAuthoritativeWgcTarget(
+                    request,
+                    resolvedTarget,
+                    outcome.AcceptedContentSize);
                 byte[] pngBytes = await EncodePngAsync(outcome.Bitmap, cancellationToken).ConfigureAwait(false);
                 return new(
                     authoritativeTarget,
@@ -237,10 +243,6 @@ public sealed class GraphicsCaptureService(
                         pngBytes,
                         outcome.Bitmap.PixelWidth,
                         outcome.Bitmap.PixelHeight));
-            }
-            finally
-            {
-                outcome.Bitmap.Dispose();
             }
         }
         catch (WgcAcquisitionException exception)
@@ -512,6 +514,43 @@ public sealed class GraphicsCaptureService(
             acceptedContentSize);
     }
 
+    private WindowDescriptor BuildAuthoritativeWgcProbeWindow(
+        CaptureTarget request,
+        CaptureResolvedTarget initialTarget)
+    {
+        CaptureResolvedTarget? refreshedTarget = TryResolveTarget(request);
+        return CaptureResolvedTargetPolicy.BuildAuthoritativeWgcProbeWindow(
+            initialTarget,
+            refreshedTarget);
+    }
+
+    private static InputCaptureReference? TryCreateCaptureReference(
+        CaptureScope scope,
+        CaptureResolvedTarget target,
+        RasterizedCapture capture,
+        DateTimeOffset capturedAtUtc)
+    {
+        if (scope != CaptureScope.Window)
+        {
+            return null;
+        }
+
+        try
+        {
+            return CaptureReferenceGeometryPolicy.CreateCopyThroughReference(
+                target.Bounds,
+                capture.PixelWidth,
+                capture.PixelHeight,
+                target.EffectiveDpi,
+                capturedAtUtc,
+                target.FrameBounds);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new CaptureOperationException("Runtime не смог материализовать input-compatible captureReference для window capture.", exception);
+        }
+    }
+
     private CaptureResolvedTarget? TryResolveTarget(CaptureTarget request)
     {
         try
@@ -569,8 +608,9 @@ public sealed class GraphicsCaptureService(
         }
 
         IntPtr hwnd = new(window.Hwnd);
-        Bounds bounds = TryGetWindowBounds(hwnd, out Bounds currentBounds) ? currentBounds : window.Bounds;
-        ValidateWindowCaptureTarget(hwnd, bounds);
+        Bounds frameBounds = TryGetWindowBounds(hwnd, out Bounds currentBounds) ? currentBounds : window.Bounds;
+        Bounds rasterBounds = TryGetRasterOriginBounds(hwnd, frameBounds, out Bounds visibleBounds) ? visibleBounds : frameBounds;
+        ValidateWindowCaptureTarget(hwnd, frameBounds);
         if (!WindowDpiReader.TryGetEffectiveDpi(hwnd, out int effectiveDpi))
         {
             throw new CaptureOperationException("Не удалось определить DPI выбранного окна для window capture.");
@@ -584,11 +624,12 @@ public sealed class GraphicsCaptureService(
             CaptureScope.Window,
             "window",
             window,
-            bounds,
+            rasterBounds,
             CaptureCoordinateSpaceValues.PhysicalPixels,
             effectiveDpi,
             dpiScale,
-            monitor);
+            monitor,
+            frameBounds);
     }
 
     private CaptureResolvedTarget ResolveDesktopTarget(WindowDescriptor? window, string? explicitMonitorId)
@@ -779,6 +820,55 @@ public sealed class GraphicsCaptureService(
         return false;
     }
 
+    private static bool TryGetRasterOriginBounds(IntPtr hwnd, Bounds frameBounds, out Bounds bounds)
+    {
+        if (TryGetDwmExtendedFrameBounds(hwnd, out Bounds visibleBounds)
+            && ContainsBounds(frameBounds, visibleBounds))
+        {
+            bounds = visibleBounds;
+            return true;
+        }
+
+        bounds = default!;
+        return false;
+    }
+
+    private static bool TryGetDwmExtendedFrameBounds(IntPtr hwnd, out Bounds bounds)
+    {
+        try
+        {
+            int hresult = DwmGetWindowAttribute(
+                hwnd,
+                DwmwaExtendedFrameBounds,
+                out RECT rect,
+                Marshal.SizeOf<RECT>());
+            if (hresult == 0)
+            {
+                Bounds candidate = new(rect.Left, rect.Top, rect.Right, rect.Bottom);
+                if (candidate.Width > 0 && candidate.Height > 0)
+                {
+                    bounds = candidate;
+                    return true;
+                }
+            }
+        }
+        catch (DllNotFoundException)
+        {
+        }
+        catch (EntryPointNotFoundException)
+        {
+        }
+
+        bounds = default!;
+        return false;
+    }
+
+    private static bool ContainsBounds(Bounds outer, Bounds inner) =>
+        inner.Left >= outer.Left
+        && inner.Top >= outer.Top
+        && inner.Right <= outer.Right
+        && inner.Bottom <= outer.Bottom;
+
     private static void ValidateWindowCaptureTarget(IntPtr hwnd, Bounds bounds)
     {
         if (!IsWindow(hwnd))
@@ -831,6 +921,13 @@ public sealed class GraphicsCaptureService(
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
 
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmGetWindowAttribute(
+        IntPtr hwnd,
+        int dwAttribute,
+        out RECT pvAttribute,
+        int cbAttribute);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
     {
@@ -872,10 +969,6 @@ public sealed class GraphicsCaptureService(
     private sealed record CaptureExecutionResult(
         CaptureResolvedTarget Target,
         RasterizedCapture Capture);
-
-    private sealed record WgcCaptureOutcome(
-        SoftwareBitmap Bitmap,
-        WgcFrameSize AcceptedContentSize);
 
     private sealed record RasterizedCapture(
         byte[] PngBytes,

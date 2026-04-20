@@ -249,6 +249,8 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - `double_click`
 - `click(button=right)`
 
+Этот subset уже является shipped public surface: он проходит L1/L2 coverage, real smoke на `SmokeWindowHost` и fresh-host MCP acceptance. Broad actions ниже остаются structural/future slots, а не shipped behavior.
+
 ### Что важно
 
 - нормализация координат;
@@ -256,6 +258,7 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - понятные ошибки при проблемах с фокусом;
 - `windows.input` остаётся одним ordered batch tool, а не zoo из отдельных `click`/`scroll`/`type`;
 - допустимые coordinate spaces для click-first wave: `capture_pixels` и `screen`;
+- для `capture_pixels` canonical client path копирует `captureReference` из `windows.capture` без ручной сборки geometry; observe metadata `bounds/frameBounds` у capture payload сохраняют обычный public shape с derived `width/height`, а nested `captureReference.bounds/frameBounds` используют edge-only input-compatible `left/top/right/bottom`; `captureReference.frameBounds` фиксирует WGC acquisition-time frame basis для window captures, raster origin должен быть доказан capture layer как visible-frame origin внутри него, post-capture refresh может только валидировать frame/raster/DPI drift, иначе copy-through geometry не публикуется успешным window capture; resize после capture должен возвращать stale failure, а не destructive click;
 - normal success-path для coordinate input = `verify_needed`, а не скрытый auto-wait или “API вызвался успешно”;
 - public `dryRun` для `windows.input` не публикуется.
 - awareness of integrity/focus issues.
@@ -378,6 +381,7 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - monitor metadata.
 - `coordinateSpace = physical_pixels`.
 - `effectiveDpi` и derived `dpiScale` только для `window` capture.
+- для `window` capture `bounds` описывает WGC acquisition-time raster/content basis, а `frameBounds` публикует matching frame basis из той же capture transaction; эти observe fields сохраняют обычный `Bounds` wire shape с derived `width/height`, а отдельный nested `captureReference` публикует input-compatible geometry для прямого copy-through в `windows.input`; raster origin не синтезируется от frame origin при меньшем WGC content size, post-capture refresh не становится source-of-truth для geometry, а drift по frame/raster/DPI fail-closes capture.
 
 Узкий follow-up внутри той же capture family:
 - future `windows.region_capture` должен оставаться отдельным visual tool для небольшого explicit region/crop proof после actions и для low-noise visual fallback;
@@ -456,6 +460,8 @@ Later additive extensions:
 - click;
 - double_click;
 - `click(button=right)`.
+
+Этот subset доказан smoke/fresh-host acceptance через explicit `attach -> activate -> capture -> uia_snapshot -> windows.input -> wait(focus_is)` loop. `drag`, `scroll`, `type`, `keypress`, `hotkey` и `paste` не входят в текущий shipped input surface.
 
 Инварианты:
 - это один tool, а не набор отдельных action tools;

@@ -8,6 +8,11 @@ namespace WinBridge.Runtime.Tests;
 
 public sealed class InputContractAndPolicyTests
 {
+    private static readonly JsonSerializerOptions CamelCaseJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     [Fact]
     public void InputRequestUsesExpectedDefaults()
     {
@@ -40,6 +45,65 @@ public sealed class InputContractAndPolicyTests
         Assert.False(result.RequiresConfirmation);
         Assert.False(result.DryRunSupported);
         Assert.Null(result.Reasons);
+    }
+
+    [Fact]
+    public void BoundsWireShapePreservesDerivedWidthAndHeightForObserveContracts()
+    {
+        JsonElement bounds = JsonSerializer.SerializeToElement(new Bounds(10, 20, 210, 220), CamelCaseJsonOptions);
+
+        Assert.Equal(200, bounds.GetProperty("width").GetInt32());
+        Assert.Equal(200, bounds.GetProperty("height").GetInt32());
+    }
+
+    [Fact]
+    public void CaptureMetadataPreservesObserveBoundsWidthAndHeightAndUsesEdgeOnlyCaptureReference()
+    {
+        CaptureMetadata metadata = new(
+            Scope: "window",
+            TargetKind: "window",
+            Hwnd: 100,
+            Title: "Captured",
+            ProcessName: "okno-tests",
+            Bounds: new Bounds(10, 20, 210, 220),
+            CoordinateSpace: CaptureCoordinateSpaceValues.PhysicalPixels,
+            PixelWidth: 200,
+            PixelHeight: 200,
+            CapturedAtUtc: DateTimeOffset.UtcNow,
+            ArtifactPath: @"C:\artifacts\capture.png",
+            MimeType: "image/png",
+            ByteSize: 42,
+            SessionRunId: "capture-tests",
+            EffectiveDpi: 96,
+            DpiScale: 1.0,
+            CaptureReference: new InputCaptureReference(
+                new InputBounds(10, 20, 210, 220),
+                pixelWidth: 200,
+                pixelHeight: 200,
+                effectiveDpi: 96,
+                capturedAtUtc: DateTimeOffset.UtcNow,
+                frameBounds: new InputBounds(10, 20, 226, 232)),
+            FrameBounds: new Bounds(10, 20, 226, 232));
+
+        JsonElement metadataElement = JsonSerializer.SerializeToElement(
+            metadata,
+            CamelCaseJsonOptions);
+
+        JsonElement bounds = metadataElement.GetProperty("bounds");
+        Assert.Equal(
+            ["bottom", "height", "left", "right", "top", "width"],
+            bounds.EnumerateObject()
+                .Select(property => property.Name)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
+
+        JsonElement captureReferenceBounds = metadataElement.GetProperty("captureReference").GetProperty("bounds");
+        Assert.Equal(
+            ["bottom", "left", "right", "top"],
+            captureReferenceBounds.EnumerateObject()
+                .Select(property => property.Name)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
     }
 
     [Fact]

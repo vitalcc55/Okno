@@ -19,4 +19,6 @@ public sealed record CaptureMetadata(
     double? DpiScale = null,
     string? MonitorId = null,
     string? MonitorFriendlyName = null,
-    string? MonitorGdiDeviceName = null);
+    string? MonitorGdiDeviceName = null,
+    Bounds? FrameBounds = null,
+    InputCaptureReference? CaptureReference = null);

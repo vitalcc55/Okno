@@ -2,10 +2,10 @@ using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Runtime.Tests;
 
-public sealed class WindowsInputPackageDSourceOfTruthTests
+public sealed class WindowsInputSourceOfTruthTests
 {
     [Fact]
-    public void PackageDPromotionIsConsistentAcrossInteropAndManifestSources()
+    public void WindowsInputFeaturePromotionIsConsistentAcrossInteropAndManifestSources()
     {
         string repoRoot = GetRepositoryRoot();
         string windowsInputPlan = File.ReadAllText(Path.Combine(repoRoot, "docs", "exec-plans", "active", "windows-input.md"));
@@ -13,18 +13,24 @@ public sealed class WindowsInputPackageDSourceOfTruthTests
         string interopArchitecture = File.ReadAllText(Path.Combine(repoRoot, "docs", "architecture", "openai-computer-use-interop.md"));
         ToolContractExportDocument exportDocument = ToolContractExporter.CreateDocument();
 
-        Assert.Contains("Package D implemented", windowsInputPlan, StringComparison.Ordinal);
+        Assert.Contains("Статус: completed; shipped click-first subset, broad input extensions deferred", windowsInputPlan, StringComparison.Ordinal);
         Assert.Contains("artifacts/diagnostics/<run_id>/input/input-*.json", exportDocument.Artifacts);
         Assert.Contains("artifacts/events/materializer уже закрыты Package D", ToolContractManifest.ContractNotes, StringComparison.Ordinal);
+        Assert.Contains("smoke/fresh-host acceptance закрыты Package E", ToolContractManifest.ContractNotes, StringComparison.Ordinal);
+        Assert.Contains(ToolNames.WindowsInput, exportDocument.Tools.SmokeRequiredNames);
         Assert.Contains("Package D observability уже landed", interopPlan, StringComparison.Ordinal);
-        Assert.Contains("Package E smoke/fresh-host acceptance", interopPlan, StringComparison.Ordinal);
+        Assert.Contains("Package E smoke/fresh-host acceptance закрыт", interopPlan, StringComparison.Ordinal);
         Assert.Contains("input.runtime.completed", interopArchitecture, StringComparison.Ordinal);
         Assert.Contains("Package D observability", interopArchitecture, StringComparison.Ordinal);
+        Assert.Contains("Package E smoke/fresh-host acceptance", interopArchitecture, StringComparison.Ordinal);
+        Assert.Contains("закрыт фактическим proof", interopArchitecture, StringComparison.Ordinal);
 
         Assert.DoesNotContain("Package D/E для `windows.input` ещё остаются открыты", interopPlan, StringComparison.Ordinal);
         Assert.DoesNotContain("runtime artifacts/events/materializer, smoke proof и fresh-host acceptance не считаются закрытыми", interopPlan, StringComparison.Ordinal);
         Assert.DoesNotContain("Package D/E proof для input observability", interopPlan, StringComparison.Ordinal);
         Assert.DoesNotContain("artifacts/events/materializer rollout остаются отдельным follow-up", ToolContractManifest.ContractNotes, StringComparison.Ordinal);
+        Assert.DoesNotContain("Package E smoke/fresh-host acceptance для `windows.input` ещё остаётся pending", interopPlan, StringComparison.Ordinal);
+        Assert.DoesNotContain("smoke/fresh-host acceptance остаются Package E", ToolContractManifest.ContractNotes, StringComparison.Ordinal);
     }
 
     private static string GetRepositoryRoot()

@@ -46,7 +46,7 @@ $wmAppPrepareFocus = 0x8002
 $wmAppArmVisualHeartbeat = 0x8003
 $waitTimeoutForegroundMs = 5000
 $waitTimeoutFocusMs = 5000
-$waitTimeoutSemanticUiMs = 3000
+$waitTimeoutSemanticUiMs = 5000
 $waitTimeoutElementGoneMs = 5000
 $waitTimeoutVisualMs = 6000
 $helperLaunchWaitTimeoutMs = 10000
@@ -978,6 +978,21 @@ function Assert-OpenTargetLiveResult {
     }
 }
 
+function Assert-DateTimeOffsetSameInstant {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Actual,
+        [Parameter(Mandatory)]
+        [string] $Expected,
+        [Parameter(Mandatory)]
+        [string] $Message
+    )
+
+    $actualOffset = [DateTimeOffset]::Parse($Actual, [System.Globalization.CultureInfo]::InvariantCulture)
+    $expectedOffset = [DateTimeOffset]::Parse($Expected, [System.Globalization.CultureInfo]::InvariantCulture)
+    Assert-Condition -Condition ($actualOffset.ToUniversalTime() -eq $expectedOffset.ToUniversalTime()) -Message $Message
+}
+
 function Assert-OpenTargetArtifact {
     param(
         [Parameter(Mandatory)]
@@ -1001,7 +1016,7 @@ function Assert-OpenTargetArtifact {
     Assert-Condition -Condition ([string]$artifact.result.target_kind -eq [string]$OpenTargetPayload.targetKind) -Message 'Open-target artifact targetKind diverges from public payload.'
     Assert-Condition -Condition ([string]$artifact.result.target_identity -eq [string]$OpenTargetPayload.targetIdentity) -Message 'Open-target artifact targetIdentity diverges from public payload.'
     Assert-Condition -Condition ([string]$artifact.result.uri_scheme -eq [string]$OpenTargetPayload.uriScheme) -Message 'Open-target artifact uriScheme diverges from public payload.'
-    Assert-Condition -Condition ([string]$artifact.result.accepted_at_utc -eq [string]$OpenTargetPayload.acceptedAtUtc) -Message 'Open-target artifact acceptedAtUtc diverges from public payload.'
+    Assert-DateTimeOffsetSameInstant -Actual ([string]$artifact.result.accepted_at_utc) -Expected ([string]$OpenTargetPayload.acceptedAtUtc) -Message 'Open-target artifact acceptedAtUtc diverges from public payload.'
     Assert-Condition -Condition ([string]$artifact.result.artifact_path -eq [string]$OpenTargetPayload.artifactPath) -Message 'Open-target artifact nested artifactPath diverges from public payload.'
 
     if ($null -eq $OpenTargetPayload.handlerProcessId) {
@@ -1044,7 +1059,7 @@ function Assert-OpenTargetRuntimeEvent {
     Assert-Condition -Condition ([string]$openTargetEvent.data.target_kind -eq [string]$OpenTargetPayload.targetKind) -Message 'Open-target runtime event target_kind diverges from public payload.'
     Assert-Condition -Condition ([string]$openTargetEvent.data.target_identity -eq [string]$OpenTargetPayload.targetIdentity) -Message 'Open-target runtime event target_identity diverges from public payload.'
     Assert-Condition -Condition ([string]$openTargetEvent.data.uri_scheme -eq [string]$OpenTargetPayload.uriScheme) -Message 'Open-target runtime event uri_scheme diverges from public payload.'
-    Assert-Condition -Condition ([string]$openTargetEvent.data.accepted_at_utc -eq [string]$OpenTargetPayload.acceptedAtUtc) -Message 'Open-target runtime event accepted_at_utc diverges from public payload.'
+    Assert-DateTimeOffsetSameInstant -Actual ([string]$openTargetEvent.data.accepted_at_utc) -Expected ([string]$OpenTargetPayload.acceptedAtUtc) -Message 'Open-target runtime event accepted_at_utc diverges from public payload.'
     Assert-Condition -Condition ([string]$openTargetEvent.data.artifact_path -eq [string]$OpenTargetPayload.artifactPath) -Message 'Open-target runtime event artifact_path diverges from public payload.'
 
     if ($null -eq $OpenTargetPayload.handlerProcessId) {
@@ -1150,7 +1165,7 @@ function Assert-LaunchArtifact {
     Assert-Condition -Condition ([string]$artifact.result.result_mode -eq [string]$LaunchPayload.resultMode) -Message 'Launch artifact resultMode diverges from public payload.'
     Assert-Condition -Condition ([string]$artifact.result.executable_identity -eq [string]$LaunchPayload.executableIdentity) -Message 'Launch artifact executableIdentity diverges from public payload.'
     Assert-Condition -Condition ([int]$artifact.result.process_id -eq [int]$LaunchPayload.processId) -Message 'Launch artifact processId diverges from public payload.'
-    Assert-Condition -Condition ([string]$artifact.result.started_at_utc -eq [string]$LaunchPayload.startedAtUtc) -Message 'Launch artifact startedAtUtc diverges from public payload.'
+    Assert-DateTimeOffsetSameInstant -Actual ([string]$artifact.result.started_at_utc) -Expected ([string]$LaunchPayload.startedAtUtc) -Message 'Launch artifact startedAtUtc diverges from public payload.'
     Assert-Condition -Condition ([bool]$artifact.result.has_exited -eq [bool]$LaunchPayload.hasExited) -Message 'Launch artifact hasExited diverges from public payload.'
     Assert-Condition -Condition ([bool]$artifact.result.main_window_observed -eq [bool]$LaunchPayload.mainWindowObserved) -Message 'Launch artifact mainWindowObserved diverges from public payload.'
     Assert-Condition -Condition ([int64]$artifact.result.main_window_handle -eq [int64]$LaunchPayload.mainWindowHandle) -Message 'Launch artifact mainWindowHandle diverges from public payload.'
@@ -1297,6 +1312,228 @@ function Get-AuditEventCount {
             }).Count
 }
 
+function Get-AuditEventsForTool {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [string] $ToolName,
+        [Parameter(Mandatory)]
+        [string] $EventName
+    )
+
+    return @(
+        Get-AuditEvents -ArtifactsDirectory $ArtifactsDirectory |
+            Where-Object {
+                ([string]$_.tool_name -eq $ToolName) -and
+                ([string]$_.event_name -eq $EventName)
+            })
+}
+
+function Assert-NoInputSensitiveLeakage {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Text,
+        [Parameter(Mandatory)]
+        [string] $EvidenceName
+    )
+
+    Assert-Condition -Condition ($Text -notmatch '"keys?"\s*:') -Message "$EvidenceName exposed raw key/keys fields."
+    Assert-Condition -Condition ($Text -notmatch '"text"\s*:') -Message "$EvidenceName exposed raw text field."
+    Assert-Condition -Condition ($Text -notmatch 'exception_message') -Message "$EvidenceName exposed raw exception_message."
+    Assert-Condition -Condition ($Text -notmatch 'semantic text') -Message "$EvidenceName exposed helper textbox text."
+}
+
+function Assert-InputCompatibleBoundsPayload {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Bounds,
+        [Parameter(Mandatory)]
+        [string] $EvidenceName
+    )
+
+    $properties = @($Bounds.PSObject.Properties.Name)
+    foreach ($required in @('left', 'top', 'right', 'bottom')) {
+        Assert-Condition -Condition ($properties -contains $required) -Message "$EvidenceName is missing required '$required' edge."
+    }
+
+    foreach ($unexpected in @('width', 'height')) {
+        Assert-Condition -Condition (-not ($properties -contains $unexpected)) -Message "$EvidenceName exposes derived '$unexpected' field and is not input-compatible."
+    }
+
+    Assert-Condition -Condition ($properties.Count -eq 4) -Message "$EvidenceName must contain only left/top/right/bottom for input-compatible copy-through."
+}
+
+function New-InputCaptureReference {
+    param(
+        [Parameter(Mandatory)]
+        [object] $CapturePayload
+    )
+
+    $payloadProperties = @($CapturePayload.PSObject.Properties.Name)
+    Assert-Condition -Condition ($payloadProperties -contains 'captureReference') -Message 'Input smoke capture payload does not contain copy-through captureReference.'
+
+    $reference = $CapturePayload.captureReference
+    Assert-Condition -Condition ($null -ne $reference) -Message 'Input smoke capture payload contains null captureReference.'
+    Assert-InputCompatibleBoundsPayload -Bounds $reference.bounds -EvidenceName 'Input smoke captureReference.bounds'
+
+    $bounds = $CapturePayload.bounds
+    Assert-Condition -Condition ($null -ne $bounds) -Message 'Input smoke capture payload does not contain bounds.'
+    Assert-Condition -Condition ([int]$reference.bounds.left -eq [int]$bounds.left) -Message 'captureReference.bounds.left must match capture payload bounds.left.'
+    Assert-Condition -Condition ([int]$reference.bounds.top -eq [int]$bounds.top) -Message 'captureReference.bounds.top must match capture payload bounds.top.'
+    Assert-Condition -Condition ([int]$reference.bounds.right -eq [int]$bounds.right) -Message 'captureReference.bounds.right must match capture payload bounds.right.'
+    Assert-Condition -Condition ([int]$reference.bounds.bottom -eq [int]$bounds.bottom) -Message 'captureReference.bounds.bottom must match capture payload bounds.bottom.'
+    Assert-Condition -Condition ([int]$reference.pixelWidth -eq [int]$CapturePayload.pixelWidth) -Message 'captureReference.pixelWidth must match capture payload pixelWidth.'
+    Assert-Condition -Condition ([int]$reference.pixelHeight -eq [int]$CapturePayload.pixelHeight) -Message 'captureReference.pixelHeight must match capture payload pixelHeight.'
+
+    if (($payloadProperties -contains 'frameBounds') -and $null -ne $CapturePayload.frameBounds) {
+        $frameBounds = $CapturePayload.frameBounds
+        Assert-Condition -Condition ($null -ne $reference.frameBounds) -Message 'Input smoke captureReference is missing frameBounds while capture payload publishes frameBounds.'
+        Assert-InputCompatibleBoundsPayload -Bounds $reference.frameBounds -EvidenceName 'Input smoke captureReference.frameBounds'
+        Assert-Condition -Condition ([int]$reference.frameBounds.left -eq [int]$frameBounds.left) -Message 'captureReference.frameBounds.left must match capture payload frameBounds.left.'
+        Assert-Condition -Condition ([int]$reference.frameBounds.top -eq [int]$frameBounds.top) -Message 'captureReference.frameBounds.top must match capture payload frameBounds.top.'
+        Assert-Condition -Condition ([int]$reference.frameBounds.right -eq [int]$frameBounds.right) -Message 'captureReference.frameBounds.right must match capture payload frameBounds.right.'
+        Assert-Condition -Condition ([int]$reference.frameBounds.bottom -eq [int]$frameBounds.bottom) -Message 'captureReference.frameBounds.bottom must match capture payload frameBounds.bottom.'
+    }
+
+    return $reference
+}
+
+function Get-CaptureRelativeCenterPoint {
+    param(
+        [Parameter(Mandatory)]
+        [object] $UiaNode,
+        [Parameter(Mandatory)]
+        [object] $CapturePayload
+    )
+
+    $nodeBounds = $UiaNode.boundingRectangle
+    Assert-Condition -Condition ($null -ne $nodeBounds) -Message 'Input smoke UIA target does not contain boundingRectangle.'
+    $captureBounds = $CapturePayload.bounds
+    Assert-Condition -Condition ($null -ne $captureBounds) -Message 'Input smoke capture payload does not contain bounds.'
+
+    $centerScreenX = [int][Math]::Floor((([double]$nodeBounds.left + [double]$nodeBounds.right) / 2.0))
+    $centerScreenY = [int][Math]::Floor((([double]$nodeBounds.top + [double]$nodeBounds.bottom) / 2.0))
+    $captureX = $centerScreenX - [int]$captureBounds.left
+    $captureY = $centerScreenY - [int]$captureBounds.top
+
+    Assert-Condition -Condition ($captureX -ge 0 -and $captureX -lt [int]$CapturePayload.pixelWidth) -Message 'Input smoke textbox center X is outside capture_pixels raster.'
+    Assert-Condition -Condition ($captureY -ge 0 -and $captureY -lt [int]$CapturePayload.pixelHeight) -Message 'Input smoke textbox center Y is outside capture_pixels raster.'
+
+    return @{
+        x = [int]$captureX
+        y = [int]$captureY
+    }
+}
+
+function Assert-InputLiveResult {
+    param(
+        [Parameter(Mandatory)]
+        [object] $ToolCall,
+        [Parameter(Mandatory)]
+        [int64] $ExpectedHwnd
+    )
+
+    Assert-Condition -Condition (-not [bool]$ToolCall.Json.result.isError) -Message 'windows.input live click returned isError=true.'
+    Assert-Condition -Condition (@($ToolCall.Json.result.content).Count -eq 1) -Message 'windows.input must return exactly one text content block.'
+    Assert-Condition -Condition ([string]$ToolCall.Json.result.content[0].type -eq 'text') -Message 'windows.input content block must be text-only.'
+    Assert-Condition -Condition (@($ToolCall.Json.result.content | Where-Object { $_.type -eq 'image' }).Count -eq 0) -Message 'windows.input must not return image content blocks.'
+
+    $payload = $ToolCall.Payload
+    Assert-Condition -Condition ([string]$payload.status -eq 'verify_needed') -Message "windows.input live click returned status '$($payload.status)' instead of verify_needed."
+    Assert-Condition -Condition ([string]$payload.decision -eq 'verify_needed') -Message "windows.input live click returned decision '$($payload.decision)' instead of verify_needed."
+    Assert-Condition -Condition ([string]$payload.resultMode -eq 'dispatch_only') -Message "windows.input live click returned resultMode '$($payload.resultMode)' instead of dispatch_only."
+    Assert-Condition -Condition ([int64]$payload.targetHwnd -eq $ExpectedHwnd) -Message 'windows.input live click targetHwnd diverges from helper hwnd.'
+    Assert-Condition -Condition ([string]$payload.targetSource -eq 'explicit') -Message "windows.input targetSource is '$($payload.targetSource)', expected explicit."
+    Assert-Condition -Condition ([int]$payload.completedActionCount -eq 1) -Message 'windows.input live click did not report one completed action.'
+    Assert-Condition -Condition ($null -eq $payload.failedActionIndex) -Message 'windows.input live click unexpectedly reported failedActionIndex.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$payload.artifactPath)) -Message 'windows.input live click did not return artifactPath.'
+    Assert-Condition -Condition (Test-Path ([string]$payload.artifactPath)) -Message "windows.input artifact '$($payload.artifactPath)' was not created."
+
+    $actions = @($payload.actions)
+    Assert-Condition -Condition ($actions.Count -eq 1) -Message "windows.input live click returned $($actions.Count) action results instead of one."
+    Assert-Condition -Condition ([string]$actions[0].type -eq 'click') -Message 'windows.input live click action result did not preserve type=click.'
+    Assert-Condition -Condition ([string]$actions[0].status -eq 'verify_needed') -Message 'windows.input live click action result did not preserve verify_needed status.'
+    Assert-Condition -Condition ([string]$actions[0].coordinateSpace -eq 'capture_pixels') -Message 'windows.input live click action result did not preserve capture_pixels coordinate space.'
+    Assert-Condition -Condition ([string]$actions[0].button -eq 'left') -Message 'windows.input live click action result did not preserve button=left.'
+}
+
+function Assert-InputArtifact {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [object] $InputPayload,
+        [Parameter(Mandatory)]
+        [int64] $ExpectedHwnd
+    )
+
+    $artifactPath = [System.IO.Path]::GetFullPath([string]$InputPayload.artifactPath)
+    $expectedInputDirectory = [System.IO.Path]::GetFullPath((Join-Path $ArtifactsDirectory 'input'))
+    $expectedInputPrefix = $expectedInputDirectory + [System.IO.Path]::DirectorySeparatorChar
+    Assert-Condition -Condition ($artifactPath.StartsWith($expectedInputPrefix, [System.StringComparison]::OrdinalIgnoreCase)) -Message 'Input artifact path is outside the canonical diagnostics input directory.'
+    Assert-Condition -Condition ([System.IO.Path]::GetExtension($artifactPath) -eq '.json') -Message 'Input artifact must be a JSON file.'
+    Assert-Condition -Condition ([System.IO.Path]::GetFileName($artifactPath) -match '^input-.+\.json$') -Message 'Input artifact file name does not match the canonical naming pattern.'
+
+    $artifactText = Get-Content $artifactPath -Raw
+    Assert-NoInputSensitiveLeakage -Text $artifactText -EvidenceName 'Input artifact'
+    $artifact = $artifactText | ConvertFrom-Json
+
+    Assert-Condition -Condition (-not ($artifact.PSObject.Properties.Name -contains 'failure_diagnostics')) -Message 'Successful input artifact must not publish failure_diagnostics.'
+    Assert-Condition -Condition ([int]$artifact.request_summary.action_count -eq 1) -Message 'Input artifact request_summary action_count drifted.'
+    Assert-Condition -Condition ([string]$artifact.request_summary.action_types[0] -eq 'click') -Message 'Input artifact request_summary action_types drifted.'
+    Assert-Condition -Condition ([string]$artifact.request_summary.coordinate_spaces[0] -eq 'capture_pixels') -Message 'Input artifact request_summary coordinate_spaces drifted.'
+    Assert-Condition -Condition ([int64]$artifact.request_summary.target_hwnd -eq $ExpectedHwnd) -Message 'Input artifact request_summary target_hwnd drifted.'
+    Assert-Condition -Condition ([string]$artifact.request_summary.target_source -eq 'explicit') -Message 'Input artifact request_summary target_source drifted.'
+    Assert-Condition -Condition ([int64]$artifact.target_summary.target_hwnd -eq $ExpectedHwnd) -Message 'Input artifact target_summary target_hwnd drifted.'
+    Assert-Condition -Condition ([string]$artifact.result.status -eq [string]$InputPayload.status) -Message 'Input artifact status diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.decision -eq [string]$InputPayload.decision) -Message 'Input artifact decision diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.result_mode -eq [string]$InputPayload.resultMode) -Message 'Input artifact resultMode diverges from public payload.'
+    Assert-Condition -Condition ([int]$artifact.result.completed_action_count -eq [int]$InputPayload.completedActionCount) -Message 'Input artifact completed_action_count diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.artifact_path -eq [string]$InputPayload.artifactPath) -Message 'Input artifact nested artifactPath diverges from public payload.'
+    Assert-Condition -Condition ([string]$artifact.result.committed_side_effect_evidence -eq 'completed_actions_committed') -Message 'Input artifact committed_side_effect_evidence drifted.'
+
+    $artifactActions = @($artifact.result.actions)
+    Assert-Condition -Condition ($artifactActions.Count -eq 1) -Message 'Input artifact must contain exactly one action result.'
+    Assert-Condition -Condition ([string]$artifactActions[0].type -eq 'click') -Message 'Input artifact action type drifted.'
+    Assert-Condition -Condition ([string]$artifactActions[0].coordinate_space -eq 'capture_pixels') -Message 'Input artifact action coordinate_space drifted.'
+    Assert-Condition -Condition ($null -ne $artifactActions[0].resolved_screen_point) -Message 'Input artifact action missing resolved_screen_point.'
+}
+
+function Assert-InputRuntimeEvent {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ArtifactsDirectory,
+        [Parameter(Mandatory)]
+        [int] $BaselineEventCount,
+        [Parameter(Mandatory)]
+        [object] $InputPayload
+    )
+
+    $inputEvents = @(Get-AuditEventsForTool -ArtifactsDirectory $ArtifactsDirectory -ToolName 'windows.input' -EventName 'input.runtime.completed')
+    Assert-Condition -Condition ($inputEvents.Count -eq ($BaselineEventCount + 1)) -Message "Input smoke expected exactly one new input.runtime.completed event, got baseline=$BaselineEventCount current=$($inputEvents.Count)."
+    $inputEvent = $inputEvents[-1]
+    $eventText = $inputEvent | ConvertTo-Json -Compress -Depth 12
+    Assert-NoInputSensitiveLeakage -Text $eventText -EvidenceName 'Input runtime event'
+    Assert-Condition -Condition ([string]$inputEvent.outcome -eq 'verify_needed') -Message "Input runtime event returned unexpected outcome '$($inputEvent.outcome)'."
+    Assert-Condition -Condition ([string]$inputEvent.data.status -eq [string]$InputPayload.status) -Message 'Input runtime event status diverges from public payload.'
+    Assert-Condition -Condition ([string]$inputEvent.data.decision -eq [string]$InputPayload.decision) -Message 'Input runtime event decision diverges from public payload.'
+    Assert-Condition -Condition ([string]$inputEvent.data.result_mode -eq [string]$InputPayload.resultMode) -Message 'Input runtime event result_mode diverges from public payload.'
+    Assert-Condition -Condition ([string]$inputEvent.data.target_hwnd -eq [string]$InputPayload.targetHwnd) -Message 'Input runtime event target_hwnd diverges from public payload.'
+    Assert-Condition -Condition ([string]$inputEvent.data.target_source -eq [string]$InputPayload.targetSource) -Message 'Input runtime event target_source diverges from public payload.'
+    Assert-Condition -Condition ([string]$inputEvent.data.completed_action_count -eq [string]$InputPayload.completedActionCount) -Message 'Input runtime event completed_action_count diverges from public payload.'
+    Assert-Condition -Condition ([string]$inputEvent.data.action_types -eq 'click') -Message 'Input runtime event action_types drifted.'
+    Assert-Condition -Condition ([string]$inputEvent.data.coordinate_spaces -eq 'capture_pixels') -Message 'Input runtime event coordinate_spaces drifted.'
+    Assert-Condition -Condition ([string]$inputEvent.data.artifact_path -eq [string]$InputPayload.artifactPath) -Message 'Input runtime event artifact_path diverges from public payload.'
+    Assert-Condition -Condition ([string]$inputEvent.data.committed_side_effect_evidence -eq 'completed_actions_committed') -Message 'Input runtime event committed_side_effect_evidence drifted.'
+    Assert-Condition -Condition ($null -eq $inputEvent.data.failure_code) -Message 'Successful input runtime event must not publish failure_code.'
+    Assert-Condition -Condition ($null -eq $inputEvent.data.failed_action_index) -Message 'Successful input runtime event must not publish failed_action_index.'
+    Assert-Condition -Condition ($null -eq $inputEvent.data.failure_stage) -Message 'Successful input runtime event must not publish failure_stage.'
+    Assert-Condition -Condition ($null -eq $inputEvent.data.exception_type) -Message 'Successful input runtime event must not publish exception_type.'
+
+    return $inputEvent
+}
+
 function Start-ToolCallRequest {
     param(
         [Parameter(Mandatory)]
@@ -1377,7 +1614,7 @@ function Assert-LaunchRuntimeEvent {
     Assert-Condition -Condition ([string]$launchEvent.data.result_mode -eq [string]$LaunchPayload.resultMode) -Message 'Launch runtime event result_mode diverges from public payload.'
     Assert-Condition -Condition ([string]$launchEvent.data.executable_identity -eq [string]$LaunchPayload.executableIdentity) -Message 'Launch runtime event executable_identity diverges from public payload.'
     Assert-Condition -Condition ([int]$launchEvent.data.process_id -eq [int]$LaunchPayload.processId) -Message 'Launch runtime event process_id diverges from public payload.'
-    Assert-Condition -Condition ([string]$launchEvent.data.started_at_utc -eq [string]$LaunchPayload.startedAtUtc) -Message 'Launch runtime event started_at_utc diverges from public payload.'
+    Assert-DateTimeOffsetSameInstant -Actual ([string]$launchEvent.data.started_at_utc) -Expected ([string]$LaunchPayload.startedAtUtc) -Message 'Launch runtime event started_at_utc diverges from public payload.'
     Assert-Condition -Condition ([string]$launchEvent.data.has_exited -eq $expectedHasExited) -Message 'Launch runtime event has_exited diverges from public payload.'
     Assert-Condition -Condition ([string]$launchEvent.data.main_window_observed -eq $expectedMainWindowObserved) -Message 'Launch runtime event main_window_observed diverges from public payload.'
     Assert-Condition -Condition ([int64]$launchEvent.data.main_window_handle -eq [int64]$LaunchPayload.mainWindowHandle) -Message 'Launch runtime event main_window_handle diverges from public payload.'
@@ -1423,6 +1660,66 @@ function Wait-ForSuccessfulWindowCapture {
     }
 
     throw "Helper window did not become capturable after activation in time. Last capture reason: $lastReason"
+}
+
+function Invoke-ActivateWindowUntilForeground {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [int64] $ExpectedHwnd,
+        [int] $TimeoutMilliseconds = 5000,
+        [int] $PollMilliseconds = 250
+    )
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    $attempts = @()
+    $wasMinimizedObserved = $false
+    $lastCall = $null
+    $lastPayload = $null
+
+    do {
+        $attemptNumber = $attempts.Count + 1
+        $toolCall = Invoke-ToolCall -Process $Process -Name 'windows.activate_window' -Arguments @{} -RequestName "windows.activate_window(attempt $attemptNumber)"
+        $result = $toolCall.Json.result
+        $payload = $result.structuredContent
+        $status = [string]$payload.status
+        $windowPayload = $payload.window
+        $hasExpectedWindow = $null -ne $windowPayload -and $null -ne $windowPayload.hwnd -and ([long]$windowPayload.hwnd -eq $ExpectedHwnd)
+        $retriableForegroundFailure = $status -eq 'failed' -and $hasExpectedWindow
+        Assert-Condition -Condition ((@('done', 'ambiguous') -contains $status) -or $retriableForegroundFailure) -Message "ActivateWindow returned non-retriable status '$status'."
+        Assert-Condition -Condition ([bool]$result.isError -eq ($status -ne 'done')) -Message 'ActivateWindow isError does not match done/error semantics.'
+        Assert-Condition -Condition $hasExpectedWindow -Message 'ActivateWindow payload hwnd does not match helper window.'
+        Assert-Condition -Condition ([bool]$payload.isForeground -eq ($status -eq 'done')) -Message 'ActivateWindow payload isForeground does not match done/error semantics.'
+
+        if ([bool]$payload.wasMinimized) {
+            $wasMinimizedObserved = $true
+        }
+
+        $attempts += [ordered]@{
+            status = $status
+            isForeground = [bool]$payload.isForeground
+            wasMinimized = [bool]$payload.wasMinimized
+            reason = [string]$payload.reason
+        }
+        $lastCall = $toolCall
+        $lastPayload = $payload
+
+        if ($status -eq 'done' -and [bool]$payload.isForeground) {
+            return [PSCustomObject]@{
+                ToolCall = $toolCall
+                Payload = $payload
+                Attempts = $attempts
+                WasMinimizedObserved = $wasMinimizedObserved
+            }
+        }
+
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+    while ((Get-Date) -lt $deadline)
+
+    $lastStatus = if ($null -ne $lastPayload) { [string]$lastPayload.status } else { '<none>' }
+    throw "ActivateWindow did not confirm foreground helper window in time. Last status: $lastStatus; attempts: $($attempts.Count)."
 }
 
 function Invoke-WaitToolCall {
@@ -1564,20 +1861,57 @@ function Test-IsIconic {
     return [WinBridgeSmoke.User32]::IsIconic([IntPtr]::new($Hwnd))
 }
 
-$startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-$startInfo.FileName = 'dotnet'
-$startInfo.Arguments = "`"$serverDll`""
-$startInfo.WorkingDirectory = $repoRoot
-$startInfo.RedirectStandardInput = $true
-$startInfo.RedirectStandardOutput = $true
-$startInfo.RedirectStandardError = $true
-$startInfo.UseShellExecute = $false
-$startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-$startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+function Start-StagedMcpHost {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ServerDll,
+        [Parameter(Mandatory)]
+        [string] $WorkingDirectory
+    )
 
-$process = [System.Diagnostics.Process]::new()
-$process.StartInfo = $startInfo
-$process.Start() | Out-Null
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = 'dotnet'
+    $startInfo.Arguments = "`"$ServerDll`""
+    $startInfo.WorkingDirectory = $WorkingDirectory
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.UseShellExecute = $false
+    $startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+
+    $serverProcess = [System.Diagnostics.Process]::new()
+    $serverProcess.StartInfo = $startInfo
+    $serverProcess.Start() | Out-Null
+    return $serverProcess
+}
+
+function Stop-StagedMcpHost {
+    param(
+        [AllowNull()]
+        [System.Diagnostics.Process] $Process
+    )
+
+    if ($null -eq $Process) {
+        return
+    }
+
+    if (-not $Process.HasExited) {
+        try {
+            $Process.StandardInput.Close()
+        }
+        catch [System.InvalidOperationException] {
+        }
+    }
+
+    if (-not $Process.HasExited -and -not $Process.WaitForExit(5000)) {
+        $Process.Kill()
+        $Process.WaitForExit()
+    }
+}
+
+$process = Start-StagedMcpHost -ServerDll $serverDll -WorkingDirectory $repoRoot
+$freshProcess = $null
 $helperProcess = $null
 $helperProcessId = $null
 $helperProcessIdsBeforeLive = $null
@@ -1812,11 +2146,17 @@ try {
     $helperCaptureImage = $null
     $activeWaitPayload = $null
     $focusWaitPayload = $null
+    $inputPlanningUiaSnapshotPayload = $null
+    $inputClickPayload = $null
+    $inputClickPoint = $null
+    $inputRuntimeEvent = $null
+    $inputFocusWaitPayload = $null
     $elementWaitPayload = $null
     $transientExistsWaitPayload = $null
     $textWaitPayload = $null
     $elementGoneWaitPayload = $null
     $visualWaitPayload = $null
+    $freshHostAcceptance = $null
 
     $attachCall = Invoke-ToolCall -Process $process -Name 'windows.attach_window' -Arguments @{ hwnd = $helperHwnd } -RequestName 'windows.attach_window'
     $rawAttachRequest = $attachCall.RawRequest
@@ -1899,20 +2239,19 @@ try {
     $minimizedCapturePayload = $minimizedCaptureCall.Json.result.structuredContent
     Assert-Condition -Condition ([string]$minimizedCapturePayload.reason -like '*Свернутое окно*') -Message 'Minimized helper capture reason does not mention minimized-window policy.'
 
-    $activateCall = Invoke-ToolCall -Process $process -Name 'windows.activate_window' -Arguments @{} -RequestName 'windows.activate_window'
+    $activateProof = Invoke-ActivateWindowUntilForeground -Process $process -ExpectedHwnd $helperHwnd -TimeoutMilliseconds $waitTimeoutForegroundMs
+    $activateCall = $activateProof.ToolCall
     $rawActivateRequest = $activateCall.RawRequest
     $activateResponse = [PSCustomObject]@{
         Raw = $activateCall.RawResponse
         Json = $activateCall.Json
     }
     $activateResult = $activateCall.Json.result
-    $activatePayload = $activateResult.structuredContent
+    $activatePayload = $activateProof.Payload
+    $activateAttempts = $activateProof.Attempts
     $activateStatus = [string]$activatePayload.status
-    Assert-Condition -Condition (@('done', 'ambiguous') -contains $activateStatus) -Message "ActivateWindow returned unexpected status '$activateStatus'."
-    Assert-Condition -Condition ([bool]$activateResult.isError -eq ($activateStatus -eq 'ambiguous')) -Message 'ActivateWindow isError does not match done/ambiguous semantics.'
-    Assert-Condition -Condition ([bool]$activatePayload.wasMinimized) -Message 'ActivateWindow payload must report wasMinimized=true for helper window.'
-    Assert-Condition -Condition ([long]$activatePayload.window.hwnd -eq $helperHwnd) -Message 'ActivateWindow payload hwnd does not match helper window.'
-    Assert-Condition -Condition ([bool]$activatePayload.isForeground -eq ($activateStatus -eq 'done')) -Message 'ActivateWindow payload isForeground does not match done/ambiguous semantics.'
+    Assert-Condition -Condition ([string]$activateStatus -eq 'done') -Message 'ActivateWindow proof must end with status=done before input smoke continues.'
+    Assert-Condition -Condition ([bool]$activateProof.WasMinimizedObserved) -Message 'ActivateWindow proof must observe wasMinimized=true for helper window.'
     $helperCaptureResult = Wait-ForSuccessfulWindowCapture -Process $process
     $rawHelperCaptureRequest = $helperCaptureResult.RawRequest
     $helperCaptureResponse = [PSCustomObject]@{
@@ -1924,6 +2263,8 @@ try {
     Assert-Condition -Condition ([long]$helperCapturePayload.hwnd -eq $helperHwnd) -Message 'Helper capture metadata hwnd does not match helper window.'
     Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($helperCaptureImage.data)) -Message 'Helper capture image block does not contain PNG data.'
 
+    $postCaptureActivateProof = Invoke-ActivateWindowUntilForeground -Process $process -ExpectedHwnd $helperHwnd -TimeoutMilliseconds $waitTimeoutForegroundMs
+    Assert-Condition -Condition ([string]$postCaptureActivateProof.Payload.status -eq 'done') -Message 'Post-capture activation must end with status=done before active_window_matches.'
     $activeWaitCall = Invoke-WaitToolCall -Process $process -Condition 'active_window_matches' -TimeoutMs $waitTimeoutForegroundMs -RequestName 'windows.wait(active_window_matches)'
     $rawActiveWaitRequest = $activeWaitCall.RawRequest
     $activeWaitResponse = [PSCustomObject]@{
@@ -1934,6 +2275,9 @@ try {
     Assert-Condition -Condition ([bool]$activeWaitPayload.lastObserved.targetIsForeground) -Message 'active_window_matches must confirm foreground=true in lastObserved.'
 
     Send-HelperCommand -Hwnd $helperHwnd -Message $wmAppPrepareFocus -Description 'prepare_focus' -Synchronous
+    $prepareFocusActivateProof = Invoke-ActivateWindowUntilForeground -Process $process -ExpectedHwnd $helperHwnd -TimeoutMilliseconds $waitTimeoutForegroundMs
+    Assert-Condition -Condition ([string]$prepareFocusActivateProof.Payload.status -eq 'done') -Message 'Prepare-focus foreground proof must end with status=done before focus_is.'
+    Send-HelperCommand -Hwnd $helperHwnd -Message $wmAppPrepareFocus -Description 'prepare_focus_after_foreground' -Synchronous
     $focusWaitCall = Invoke-WaitToolCall -Process $process -Condition 'focus_is' -Selector @{ name = 'Run semantic smoke'; controlType = 'button' } -TimeoutMs $waitTimeoutFocusMs -RequestName 'windows.wait(focus_is)'
     $rawFocusWaitRequest = $focusWaitCall.RawRequest
     $focusWaitResponse = [PSCustomObject]@{
@@ -1942,6 +2286,57 @@ try {
     }
     $focusWaitPayload = Assert-WaitSuccess -ToolCall $focusWaitCall -Condition 'focus_is'
     Assert-Condition -Condition ([string]$focusWaitPayload.matchedElement.controlType -eq 'button') -Message 'focus_is did not resolve the expected focused helper button.'
+
+    $inputPlanningUiaSnapshotCall = Wait-ForSemanticUiaSnapshot -Process $process
+    $rawInputPlanningUiaSnapshotRequest = $inputPlanningUiaSnapshotCall.RawRequest
+    $inputPlanningUiaSnapshotResponse = [PSCustomObject]@{
+        Raw = $inputPlanningUiaSnapshotCall.RawResponse
+        Json = $inputPlanningUiaSnapshotCall.Json
+    }
+    $inputPlanningUiaSnapshotPayload = $inputPlanningUiaSnapshotCall.Payload
+    $inputPlanningEditNodes = @(Find-UiaNodes -Node $inputPlanningUiaSnapshotPayload.root -ControlType 'edit' -Name 'Smoke query input')
+    Assert-Condition -Condition ($inputPlanningEditNodes.Count -gt 0) -Message 'Input planning UIA snapshot did not include Smoke query input edit control.'
+    $inputClickPoint = Get-CaptureRelativeCenterPoint -UiaNode $inputPlanningEditNodes[0] -CapturePayload $helperCapturePayload
+    Assert-Condition -Condition (($helperCapturePayload.PSObject.Properties.Name -contains 'frameBounds') -and $null -ne $helperCapturePayload.frameBounds) -Message 'Input smoke capture payload does not contain capture-time frameBounds.'
+    $inputCaptureReference = New-InputCaptureReference -CapturePayload $helperCapturePayload
+    $inputPreflightActivateProof = Invoke-ActivateWindowUntilForeground -Process $process -ExpectedHwnd $helperHwnd -TimeoutMilliseconds $waitTimeoutForegroundMs
+    Assert-Condition -Condition ([string]$inputPreflightActivateProof.Payload.status -eq 'done') -Message 'Input preflight activation must end with status=done before windows.input.'
+    $inputRuntimeEventCountBefore = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.input' -EventName 'input.runtime.completed'
+    $activationStartedCountBeforeInput = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.activate_window' -EventName 'tool.invocation.started'
+    $focusStartedCountBeforeInput = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.focus_window' -EventName 'tool.invocation.started'
+
+    $inputClickCall = Invoke-ToolCall -Process $process -Name 'windows.input' -Arguments @{
+        hwnd = $helperHwnd
+        confirm = $true
+        actions = @(
+            @{
+                type = 'click'
+                coordinateSpace = 'capture_pixels'
+                point = $inputClickPoint
+                captureReference = $inputCaptureReference
+            })
+    } -RequestName 'windows.input(click Smoke query input)'
+    $rawInputClickRequest = $inputClickCall.RawRequest
+    $inputClickResponse = [PSCustomObject]@{
+        Raw = $inputClickCall.RawResponse
+        Json = $inputClickCall.Json
+    }
+    $inputClickPayload = $inputClickCall.Payload
+    Assert-InputLiveResult -ToolCall $inputClickCall -ExpectedHwnd $helperHwnd
+    Assert-InputArtifact -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -InputPayload $inputClickPayload -ExpectedHwnd $helperHwnd
+    $inputRuntimeEvent = Assert-InputRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -BaselineEventCount $inputRuntimeEventCountBefore -InputPayload $inputClickPayload
+    Assert-Condition -Condition ((Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.activate_window' -EventName 'tool.invocation.started') -eq $activationStartedCountBeforeInput) -Message 'windows.input smoke observed unexpected public activate_window invocation during input call.'
+    Assert-Condition -Condition ((Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.focus_window' -EventName 'tool.invocation.started') -eq $focusStartedCountBeforeInput) -Message 'windows.input smoke observed unexpected public focus_window invocation during input call.'
+
+    $inputFocusWaitCall = Invoke-WaitToolCall -Process $process -Condition 'focus_is' -Selector @{ name = 'Smoke query input'; controlType = 'edit' } -TimeoutMs $waitTimeoutFocusMs -RequestName 'windows.wait(focus_is Smoke query input after input)'
+    $rawInputFocusWaitRequest = $inputFocusWaitCall.RawRequest
+    $inputFocusWaitResponse = [PSCustomObject]@{
+        Raw = $inputFocusWaitCall.RawResponse
+        Json = $inputFocusWaitCall.Json
+    }
+    $inputFocusWaitPayload = Assert-WaitSuccess -ToolCall $inputFocusWaitCall -Condition 'focus_is'
+    Assert-Condition -Condition ([string]$inputFocusWaitPayload.matchedElement.controlType -eq 'edit') -Message 'post-input focus_is did not resolve the expected helper edit control.'
+    Assert-Condition -Condition ([string]$inputFocusWaitPayload.matchedElement.name -eq 'Smoke query input') -Message 'post-input focus_is did not resolve Smoke query input.'
 
     $elementWaitCall = Invoke-WaitToolCall -Process $process -Condition 'element_exists' -Selector @{ name = 'Run semantic smoke'; controlType = 'button' } -TimeoutMs $waitTimeoutSemanticUiMs -RequestName 'windows.wait(element_exists)'
     $rawElementWaitRequest = $elementWaitCall.RawRequest
@@ -2078,6 +2473,107 @@ try {
     Assert-OpenTargetRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -OpenTargetPayload $openTargetLivePayload
     Assert-LaunchRuntimeEvent -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -LaunchPayload $launchLivePayload
 
+    $freshProcess = Start-StagedMcpHost -ServerDll $serverDll -WorkingDirectory $repoRoot
+    try {
+        $freshInitializeCall = Invoke-McpRequest -Process $freshProcess -Method 'initialize' -Params @{
+            protocolVersion = '2025-06-18'
+            capabilities = @{}
+            clientInfo = @{
+                name = 'Okno.Smoke.FreshHost'
+                version = '0.1.0'
+            }
+        } -RequestName 'fresh initialize'
+        [void](Send-Json -Process $freshProcess -Payload @{
+            jsonrpc = '2.0'
+            method = 'notifications/initialized'
+        })
+
+        $freshListCall = Invoke-McpRequest -Process $freshProcess -Method 'tools/list' -Params @{} -RequestName 'fresh tools/list'
+        $freshToolNames = @($freshListCall.Json.result.tools | ForEach-Object { [string]$_.name })
+        Assert-Condition -Condition ($freshToolNames -contains 'windows.input') -Message 'Fresh host tools/list does not advertise windows.input.'
+        $freshInputTool = @($freshListCall.Json.result.tools | Where-Object { [string]$_.name -eq 'windows.input' })
+        Assert-Condition -Condition ($freshInputTool.Count -eq 1) -Message "Fresh host tools/list returned $($freshInputTool.Count) windows.input descriptors."
+        $freshInputActionProperties = $freshInputTool[0].inputSchema.properties.actions.items.properties
+        Assert-Condition -Condition ($null -ne $freshInputActionProperties.type) -Message 'Fresh host windows.input schema is missing action type.'
+        Assert-Condition -Condition ($null -ne $freshInputActionProperties.point) -Message 'Fresh host windows.input schema is missing action point.'
+        Assert-Condition -Condition ($null -ne $freshInputActionProperties.captureReference.properties.frameBounds) -Message 'Fresh host windows.input schema is missing captureReference.frameBounds.'
+        Assert-Condition -Condition ($null -eq $freshInputActionProperties.text) -Message 'Fresh host windows.input schema unexpectedly exposes text.'
+        Assert-Condition -Condition ($null -eq $freshInputActionProperties.key) -Message 'Fresh host windows.input schema unexpectedly exposes key.'
+        Assert-Condition -Condition ($null -eq $freshInputActionProperties.keys) -Message 'Fresh host windows.input schema unexpectedly exposes keys.'
+
+        $freshHealthCall = Invoke-ToolCall -Process $freshProcess -Name 'okno.health' -Arguments @{} -RequestName 'fresh okno.health'
+        $freshHealthPayload = $freshHealthCall.Payload
+        Assert-HealthPayload -ToolCall $freshHealthCall -Payload $freshHealthPayload -Manifest $manifest
+
+        $freshContractCall = Invoke-ToolCall -Process $freshProcess -Name 'okno.contract' -Arguments @{} -RequestName 'fresh okno.contract'
+        $freshContractPayload = $freshContractCall.Payload
+        $freshImplementedInputDescriptors = @($freshContractPayload.implementedTools | Where-Object { [string]$_.name -eq 'windows.input' })
+        Assert-Condition -Condition ($freshImplementedInputDescriptors.Count -eq 1) -Message "Fresh okno.contract returned $($freshImplementedInputDescriptors.Count) implemented windows.input descriptors."
+        $freshInputContract = $freshImplementedInputDescriptors[0]
+        Assert-Condition -Condition ([string]$freshInputContract.lifecycle -eq 'implemented') -Message 'Fresh okno.contract did not publish windows.input as implemented.'
+        Assert-Condition -Condition ([string]$freshInputContract.safety_class -eq 'os_side_effect') -Message 'Fresh okno.contract windows.input safety_class drifted.'
+        Assert-Condition -Condition ([string]$freshInputContract.execution_policy.policy_group -eq 'input') -Message 'Fresh okno.contract windows.input policy_group drifted.'
+        Assert-Condition -Condition ([string]$freshInputContract.execution_policy.risk_level -eq 'destructive') -Message 'Fresh okno.contract windows.input risk_level drifted.'
+        Assert-Condition -Condition ([string]$freshInputContract.execution_policy.guard_capability -eq 'input') -Message 'Fresh okno.contract windows.input guard_capability drifted.'
+        Assert-Condition -Condition (-not [bool]$freshInputContract.execution_policy.supports_dry_run) -Message 'Fresh okno.contract windows.input supports_dry_run drifted.'
+        Assert-Condition -Condition ([string]$freshInputContract.execution_policy.confirmation_mode -eq 'required') -Message 'Fresh okno.contract windows.input confirmation_mode drifted.'
+        Assert-Condition -Condition ([string]$freshInputContract.execution_policy.redaction_class -eq 'text_payload') -Message 'Fresh okno.contract windows.input redaction_class drifted.'
+        Assert-Condition -Condition (@($freshContractPayload.deferredTools | Where-Object { [string]$_.name -eq 'windows.input' }).Count -eq 0) -Message 'Fresh okno.contract still publishes windows.input as deferred.'
+
+        $freshInputRuntimeEventCountBefore = Get-AuditEventCount -ArtifactsDirectory ([string]$freshHealthPayload.artifactsDirectory) -ToolName 'windows.input' -EventName 'input.runtime.completed'
+        $freshInputNegativeCall = Invoke-ToolCall -Process $freshProcess -Name 'windows.input' -Arguments @{
+            confirm = $true
+            actions = @(
+                @{
+                    type = 'click'
+                    coordinateSpace = 'screen'
+                    point = @{
+                        x = 1
+                        y = 1
+                    }
+                })
+        } -RequestName 'fresh windows.input(missing target)'
+        $freshInputNegativePayload = $freshInputNegativeCall.Payload
+        Assert-Condition -Condition ([bool]$freshInputNegativeCall.Json.result.isError) -Message 'Fresh missing-target windows.input must return isError=true.'
+        Assert-Condition -Condition ([string]$freshInputNegativePayload.status -eq 'failed') -Message "Fresh missing-target windows.input returned status '$($freshInputNegativePayload.status)'."
+        Assert-Condition -Condition ([string]$freshInputNegativePayload.failureCode -eq 'missing_target') -Message "Fresh missing-target windows.input returned failureCode '$($freshInputNegativePayload.failureCode)'."
+        Assert-Condition -Condition ($null -eq $freshInputNegativePayload.artifactPath) -Message 'Fresh missing-target windows.input unexpectedly materialized artifactPath.'
+        Assert-Condition -Condition ((Get-AuditEventCount -ArtifactsDirectory ([string]$freshHealthPayload.artifactsDirectory) -ToolName 'windows.input' -EventName 'input.runtime.completed') -eq $freshInputRuntimeEventCountBefore) -Message 'Fresh missing-target windows.input unexpectedly materialized input.runtime.completed.'
+
+        Stop-StagedMcpHost -Process $freshProcess
+        $freshStderr = $freshProcess.StandardError.ReadToEnd()
+        $freshHostAcceptance = [ordered]@{
+            initialize = $freshInitializeCall.Json.result
+            declared_tools = $freshToolNames
+            health = $freshHealthPayload
+            contract_input = $freshInputContract
+            input_missing_target = $freshInputNegativePayload
+            input_runtime_event = 'not_materialized_for_pre_gate_missing_target'
+            stderr = $freshStderr
+            raw_requests = [ordered]@{
+                initialize = $freshInitializeCall.RawRequest
+                list_tools = $freshListCall.RawRequest
+                health = $freshHealthCall.RawRequest
+                contract = $freshContractCall.RawRequest
+                input_missing_target = $freshInputNegativeCall.RawRequest
+            }
+            raw_responses = [ordered]@{
+                initialize = $freshInitializeCall.RawResponse
+                list_tools = $freshListCall.RawResponse
+                health = $freshHealthCall.RawResponse
+                contract = $freshContractCall.RawResponse
+                input_missing_target = $freshInputNegativeCall.RawResponse
+            }
+        }
+        $freshProcess = $null
+    }
+    finally {
+        if ($null -ne $freshProcess) {
+            Stop-StagedMcpHost -Process $freshProcess
+            $freshProcess = $null
+        }
+    }
+
     $report = [ordered]@{
         run_id = $runId
         initialized_protocol = $initializeResponse.Json.result.protocolVersion
@@ -2115,10 +2611,23 @@ try {
             hwnd = $helperHwnd
             title = $helperTitle
         }
-        helper_activate = $activatePayload
+        helper_activate = [ordered]@{
+            final = $activatePayload
+            attempts = $activateAttempts
+        }
         helper_capture = $helperCapturePayload
         wait_active_window_matches = $activeWaitPayload
         wait_focus_is = $focusWaitPayload
+        input_click_first = [ordered]@{
+            planning_uia_snapshot = $inputPlanningUiaSnapshotPayload
+            click_point = $inputClickPoint
+            live = $inputClickPayload
+            runtime_event_validation = 'verified'
+            runtime_event = $inputRuntimeEvent
+            artifact_validation = 'verified'
+            hidden_public_focus_activation_validation = 'verified_absent'
+            post_focus_is = $inputFocusWaitPayload
+        }
         wait_element_exists = $elementWaitPayload
         wait_transient_precondition = $transientExistsWaitPayload
         wait_element_gone = $elementGoneWaitPayload
@@ -2134,6 +2643,7 @@ try {
             artifact_validation = 'verified'
             probe_target_disposition = $openTargetProbeDisposition
         }
+        fresh_host_acceptance = $freshHostAcceptance
         raw_requests = [ordered]@{
             initialize = $rawInitializeRequest
             list_tools = $rawListRequest
@@ -2151,6 +2661,9 @@ try {
             helper_window_capture = $rawHelperCaptureRequest
             wait_active_window_matches = $rawActiveWaitRequest
             wait_focus_is = $rawFocusWaitRequest
+            input_planning_uia_snapshot = $rawInputPlanningUiaSnapshotRequest
+            windows_input_click = $rawInputClickRequest
+            wait_input_focus_is = $rawInputFocusWaitRequest
             wait_element_exists = $rawElementWaitRequest
             wait_transient_precondition = $rawTransientExistsWaitRequest
             wait_element_gone = $rawElementGoneWaitRequest
@@ -2176,6 +2689,9 @@ try {
             helper_window_capture = $helperCaptureResponse.Raw
             wait_active_window_matches = $activeWaitResponse.Raw
             wait_focus_is = $focusWaitResponse.Raw
+            input_planning_uia_snapshot = $inputPlanningUiaSnapshotResponse.Raw
+            windows_input_click = $inputClickResponse.Raw
+            wait_input_focus_is = $inputFocusWaitResponse.Raw
             wait_element_exists = $elementWaitResponse.Raw
             wait_transient_precondition = $transientExistsWaitResponse.Raw
             wait_element_gone = $elementGoneWaitResponse.Raw
@@ -2221,6 +2737,13 @@ try {
         "- helper_capture_artifact: $($helperCapturePayload.artifactPath)",
         "- wait_active_window_matches_artifact: $($activeWaitPayload.artifactPath)",
         "- wait_focus_is_artifact: $($focusWaitPayload.artifactPath)",
+        "- input_click_status: $($inputClickPayload.status)",
+        "- input_click_result_mode: $($inputClickPayload.resultMode)",
+        "- input_click_point_capture_pixels: x=$($inputClickPoint.x) y=$($inputClickPoint.y)",
+        "- input_click_artifact: $($inputClickPayload.artifactPath)",
+        "- input_runtime_event: verified",
+        "- input_hidden_public_focus_activation: verified_absent",
+        "- input_focus_is_artifact: $($inputFocusWaitPayload.artifactPath)",
         "- wait_element_exists_artifact: $($elementWaitPayload.artifactPath)",
         "- wait_transient_precondition_artifact: $($transientExistsWaitPayload.artifactPath)",
         "- wait_element_gone_artifact: $($elementGoneWaitPayload.artifactPath)",
@@ -2236,6 +2759,9 @@ try {
         "- open_target_live_artifact: $($openTargetLivePayload.artifactPath)",
         "- open_target_runtime_event: verified",
         "- open_target_probe_target: external_retained_evidence",
+        "- fresh_host_windows_input_tools_list: verified",
+        "- fresh_host_windows_input_contract: verified",
+        "- fresh_host_windows_input_missing_target: $($freshHostAcceptance.input_missing_target.status)/$($freshHostAcceptance.input_missing_target.failureCode)",
         "- audit_dir: $($healthPayload.artifactsDirectory)",
         "- report: $reportPath"
     )
@@ -2278,6 +2804,10 @@ finally {
         if ($liveResolvedReconciliation.CleanupProcessIds.Count -gt 0) {
             Stop-SmokeHelperLeaks -ProcessIds $liveResolvedReconciliation.CleanupProcessIds
         }
+    }
+
+    if ($null -ne $freshProcess -and -not $freshProcess.HasExited) {
+        Stop-StagedMcpHost -Process $freshProcess
     }
 
     if ($null -ne $process -and -not $process.HasExited) {

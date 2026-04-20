@@ -45,6 +45,95 @@ public sealed class InputRuntimePolicyTests
     }
 
     [Fact]
+    public void MapActionRejectsWgcWindowCaptureContentBoundsWithoutCaptureFrameBasis()
+    {
+        WindowDescriptor targetWindow = CreateWindow(bounds: new Bounds(120, 120, 640, 480));
+        InputAction action = CreateAction(
+            InputActionTypeValues.Click,
+            InputCoordinateSpaceValues.CapturePixels,
+            new InputPoint(142, 178),
+            CreateCaptureReference(
+                bounds: new InputBounds(120, 120, 626, 473),
+                pixelWidth: 506,
+                pixelHeight: 353));
+
+        bool mapped = InputCoordinateMapper.TryMap(action, targetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
+
+        Assert.False(mapped);
+        Assert.Null(screenPoint);
+        Assert.Equal(InputFailureCodeValues.CaptureReferenceStale, failureCode);
+        Assert.Contains("capture", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void MapActionAcceptsWgcWindowCaptureContentBoundsWhenFrameBasisStillMatches()
+    {
+        WindowDescriptor targetWindow = CreateWindow(bounds: new Bounds(120, 120, 640, 480));
+        InputAction action = CreateAction(
+            InputActionTypeValues.Click,
+            InputCoordinateSpaceValues.CapturePixels,
+            new InputPoint(142, 178),
+            CreateCaptureReference(
+                bounds: new InputBounds(120, 120, 626, 473),
+                pixelWidth: 506,
+                pixelHeight: 353,
+                frameBounds: new InputBounds(120, 120, 640, 480)));
+
+        bool mapped = InputCoordinateMapper.TryMap(action, targetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
+
+        Assert.True(mapped);
+        Assert.Equal(new InputPoint(262, 298), screenPoint);
+        Assert.Null(failureCode);
+        Assert.Null(reason);
+    }
+
+    [Fact]
+    public void MapActionAcceptsSharedCaptureReferenceGeometryWithoutLegacyFrameDeltaLimit()
+    {
+        WindowDescriptor targetWindow = CreateWindow(bounds: new Bounds(0, 0, 240, 220));
+        InputAction action = CreateAction(
+            InputActionTypeValues.Click,
+            InputCoordinateSpaceValues.CapturePixels,
+            new InputPoint(10, 20),
+            CaptureReferenceGeometryPolicy.CreateCopyThroughReference(
+                new Bounds(60, 50, 160, 150),
+                pixelWidth: 100,
+                pixelHeight: 100,
+                effectiveDpi: 96,
+                capturedAtUtc: DateTimeOffset.UtcNow,
+                frameBounds: new Bounds(0, 0, 240, 220)));
+
+        bool mapped = InputCoordinateMapper.TryMap(action, targetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
+
+        Assert.True(mapped);
+        Assert.Equal(new InputPoint(70, 70), screenPoint);
+        Assert.Null(failureCode);
+        Assert.Null(reason);
+    }
+
+    [Fact]
+    public void MapActionRejectsWgcWindowCaptureContentBoundsWhenFrameBasisResizedInsideTolerance()
+    {
+        WindowDescriptor targetWindow = CreateWindow(bounds: new Bounds(120, 120, 642, 482));
+        InputAction action = CreateAction(
+            InputActionTypeValues.Click,
+            InputCoordinateSpaceValues.CapturePixels,
+            new InputPoint(142, 178),
+            CreateCaptureReference(
+                bounds: new InputBounds(120, 120, 626, 473),
+                pixelWidth: 506,
+                pixelHeight: 353,
+                frameBounds: new InputBounds(120, 120, 640, 480)));
+
+        bool mapped = InputCoordinateMapper.TryMap(action, targetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
+
+        Assert.False(mapped);
+        Assert.Null(screenPoint);
+        Assert.Equal(InputFailureCodeValues.CaptureReferenceStale, failureCode);
+        Assert.Contains("capture", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void MapActionRejectsCaptureReferenceWhenLiveWindowMovedTooFar()
     {
         WindowDescriptor targetWindow = CreateWindow(bounds: new Bounds(304, 400, 624, 780));
@@ -56,6 +145,49 @@ public sealed class InputRuntimePolicyTests
                 bounds: new InputBounds(300, 400, 620, 780),
                 pixelWidth: 320,
                 pixelHeight: 380));
+
+        bool mapped = InputCoordinateMapper.TryMap(action, targetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
+
+        Assert.False(mapped);
+        Assert.Null(screenPoint);
+        Assert.Equal(InputFailureCodeValues.CaptureReferenceStale, failureCode);
+        Assert.Contains("capture", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void MapActionRejectsCaptureReferenceWhenLiveWindowExtentDivergesBeyondWgcFrameTolerance()
+    {
+        WindowDescriptor targetWindow = CreateWindow(bounds: new Bounds(120, 120, 700, 540));
+        InputAction action = CreateAction(
+            InputActionTypeValues.Click,
+            InputCoordinateSpaceValues.CapturePixels,
+            new InputPoint(142, 178),
+            CreateCaptureReference(
+                bounds: new InputBounds(120, 120, 626, 473),
+                pixelWidth: 506,
+                pixelHeight: 353));
+
+        bool mapped = InputCoordinateMapper.TryMap(action, targetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
+
+        Assert.False(mapped);
+        Assert.Null(screenPoint);
+        Assert.Equal(InputFailureCodeValues.CaptureReferenceStale, failureCode);
+        Assert.Contains("capture", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void MapActionRejectsCaptureReferenceWhenRightEdgeDriftsPastToleranceDespiteOriginAndExtentMatch()
+    {
+        WindowDescriptor targetWindow = CreateWindow(bounds: new Bounds(121, 120, 642, 480));
+        InputAction action = CreateAction(
+            InputActionTypeValues.Click,
+            InputCoordinateSpaceValues.CapturePixels,
+            new InputPoint(10, 20),
+            CreateCaptureReference(
+                bounds: new InputBounds(120, 120, 640, 480),
+                pixelWidth: 520,
+                pixelHeight: 360,
+                frameBounds: new InputBounds(120, 120, 640, 480)));
 
         bool mapped = InputCoordinateMapper.TryMap(action, targetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
 
@@ -670,13 +802,15 @@ public sealed class InputRuntimePolicyTests
         InputBounds? bounds = null,
         int pixelWidth = 320,
         int pixelHeight = 360,
-        int? effectiveDpi = 96) =>
+        int? effectiveDpi = 96,
+        InputBounds? frameBounds = null) =>
         new(
             bounds ?? new InputBounds(100, 200, 420, 560),
             pixelWidth,
             pixelHeight,
             effectiveDpi,
-            capturedAtUtc: DateTimeOffset.UtcNow);
+            capturedAtUtc: DateTimeOffset.UtcNow,
+            frameBounds: frameBounds);
 
     private static InputProcessSecurityContext CreateCurrentProcessSecurity(
         int sessionId = 1,

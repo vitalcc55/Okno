@@ -470,7 +470,7 @@ Input — это fallback и исполнительный слой, но не о
 Переиспользование по слоям должно выглядеть так:
 
 - `Okno` даёт Windows-native observe/verify/guardrails;
-- будущий `windows.input` даёт execution vocabulary;
+- shipped click-first `windows.input` даёт первый execution vocabulary, а broad actions остаются later extensions;
 - отдельный adapter переводит `computer_call.actions[]` во внутренние вызовы Okno;
 - после действия adapter возвращает новый screenshot/state назад во внешний loop.
 

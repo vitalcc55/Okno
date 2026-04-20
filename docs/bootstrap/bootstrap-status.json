@@ -46,7 +46,7 @@
     "smoke_summary": "artifacts/smoke/<run_id>/summary.md"
   },
   "deferred_scope": [
-    "Input",
+    "Input broad actions beyond click-first",
     "Clipboard",
     "HTTP transport"
   ]

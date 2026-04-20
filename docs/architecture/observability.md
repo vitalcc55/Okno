@@ -6,7 +6,7 @@
 
 - `artifacts/diagnostics/<run_id>/events.jsonl` — канонический machine-readable event stream.
 - `artifacts/diagnostics/<run_id>/summary.md` — human-readable journal того же запуска.
-- `artifacts/diagnostics/<run_id>/captures/<capture_id>.png` — фактические PNG-доказательства для `windows.capture`.
+- `artifacts/diagnostics/<run_id>/captures/<capture_id>.png` — фактические PNG-доказательства для `windows.capture`; public capture payload carries the matching structured metadata, including `frameBounds` for window captures.
 - `artifacts/diagnostics/<run_id>/launch/<launch_id>.json` — JSON-evidence для launch-family runtime tools: `launch-*.json` для `windows.launch_process` и `open-target-*.json` для `windows.open_target`, оба с factual result, materialized `artifact_path` и safe `failure_diagnostics` без raw executable path / args / working directory / full target disclosure.
 - `artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json` — JSON-evidence для public `windows.uia_snapshot`, включая успешные snapshot payloads и worker-process diagnostic artifacts при transport/process failure.
 - `artifacts/diagnostics/<run_id>/wait/<wait_id>.json` — JSON-evidence для public `windows.wait`, включая request, resolved target, attempts и final status.
@@ -15,7 +15,7 @@
 
 Для текущего reporting-first rollout `okno.health` намеренно не materialize-ит отдельный diagnostics artifact и не пишет отдельный runtime event. Evidence для health readiness живёт в самом tool response и в `artifacts/smoke/<run_id>/report.json` / `summary.md`, чтобы не обещать лишний observability surface до отдельного contract change.
 
-Поверх этого `scripts/smoke.ps1` создаёт отдельный smoke-report в `artifacts/smoke/<run_id>/report.json` и `summary.md`.
+Поверх этого `scripts/smoke.ps1` создаёт отдельный smoke-report в `artifacts/smoke/<run_id>/report.json` и `summary.md`; current Package E smoke также доказывает click-first `windows.input` через helper textbox click, `input/input-*.json`, `input.runtime.completed`, post-action `wait(focus_is)` и fresh staged host acceptance.
 
 Текущий продуктовый приоритет тоже вытекает из этого решения: сначала доводим до product-ready именно `STDIO` local process. HTTP transport остаётся следующим этапом и не должен размывать текущий observability contract.
 

@@ -207,6 +207,20 @@ internal static class WindowsInputToolRegistration
                 },
                 ["effectiveDpi"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
                 ["capturedAtUtc"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
+                ["frameBounds"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["additionalProperties"] = false,
+                    ["properties"] = new JsonObject
+                    {
+                        ["left"] = new JsonObject { ["type"] = "integer" },
+                        ["top"] = new JsonObject { ["type"] = "integer" },
+                        ["right"] = new JsonObject { ["type"] = "integer" },
+                        ["bottom"] = new JsonObject { ["type"] = "integer" },
+                    },
+                    ["required"] = CreateStringArray("left", "top", "right", "bottom"),
+                    ["description"] = "Optional capture-time live window frame bounds used to distinguish WGC content/frame delta from post-capture resize.",
+                },
             },
             ["required"] = CreateStringArray("bounds", "pixelWidth", "pixelHeight"),
         };

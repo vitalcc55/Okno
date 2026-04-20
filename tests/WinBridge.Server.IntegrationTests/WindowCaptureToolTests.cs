@@ -116,6 +116,8 @@ public sealed class WindowCaptureToolTests
         Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
         Assert.Equal(CaptureCoordinateSpaceValues.PhysicalPixels, payload.GetProperty("coordinateSpace").GetString());
         Assert.False(payload.TryGetProperty("effectiveDpi", out _));
+        Assert.False(payload.TryGetProperty("frameBounds", out _));
+        Assert.False(payload.TryGetProperty("captureReference", out _));
     }
 
     [Fact]
@@ -336,7 +338,13 @@ public sealed class WindowCaptureToolTests
     {
         WindowDescriptor window = CreateWindow(hwnd: 505, title: "Captured");
         byte[] pngBytes = [0, 1, 2, 255];
-        FakeCaptureService captureService = new(CreateCaptureResult(window, "window", pngBytes: pngBytes));
+        Bounds captureBounds = new(10, 20, 210, 220);
+        Bounds frameBounds = new(10, 20, 226, 232);
+        FakeCaptureService captureService = new(CreateCaptureResult(
+            window with { Bounds = captureBounds },
+            "window",
+            pngBytes: pngBytes,
+            frameBounds: frameBounds));
         WindowTools tools = CreateTools(
             windows: [window],
             captureService: captureService,
@@ -352,14 +360,59 @@ public sealed class WindowCaptureToolTests
         ImageContentBlock imageBlock = Assert.IsType<ImageContentBlock>(result.Content[1]);
 
         Assert.Contains("\"scope\":\"window\"", textBlock.Text, StringComparison.Ordinal);
+        Assert.Contains("\"frameBounds\":", textBlock.Text, StringComparison.Ordinal);
+        Assert.Contains("\"captureReference\":", textBlock.Text, StringComparison.Ordinal);
         Assert.Equal("image/png", imageBlock.MimeType);
         Assert.Equal(Convert.ToBase64String(pngBytes), Encoding.ASCII.GetString(imageBlock.Data.Span));
+
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal(captureBounds.Left, payload.GetProperty("bounds").GetProperty("left").GetInt32());
+        Assert.Equal(captureBounds.Right, payload.GetProperty("bounds").GetProperty("right").GetInt32());
+        Assert.Equal(captureBounds.Width, payload.GetProperty("bounds").GetProperty("width").GetInt32());
+        Assert.Equal(captureBounds.Height, payload.GetProperty("bounds").GetProperty("height").GetInt32());
+        Assert.Equal(frameBounds.Left, payload.GetProperty("frameBounds").GetProperty("left").GetInt32());
+        Assert.Equal(frameBounds.Right, payload.GetProperty("frameBounds").GetProperty("right").GetInt32());
+        Assert.Equal(frameBounds.Width, payload.GetProperty("frameBounds").GetProperty("width").GetInt32());
+        Assert.Equal(frameBounds.Height, payload.GetProperty("frameBounds").GetProperty("height").GetInt32());
+        JsonElement captureReference = payload.GetProperty("captureReference");
+        AssertInputCompatibleBoundsWireShape(captureReference.GetProperty("bounds"));
+        AssertInputCompatibleBoundsWireShape(captureReference.GetProperty("frameBounds"));
+
+        string inputJson = $$"""
+            {
+              "hwnd": 505,
+              "confirm": true,
+              "actions": [
+                {
+                  "type": "click",
+                  "coordinateSpace": "capture_pixels",
+                  "point": { "x": 1, "y": 1 },
+                  "captureReference": {{captureReference.GetRawText()}}
+                }
+              ]
+            }
+            """;
+        InputRequest inputRequest = JsonSerializer.Deserialize<InputRequest>(inputJson)
+            ?? throw new InvalidOperationException("Input request did not deserialize.");
+        Assert.True(
+            InputRequestValidator.TryValidateStructure(inputRequest, out _, out string? reason),
+            reason);
     }
 
     private static JsonElement AssertStructuredPayload(CallToolResult result)
     {
         Assert.NotNull(result.StructuredContent);
         return result.StructuredContent!.Value;
+    }
+
+    private static void AssertInputCompatibleBoundsWireShape(JsonElement bounds)
+    {
+        string[] propertyNames = bounds.EnumerateObject()
+            .Select(property => property.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(["bottom", "left", "right", "top"], propertyNames);
     }
 
     private static WindowTools CreateTools(
@@ -432,7 +485,8 @@ public sealed class WindowCaptureToolTests
         byte[]? pngBytes = null,
         string? monitorId = "display-source:0000000100000000:1",
         string? monitorFriendlyName = "Primary monitor",
-        string? monitorGdiDeviceName = @"\\.\DISPLAY1")
+        string? monitorGdiDeviceName = @"\\.\DISPLAY1",
+        Bounds? frameBounds = null)
     {
         CaptureMetadata metadata = new(
             Scope: scope,
@@ -453,7 +507,19 @@ public sealed class WindowCaptureToolTests
             DpiScale: targetKind == "window" ? 1.0 : null,
             MonitorId: monitorId,
             MonitorFriendlyName: monitorFriendlyName,
-            MonitorGdiDeviceName: monitorGdiDeviceName);
+            MonitorGdiDeviceName: monitorGdiDeviceName,
+            FrameBounds: frameBounds,
+            CaptureReference: targetKind == "window" && window is not null
+                ? new InputCaptureReference(
+                    new InputBounds(window.Bounds.Left, window.Bounds.Top, window.Bounds.Right, window.Bounds.Bottom),
+                    pixelWidth: 200,
+                    pixelHeight: 200,
+                    effectiveDpi: 96,
+                    capturedAtUtc: DateTimeOffset.UtcNow,
+                    frameBounds: frameBounds is null
+                        ? null
+                        : new InputBounds(frameBounds.Left, frameBounds.Top, frameBounds.Right, frameBounds.Bottom))
+                : null);
 
         return new CaptureResult(metadata, pngBytes ?? [1, 2, 3]);
     }

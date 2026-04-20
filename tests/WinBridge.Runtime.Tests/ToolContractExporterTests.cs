@@ -163,6 +163,11 @@ public sealed class ToolContractExporterTests
         Assert.Equal("required", policy.GetProperty("confirmation_mode").GetString());
         Assert.Equal("text_payload", policy.GetProperty("redaction_class").GetString());
         Assert.Equal("implemented", inputTool.GetProperty("lifecycle").GetString());
+        Assert.True(inputTool.GetProperty("smoke_required").GetBoolean());
+        JsonElement smokeRequiredNames = document.RootElement.GetProperty("tools").GetProperty("smoke_required_names");
+        Assert.Contains(
+            ToolNames.WindowsInput,
+            smokeRequiredNames.EnumerateArray().Select(item => item.GetString()));
     }
 
     [Fact]

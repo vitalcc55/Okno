@@ -1,6 +1,6 @@
 # ExecPlan: windows.input
 
-Статус: active; Package D implemented, Package E pending
+Статус: completed; shipped click-first subset, broad input extensions deferred
 Создан: 2026-04-10
 
 ## 1. Goal
@@ -35,7 +35,7 @@
   - `supports_dry_run=false`
   - `confirmation_mode=required`
   - `redaction_class=text_payload`
-- implemented public registration публикует только shipped subset `move` / `click` / `double_click` / `click(button=right)` through `button=left/right`; `drag` / `scroll` / `type` / `keypress`, smoke proof and fresh-host acceptance остаются deferred до Package E, while runtime artifacts/events are now materialized by Package D.
+- implemented public registration публикует только shipped subset `move` / `click` / `double_click` / `click(button=right)` through `button=left/right`; `drag` / `scroll` / `type` / `keypress` остаются deferred, while runtime artifacts/events are materialized by Package D and smoke/fresh-host acceptance is closed by Package E.
 - shared gate уже обязателен для policy-bearing tools: raw `ToolExecution.Run(...)`/`RunAsync(...)` для `windows.input` fail-fast запрещён, нужен только `RunGated(...)` / `RunGatedAsync(...)`.
 - shared readiness для `input` больше не placeholder blocked: `RuntimeGuardPolicy.BuildInput(...)` уже выражает reusable `ready/degraded/blocked/unknown` baseline, а target-specific integrity/focus checks ещё остаются на future runtime boundary.
 - runtime seam для input больше не пустой: internal [src/WinBridge.Runtime.Windows.Input/IInputService.cs](../../../src/WinBridge.Runtime.Windows.Input/IInputService.cs) ведёт к concrete `Win32InputService`, но raw side-effect seam не является public .NET API и не заменяет server-side `RunGatedAsync(...)` boundary.
@@ -488,13 +488,17 @@ For `capture_pixels`:
 - `hwnd` or attached window is mandatory;
 - `captureReference` is mandatory;
 - coordinates are expressed relative to the authoritative raster returned by `windows.capture(scope=window)`;
-- runtime remaps to screen coordinates using `captureReference.Bounds` and current live window bounds;
+- normal clients copy `captureReference` from that single capture result instead of reconstructing input geometry from observe metadata or synthesizing frame geometry through `windows.wait` / `windows.list_windows`; public capture `bounds` / `frameBounds` remain ordinary observe rectangles with derived `width` / `height`, while `captureReference.bounds` / `captureReference.frameBounds` use the exact edge-only `InputBounds` wire shape;
+- for window WGC captures, `captureReference.bounds.Left/Top` is a proven raster/content origin inside `captureReference.frameBounds`, not a synthetic reuse of the Win32 frame origin when content size is smaller than the frame; post-capture refresh validates frame/raster/DPI drift but never becomes the authoritative `captureReference` geometry source;
+- runtime remaps to screen coordinates using `captureReference.bounds`, optional `captureReference.frameBounds` and current live window bounds;
 - `capture_reference_stale` is raised when any of the following becomes true before dispatch:
-  - current authoritative window width or height differs from `captureReference.Bounds` by any physical pixel;
-  - current authoritative window `Left` or `Top` differs from `captureReference.Bounds` by more than `1` physical pixel;
+  - current authoritative window `Left` or `Top` differs from capture-time `frameBounds` by more than `1` physical pixel;
+  - `captureReference.bounds` / `pixelWidth` / `pixelHeight` do not describe one consistent capture raster;
+  - `captureReference.frameBounds` is present and does not contain the capture raster bounds;
+  - current authoritative window frame extent differs from capture-time `captureReference.frameBounds` extent beyond the narrow rounding tolerance;
+  - `captureReference.bounds` is smaller than the current live frame but `captureReference.frameBounds` is absent, because runtime cannot distinguish WGC frame/content delta from post-capture resize;
   - `captureReference.EffectiveDpi` is present and current authoritative `EffectiveDpi` differs from it;
-  - `captureReference.PixelWidth` or `PixelHeight` no longer match the authoritative capture geometry implied by the current live window/capture metadata;
-- the `1`-pixel tolerance exists only for origin rounding drift between capture/runtime paths; resize is never tolerated in V1.
+- the `1`-pixel tolerance is enforced as one shared edge-based drift predicate on both capture producer and input consumer; WGC content/frame delta is accepted only when `captureReference.frameBounds` preserves the capture-time frame basis and `captureReference.bounds` is contained by it, without a global fixed-pixel inset cap; material resize still fails closed.
 
 ### 7.5. `screen` semantics
 
@@ -611,7 +615,7 @@ Follow-up requirement before keyboard wave:
 | `src/WinBridge.Runtime.Windows.Input/InputCoordinateMapper.cs` | coordinate remap | Convert `capture_pixels` or `screen` point into factual screen point; reject stale geometry and out-of-bounds coordinates. |
 | `src/WinBridge.Runtime.Windows.Input/InputResultMaterializer.cs` | evidence/event lifecycle | Write `input-*.json`, emit `input.runtime.completed`, keep best-effort artifact/event behavior aligned with launch/open/wait. |
 | [src/WinBridge.Runtime.Windows.Shell/IWindowTargetResolver.cs](../../../src/WinBridge.Runtime.Windows.Shell/IWindowTargetResolver.cs) + [WindowTargetResolver.cs](../../../src/WinBridge.Runtime.Windows.Shell/WindowTargetResolver.cs) | target resolution | Add dedicated `ResolveInputTarget(...)` with precedence `explicit -> attached`, no active fallback, explicit failure codes. |
-| [src/WinBridge.Runtime.Windows.Capture/GraphicsCaptureService.cs](../../../src/WinBridge.Runtime.Windows.Capture/GraphicsCaptureService.cs) + capture contracts | capture metadata source | Reuse existing `Bounds`, `PixelWidth`, `PixelHeight`, `CoordinateSpace=physical_pixels` for `capture_pixels` remap. No hidden capture call from input. |
+| [src/WinBridge.Runtime.Windows.Capture/GraphicsCaptureService.cs](../../../src/WinBridge.Runtime.Windows.Capture/GraphicsCaptureService.cs) + capture contracts | capture metadata source | Publish public capture `Bounds` / `FrameBounds` / `PixelWidth` / `PixelHeight` / `CoordinateSpace=physical_pixels` in the ordinary observe wire shape, and publish a separate `captureReference` bridge that reuses the exact `InputCaptureReference` shape for `capture_pixels` remap. Window WGC uses a proven visible-frame raster origin inside `FrameBounds`, fails closed instead of inventing content origin, and shares the same geometry policy helper with input-side validation. No hidden capture call from input. |
 | [src/WinBridge.Runtime.Waiting/IWaitService.cs](../../../src/WinBridge.Runtime.Waiting/IWaitService.cs) | follow-up verification | No runtime dependency for dispatch itself, but `windows.wait` remains canonical post-action proof path. |
 | [src/WinBridge.Runtime/ServiceCollectionExtensions.cs](../../../src/WinBridge.Runtime/ServiceCollectionExtensions.cs) | DI wiring | Register input platform, service, result materializer and any target-integrity helper. |
 | `src/WinBridge.Server/Tools/WindowsInputToolRegistration.cs` | programmatic MCP registration | Add manual input schema for shipped subset only; mirror launch/open registration pattern. |
@@ -663,7 +667,7 @@ Done when:
 - [x] Internal Package B runtime slice now exists without public rollout: `Win32InputService` + `Win32InputPlatform` execute `move`, `click`, `double_click` and `click(button=right)` through `ResolveInputTarget(...)`, per-action target revalidation, foreground/minimized/session/integrity preflight, `capture_pixels -> screen` translation-only remap, factual cursor verification and fail-fast batch results.
 - [x] Live pointer batches are now serialized through an internal input execution gate, and every irreversible click dispatch revalidates the live target immediately before dispatch through a refreshed coordinate-space-aware dispatch plan; `capture_pixels` can update the authoritative screen point on admissible origin drift for single-click gestures, while `double_click` now splits into pre-gesture plan refresh before the first move and a stable-point execution phase where both taps fail closed if boundary revalidation would retarget the gesture. Final click dispatch proves the factual cursor position, that the live foreground window still matches the same admitted target `HWND` and stable identity, and only then derives ambient async-state readability from that live foreground owner immediately before `SendInput`.
 - [x] Runtime artifacts/events and result materialization landed in Package D without changing Package A contract freeze.
-- [ ] Smoke, fresh-host acceptance, `SmokeRequired` promotion and roadmap/spec promotion remain deferred to Package E.
+- [x] Smoke, fresh-host acceptance, `SmokeRequired` promotion and roadmap/spec promotion are closed by Package E for the shipped click-first subset only.
 
 ### Package B — Runtime/input service
 
@@ -698,7 +702,7 @@ Package B checklist:
 - [x] Package B intentionally stops at runtime-only execution semantics; public handler, observability rollout and publication remain untouched.
 - [x] Public handler / `RunGatedAsync(...)` boundary now routes through the shared gate and returns canonical `blocked` / `needs_confirmation` / live runtime payloads without reopening Package B runtime semantics.
 - [x] Runtime event / artifact / materializer rollout landed in Package D without reopening Package B dispatch semantics.
-- [ ] Smoke / fresh-host acceptance / smoke-backed publication proof remains Package E.
+- [x] Smoke / fresh-host acceptance / smoke-backed publication proof is closed by Package E for the shipped click-first subset only.
 
 ### Package C — Server/public tool
 
@@ -720,7 +724,7 @@ Done when:
 
 Package C checklist:
 
-- [x] `windows.input` flipped from deferred public registration to implemented MCP tool registration, while keeping `SmokeRequired=false` until Package E.
+- [x] `windows.input` flipped from deferred public registration to implemented MCP tool registration; Package E later promoted `SmokeRequired=true` after smoke/fresh-host proof.
 - [x] Manual `tools/list` schema now publishes only the shipped click-first subset: `move`, `click`, `double_click`, `click(button=right)` through `button=left/right`, with `captureReference` for `capture_pixels` and without `drag` / `scroll` / `type` / `keypress` / `keys[]` / `dryRun`.
 - [x] Public boundary binds raw JSON into frozen `InputRequest` / `InputAction` DTOs, rejects malformed nested shapes as tool-level `failed + invalid_request` instead of transport-level errors, materializes deterministic target-preflight failures before shared gate, and uses a contract-owned malformed-safe bounded audit request summary so rejected keyboard-like payloads, rejected enum-like literals and nested `JsonExtensionData` from `point` / `captureReference` / `bounds` do not leak into `tool.invocation.started`.
 - [x] Live execution path uses only `RunGatedAsync(...)` plus the existing `IInputService`; rejected decisions materialize `blocked` / `needs_confirmation` in the same payload style as launch/open, and allowed live calls return factual `InputResult` unchanged. Unexpected current-action runtime faults travel through a typed factual failure carrier only after a committed side effect for the current action; setup faults after already completed previous actions materialize a batch-level partial result without a pseudo-failed current action, while clean first-action setup faults stay on the generic exception path with `exception_type` preserved by the boundary.
@@ -750,10 +754,10 @@ Package D checklist:
 - [x] Added best-effort `input.runtime.completed` event with `status`, `decision`, `result_mode`, `failure_code`, `target_hwnd`, `target_source`, `completed_action_count`, `failed_action_index`, `action_types`, `coordinate_spaces`, `artifact_path`, `failure_stage`, `exception_type` and `committed_side_effect_evidence`.
 - [x] Preserved Package B partial dispatch / committed side-effect evidence through `click_dispatch_clean_failure`, `click_dispatch_partial_compensated`, `click_dispatch_partial_uncompensated` and conservative committed evidence markers instead of collapsing everything into generic `failed`.
 - [x] Review follow-up closed helper-boundary stage drift: dispatch-plan refresh helpers now propagate semantic `failure_stage` with factual failure results, including refreshed-move cancellation after committed side effect.
-- [x] Public `okno.contract` notes now match Package D state: input artifacts/events/materializer are landed, while smoke/fresh-host acceptance remains Package E.
+- [x] Public `okno.contract` notes now match Package E state: input artifacts/events/materializer are landed, and smoke/fresh-host acceptance is proven for the shipped click-first subset.
 - [x] Artifact/event write failures stay best-effort: factual `InputResult` is not downcast; artifact write failure only clears `ArtifactPath` and records safe `artifact_write` diagnostics when the audit sink is healthy.
 - [x] Server Package C boundary remains a pass-through over factual runtime result plus `tool.invocation.completed`; pre-gate invalid/blocked/needs-confirmation paths do not emit `input.runtime.completed`.
-- [x] No Package A/B/C public/runtime semantics changed: no schema changes, no new shipped actions, no retry/compensation behavior, no `SmokeRequired` change and no smoke/fresh-host acceptance.
+- [x] No Package A/B/C public/runtime semantics changed: no schema changes, no new shipped actions and no retry/compensation behavior; `SmokeRequired` is promoted only after Package E proof.
 
 Package B evidence risk closed by Package D:
 
@@ -777,6 +781,18 @@ Done when:
 - `tools/list`, `okno.contract`, roadmap/spec and generated docs all describe the same shipped subset;
 - fresh-host acceptance proves the tool appears and binds correctly after restart, not only before process recycle;
 - smoke proves no false success and no hidden focus side effects.
+
+Package E checklist:
+
+- [x] `scripts/smoke.ps1` reuses the staged bundle flow and existing `SmokeWindowHost`; no new helper app or `bin/obj` runtime launch surface was introduced.
+- [x] Smoke performs explicit attach and `windows.activate_window` before input; `windows.input` itself is verified as a click-only dispatch step without hidden public focus/activation calls.
+- [x] Smoke captures the helper window, uses UIA `Smoke query input` bounds to plan a `capture_pixels` textbox-center click, then proves the effect with `windows.wait(condition=focus_is)` on the edit control.
+- [x] Smoke uses the `windows.capture(scope=window)` payload's dedicated `captureReference` bridge verbatim, proving canonical observe-to-action geometry propagation without manual rectangle normalization or a `wait` / `list_windows` side-channel.
+- [x] Review hardening keeps that copy-through geometry atomic: window WGC `bounds` / `frameBounds` are built from the acquisition basis, post-capture refresh only validates frame/raster/DPI drift, `WindowDescriptor.Bounds` stays frame-only for wait/runtime consumers, producer and consumer share the same edge-based drift predicate, and the captured bitmap is disposed on geometry fail-close in both `windows.capture` and visual wait paths.
+- [x] Smoke verifies public input payload shape: `verify_needed`, factual per-action result, `artifactPath` and text-only MCP content.
+- [x] Smoke verifies `artifacts/diagnostics/<run_id>/input/input-*.json` and `input.runtime.completed`, including safe metadata and no raw exception message, raw typed text, `key` or `keys`.
+- [x] Smoke adds fresh-host acceptance: new staged MCP host/session after restart publishes `windows.input` in `tools/list`, exports implemented input policy through `okno.contract`, and materializes a fresh missing-target input result without warm in-process state.
+- [x] `SmokeRequired=true` is promoted for `windows.input` after Package E proof; generated docs, product docs and changelog are synchronized only for the shipped click-first subset.
 
 ## 11. L1/L2/L3 test ladder
 
@@ -829,11 +845,11 @@ Canonical first smoke story should reuse current helper and stay as close as pos
 1. `windows.launch_process` or existing smoke helper launch creates `SmokeWindowHost`.
 2. `windows.attach_window` claims the helper.
 3. `windows.activate_window` makes it usable.
-4. `windows.capture(scope=window)` returns fresh raster + bounds in `physical_pixels`.
+4. `windows.capture(scope=window)` returns fresh raster + observe metadata (`bounds`, `frameBounds`) + dedicated `captureReference` in `physical_pixels`.
 5. `windows.uia_snapshot` confirms the helper tree and provides textbox bounds for `Smoke query input`.
 6. `windows.input` receives:
    - `hwnd = helper`
-   - `actions = [{ type = "click", coordinateSpace = "capture_pixels", point = center_of_textbox, captureReference = {...} }]`
+   - `actions = [{ type = "click", coordinateSpace = "capture_pixels", point = center_of_textbox, captureReference = payload.captureReference }]`
 7. Tool returns `verify_needed` with resolved screen point and artifact path.
 8. `windows.wait(condition=focus_is, selector={ name="Smoke query input", controlType="edit" })` returns `done`.
 9. Smoke asserts audit/event/artifact parity and that `windows.input` itself never tried hidden focus recovery.

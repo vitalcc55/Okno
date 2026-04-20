@@ -42,7 +42,7 @@
 Current `windows.input` state for this compatibility layer:
 
 - Package D observability is already landed: factual input runtime results produce `input.runtime.completed` and `artifacts/diagnostics/<run_id>/input/input-*.json`.
-- Package E smoke/fresh-host acceptance is still pending, so the adapter track must not claim production-ready OpenAI compatibility yet.
+- Package E smoke/fresh-host acceptance закрыт фактическим proof for the click-first subset: canonical smoke performs a real helper textbox click through `windows.input`, verifies focus through `windows.wait`, and repeats publication/binding checks in a fresh staged MCP host.
 
 ### Что не должно входить в core runtime
 
@@ -113,7 +113,7 @@ Adapter должен:
 - не перестраивать roadmap вокруг built-in `computer use`;
 - не смешивать OpenAI API contracts с `WinBridge.Runtime.Contracts`;
 - не встраивать adapter code в `WinBridge.Runtime` или `WinBridge.Server`;
-- не объявлять compatibility shipped до production-ready `windows.input`.
+- не объявлять adapter compatibility shipped без отдельного adapter-layer exec-plan, даже при уже proof-backed click-first `windows.input`.
 
 ## Official references
 

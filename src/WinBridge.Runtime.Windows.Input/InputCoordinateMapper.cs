@@ -119,7 +119,9 @@ internal static class InputCoordinateMapper
         }
 
         Bounds liveBounds = targetWindow.Bounds;
-        if (!CaptureReferenceMatchesLiveGeometry(captureReference, liveBounds, targetWindow.EffectiveDpi))
+        if (!CaptureReferenceGeometryPolicy.TryCreateGeometryBasis(captureReference, out CaptureReferenceGeometryBasis? basis)
+            || basis is null
+            || !CaptureReferenceMatchesLiveGeometry(basis, liveBounds, targetWindow.EffectiveDpi))
         {
             screenPoint = null;
             failureCode = InputFailureCodeValues.CaptureReferenceStale;
@@ -138,7 +140,28 @@ internal static class InputCoordinateMapper
             return false;
         }
 
-        screenPoint = new InputPoint(liveBounds.Left + requestedPoint.X, liveBounds.Top + requestedPoint.Y);
+        int originX = liveBounds.Left + basis.ContentOffsetX;
+        int originY = liveBounds.Top + basis.ContentOffsetY;
+
+        if (!TryAddCoordinate(originX, requestedPoint.X, out int screenX)
+            || !TryAddCoordinate(originY, requestedPoint.Y, out int screenY))
+        {
+            screenPoint = null;
+            failureCode = InputFailureCodeValues.PointOutOfBounds;
+            reason = "Указанная capture_pixels point выходит за пределы допустимого screen coordinate range.";
+            return false;
+        }
+
+        InputPoint candidateScreenPoint = new(screenX, screenY);
+        if (!ContainsPoint(liveBounds, candidateScreenPoint))
+        {
+            screenPoint = null;
+            failureCode = InputFailureCodeValues.PointOutOfBounds;
+            reason = "Resolved capture_pixels screen point больше не принадлежит текущим live window bounds окна-цели.";
+            return false;
+        }
+
+        screenPoint = candidateScreenPoint;
         failureCode = null;
         reason = null;
         return true;
@@ -195,48 +218,40 @@ internal static class InputCoordinateMapper
         && point.Y < bounds.Bottom;
 
     private static bool CaptureReferenceMatchesLiveGeometry(
-        InputCaptureReference captureReference,
+        CaptureReferenceGeometryBasis basis,
         Bounds liveBounds,
         int liveEffectiveDpi)
     {
-        InputBounds captureBounds = captureReference.Bounds!;
-
-        if (!HasAllowedOriginDrift(liveBounds.Left, captureBounds.Left)
-            || !HasAllowedOriginDrift(liveBounds.Top, captureBounds.Top))
+        if (!CaptureReferenceGeometryPolicy.BoundsMatchWithinDrift(basis.FrameBounds, liveBounds))
         {
             return false;
         }
 
-        if (!TryGetExtent(liveBounds.Left, liveBounds.Right, out long liveWidth)
-            || !TryGetExtent(liveBounds.Top, liveBounds.Bottom, out long liveHeight)
-            || !TryGetExtent(captureBounds.Left, captureBounds.Right, out long captureWidth)
-            || !TryGetExtent(captureBounds.Top, captureBounds.Bottom, out long captureHeight))
-        {
-            return false;
-        }
-
-        if (liveWidth != captureWidth
-            || liveHeight != captureHeight
-            || liveWidth != captureReference.PixelWidth
-            || liveHeight != captureReference.PixelHeight
-            || captureWidth != captureReference.PixelWidth
-            || captureHeight != captureReference.PixelHeight)
-        {
-            return false;
-        }
-
-        return captureReference.EffectiveDpi is not int captureDpi || captureDpi == liveEffectiveDpi;
+        return ValidateCaptureDpiStillMatches(basis, liveEffectiveDpi);
     }
 
-    private static bool HasAllowedOriginDrift(int liveEdge, int captureEdge)
-    {
-        long delta = (long)liveEdge - captureEdge;
-        return delta >= -1 && delta <= 1;
-    }
+    private static bool ValidateCaptureDpiStillMatches(
+        CaptureReferenceGeometryBasis basis,
+        int liveEffectiveDpi) =>
+        basis.EffectiveDpi is not int captureDpi || captureDpi == liveEffectiveDpi;
 
     private static bool TryGetExtent(int startEdge, int endEdge, out long extent)
     {
         extent = (long)endEdge - startEdge;
         return extent > 0;
     }
+
+    private static bool TryAddCoordinate(int origin, int offset, out int coordinate)
+    {
+        long value = (long)origin + offset;
+        if (value is < int.MinValue or > int.MaxValue)
+        {
+            coordinate = 0;
+            return false;
+        }
+
+        coordinate = (int)value;
+        return true;
+    }
+
 }

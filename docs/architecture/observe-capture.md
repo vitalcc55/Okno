@@ -85,6 +85,7 @@
 - `title`
 - `processName`
 - `bounds`
+- `frameBounds` for `window` capture
 - `pixelWidth`
 - `pixelHeight`
 - `capturedAtUtc`
@@ -93,9 +94,11 @@
 - `byteSize`
 - `sessionRunId`
 
-Metadata строятся не из исходного pre-capture target snapshot, а из authoritative target snapshot после завершения capture path. Это важно для двух случаев:
+For `window` capture, `bounds` describes the final raster/content basis that matches `pixelWidth` / `pixelHeight`, while `frameBounds` preserves the matching Win32 frame basis from the same WGC acquisition transaction. Those two fields stay in the ordinary observe shape with derived `width` / `height`, because they are part of the public capture metadata surface. The copy-through bridge for `windows.input(capture_pixels)` is published separately as `captureReference`, which reuses the exact edge-only `InputCaptureReference` wire shape (`bounds`, `pixelWidth`, `pixelHeight`, optional `effectiveDpi`, `capturedAtUtc`, `frameBounds`). `WindowDescriptor.Bounds` remains a live/frame rectangle across runtime consumers, including `windows.wait(visual_changed)`; raster/content geometry stays in capture-specific fields instead of being written back into generic window DTOs. The raster origin is taken only from a proven visible-frame basis inside `frameBounds`; if WGC returns content smaller than the frame and runtime cannot prove that origin, the window capture path fails closed instead of publishing copy-through geometry. After pixels are acquired, a refresh may only validate that frame bounds, raster bounds and window DPI still match the acquisition basis within the narrow 1-pixel drift tolerance; it is not used as the authoritative source for `bounds` / `frameBounds`.
 
-- после `Recreate` runtime публикует уже обновлённые `bounds` и связанные target fields, согласованные с финальным PNG;
+Metadata не смешивает window pixels с более поздней live geometry. Это важно для трёх случаев:
+
+- для успешного `window` WGC capture runtime публикует acquisition-time raster/frame/DPI basis, а post-capture refresh только подтверждает отсутствие geometry drift; если refresh видит resize, raster-origin drift или DPI drift, capture fails closed до публикации payload/artifact;
 - перед desktop `GDI` fallback runtime заново резолвит текущий monitor target, чтобы не возвращать успешный screenshot по устаревшей topology.
 - для успешного `desktop` WGC capture runtime не делает silent retarget на другой monitor: monitor identity остаётся от того target, по которому был создан `GraphicsCaptureItem`, а refreshed topology используется только если она подтверждает тот же monitor.
 

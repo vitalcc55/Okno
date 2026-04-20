@@ -340,6 +340,8 @@ public sealed class McpProtocolSmokeTests
             AssertSchemaIntegerPropertyHasMinimum(captureReferenceSchema, "pixelHeight", 1);
             AssertSchemaPropertyAllowsNull(captureReferenceSchema, "effectiveDpi");
             AssertSchemaPropertyAllowsNull(captureReferenceSchema, "capturedAtUtc");
+            Assert.True(captureReferenceSchema.GetProperty("properties").TryGetProperty("frameBounds", out JsonElement frameBoundsSchema));
+            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "frameBounds");
             AssertSchemaRequiredContains(
                 captureReferenceSchema.GetProperty("properties").GetProperty("bounds"),
                 "left",
@@ -351,6 +353,11 @@ public sealed class McpProtocolSmokeTests
             AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "top");
             AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "right");
             AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "bottom");
+            AssertSchemaRequiredContains(frameBoundsSchema, "left", "top", "right", "bottom");
+            AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "left");
+            AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "top");
+            AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "right");
+            AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "bottom");
         }
         finally
         {

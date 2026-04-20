@@ -640,6 +640,21 @@ public static class InputRequestValidator
         }
 
         if (action.CaptureReference is not null
+            && action.CaptureReference.HasFrameBounds
+            && (!action.CaptureReference.HasValidFrameBounds || action.CaptureReference.FrameBounds is null))
+        {
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = $"Действие actions[{index}] содержит captureReference.frameBounds со значением null или некорректной формой.";
+            return false;
+        }
+
+        if (action.CaptureReference?.FrameBounds is not null
+            && !TryValidateFrameBoundsShape(action.CaptureReference.FrameBounds, index, out failureCode, out reason))
+        {
+            return false;
+        }
+
+        if (action.CaptureReference is not null
             && !TryValidateCaptureReferenceShape(action.CaptureReference, index, out failureCode, out reason))
         {
             return false;
@@ -817,6 +832,22 @@ public static class InputRequestValidator
 
         failureCode = null;
         reason = null;
+        return true;
+    }
+
+    private static bool TryValidateFrameBoundsShape(
+        InputBounds bounds,
+        int index,
+        out string? failureCode,
+        out string? reason)
+    {
+        if (!TryValidateBoundsShape(bounds, index, out failureCode, out reason))
+        {
+            reason = reason?.Replace("captureReference.bounds", "captureReference.frameBounds", StringComparison.Ordinal)
+                .Replace("captureReference с", "captureReference.frameBounds с", StringComparison.Ordinal);
+            return false;
+        }
+
         return true;
     }
 

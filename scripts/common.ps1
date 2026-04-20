@@ -1233,9 +1233,11 @@ function Get-SmokeNarrativeSteps {
         'uia_snapshot',
         'capture',
         'helper minimize/activate/window capture',
+        '`windows.input` click-first helper textbox proof',
+        'fresh-host `windows.input` tools/list/contract/binding proof',
         'wait active/exists/gone/text/focus/visual',
         'terminal `windows.open_target` dry-run/live folder proof',
-        'open_target and launch artifact/event cross-check'
+        'input/open_target/launch artifact/event cross-check'
     )
 }
 
@@ -1244,7 +1246,7 @@ function Get-SmokeCoverageNarrative {
 }
 
 function Get-SmokeCommandPurpose {
-    return 'stdio MCP smoke with staged run bundle, owned helper scenario, terminal `windows.open_target` folder proof and artifact report'
+    return 'stdio MCP smoke with staged run bundle, owned helper scenario, click-first `windows.input` proof, fresh-host acceptance, terminal `windows.open_target` folder proof and artifact report'
 }
 
 function Get-SmokeCommandLiteral {

@@ -24,7 +24,7 @@
 | Windows shell | `src/WinBridge.Runtime.Windows.Shell` | `net8.0-windows10.0.19041.0` | Работает |
 | Windows UIA slice | `src/WinBridge.Runtime.Windows.UIA, src/WinBridge.Runtime.Windows.UIA.Hosting, src/WinBridge.Runtime.Windows.UIA.Worker` | `net8.0-windows10.0.19041.0` | Работает |
 | Public wait slice | `src/WinBridge.Runtime.Waiting` | `net8.0-windows10.0.19041.0` | Работает |
-| Future capability seams | `src/WinBridge.Runtime.Windows.Input, src/WinBridge.Runtime.Windows.Clipboard` | `net8.0-windows10.0.19041.0` | См. manifest |
+| Input and clipboard capability seams | `src/WinBridge.Runtime.Windows.Input, src/WinBridge.Runtime.Windows.Clipboard` | `net8.0-windows10.0.19041.0` | Input click-first работает; clipboard deferred |
 | MCP host | `src/WinBridge.Server` | `net8.0-windows10.0.19041.0, ModelContextProtocol 1.1.0` | Работает |
 | Unit tests | `tests/WinBridge.Runtime.Tests` | `xUnit` | Работает |
 | Integration smoke | `tests/WinBridge.Server.IntegrationTests` | `xUnit + raw stdio JSON-RPC` | Работает |
@@ -44,5 +44,5 @@
 
 - Docker/Compose/devcontainer
 - HTTP transport как рабочий delivery mode
-- input/clipboard production implementations
+- clipboard production implementation and broad input actions beyond click-first
 - external observability backend

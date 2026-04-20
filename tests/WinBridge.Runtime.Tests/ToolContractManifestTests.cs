@@ -265,7 +265,7 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
-    public void WindowsInputIsImplementedAndNotSmokeRequired()
+    public void WindowsInputIsImplementedAndSmokeRequiredAfterPackageE()
     {
         ToolDescriptor descriptor = Assert.Single(
             ToolContractManifest.Implemented,
@@ -273,7 +273,7 @@ public sealed class ToolContractManifestTests
 
         Assert.Equal(ToolLifecycle.Implemented, descriptor.Lifecycle);
         Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
-        Assert.DoesNotContain(ToolNames.WindowsInput, ToolContractManifest.SmokeRequiredToolNames);
+        Assert.Contains(ToolNames.WindowsInput, ToolContractManifest.SmokeRequiredToolNames);
         Assert.DoesNotContain(ToolContractManifest.Deferred, item => item.Name == ToolNames.WindowsInput);
     }
 

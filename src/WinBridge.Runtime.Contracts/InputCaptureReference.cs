@@ -23,6 +23,9 @@ public sealed record InputCaptureReference
     private DateTimeOffset? _capturedAtUtc;
     private bool _hasCapturedAtUtc;
     private bool _hasValidCapturedAtUtc;
+    private InputBounds? _frameBounds;
+    private bool _hasFrameBounds;
+    private bool _hasValidFrameBounds;
     private IDictionary<string, JsonElement>? _additionalProperties;
 
     public InputCaptureReference()
@@ -34,13 +37,18 @@ public sealed record InputCaptureReference
         int pixelWidth,
         int pixelHeight,
         int? effectiveDpi = null,
-        DateTimeOffset? capturedAtUtc = null)
+        DateTimeOffset? capturedAtUtc = null,
+        InputBounds? frameBounds = null)
     {
         Bounds = bounds;
         PixelWidth = pixelWidth;
         PixelHeight = pixelHeight;
         EffectiveDpi = effectiveDpi;
         CapturedAtUtc = capturedAtUtc;
+        if (frameBounds is not null)
+        {
+            FrameBounds = frameBounds;
+        }
     }
 
     [JsonPropertyName("bounds")]
@@ -78,6 +86,13 @@ public sealed record InputCaptureReference
         init => SetCapturedAtUtc(value);
     }
 
+    [JsonPropertyName("frameBounds")]
+    public InputBounds? FrameBounds
+    {
+        get => _frameBounds;
+        init => SetFrameBounds(value);
+    }
+
     [JsonIgnore]
     public bool HasValidObject => _hasValidObject;
 
@@ -110,6 +125,12 @@ public sealed record InputCaptureReference
 
     [JsonIgnore]
     public bool HasValidCapturedAtUtc => _hasValidCapturedAtUtc;
+
+    [JsonIgnore]
+    public bool HasFrameBounds => _hasFrameBounds;
+
+    [JsonIgnore]
+    public bool HasValidFrameBounds => _hasValidFrameBounds;
 
     [JsonExtensionData]
     public IDictionary<string, JsonElement>? AdditionalProperties
@@ -188,6 +209,20 @@ public sealed record InputCaptureReference
         _hasValidCapturedAtUtc = false;
     }
 
+    internal void SetFrameBounds(InputBounds? value)
+    {
+        _frameBounds = value;
+        _hasFrameBounds = true;
+        _hasValidFrameBounds = value is not null;
+    }
+
+    internal void MarkFrameBoundsInvalid()
+    {
+        _frameBounds = null;
+        _hasFrameBounds = true;
+        _hasValidFrameBounds = false;
+    }
+
     internal void SetAdditionalProperty(string name, JsonElement value)
     {
         (_additionalProperties ??= new Dictionary<string, JsonElement>(StringComparer.Ordinal))[name] = value;
@@ -250,6 +285,9 @@ internal sealed class InputCaptureReferenceJsonConverter : JsonConverter<InputCa
                 case "capturedAtUtc":
                     ReadNullableDateTimeOffset(ref reader, captureReference.SetCapturedAtUtc, captureReference.MarkCapturedAtUtcInvalid);
                     break;
+                case "frameBounds":
+                    ReadFrameBounds(ref reader, options, captureReference);
+                    break;
                 default:
                     captureReference.SetAdditionalProperty(propertyName, InputJsonBindingHelpers.CloneValue(ref reader));
                     break;
@@ -280,6 +318,18 @@ internal sealed class InputCaptureReferenceJsonConverter : JsonConverter<InputCa
         WriteInt32(writer, "pixelHeight", value.HasPixelHeight, value.HasValidPixelHeight, value.PixelHeight);
         WriteNullableInt32(writer, "effectiveDpi", value.HasEffectiveDpi, value.HasValidEffectiveDpi, value.EffectiveDpi);
         WriteNullableDateTimeOffset(writer, "capturedAtUtc", value.HasCapturedAtUtc, value.HasValidCapturedAtUtc, value.CapturedAtUtc);
+        if (value.HasFrameBounds)
+        {
+            writer.WritePropertyName("frameBounds");
+            if (value.HasValidFrameBounds && value.FrameBounds is not null)
+            {
+                JsonSerializer.Serialize(writer, value.FrameBounds, options);
+            }
+            else
+            {
+                writer.WriteNullValue();
+            }
+        }
 
         if (value.AdditionalProperties is not null)
         {
@@ -310,6 +360,25 @@ internal sealed class InputCaptureReferenceJsonConverter : JsonConverter<InputCa
 
         InputBounds? bounds = JsonSerializer.Deserialize<InputBounds>(ref reader, options);
         captureReference.SetBounds(bounds);
+    }
+
+    private static void ReadFrameBounds(ref Utf8JsonReader reader, JsonSerializerOptions options, InputCaptureReference captureReference)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            captureReference.MarkFrameBoundsInvalid();
+            return;
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            captureReference.MarkFrameBoundsInvalid();
+            InputJsonBindingHelpers.SkipNestedValue(ref reader);
+            return;
+        }
+
+        InputBounds? bounds = JsonSerializer.Deserialize<InputBounds>(ref reader, options);
+        captureReference.SetFrameBounds(bounds);
     }
 
     private static void ReadInt32(ref Utf8JsonReader reader, Action<int> assign, Action markInvalid)

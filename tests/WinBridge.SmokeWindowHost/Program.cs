@@ -243,9 +243,6 @@ internal static class Program
             _visualPhase = !_visualPhase;
             _visualHeartbeatPanel.BackColor = _visualPhase ? Color.OrangeRed : Color.DarkOliveGreen;
             _visualHeartbeatLabel.Text = _visualPhase ? "Visual state: B" : "Visual state: A";
-            Bounds = _visualPhase
-                ? new Rectangle(120, 120, 560, 360)
-                : new Rectangle(120, 120, 520, 360);
         }
 
         private void SetCanonicalFocusTarget()

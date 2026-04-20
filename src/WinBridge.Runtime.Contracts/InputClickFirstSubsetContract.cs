@@ -258,6 +258,7 @@ public static class InputClickFirstSubsetContract
             pixelHeight = captureReference.HasPixelHeight && captureReference.HasValidPixelHeight ? (int?)captureReference.PixelHeight : null,
             effectiveDpi = captureReference.HasEffectiveDpi && captureReference.HasValidEffectiveDpi ? captureReference.EffectiveDpi : null,
             capturedAtUtc = captureReference.HasCapturedAtUtc && captureReference.HasValidCapturedAtUtc ? captureReference.CapturedAtUtc : null,
+            frameBounds = captureReference.HasFrameBounds && captureReference.HasValidFrameBounds ? CreateAuditBoundsSummary(captureReference.FrameBounds) : null,
         };
     }
 

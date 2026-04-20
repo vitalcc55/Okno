@@ -34,7 +34,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 ## 3. Текущее состояние репозитория
 
-По состоянию на `2026-04-10` проект уже давно не находится в фазе ранней заготовки.
+По состоянию на `2026-04-20` проект уже давно не находится в фазе ранней заготовки.
 
 Что фактически уже есть:
 
@@ -42,6 +42,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 - shipped observe baseline: `list_monitors`, `list_windows`, `attach`, `focus`, `activate`, `capture`;
 - shipped semantic/readiness baseline: `windows.uia_snapshot`, `windows.wait`, `okno.health`;
 - shipped launch family: `windows.launch_process`, `windows.open_target`;
+- shipped click-first action layer: `windows.input` для `move`, `click`, `double_click` и `click(button=right)` с smoke/fresh-host proof;
 - shared safety/gating/redaction/evidence foundation;
 - sequential verification loop `build -> test -> smoke -> refresh-generated-docs -> verify`.
 
@@ -59,7 +60,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 | 06 | `okno.health` + runtime guard layer + safety baseline | readiness snapshot, shared gate, dry-run/confirmation model, redaction-first launch/input/clipboard baseline | `реализовано` | `95%` | `Ядро` |
 | 07 | `src/WinBridge.Runtime.Windows.Launch` + `windows.launch_process` | direct process launch через `ProcessStartInfo`, preview, factual result modes, launch artifacts | `реализовано` | `90%` | `Ядро` |
 | 08 | `src/WinBridge.Runtime.Windows.Launch` + `windows.open_target` | shell-open для `document` / `folder` / `url(http/https)`, safe preview, factual result, open-target artifacts | `реализовано` | `90%` | `Ядро` |
-| 09 | `src/WinBridge.Runtime.Windows.Input` + `windows.input` (`click` first + action schema freeze) | implemented public click-first MCP boundary, coordinate model, `click(button=right)` path, post-action verification contract | `частично` | `35%` | `R2-следом` |
+| 09 | `src/WinBridge.Runtime.Windows.Input` + `windows.input` (`click` first + action schema freeze) | implemented public click-first MCP boundary, coordinate model, `click(button=right)` path, input artifacts/events, smoke/fresh-host proof, post-action verification contract | `реализовано` | `85%` | `R2-следом` |
 | 10 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, low-noise visual proof and future OCR fallback bridge | `запланировано` | `0%` | `R2-следом` |
 | 11 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2-следом` |
 | 12 | `src/WinBridge.Runtime.Windows.Input` + `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`) | расширение action coverage после `click`, `region_capture` и clipboard | `декларировано` | `10%` | `R2` |
@@ -74,14 +75,13 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 Текущий practical order такой:
 
-1. `windows.input` (`click` first + action schema freeze)
-2. `windows.region_capture`
-3. `windows.clipboard_get` / `windows.clipboard_set`
-4. `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`)
-5. `windows.uia_action`
-6. `windows.dialog`
-7. `windows.surface_lifecycle`
-8. `windows.menu` / `windows.taskbar` / `windows.tray`
+1. `windows.region_capture`
+2. `windows.clipboard_get` / `windows.clipboard_set`
+3. `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`)
+4. `windows.uia_action`
+5. `windows.dialog`
+6. `windows.surface_lifecycle`
+7. `windows.menu` / `windows.taskbar` / `windows.tray`
 
 Почему именно так:
 
@@ -89,7 +89,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 - official OpenAI `computer use` loop делает input vocabulary и quiet action semantics важнее, чем поздние shell niceties;
 - reference repos и текущий `observe/capture` stack показывают, что narrow `region_capture` даёт более дешёвый verify-after-action loop и полезен как мост к visual fallback, не размывая capture family в OCR/browser subsystem;
 - уже shipped `launch_process` и `open_target` закрыли start/open baseline, поэтому next product value теперь в action layer;
-- `surface_lifecycle` важен, но без shipped input/clipboard/dialog он не даст полноценный teardown path.
+- `surface_lifecycle` важен, но без clipboard/dialog и broad action coverage он не даст полноценный teardown path.
 
 ## 6. OpenAI / Codex Alignment
 
@@ -124,7 +124,7 @@ Roadmap не должен:
 
 ## 8. Что нельзя размывать раньше времени
 
-- не расширять `windows.input` вширь до shipped `click`-first contract;
+- не расширять `windows.input` вширь за пределы уже shipped `click`-first contract без отдельного proof;
 - не смешивать `windows.launch_process` и `windows.open_target`;
 - не прятать attach/focus/cleanup как hidden side effect launch/open tools;
 - не решать cleanup reused shell surfaces внутри `windows.open_target`;

@@ -11,4 +11,5 @@ internal sealed record CaptureResolvedTarget(
     string CoordinateSpace,
     int? EffectiveDpi,
     double? DpiScale,
-    MonitorInfo? Monitor);
+    MonitorInfo? Monitor,
+    Bounds? FrameBounds = null);
