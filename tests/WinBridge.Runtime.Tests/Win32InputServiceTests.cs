@@ -177,12 +177,7 @@ public sealed class Win32InputServiceTests
                         Type = InputActionTypeValues.Click,
                         CoordinateSpace = InputCoordinateSpaceValues.CapturePixels,
                         Point = new InputPoint(0, 0),
-                        CaptureReference = new InputCaptureReference(
-                            new InputBounds(100, 200, 420, 560),
-                            320,
-                            360,
-                            96,
-                            DateTimeOffset.UtcNow),
+                        CaptureReference = CreateCaptureReference(targetWindow),
                     },
                 ],
             },
@@ -528,12 +523,7 @@ public sealed class Win32InputServiceTests
                         Type = InputActionTypeValues.Click,
                         CoordinateSpace = InputCoordinateSpaceValues.CapturePixels,
                         Point = new InputPoint(10, 20),
-                        CaptureReference = new InputCaptureReference(
-                            new InputBounds(100, 200, 420, 560),
-                            320,
-                            360,
-                            96,
-                            DateTimeOffset.UtcNow),
+                        CaptureReference = CreateCaptureReference(targetWindow),
                     },
                 ],
             },
@@ -575,12 +565,7 @@ public sealed class Win32InputServiceTests
                         Type = InputActionTypeValues.Click,
                         CoordinateSpace = InputCoordinateSpaceValues.CapturePixels,
                         Point = new InputPoint(0, 0),
-                        CaptureReference = new InputCaptureReference(
-                            new InputBounds(100, 200, 420, 560),
-                            320,
-                            360,
-                            96,
-                            DateTimeOffset.UtcNow),
+                        CaptureReference = CreateCaptureReference(targetWindow),
                     },
                 ],
             },
@@ -1390,12 +1375,7 @@ public sealed class Win32InputServiceTests
                         Type = InputActionTypeValues.Click,
                         CoordinateSpace = InputCoordinateSpaceValues.CapturePixels,
                         Point = new InputPoint(0, 0),
-                        CaptureReference = new InputCaptureReference(
-                            new InputBounds(100, 200, 420, 560),
-                            320,
-                            360,
-                            96,
-                            DateTimeOffset.UtcNow),
+                        CaptureReference = CreateCaptureReference(targetWindow),
                     },
                 ],
             },
@@ -1442,12 +1422,7 @@ public sealed class Win32InputServiceTests
                         Type = InputActionTypeValues.Click,
                         CoordinateSpace = InputCoordinateSpaceValues.CapturePixels,
                         Point = new InputPoint(0, 0),
-                        CaptureReference = new InputCaptureReference(
-                            new InputBounds(100, 200, 420, 560),
-                            320,
-                            360,
-                            96,
-                            DateTimeOffset.UtcNow),
+                        CaptureReference = CreateCaptureReference(targetWindow),
                     },
                 ],
             },
@@ -1530,12 +1505,7 @@ public sealed class Win32InputServiceTests
                         Type = InputActionTypeValues.Click,
                         CoordinateSpace = InputCoordinateSpaceValues.CapturePixels,
                         Point = new InputPoint(0, 0),
-                        CaptureReference = new InputCaptureReference(
-                            new InputBounds(100, 200, 420, 560),
-                            320,
-                            360,
-                            96,
-                            DateTimeOffset.UtcNow),
+                        CaptureReference = CreateCaptureReference(targetWindow),
                     },
                 ],
             },
@@ -1663,12 +1633,7 @@ public sealed class Win32InputServiceTests
                         Type = InputActionTypeValues.DoubleClick,
                         CoordinateSpace = InputCoordinateSpaceValues.CapturePixels,
                         Point = new InputPoint(0, 0),
-                        CaptureReference = new InputCaptureReference(
-                            new InputBounds(100, 200, 420, 560),
-                            320,
-                            360,
-                            96,
-                            DateTimeOffset.UtcNow),
+                        CaptureReference = CreateCaptureReference(targetWindow),
                     },
                 ],
             },
@@ -1767,6 +1732,26 @@ public sealed class Win32InputServiceTests
 
         return action;
     }
+
+    private static InputCaptureReference CreateCaptureReference(
+        WindowDescriptor targetWindow,
+        InputBounds? bounds = null,
+        int pixelWidth = 320,
+        int pixelHeight = 360,
+        int? effectiveDpi = 96,
+        InputBounds? frameBounds = null) =>
+        new(
+            bounds ?? new InputBounds(100, 200, 420, 560),
+            pixelWidth,
+            pixelHeight,
+            effectiveDpi,
+            capturedAtUtc: DateTimeOffset.UtcNow,
+            frameBounds: frameBounds,
+            targetIdentity: new InputTargetIdentity(
+                targetWindow.Hwnd,
+                targetWindow.ProcessId ?? 321,
+                targetWindow.ThreadId ?? 654,
+                targetWindow.ClassName ?? "TargetWindowClass"));
 
     private static InputProcessSecurityContext CreateCurrentProcessSecurity() =>
         new(

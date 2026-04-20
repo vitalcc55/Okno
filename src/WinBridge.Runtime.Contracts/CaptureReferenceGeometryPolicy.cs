@@ -10,7 +10,8 @@ internal static class CaptureReferenceGeometryPolicy
         int pixelHeight,
         int? effectiveDpi,
         DateTimeOffset capturedAtUtc,
-        Bounds? frameBounds = null)
+        Bounds? frameBounds = null,
+        WindowDescriptor? targetWindow = null)
     {
         ArgumentNullException.ThrowIfNull(bounds);
 
@@ -20,7 +21,8 @@ internal static class CaptureReferenceGeometryPolicy
             pixelHeight,
             effectiveDpi,
             capturedAtUtc,
-            frameBounds is null ? null : ToInputBounds(frameBounds));
+            frameBounds is null ? null : ToInputBounds(frameBounds),
+            targetWindow is null ? null : CreateTargetIdentity(targetWindow));
 
         if (!TryCreateGeometryBasis(reference, out _))
         {
@@ -28,6 +30,42 @@ internal static class CaptureReferenceGeometryPolicy
         }
 
         return reference;
+    }
+
+    public static bool TryCreateCopyThroughReference(
+        Bounds bounds,
+        int pixelWidth,
+        int pixelHeight,
+        int? effectiveDpi,
+        DateTimeOffset capturedAtUtc,
+        Bounds? frameBounds,
+        WindowDescriptor? targetWindow,
+        out InputCaptureReference? reference)
+    {
+        reference = null;
+        ArgumentNullException.ThrowIfNull(bounds);
+
+        if (targetWindow is null || !TryCreateTargetIdentity(targetWindow, out InputTargetIdentity? targetIdentity))
+        {
+            return false;
+        }
+
+        InputCaptureReference candidate = new(
+            ToInputBounds(bounds),
+            pixelWidth,
+            pixelHeight,
+            effectiveDpi,
+            capturedAtUtc,
+            frameBounds is null ? null : ToInputBounds(frameBounds),
+            targetIdentity);
+
+        if (!TryCreateGeometryBasis(candidate, out _))
+        {
+            throw new InvalidOperationException("Capture reference geometry must satisfy the shared capture/input contract.");
+        }
+
+        reference = candidate;
+        return true;
     }
 
     public static bool TryCreateGeometryBasis(
@@ -94,8 +132,51 @@ internal static class CaptureReferenceGeometryPolicy
         && EdgeMatchesWithinDrift(left.Right, right.Right)
         && EdgeMatchesWithinDrift(left.Bottom, right.Bottom);
 
+    public static bool MatchesTargetIdentity(InputTargetIdentity targetIdentity, WindowDescriptor liveTargetWindow) =>
+        targetIdentity.Hwnd == liveTargetWindow.Hwnd
+        && liveTargetWindow.ProcessId == targetIdentity.ProcessId
+        && liveTargetWindow.ThreadId == targetIdentity.ThreadId
+        && string.Equals(liveTargetWindow.ClassName, targetIdentity.ClassName, StringComparison.Ordinal);
+
+    public static bool MatchesStableTargetIdentity(WindowDescriptor expectedWindow, WindowDescriptor liveTargetWindow) =>
+        TryCreateTargetIdentity(expectedWindow, out InputTargetIdentity? targetIdentity)
+        && targetIdentity is not null
+        && MatchesTargetIdentity(targetIdentity, liveTargetWindow);
+
+    public static bool HasStableTargetIdentity(WindowDescriptor targetWindow) =>
+        TryCreateTargetIdentity(targetWindow, out _);
+
     private static InputBounds ToInputBounds(Bounds bounds) =>
         new(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
+
+    private static InputTargetIdentity CreateTargetIdentity(WindowDescriptor targetWindow)
+    {
+        if (!TryCreateTargetIdentity(targetWindow, out InputTargetIdentity? targetIdentity) || targetIdentity is null)
+        {
+            throw new InvalidOperationException("Capture reference target identity requires hwnd, processId, threadId and className.");
+        }
+
+        return targetIdentity;
+    }
+
+    private static bool TryCreateTargetIdentity(WindowDescriptor targetWindow, out InputTargetIdentity? targetIdentity)
+    {
+        targetIdentity = null;
+        if (targetWindow.Hwnd <= 0
+            || targetWindow.ProcessId is not int processId
+            || targetWindow.ThreadId is not int threadId
+            || string.IsNullOrWhiteSpace(targetWindow.ClassName))
+        {
+            return false;
+        }
+
+        targetIdentity = new(
+            targetWindow.Hwnd,
+            processId,
+            threadId,
+            targetWindow.ClassName);
+        return true;
+    }
 
     private static bool TryGetExtent(int startEdge, int endEdge, out long extent)
     {

@@ -9,7 +9,7 @@ internal static class CaptureResolvedTargetPolicy
         CaptureResolvedTarget? refreshedTarget,
         WgcFrameSize acceptedContentSize)
     {
-        CaptureResolvedTarget basis = SelectBasis(initialTarget, refreshedTarget);
+        CaptureResolvedTarget basis = SelectBasis(initialTarget, refreshedTarget, out CaptureReferenceEligibility captureReferenceEligibility);
         Bounds? frameBounds = basis.Scope == CaptureScope.Window
             ? basis.FrameBounds ?? basis.Bounds
             : null;
@@ -32,6 +32,7 @@ internal static class CaptureResolvedTargetPolicy
             Window = authoritativeWindow,
             Bounds = authoritativeBounds,
             FrameBounds = frameBounds,
+            CaptureReferenceEligibility = captureReferenceEligibility,
         };
     }
 
@@ -60,19 +61,22 @@ internal static class CaptureResolvedTargetPolicy
 
     private static CaptureResolvedTarget SelectBasis(
         CaptureResolvedTarget initialTarget,
-        CaptureResolvedTarget? refreshedTarget)
+        CaptureResolvedTarget? refreshedTarget,
+        out CaptureReferenceEligibility captureReferenceEligibility)
     {
         if (refreshedTarget is null)
         {
+            captureReferenceEligibility = CaptureReferenceEligibility.ObserveOnly;
             return initialTarget;
         }
 
         if (initialTarget.Scope == CaptureScope.Window)
         {
-            ValidateWindowRefreshMatchesAcquisitionBasis(initialTarget, refreshedTarget);
+            captureReferenceEligibility = ValidateWindowRefreshMatchesAcquisitionBasis(initialTarget, refreshedTarget);
             return initialTarget;
         }
 
+        captureReferenceEligibility = CaptureReferenceEligibility.ObserveOnly;
         string? initialMonitorId = initialTarget.Monitor?.Descriptor.MonitorId;
         string? refreshedMonitorId = refreshedTarget.Monitor?.Descriptor.MonitorId;
         return string.Equals(initialMonitorId, refreshedMonitorId, StringComparison.Ordinal)
@@ -80,7 +84,7 @@ internal static class CaptureResolvedTargetPolicy
             : initialTarget;
     }
 
-    private static void ValidateWindowRefreshMatchesAcquisitionBasis(
+    private static CaptureReferenceEligibility ValidateWindowRefreshMatchesAcquisitionBasis(
         CaptureResolvedTarget initialTarget,
         CaptureResolvedTarget refreshedTarget)
     {
@@ -99,6 +103,27 @@ internal static class CaptureResolvedTargetPolicy
             throw new CaptureOperationException(
                 "Window capture target DPI изменился после WGC frame acquisition. Runtime не будет публиковать stale captureReference geometry.");
         }
+
+        if (initialTarget.Window is not WindowDescriptor initialWindow
+            || refreshedTarget.Window is not WindowDescriptor refreshedWindow)
+        {
+            return CaptureReferenceEligibility.ObserveOnly;
+        }
+
+        bool initialHasStableIdentity = CaptureReferenceGeometryPolicy.HasStableTargetIdentity(initialWindow);
+        bool refreshedHasStableIdentity = CaptureReferenceGeometryPolicy.HasStableTargetIdentity(refreshedWindow);
+        if (!initialHasStableIdentity || !refreshedHasStableIdentity)
+        {
+            return CaptureReferenceEligibility.ObserveOnly;
+        }
+
+        if (!CaptureReferenceGeometryPolicy.MatchesStableTargetIdentity(initialWindow, refreshedWindow))
+        {
+            throw new CaptureOperationException(
+                "Window capture target identity изменилась после WGC frame acquisition. Runtime не будет публиковать stale capture evidence.");
+        }
+
+        return CaptureReferenceEligibility.Eligible;
     }
 
     private static Bounds ResizeBounds(Bounds basis, WgcFrameSize acceptedContentSize) =>

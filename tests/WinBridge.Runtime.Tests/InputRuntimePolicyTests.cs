@@ -101,7 +101,8 @@ public sealed class InputRuntimePolicyTests
                 pixelHeight: 100,
                 effectiveDpi: 96,
                 capturedAtUtc: DateTimeOffset.UtcNow,
-                frameBounds: new Bounds(0, 0, 240, 220)));
+                frameBounds: new Bounds(0, 0, 240, 220),
+                targetWindow: targetWindow));
 
         bool mapped = InputCoordinateMapper.TryMap(action, targetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
 
@@ -109,6 +110,38 @@ public sealed class InputRuntimePolicyTests
         Assert.Equal(new InputPoint(70, 70), screenPoint);
         Assert.Null(failureCode);
         Assert.Null(reason);
+    }
+
+    [Fact]
+    public void MapActionRejectsCaptureReferenceWhenTargetProvenanceDiffersDespiteMatchingGeometry()
+    {
+        WindowDescriptor liveTargetWindow = CreateWindow(bounds: new Bounds(100, 200, 420, 560));
+        WindowDescriptor capturedWindow = liveTargetWindow with
+        {
+            Hwnd = 909,
+            ProcessId = 444,
+            ThreadId = 555,
+            ClassName = "CapturedWindowClass",
+        };
+        InputAction action = CreateAction(
+            InputActionTypeValues.Click,
+            InputCoordinateSpaceValues.CapturePixels,
+            new InputPoint(25, 40),
+            CaptureReferenceGeometryPolicy.CreateCopyThroughReference(
+                new Bounds(100, 200, 420, 560),
+                pixelWidth: 320,
+                pixelHeight: 360,
+                effectiveDpi: 96,
+                capturedAtUtc: DateTimeOffset.UtcNow,
+                frameBounds: new Bounds(100, 200, 420, 560),
+                targetWindow: capturedWindow));
+
+        bool mapped = InputCoordinateMapper.TryMap(action, liveTargetWindow, out InputPoint? screenPoint, out string? failureCode, out string? reason);
+
+        Assert.False(mapped);
+        Assert.Null(screenPoint);
+        Assert.Equal(InputFailureCodeValues.CaptureReferenceStale, failureCode);
+        Assert.Contains("target", reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -803,14 +836,16 @@ public sealed class InputRuntimePolicyTests
         int pixelWidth = 320,
         int pixelHeight = 360,
         int? effectiveDpi = 96,
-        InputBounds? frameBounds = null) =>
+        InputBounds? frameBounds = null,
+        InputTargetIdentity? targetIdentity = null) =>
         new(
             bounds ?? new InputBounds(100, 200, 420, 560),
             pixelWidth,
             pixelHeight,
             effectiveDpi,
             capturedAtUtc: DateTimeOffset.UtcNow,
-            frameBounds: frameBounds);
+            frameBounds: frameBounds,
+            targetIdentity: targetIdentity ?? new InputTargetIdentity(101, 321, 654, "TargetWindowClass"));
 
     private static InputProcessSecurityContext CreateCurrentProcessSecurity(
         int sessionId = 1,

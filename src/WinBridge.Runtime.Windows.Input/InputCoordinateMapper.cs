@@ -118,6 +118,15 @@ internal static class InputCoordinateMapper
             return false;
         }
 
+        if (captureReference.TargetIdentity is not InputTargetIdentity targetIdentity
+            || !CaptureReferenceGeometryPolicy.MatchesTargetIdentity(targetIdentity, targetWindow))
+        {
+            screenPoint = null;
+            failureCode = InputFailureCodeValues.CaptureReferenceStale;
+            reason = "Capture reference target identity больше не совпадает с текущим live window target.";
+            return false;
+        }
+
         Bounds liveBounds = targetWindow.Bounds;
         if (!CaptureReferenceGeometryPolicy.TryCreateGeometryBasis(captureReference, out CaptureReferenceGeometryBasis? basis)
             || basis is null

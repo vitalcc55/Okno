@@ -59,6 +59,29 @@ public sealed class WindowCaptureToolTests
     }
 
     [Fact]
+    public async Task WindowCaptureKeepsObservePayloadWhenInputTargetIdentityIsUnavailable()
+    {
+        WindowDescriptor explicitWindow = CreateWindow(hwnd: 203, title: "Weak capture") with
+        {
+            ProcessId = null,
+            ThreadId = null,
+            ClassName = null,
+        };
+        FakeCaptureService captureService = new(CreateCaptureResult(explicitWindow, "window", includeCaptureReference: false));
+        WindowTools tools = CreateTools(
+            windows: [explicitWindow],
+            captureService: captureService,
+            attachedWindow: null);
+
+        CallToolResult result = await tools.Capture(hwnd: explicitWindow.Hwnd);
+
+        Assert.False(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal(explicitWindow.Hwnd, payload.GetProperty("hwnd").GetInt64());
+        Assert.False(payload.TryGetProperty("captureReference", out _));
+    }
+
+    [Fact]
     public async Task CaptureUsesAttachedWindowWhenHwndIsMissing()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 303, title: "Attached");
@@ -377,6 +400,11 @@ public sealed class WindowCaptureToolTests
         JsonElement captureReference = payload.GetProperty("captureReference");
         AssertInputCompatibleBoundsWireShape(captureReference.GetProperty("bounds"));
         AssertInputCompatibleBoundsWireShape(captureReference.GetProperty("frameBounds"));
+        JsonElement targetIdentity = captureReference.GetProperty("targetIdentity");
+        Assert.Equal(window.Hwnd, targetIdentity.GetProperty("hwnd").GetInt64());
+        Assert.Equal(window.ProcessId, targetIdentity.GetProperty("processId").GetInt32());
+        Assert.Equal(window.ThreadId, targetIdentity.GetProperty("threadId").GetInt32());
+        Assert.Equal(window.ClassName, targetIdentity.GetProperty("className").GetString());
 
         string inputJson = $$"""
             {
@@ -486,7 +514,8 @@ public sealed class WindowCaptureToolTests
         string? monitorId = "display-source:0000000100000000:1",
         string? monitorFriendlyName = "Primary monitor",
         string? monitorGdiDeviceName = @"\\.\DISPLAY1",
-        Bounds? frameBounds = null)
+        Bounds? frameBounds = null,
+        bool includeCaptureReference = true)
     {
         CaptureMetadata metadata = new(
             Scope: scope,
@@ -509,7 +538,7 @@ public sealed class WindowCaptureToolTests
             MonitorFriendlyName: monitorFriendlyName,
             MonitorGdiDeviceName: monitorGdiDeviceName,
             FrameBounds: frameBounds,
-            CaptureReference: targetKind == "window" && window is not null
+            CaptureReference: includeCaptureReference && targetKind == "window" && window is not null
                 ? new InputCaptureReference(
                     new InputBounds(window.Bounds.Left, window.Bounds.Top, window.Bounds.Right, window.Bounds.Bottom),
                     pixelWidth: 200,
@@ -518,7 +547,12 @@ public sealed class WindowCaptureToolTests
                     capturedAtUtc: DateTimeOffset.UtcNow,
                     frameBounds: frameBounds is null
                         ? null
-                        : new InputBounds(frameBounds.Left, frameBounds.Top, frameBounds.Right, frameBounds.Bottom))
+                        : new InputBounds(frameBounds.Left, frameBounds.Top, frameBounds.Right, frameBounds.Bottom),
+                    targetIdentity: new InputTargetIdentity(
+                        window.Hwnd,
+                        window.ProcessId ?? 123,
+                        window.ThreadId ?? 456,
+                        window.ClassName ?? "OknoWindow"))
                 : null);
 
         return new CaptureResult(metadata, pngBytes ?? [1, 2, 3]);

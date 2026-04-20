@@ -41,6 +41,7 @@ public sealed class CaptureResolvedTargetPolicyTests
         Assert.Equal(frameBounds, authoritativeTarget.Window?.Bounds);
         Assert.Equal("display-source:initial:1", authoritativeTarget.Window?.MonitorId);
         Assert.Equal("Initial monitor", authoritativeTarget.Window?.MonitorFriendlyName);
+        Assert.Equal(CaptureReferenceEligibility.Eligible, authoritativeTarget.CaptureReferenceEligibility);
     }
 
     [Fact]
@@ -184,6 +185,224 @@ public sealed class CaptureResolvedTargetPolicyTests
     }
 
     [Fact]
+    public void BuildAuthoritativeWgcWindowTargetRejectsPostCaptureIdentityDrift()
+    {
+        Bounds frameBounds = new(100, 120, 920, 740);
+        Bounds rasterBounds = new(112, 128, 900, 700);
+        CaptureResolvedTarget initialTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds);
+        CaptureResolvedTarget refreshedTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds,
+            processId: 999,
+            threadId: 888,
+            className: "ReplacementWindow");
+
+        Assert.Throws<CaptureOperationException>(
+            () => CaptureResolvedTargetPolicy.BuildAuthoritativeWgcTarget(
+                initialTarget,
+                refreshedTarget,
+                new WgcFrameSize(rasterBounds.Width, rasterBounds.Height)));
+    }
+
+    [Fact]
+    public void BuildAuthoritativeWgcWindowTargetAllowsMissingIdentityWhenGeometryStillMatches()
+    {
+        Bounds frameBounds = new(100, 120, 920, 740);
+        Bounds rasterBounds = new(112, 128, 900, 700);
+        CaptureResolvedTarget initialTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds,
+            processId: null,
+            threadId: null,
+            className: null);
+        CaptureResolvedTarget refreshedTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds,
+            processId: null,
+            threadId: null,
+            className: null);
+
+        CaptureResolvedTarget authoritativeTarget = CaptureResolvedTargetPolicy.BuildAuthoritativeWgcTarget(
+            initialTarget,
+            refreshedTarget,
+            new WgcFrameSize(rasterBounds.Width, rasterBounds.Height));
+
+        Assert.Equal(rasterBounds, authoritativeTarget.Bounds);
+        Assert.Null(authoritativeTarget.Window?.ProcessId);
+        Assert.Null(authoritativeTarget.Window?.ThreadId);
+        Assert.Null(authoritativeTarget.Window?.ClassName);
+        Assert.Equal(CaptureReferenceEligibility.ObserveOnly, authoritativeTarget.CaptureReferenceEligibility);
+    }
+
+    [Fact]
+    public void BuildAuthoritativeWgcWindowTargetKeepsObserveOnlyWhenRefreshCannotConfirmInitialIdentity()
+    {
+        Bounds frameBounds = new(100, 120, 920, 740);
+        Bounds rasterBounds = new(112, 128, 900, 700);
+        CaptureResolvedTarget initialTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds);
+        CaptureResolvedTarget refreshedTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds,
+            processId: null,
+            threadId: null,
+            className: null);
+
+        CaptureResolvedTarget authoritativeTarget = CaptureResolvedTargetPolicy.BuildAuthoritativeWgcTarget(
+            initialTarget,
+            refreshedTarget,
+            new WgcFrameSize(rasterBounds.Width, rasterBounds.Height));
+
+        Assert.Equal(CaptureReferenceEligibility.ObserveOnly, authoritativeTarget.CaptureReferenceEligibility);
+        Assert.Null(CaptureReferencePublisher.TryCreate(
+            CaptureScope.Window,
+            authoritativeTarget,
+            rasterBounds.Width,
+            rasterBounds.Height,
+            DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void CaptureReferencePublisherPublishesOnlyEligibleWindowTarget()
+    {
+        Bounds frameBounds = new(100, 120, 920, 740);
+        Bounds rasterBounds = new(112, 128, 900, 700);
+        CaptureResolvedTarget initialTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds);
+        CaptureResolvedTarget refreshedTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds);
+        CaptureResolvedTarget authoritativeTarget = CaptureResolvedTargetPolicy.BuildAuthoritativeWgcTarget(
+            initialTarget,
+            refreshedTarget,
+            new WgcFrameSize(rasterBounds.Width, rasterBounds.Height));
+
+        InputCaptureReference? captureReference = CaptureReferencePublisher.TryCreate(
+            CaptureScope.Window,
+            authoritativeTarget,
+            rasterBounds.Width,
+            rasterBounds.Height,
+            DateTimeOffset.UtcNow);
+
+        Assert.NotNull(captureReference);
+        Assert.Equal(authoritativeTarget.Window?.Hwnd, captureReference.TargetIdentity?.Hwnd);
+        Assert.Equal(authoritativeTarget.Window?.ProcessId, captureReference.TargetIdentity?.ProcessId);
+        Assert.Equal(authoritativeTarget.Window?.ThreadId, captureReference.TargetIdentity?.ThreadId);
+        Assert.Equal(authoritativeTarget.Window?.ClassName, captureReference.TargetIdentity?.ClassName);
+    }
+
+    [Fact]
+    public void CaptureWindowSnapshotPolicyUsesLiveIdentityForPostCaptureRefresh()
+    {
+        Bounds frameBounds = new(100, 120, 920, 740);
+        Bounds rasterBounds = new(112, 128, 900, 700);
+        CaptureResolvedTarget initialTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds);
+        WindowDescriptor liveReplacementWindow = initialTarget.Window! with
+        {
+            ProcessId = 999,
+            ThreadId = 888,
+            ClassName = "ReplacementWindow",
+        };
+        WindowDescriptor refreshedWindow = CaptureWindowSnapshotPolicy.BuildRefreshedWindowSnapshot(
+            initialTarget.Window!,
+            liveReplacementWindow,
+            frameBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            initialTarget.Monitor);
+        CaptureResolvedTarget refreshedTarget = initialTarget with { Window = refreshedWindow };
+
+        Assert.Equal(999, refreshedWindow.ProcessId);
+        Assert.Equal(888, refreshedWindow.ThreadId);
+        Assert.Equal("ReplacementWindow", refreshedWindow.ClassName);
+        Assert.Throws<CaptureOperationException>(
+            () => CaptureResolvedTargetPolicy.BuildAuthoritativeWgcTarget(
+                initialTarget,
+                refreshedTarget,
+                new WgcFrameSize(rasterBounds.Width, rasterBounds.Height)));
+    }
+
+    [Fact]
+    public void CaptureWindowSnapshotPolicyDowngradesMissingLiveRefreshToObserveOnly()
+    {
+        Bounds frameBounds = new(100, 120, 920, 740);
+        Bounds rasterBounds = new(112, 128, 900, 700);
+        CaptureResolvedTarget initialTarget = CreateWindowTarget(
+            bounds: rasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds);
+        WindowDescriptor refreshedWindow = CaptureWindowSnapshotPolicy.BuildRefreshedWindowSnapshot(
+            initialTarget.Window!,
+            liveWindow: null,
+            frameBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            initialTarget.Monitor);
+        CaptureResolvedTarget refreshedTarget = initialTarget with { Window = refreshedWindow };
+
+        CaptureResolvedTarget authoritativeTarget = CaptureResolvedTargetPolicy.BuildAuthoritativeWgcTarget(
+            initialTarget,
+            refreshedTarget,
+            new WgcFrameSize(rasterBounds.Width, rasterBounds.Height));
+
+        Assert.Null(refreshedWindow.ProcessId);
+        Assert.Null(refreshedWindow.ThreadId);
+        Assert.Null(refreshedWindow.ClassName);
+        Assert.Equal(CaptureReferenceEligibility.ObserveOnly, authoritativeTarget.CaptureReferenceEligibility);
+        Assert.Null(CaptureReferencePublisher.TryCreate(
+            CaptureScope.Window,
+            authoritativeTarget,
+            rasterBounds.Width,
+            rasterBounds.Height,
+            DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
     public void BuildAuthoritativeWgcProbeWindowRejectsPostCaptureRasterDriftInsideFrame()
     {
         Bounds frameBounds = new(100, 120, 920, 740);
@@ -228,6 +447,35 @@ public sealed class CaptureResolvedTargetPolicyTests
             monitorId: "display-source:initial:1",
             monitorName: "Initial monitor",
             frameBounds: new Bounds(100, 120, 960, 780));
+
+        Assert.Throws<CaptureOperationException>(
+            () => CaptureResolvedTargetPolicy.BuildAuthoritativeWgcProbeWindow(
+                initialTarget,
+                refreshedTarget));
+    }
+
+    [Fact]
+    public void BuildAuthoritativeWgcProbeWindowRejectsPostCaptureIdentityDrift()
+    {
+        Bounds frameBounds = new(100, 120, 920, 740);
+        Bounds initialRasterBounds = new(112, 128, 900, 700);
+        CaptureResolvedTarget initialTarget = CreateWindowTarget(
+            bounds: initialRasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds);
+        CaptureResolvedTarget refreshedTarget = CreateWindowTarget(
+            bounds: initialRasterBounds,
+            effectiveDpi: 96,
+            dpiScale: 1.0,
+            monitorId: "display-source:initial:1",
+            monitorName: "Initial monitor",
+            frameBounds: frameBounds,
+            processId: 999,
+            threadId: 888,
+            className: "ReplacementWindow");
 
         Assert.Throws<CaptureOperationException>(
             () => CaptureResolvedTargetPolicy.BuildAuthoritativeWgcProbeWindow(
@@ -345,7 +593,10 @@ public sealed class CaptureResolvedTargetPolicyTests
         double dpiScale,
         string monitorId,
         string monitorName,
-        Bounds? frameBounds = null)
+        Bounds? frameBounds = null,
+        int? processId = 123,
+        int? threadId = 456,
+        string? className = "OknoWindow")
     {
         MonitorInfo monitor = new(
             new MonitorDescriptor(
@@ -362,9 +613,9 @@ public sealed class CaptureResolvedTargetPolicyTests
             Hwnd: 100,
             Title: "Test window",
             ProcessName: "okno-tests",
-            ProcessId: 123,
-            ThreadId: 456,
-            ClassName: "OknoWindow",
+            ProcessId: processId,
+            ThreadId: threadId,
+            ClassName: className,
             Bounds: bounds,
             IsForeground: true,
             IsVisible: true,

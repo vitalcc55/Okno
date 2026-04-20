@@ -221,6 +221,20 @@ internal static class WindowsInputToolRegistration
                     ["required"] = CreateStringArray("left", "top", "right", "bottom"),
                     ["description"] = "Optional capture-time live window frame bounds used to distinguish WGC content/frame delta from post-capture resize.",
                 },
+                ["targetIdentity"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["additionalProperties"] = false,
+                    ["properties"] = new JsonObject
+                    {
+                        ["hwnd"] = new JsonObject { ["type"] = "integer" },
+                        ["processId"] = new JsonObject { ["type"] = "integer" },
+                        ["threadId"] = new JsonObject { ["type"] = "integer" },
+                        ["className"] = new JsonObject { ["type"] = "string" },
+                    },
+                    ["required"] = CreateStringArray("hwnd", "processId", "threadId", "className"),
+                    ["description"] = "Optional captured window provenance. Windows.capture publishes it for copy-through safety; windows.input fails closed if live target no longer matches it.",
+                },
             },
             ["required"] = CreateStringArray("bounds", "pixelWidth", "pixelHeight"),
         };

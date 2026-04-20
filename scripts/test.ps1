@@ -19,6 +19,7 @@ $bundleArgs = @{
     RunId                      = [string]$verificationContext.RunId
     RunRoot                    = [string]$verificationContext.RunRoot
     PreferredSourceContextName = [string]$verificationContext.BundleSourceContextName
+    PreferredRelativeSourcePath = [string]$verificationContext.BundleSourceRelativePath
 }
 if (-not [string]::IsNullOrWhiteSpace([string]$verificationContext.EffectiveArtifactsRoot)) {
     $bundleArgs.ArtifactsRoot = [string]$verificationContext.EffectiveArtifactsRoot

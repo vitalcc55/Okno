@@ -655,6 +655,21 @@ public static class InputRequestValidator
         }
 
         if (action.CaptureReference is not null
+            && action.CaptureReference.HasTargetIdentity
+            && (!action.CaptureReference.HasValidTargetIdentity || action.CaptureReference.TargetIdentity is null))
+        {
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = $"Действие actions[{index}] содержит captureReference.targetIdentity со значением null или некорректной формой.";
+            return false;
+        }
+
+        if (action.CaptureReference?.TargetIdentity is not null
+            && !TryValidateTargetIdentityShape(action.CaptureReference.TargetIdentity, index, out failureCode, out reason))
+        {
+            return false;
+        }
+
+        if (action.CaptureReference is not null
             && !TryValidateCaptureReferenceShape(action.CaptureReference, index, out failureCode, out reason))
         {
             return false;
@@ -890,6 +905,62 @@ public static class InputRequestValidator
         {
             failureCode = InputFailureCodeValues.InvalidRequest;
             reason = $"Действие actions[{index}] содержит captureReference.capturedAtUtc вне допустимого datetime/null surface.";
+            return false;
+        }
+
+        failureCode = null;
+        reason = null;
+        return true;
+    }
+
+    private static bool TryValidateTargetIdentityShape(
+        InputTargetIdentity targetIdentity,
+        int index,
+        out string? failureCode,
+        out string? reason)
+    {
+        if (!targetIdentity.HasValidObject)
+        {
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = $"Действие actions[{index}] содержит captureReference.targetIdentity не в форме JSON object.";
+            return false;
+        }
+
+        if (targetIdentity.AdditionalProperties is { Count: > 0 })
+        {
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = $"Действие actions[{index}] содержит расширенные поля внутри captureReference.targetIdentity, которые не входят в текущий contract.";
+            return false;
+        }
+
+        if (!targetIdentity.HasHwnd || !targetIdentity.HasProcessId || !targetIdentity.HasThreadId || !targetIdentity.HasClassName)
+        {
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = $"Действие actions[{index}] должно задавать captureReference.targetIdentity.hwnd/processId/threadId/className.";
+            return false;
+        }
+
+        if (!targetIdentity.HasValidHwnd
+            || !targetIdentity.HasValidProcessId
+            || !targetIdentity.HasValidThreadId
+            || !targetIdentity.HasValidClassName)
+        {
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = $"Действие actions[{index}] содержит captureReference.targetIdentity с null или некорректным scalar value.";
+            return false;
+        }
+
+        if (targetIdentity.Hwnd <= 0 || targetIdentity.ProcessId <= 0 || targetIdentity.ThreadId <= 0)
+        {
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = $"Действие actions[{index}] содержит captureReference.targetIdentity с неположительным hwnd/processId/threadId.";
+            return false;
+        }
+
+        if (!InputActionScalarConstraints.HasNonWhitespace(targetIdentity.ClassName))
+        {
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = $"Действие actions[{index}] содержит captureReference.targetIdentity.className без допустимого значения.";
             return false;
         }
 

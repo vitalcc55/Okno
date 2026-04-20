@@ -240,6 +240,48 @@ function Try-Resolve-WinBridgeArtifactsContextFromAssemblyBaseDirectory {
         ArtifactsRoot  = $artifactsRoot
         RunId          = $runId
         RunRoot        = $runRoot
+        RelativeOutputPath = if ($segments.Count -gt 1) { Normalize-WinBridgeRelativeSourcePath -RelativeSourcePath ([string]::Join('\', @($segments[1..($segments.Count - 1)]))) } else { '.' }
+    }
+}
+
+function Try-Resolve-WinBridgeAssemblyOutputContext {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot,
+        [Parameter(Mandatory)]
+        [string] $AssemblyBaseDirectory,
+        [string] $ExpectedProjectName = 'WinBridge.Server.IntegrationTests'
+    )
+
+    $artifactsContext = Try-Resolve-WinBridgeArtifactsContextFromAssemblyBaseDirectory -RepoRoot $RepoRoot -AssemblyBaseDirectory $AssemblyBaseDirectory -ExpectedProjectName $ExpectedProjectName
+    if ($null -ne $artifactsContext) {
+        return [PSCustomObject]@{
+            SourceContextName  = 'artifacts_root'
+            RelativeOutputPath = $artifactsContext.RelativeOutputPath
+            ArtifactsRoot      = $artifactsContext.ArtifactsRoot
+            RunId              = $artifactsContext.RunId
+            RunRoot            = $artifactsContext.RunRoot
+        }
+    }
+
+    $resolvedRepoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
+    $resolvedBaseDirectory = Resolve-WinBridgePathArgument -RepoRoot $resolvedRepoRoot -Path $AssemblyBaseDirectory
+    if ([string]::IsNullOrWhiteSpace($resolvedBaseDirectory)) {
+        return $null
+    }
+
+    $fallbackBinRoot = [System.IO.Path]::GetFullPath((Join-Path $resolvedRepoRoot "tests\$ExpectedProjectName\bin")).TrimEnd('\', '/')
+    $comparison = [System.StringComparison]::OrdinalIgnoreCase
+    if (-not [System.IO.Path]::GetFullPath($resolvedBaseDirectory).StartsWith($fallbackBinRoot + [System.IO.Path]::DirectorySeparatorChar, $comparison)) {
+        return $null
+    }
+
+    return [PSCustomObject]@{
+        SourceContextName  = 'fallback_build_cache'
+        RelativeOutputPath = Get-WinBridgeRelativeSourcePath -Root $fallbackBinRoot -DirectoryPath $resolvedBaseDirectory
+        ArtifactsRoot      = $null
+        RunId              = $null
+        RunRoot            = $null
     }
 }
 
@@ -567,53 +609,50 @@ function Resolve-WinBridgeTestBundleSourceContext {
         [Parameter(Mandatory)]
         [string] $RepoRoot,
         [string] $ArtifactsRoot,
-        [string] $PreferredContextName
+        [string] $PreferredContextName,
+        [string] $PreferredRelativeSourcePath
     )
 
     $candidateContexts = @(
         Get-WinBridgeRuntimeSourceContexts -RepoRoot $RepoRoot -ArtifactsRoot $ArtifactsRoot |
             ForEach-Object {
-                $serverFile = Get-LatestFile -Path $_.ServerRoot -Filter 'Okno.Server.dll'
-                $helperFile = Get-LatestFile -Path $_.HelperRoot -Filter 'WinBridge.SmokeWindowHost.exe'
-                $timestamps = @()
-                if ($null -ne $serverFile) {
-                    $timestamps += $serverFile.LastWriteTimeUtc
+                $serverFilesByRelativePath = @(Get-WinBridgeLatestFilesByRelativeSourcePath -Root $_.ServerRoot -Filter 'Okno.Server.dll')
+                $helperFilesByRelativePath = @(Get-WinBridgeLatestFilesByRelativeSourcePath -Root $_.HelperRoot -Filter 'WinBridge.SmokeWindowHost.exe')
+                $helperByRelativePath = @{}
+                foreach ($helperCandidate in $helperFilesByRelativePath) {
+                    $helperByRelativePath[[string]$helperCandidate.RelativeSourcePath] = $helperCandidate.File
                 }
 
-                if ($null -ne $helperFile) {
-                    $timestamps += $helperFile.LastWriteTimeUtc
-                }
+                foreach ($serverCandidate in $serverFilesByRelativePath) {
+                    $relativeSourcePath = [string]$serverCandidate.RelativeSourcePath
+                    $helperFile = $helperByRelativePath[$relativeSourcePath]
+                    if ($null -eq $helperFile) {
+                        continue
+                    }
 
-                $oldestTimestampUtc = $null
-                $newestTimestampUtc = $null
-                if ($timestamps.Count -gt 0) {
-                    $orderedTimestamps = @($timestamps | Sort-Object)
-                    $oldestTimestampUtc = $orderedTimestamps[0]
-                    $newestTimestampUtc = $orderedTimestamps[-1]
-                }
-
-                [PSCustomObject]@{
-                    Name               = $_.Name
-                    Priority           = $_.Priority
-                    ServerRoot         = $_.ServerRoot
-                    HelperRoot         = $_.HelperRoot
-                    ServerFile         = $serverFile
-                    HelperFile         = $helperFile
-                    OldestTimestampUtc = $oldestTimestampUtc
-                    NewestTimestampUtc = $newestTimestampUtc
+                    $timestamps = @($serverCandidate.File.LastWriteTimeUtc, $helperFile.LastWriteTimeUtc) | Sort-Object
+                    [PSCustomObject]@{
+                        Name               = $_.Name
+                        Priority           = $_.Priority
+                        RelativeSourcePath = $relativeSourcePath
+                        ServerRoot         = $_.ServerRoot
+                        HelperRoot         = $_.HelperRoot
+                        ServerFile         = $serverCandidate.File
+                        HelperFile         = $helperFile
+                        OldestTimestampUtc = $timestamps[0]
+                        NewestTimestampUtc = $timestamps[-1]
+                    }
                 }
             })
 
     $completeContexts = @(
         $candidateContexts |
-            Where-Object {
-                $null -ne $_.ServerFile -and $null -ne $_.HelperFile
-            } |
             Sort-Object `
                 @{ Expression = 'OldestTimestampUtc'; Descending = $true }, `
                 @{ Expression = 'NewestTimestampUtc'; Descending = $true }, `
                 @{ Expression = 'Priority'; Descending = $false }, `
-                @{ Expression = 'Name'; Descending = $false })
+                @{ Expression = 'Name'; Descending = $false }, `
+                @{ Expression = 'RelativeSourcePath'; Descending = $false })
 
     if ($completeContexts.Count -eq 0) {
         $searchedRoots = @(
@@ -623,21 +662,200 @@ function Resolve-WinBridgeTestBundleSourceContext {
         throw "Не удалось подобрать согласованный source context для staged bundle. Проверены пары roots: $($searchedRoots -join ', '). Сначала выполни scripts/build.ps1 или подготовь актуальные fallback outputs."
     }
 
+    $selectedContexts = $completeContexts
+
     if (-not [string]::IsNullOrWhiteSpace($PreferredContextName)) {
         $preferredContext = @(
             $completeContexts |
                 Where-Object { [string]::Equals($_.Name, $PreferredContextName, [System.StringComparison]::OrdinalIgnoreCase) } |
-                Select-Object -First 1)
+                Select-Object)
         if ($preferredContext.Count -eq 0) {
             $availableContexts = @($completeContexts | ForEach-Object { $_.Name })
             $availableContextsJoined = [string]::Join("', '", @($availableContexts))
             throw ('Ne udalos podobrat requested source context ''{0}''. Dostupny: ''{1}''.' -f $PreferredContextName, $availableContextsJoined)
         }
 
-        return $preferredContext[0]
+        $selectedContexts = @($preferredContext)
     }
 
-    return $completeContexts[0]
+    if (-not [string]::IsNullOrWhiteSpace($PreferredRelativeSourcePath)) {
+        $preferredRelativeContext = @(
+            $selectedContexts |
+                Where-Object {
+                    [string]::Equals(
+                        [string]$_.RelativeSourcePath,
+                        [string](Normalize-WinBridgeRelativeSourcePath -RelativeSourcePath $PreferredRelativeSourcePath),
+                        [System.StringComparison]::OrdinalIgnoreCase)
+                } |
+                Select-Object -First 1)
+        if ($preferredRelativeContext.Count -eq 0) {
+            $availableRelativePaths = @($selectedContexts | ForEach-Object { $_.RelativeSourcePath })
+            $availableRelativePathsJoined = [string]::Join("', '", @($availableRelativePaths))
+            throw ('Ne udalos podobrat requested relative source context ''{0}''. Dostupny: ''{1}''.' -f $PreferredRelativeSourcePath, $availableRelativePathsJoined)
+        }
+
+        return $preferredRelativeContext[0]
+    }
+
+    return @($selectedContexts | Select-Object -First 1)[0]
+}
+
+function Get-WinBridgeLatestFilesByRelativeSourcePath {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Root,
+        [Parameter(Mandatory)]
+        [string] $Filter
+    )
+
+    if (-not (Test-Path $Root)) {
+        return @()
+    }
+
+    return @(
+        Get-ChildItem -Path $Root -Filter $Filter -Recurse |
+            Group-Object {
+                Get-WinBridgeRelativeSourcePath -Root $Root -DirectoryPath $_.Directory.FullName
+            } |
+            ForEach-Object {
+                [PSCustomObject]@{
+                    RelativeSourcePath = [string]$_.Name
+                    File               = @($_.Group | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1)[0]
+                }
+            })
+}
+
+function Test-WinBridgeRelativeSourcePathUsesConfiguration {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RelativeSourcePath,
+        [Parameter(Mandatory)]
+        [string] $Configuration
+    )
+
+    $normalized = Normalize-WinBridgeRelativeSourcePath -RelativeSourcePath $RelativeSourcePath
+    if ($normalized -eq '.') {
+        return $false
+    }
+
+    $segments = @($normalized -split '[\\/]')
+    if ($segments.Count -eq 0) {
+        return $false
+    }
+
+    $firstSegment = [string]$segments[0]
+    return [string]::Equals($firstSegment, $Configuration, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $firstSegment.StartsWith($Configuration + '_', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-WinBridgeRelativeSourcePathContainsSegment {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RelativeSourcePath,
+        [Parameter(Mandatory)]
+        [string] $Segment
+    )
+
+    $normalized = Normalize-WinBridgeRelativeSourcePath -RelativeSourcePath $RelativeSourcePath
+    return @($normalized -split '[\\/]') |
+        Where-Object {
+            [string]::Equals($_, $Segment, [System.StringComparison]::OrdinalIgnoreCase) -or
+                ([string]$_).IndexOf($Segment, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+        } |
+        Select-Object -First 1
+}
+
+function Get-WinBridgeDefaultRelativeSourcePathForContext {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('artifacts_root', 'fallback_build_cache')]
+        [string] $SourceContextName,
+        [Parameter(Mandatory)]
+        [string] $Configuration
+    )
+
+    if ($SourceContextName -eq 'artifacts_root') {
+        return $Configuration.ToLowerInvariant()
+    }
+
+    return Join-Path $Configuration $script:WinBridgeTargetFramework
+}
+
+function Get-WinBridgeTestAssemblyForConfiguration {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Root,
+        [Parameter(Mandatory)]
+        [string] $Filter,
+        [Parameter(Mandatory)]
+        [string] $Configuration
+    )
+
+    if (-not (Test-Path $Root)) {
+        return $null
+    }
+
+    $configuredCandidates = @(
+        Get-ChildItem -Path $Root -Filter $Filter -Recurse |
+            Where-Object {
+                $relativeSourcePath = Get-WinBridgeRelativeSourcePath -Root $Root -DirectoryPath $_.Directory.FullName
+                Test-WinBridgeRelativeSourcePathUsesConfiguration -RelativeSourcePath $relativeSourcePath -Configuration $Configuration
+            } |
+            ForEach-Object {
+                $relativeSourcePath = Get-WinBridgeRelativeSourcePath -Root $Root -DirectoryPath $_.Directory.FullName
+                [PSCustomObject]@{
+                    File               = $_
+                    RelativeSourcePath = $relativeSourcePath
+                    MatchesTargetFramework = [bool](Test-WinBridgeRelativeSourcePathContainsSegment -RelativeSourcePath $relativeSourcePath -Segment $script:WinBridgeTargetFramework)
+                }
+            })
+
+    if ($configuredCandidates.Count -eq 0) {
+        return $null
+    }
+
+    return @(
+        $configuredCandidates |
+            Sort-Object `
+                @{ Expression = 'MatchesTargetFramework'; Descending = $true }, `
+                @{ Expression = { $_.File.LastWriteTimeUtc }; Descending = $true }, `
+                @{ Expression = 'RelativeSourcePath'; Descending = $false } |
+            Select-Object -First 1)[0]
+}
+
+function Get-WinBridgeRelativeSourcePath {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Root,
+        [Parameter(Mandatory)]
+        [string] $DirectoryPath
+    )
+
+    $resolvedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+    $resolvedDirectoryPath = [System.IO.Path]::GetFullPath($DirectoryPath)
+    $comparison = [System.StringComparison]::OrdinalIgnoreCase
+    if (-not $resolvedDirectoryPath.StartsWith($resolvedRoot, $comparison)) {
+        throw "Directory '$resolvedDirectoryPath' is outside source root '$resolvedRoot'."
+    }
+
+    if ($resolvedDirectoryPath.Length -eq $resolvedRoot.Length) {
+        return '.'
+    }
+
+    return Normalize-WinBridgeRelativeSourcePath -RelativeSourcePath $resolvedDirectoryPath.Substring($resolvedRoot.Length).TrimStart('\', '/')
+}
+
+function Normalize-WinBridgeRelativeSourcePath {
+    param(
+        [string] $RelativeSourcePath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RelativeSourcePath) -or $RelativeSourcePath -eq '.') {
+        return '.'
+    }
+
+    $normalized = ([string]$RelativeSourcePath).Replace('/', '\').Trim().TrimEnd('\')
+    return $normalized.TrimStart('\')
 }
 
 function ConvertTo-WinBridgeUnixMilliseconds {
@@ -730,6 +948,7 @@ function Read-WinBridgeBundleManifest {
         RunId                  = [string]$manifest.runId
         ArtifactsRoot          = [string]$manifest.artifactsRoot
         SourceContextName      = [string]$manifest.sourceContextName
+        SourceContextRelativePath = Normalize-WinBridgeRelativeSourcePath -RelativeSourcePath ([string]$manifest.sourceContextRelativePath)
         ServerSourceDirectory  = [string]$manifest.serverSourceDirectory
         HelperSourceDirectory  = [string]$manifest.helperSourceDirectory
         SourceOldestWriteUtc   = $manifest.sourceOldestWriteUtc
@@ -747,6 +966,7 @@ function Test-WinBridgeBundleManifestMatchesContext {
         [string] $RunId,
         [string] $ArtifactsRoot,
         [string] $PreferredSourceContextName,
+        [string] $PreferredRelativeSourcePath,
         [Parameter(Mandatory)]
         [string] $RepoRoot
     )
@@ -758,6 +978,16 @@ function Test-WinBridgeBundleManifestMatchesContext {
     if (
         -not [string]::IsNullOrWhiteSpace($PreferredSourceContextName) -and
         -not [string]::Equals([string]$Manifest.SourceContextName, $PreferredSourceContextName, [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        return $false
+    }
+
+    if (
+        -not [string]::IsNullOrWhiteSpace($PreferredRelativeSourcePath) -and
+        -not [string]::Equals(
+            [string](Normalize-WinBridgeRelativeSourcePath -RelativeSourcePath ([string]$Manifest.SourceContextRelativePath)),
+            [string](Normalize-WinBridgeRelativeSourcePath -RelativeSourcePath $PreferredRelativeSourcePath),
+            [System.StringComparison]::OrdinalIgnoreCase)
     ) {
         return $false
     }
@@ -779,16 +1009,17 @@ function Test-WinBridgeBundleManifestReusableForCurrentSourceContext {
         [string] $RepoRoot,
         [string] $RunId,
         [string] $ArtifactsRoot,
-        [string] $PreferredSourceContextName
+        [string] $PreferredSourceContextName,
+        [string] $PreferredRelativeSourcePath
     )
 
-    if (-not (Test-WinBridgeBundleManifestMatchesContext -Manifest $Manifest -RunId $RunId -ArtifactsRoot $ArtifactsRoot -PreferredSourceContextName $PreferredSourceContextName -RepoRoot $RepoRoot)) {
+    if (-not (Test-WinBridgeBundleManifestMatchesContext -Manifest $Manifest -RunId $RunId -ArtifactsRoot $ArtifactsRoot -PreferredSourceContextName $PreferredSourceContextName -PreferredRelativeSourcePath $PreferredRelativeSourcePath -RepoRoot $RepoRoot)) {
         return $false
     }
 
     $currentSourceContext = $null
     try {
-        $currentSourceContext = Resolve-WinBridgeTestBundleSourceContext -RepoRoot $RepoRoot -ArtifactsRoot $ArtifactsRoot -PreferredContextName $PreferredSourceContextName
+        $currentSourceContext = Resolve-WinBridgeTestBundleSourceContext -RepoRoot $RepoRoot -ArtifactsRoot $ArtifactsRoot -PreferredContextName $PreferredSourceContextName -PreferredRelativeSourcePath $PreferredRelativeSourcePath
     }
     catch {
         return $false
@@ -833,10 +1064,16 @@ function Resolve-WinBridgeVerificationContext {
     $runId = $effectiveContext.RunId
     $runRoot = $effectiveContext.RunRoot
     $artifactsRoot = $effectiveContext.ArtifactsRoot
+    $configuration = $script:WinBridgeBuildConfiguration
 
     $artifactsTestAssembly = $null
+    $artifactsTestAssemblyContext = $null
     if (-not [string]::IsNullOrWhiteSpace($artifactsRoot)) {
-        $artifactsTestAssembly = Get-LatestFile -Path (Join-Path $artifactsRoot "bin\\$TestProjectName") -Filter "$TestProjectName.dll"
+        $artifactsTestAssemblyContext = Get-WinBridgeTestAssemblyForConfiguration `
+            -Root (Join-Path $artifactsRoot "bin\\$TestProjectName") `
+            -Filter "$TestProjectName.dll" `
+            -Configuration $configuration
+        $artifactsTestAssembly = if ($null -ne $artifactsTestAssemblyContext) { $artifactsTestAssemblyContext.File } else { $null }
     }
 
     if ($null -ne $artifactsTestAssembly) {
@@ -846,22 +1083,30 @@ function Resolve-WinBridgeVerificationContext {
             RequestedArtifactsRoot    = $artifactsRoot
             EffectiveArtifactsRoot    = $artifactsRoot
             TestAssemblyProvenance    = 'artifacts_root'
+            Configuration             = $configuration
             BundleSourceContextName   = 'artifacts_root'
-            DotnetTestArguments       = @('test', 'WinBridge.sln', '--no-build', '--artifacts-path', $artifactsRoot)
+            BundleSourceRelativePath  = [string]$artifactsTestAssemblyContext.RelativeSourcePath
+            DotnetTestArguments       = @('test', 'WinBridge.sln', '--no-build', '--configuration', $configuration, '--artifacts-path', $artifactsRoot)
             IntegrationTestAssembly   = $artifactsTestAssembly.FullName
             BundleManifestPath        = Get-WinBridgeBundleManifestPathForRunRoot -RunRoot $runRoot
         }
     }
 
-    $defaultTestAssembly = Get-LatestFile -Path (Join-Path $resolvedRepoRoot "tests\\$TestProjectName\\bin") -Filter "$TestProjectName.dll"
+    $defaultTestAssemblyContext = Get-WinBridgeTestAssemblyForConfiguration `
+        -Root (Join-Path $resolvedRepoRoot "tests\\$TestProjectName\\bin") `
+        -Filter "$TestProjectName.dll" `
+        -Configuration $configuration
+    $defaultTestAssembly = if ($null -ne $defaultTestAssemblyContext) { $defaultTestAssemblyContext.File } else { $null }
     return [PSCustomObject]@{
         RunId                     = $runId
         RunRoot                   = $runRoot
         RequestedArtifactsRoot    = $artifactsRoot
         EffectiveArtifactsRoot    = $null
         TestAssemblyProvenance    = 'fallback_build_cache'
+        Configuration             = $configuration
         BundleSourceContextName   = 'fallback_build_cache'
-        DotnetTestArguments       = @('test', 'WinBridge.sln', '--no-build')
+        BundleSourceRelativePath  = if ($null -ne $defaultTestAssemblyContext) { [string]$defaultTestAssemblyContext.RelativeSourcePath } else { Get-WinBridgeDefaultRelativeSourcePathForContext -SourceContextName 'fallback_build_cache' -Configuration $configuration }
+        DotnetTestArguments       = @('test', 'WinBridge.sln', '--no-build', '--configuration', $configuration)
         IntegrationTestAssembly   = if ($null -ne $defaultTestAssembly) { $defaultTestAssembly.FullName } else { $null }
         BundleManifestPath        = Get-WinBridgeBundleManifestPathForRunRoot -RunRoot $runRoot
     }
@@ -1015,13 +1260,17 @@ function Resolve-WinBridgeBundleResolution {
     }
 
     $effectivePreferredSourceContextName = $PreferredSourceContextName
+    $effectivePreferredRelativeSourcePath = $null
     if ([string]::IsNullOrWhiteSpace($effectivePreferredSourceContextName) -and $PSBoundParameters.ContainsKey('AssemblyBaseDirectory')) {
-        $effectiveAssemblyContext = Try-Resolve-WinBridgeArtifactsContextFromAssemblyBaseDirectory -RepoRoot $resolvedRepoRoot -AssemblyBaseDirectory $AssemblyBaseDirectory
+        $effectiveAssemblyContext = Try-Resolve-WinBridgeAssemblyOutputContext -RepoRoot $resolvedRepoRoot -AssemblyBaseDirectory $AssemblyBaseDirectory
         $effectivePreferredSourceContextName = if ($null -ne $effectiveAssemblyContext) {
-            'artifacts_root'
+            $effectiveAssemblyContext.SourceContextName
         }
         else {
             'fallback_build_cache'
+        }
+        if ($null -ne $effectiveAssemblyContext) {
+            $effectivePreferredRelativeSourcePath = $effectiveAssemblyContext.RelativeOutputPath
         }
     }
 
@@ -1042,7 +1291,7 @@ function Resolve-WinBridgeBundleResolution {
     $existingManifest = Read-WinBridgeBundleManifest -ManifestPath $defaultManifestPath
     if (
         $null -ne $existingManifest -and
-        (Test-WinBridgeBundleManifestReusableForCurrentSourceContext -Manifest $existingManifest -RunId $context.RunId -ArtifactsRoot $context.ArtifactsRoot -PreferredSourceContextName $effectivePreferredSourceContextName -RepoRoot $resolvedRepoRoot)
+        (Test-WinBridgeBundleManifestReusableForCurrentSourceContext -Manifest $existingManifest -RunId $context.RunId -ArtifactsRoot $context.ArtifactsRoot -PreferredSourceContextName $effectivePreferredSourceContextName -PreferredRelativeSourcePath $effectivePreferredRelativeSourcePath -RepoRoot $resolvedRepoRoot)
     ) {
         return [PSCustomObject]@{
             ResolutionMode           = 'default_manifest'
@@ -1073,6 +1322,9 @@ function Resolve-WinBridgeBundleResolution {
     if (-not [string]::IsNullOrWhiteSpace($effectivePreferredSourceContextName)) {
         $bundleArgs.PreferredSourceContextName = $effectivePreferredSourceContextName
     }
+    if (-not [string]::IsNullOrWhiteSpace($effectivePreferredRelativeSourcePath)) {
+        $bundleArgs.PreferredRelativeSourcePath = $effectivePreferredRelativeSourcePath
+    }
 
     $preparedManifest = Use-OknoTestBundle @bundleArgs
     return [PSCustomObject]@{
@@ -1094,7 +1346,7 @@ function Invoke-WinBridgeSolutionBuild {
         [string] $Description = 'dotnet build'
     )
 
-    $arguments = @('build', 'WinBridge.sln', '--no-restore')
+    $arguments = @('build', 'WinBridge.sln', '--no-restore', '--configuration', $script:WinBridgeBuildConfiguration)
     if (-not [string]::IsNullOrWhiteSpace($env:WINBRIDGE_ARTIFACTS_ROOT)) {
         $arguments += @('--artifacts-path', $env:WINBRIDGE_ARTIFACTS_ROOT)
     }
@@ -1126,7 +1378,8 @@ function Use-OknoTestBundle {
         [string] $RunId,
         [string] $RunRoot,
         [string] $ArtifactsRoot,
-        [string] $PreferredSourceContextName
+        [string] $PreferredSourceContextName,
+        [string] $PreferredRelativeSourcePath
     )
 
     $prepareScript = Join-Path $RepoRoot 'scripts\\codex\\prepare-okno-test-bundle.ps1'
@@ -1147,6 +1400,10 @@ function Use-OknoTestBundle {
 
     if ($PSBoundParameters.ContainsKey('PreferredSourceContextName') -and -not [string]::IsNullOrWhiteSpace($PreferredSourceContextName)) {
         $prepareInvokeArgs.PreferredSourceContextName = $PreferredSourceContextName
+    }
+
+    if ($PSBoundParameters.ContainsKey('PreferredRelativeSourcePath') -and -not [string]::IsNullOrWhiteSpace($PreferredRelativeSourcePath)) {
+        $prepareInvokeArgs.PreferredRelativeSourcePath = $PreferredRelativeSourcePath
     }
 
     $manifest = & $prepareScript @prepareInvokeArgs | ConvertFrom-Json

@@ -25,7 +25,7 @@
 > Этот раздел перечисляет канонические validation commands и не зависит от конкретного run id. Для evidence конкретного запуска смотри `artifacts/smoke/<run_id>/` или используй `scripts/investigate.ps1`.
 
 - `dotnet build WinBridge.sln --no-restore`
-- `dotnet test WinBridge.sln`
+- `dotnet test WinBridge.sln --configuration Debug`
 - `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1`

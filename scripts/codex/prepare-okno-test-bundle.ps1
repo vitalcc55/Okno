@@ -4,7 +4,8 @@ param(
     [string]$RunRoot,
     [string]$ArtifactsRoot,
     [ValidateSet('artifacts_root', 'fallback_build_cache')]
-    [string]$PreferredSourceContextName
+    [string]$PreferredSourceContextName,
+    [string]$PreferredRelativeSourcePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,7 +53,7 @@ function Copy-DirectoryContents {
     Copy-Item -Path (Join-Path $SourceDirectory '*') -Destination $DestinationDirectory -Recurse -Force
 }
 
-$sourceContext = Resolve-WinBridgeTestBundleSourceContext -RepoRoot $repoRoot -ArtifactsRoot $context.ArtifactsRoot -PreferredContextName $PreferredSourceContextName
+$sourceContext = Resolve-WinBridgeTestBundleSourceContext -RepoRoot $repoRoot -ArtifactsRoot $context.ArtifactsRoot -PreferredContextName $PreferredSourceContextName -PreferredRelativeSourcePath $PreferredRelativeSourcePath
 $serverDll = $sourceContext.ServerFile
 $helperExe = $sourceContext.HelperFile
 
@@ -74,6 +75,7 @@ $manifest = [ordered]@{
     bundleRoot              = $bundleInstanceRoot
     manifestPath            = $manifestPath
     sourceContextName       = $sourceContext.Name
+    sourceContextRelativePath = $sourceContext.RelativeSourcePath
     sourceContextPriority   = $sourceContext.Priority
     sourceOldestWriteUtc    = if ($null -ne $sourceContext.OldestTimestampUtc) { ([DateTimeOffset]$sourceContext.OldestTimestampUtc).ToUniversalTime().ToString('o') } else { $null }
     sourceNewestWriteUtc    = if ($null -ne $sourceContext.NewestTimestampUtc) { ([DateTimeOffset]$sourceContext.NewestTimestampUtc).ToUniversalTime().ToString('o') } else { $null }

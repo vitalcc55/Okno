@@ -341,7 +341,9 @@ public sealed class McpProtocolSmokeTests
             AssertSchemaPropertyAllowsNull(captureReferenceSchema, "effectiveDpi");
             AssertSchemaPropertyAllowsNull(captureReferenceSchema, "capturedAtUtc");
             Assert.True(captureReferenceSchema.GetProperty("properties").TryGetProperty("frameBounds", out JsonElement frameBoundsSchema));
+            Assert.True(captureReferenceSchema.GetProperty("properties").TryGetProperty("targetIdentity", out JsonElement targetIdentitySchema));
             AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "frameBounds");
+            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "targetIdentity");
             AssertSchemaRequiredContains(
                 captureReferenceSchema.GetProperty("properties").GetProperty("bounds"),
                 "left",
@@ -358,6 +360,11 @@ public sealed class McpProtocolSmokeTests
             AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "top");
             AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "right");
             AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "bottom");
+            AssertSchemaRequiredContains(targetIdentitySchema, "hwnd", "processId", "threadId", "className");
+            AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "hwnd");
+            AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "processId");
+            AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "threadId");
+            AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "className");
         }
         finally
         {

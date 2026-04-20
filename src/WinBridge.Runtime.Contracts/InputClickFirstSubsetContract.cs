@@ -259,6 +259,7 @@ public static class InputClickFirstSubsetContract
             effectiveDpi = captureReference.HasEffectiveDpi && captureReference.HasValidEffectiveDpi ? captureReference.EffectiveDpi : null,
             capturedAtUtc = captureReference.HasCapturedAtUtc && captureReference.HasValidCapturedAtUtc ? captureReference.CapturedAtUtc : null,
             frameBounds = captureReference.HasFrameBounds && captureReference.HasValidFrameBounds ? CreateAuditBoundsSummary(captureReference.FrameBounds) : null,
+            targetIdentity = captureReference.HasTargetIdentity && captureReference.HasValidTargetIdentity ? CreateAuditTargetIdentitySummary(captureReference.TargetIdentity) : null,
         };
     }
 
@@ -275,6 +276,22 @@ public static class InputClickFirstSubsetContract
             top = bounds.HasTop && bounds.HasValidTop ? (int?)bounds.Top : null,
             right = bounds.HasRight && bounds.HasValidRight ? (int?)bounds.Right : null,
             bottom = bounds.HasBottom && bounds.HasValidBottom ? (int?)bounds.Bottom : null,
+        };
+    }
+
+    private static object? CreateAuditTargetIdentitySummary(InputTargetIdentity? targetIdentity)
+    {
+        if (targetIdentity is null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            hwnd = targetIdentity.HasHwnd && targetIdentity.HasValidHwnd ? (long?)targetIdentity.Hwnd : null,
+            processId = targetIdentity.HasProcessId && targetIdentity.HasValidProcessId ? (int?)targetIdentity.ProcessId : null,
+            threadId = targetIdentity.HasThreadId && targetIdentity.HasValidThreadId ? (int?)targetIdentity.ThreadId : null,
+            className = targetIdentity.HasClassName && targetIdentity.HasValidClassName ? targetIdentity.ClassName : null,
         };
     }
 }

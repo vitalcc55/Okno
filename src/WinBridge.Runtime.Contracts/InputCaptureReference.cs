@@ -26,6 +26,9 @@ public sealed record InputCaptureReference
     private InputBounds? _frameBounds;
     private bool _hasFrameBounds;
     private bool _hasValidFrameBounds;
+    private InputTargetIdentity? _targetIdentity;
+    private bool _hasTargetIdentity;
+    private bool _hasValidTargetIdentity;
     private IDictionary<string, JsonElement>? _additionalProperties;
 
     public InputCaptureReference()
@@ -38,7 +41,8 @@ public sealed record InputCaptureReference
         int pixelHeight,
         int? effectiveDpi = null,
         DateTimeOffset? capturedAtUtc = null,
-        InputBounds? frameBounds = null)
+        InputBounds? frameBounds = null,
+        InputTargetIdentity? targetIdentity = null)
     {
         Bounds = bounds;
         PixelWidth = pixelWidth;
@@ -48,6 +52,11 @@ public sealed record InputCaptureReference
         if (frameBounds is not null)
         {
             FrameBounds = frameBounds;
+        }
+
+        if (targetIdentity is not null)
+        {
+            TargetIdentity = targetIdentity;
         }
     }
 
@@ -93,6 +102,13 @@ public sealed record InputCaptureReference
         init => SetFrameBounds(value);
     }
 
+    [JsonPropertyName("targetIdentity")]
+    public InputTargetIdentity? TargetIdentity
+    {
+        get => _targetIdentity;
+        init => SetTargetIdentity(value);
+    }
+
     [JsonIgnore]
     public bool HasValidObject => _hasValidObject;
 
@@ -131,6 +147,12 @@ public sealed record InputCaptureReference
 
     [JsonIgnore]
     public bool HasValidFrameBounds => _hasValidFrameBounds;
+
+    [JsonIgnore]
+    public bool HasTargetIdentity => _hasTargetIdentity;
+
+    [JsonIgnore]
+    public bool HasValidTargetIdentity => _hasValidTargetIdentity;
 
     [JsonExtensionData]
     public IDictionary<string, JsonElement>? AdditionalProperties
@@ -223,6 +245,20 @@ public sealed record InputCaptureReference
         _hasValidFrameBounds = false;
     }
 
+    internal void SetTargetIdentity(InputTargetIdentity? value)
+    {
+        _targetIdentity = value;
+        _hasTargetIdentity = true;
+        _hasValidTargetIdentity = value is not null;
+    }
+
+    internal void MarkTargetIdentityInvalid()
+    {
+        _targetIdentity = null;
+        _hasTargetIdentity = true;
+        _hasValidTargetIdentity = false;
+    }
+
     internal void SetAdditionalProperty(string name, JsonElement value)
     {
         (_additionalProperties ??= new Dictionary<string, JsonElement>(StringComparer.Ordinal))[name] = value;
@@ -288,6 +324,9 @@ internal sealed class InputCaptureReferenceJsonConverter : JsonConverter<InputCa
                 case "frameBounds":
                     ReadFrameBounds(ref reader, options, captureReference);
                     break;
+                case "targetIdentity":
+                    ReadTargetIdentity(ref reader, options, captureReference);
+                    break;
                 default:
                     captureReference.SetAdditionalProperty(propertyName, InputJsonBindingHelpers.CloneValue(ref reader));
                     break;
@@ -324,6 +363,19 @@ internal sealed class InputCaptureReferenceJsonConverter : JsonConverter<InputCa
             if (value.HasValidFrameBounds && value.FrameBounds is not null)
             {
                 JsonSerializer.Serialize(writer, value.FrameBounds, options);
+            }
+            else
+            {
+                writer.WriteNullValue();
+            }
+        }
+
+        if (value.HasTargetIdentity)
+        {
+            writer.WritePropertyName("targetIdentity");
+            if (value.HasValidTargetIdentity && value.TargetIdentity is not null)
+            {
+                JsonSerializer.Serialize(writer, value.TargetIdentity, options);
             }
             else
             {
@@ -379,6 +431,25 @@ internal sealed class InputCaptureReferenceJsonConverter : JsonConverter<InputCa
 
         InputBounds? bounds = JsonSerializer.Deserialize<InputBounds>(ref reader, options);
         captureReference.SetFrameBounds(bounds);
+    }
+
+    private static void ReadTargetIdentity(ref Utf8JsonReader reader, JsonSerializerOptions options, InputCaptureReference captureReference)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            captureReference.MarkTargetIdentityInvalid();
+            return;
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            captureReference.MarkTargetIdentityInvalid();
+            InputJsonBindingHelpers.SkipNestedValue(ref reader);
+            return;
+        }
+
+        InputTargetIdentity? targetIdentity = JsonSerializer.Deserialize<InputTargetIdentity>(ref reader, options);
+        captureReference.SetTargetIdentity(targetIdentity);
     }
 
     private static void ReadInt32(ref Utf8JsonReader reader, Action<int> assign, Action markInvalid)

@@ -15,12 +15,14 @@ using Windows.Storage.Streams;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Windows.Display;
+using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Runtime.Windows.Capture;
 
 public sealed class GraphicsCaptureService(
     AuditLogOptions auditLogOptions,
-    IMonitorManager monitorManager) : ICaptureService, IWaitVisualProbe
+    IMonitorManager monitorManager,
+    IWindowManager windowManager) : ICaptureService, IWaitVisualProbe
 {
     private const int GraphicsCaptureBufferCount = 1;
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
@@ -530,20 +532,20 @@ public sealed class GraphicsCaptureService(
         RasterizedCapture capture,
         DateTimeOffset capturedAtUtc)
     {
-        if (scope != CaptureScope.Window)
+        if (scope != CaptureScope.Window
+            || target.CaptureReferenceEligibility != CaptureReferenceEligibility.Eligible)
         {
             return null;
         }
 
         try
         {
-            return CaptureReferenceGeometryPolicy.CreateCopyThroughReference(
-                target.Bounds,
+            return CaptureReferencePublisher.TryCreate(
+                scope,
+                target,
                 capture.PixelWidth,
                 capture.PixelHeight,
-                target.EffectiveDpi,
-                capturedAtUtc,
-                target.FrameBounds);
+                capturedAtUtc);
         }
         catch (InvalidOperationException exception)
         {
@@ -619,11 +621,21 @@ public sealed class GraphicsCaptureService(
         double dpiScale = effectiveDpi / 96.0;
         DisplayTopologySnapshot topology = monitorManager.GetTopologySnapshot();
         MonitorInfo? monitor = monitorManager.FindMonitorForWindow(window.Hwnd, topology);
+        WindowDescriptor? liveWindow = windowManager
+            .ListWindows(includeInvisible: true)
+            .FirstOrDefault(candidate => candidate.Hwnd == window.Hwnd);
+        WindowDescriptor refreshedWindow = CaptureWindowSnapshotPolicy.BuildRefreshedWindowSnapshot(
+            window,
+            liveWindow,
+            frameBounds,
+            effectiveDpi,
+            dpiScale,
+            monitor);
 
         return new CaptureResolvedTarget(
             CaptureScope.Window,
             "window",
-            window,
+            refreshedWindow,
             rasterBounds,
             CaptureCoordinateSpaceValues.PhysicalPixels,
             effectiveDpi,

@@ -29,7 +29,7 @@
   ],
   "validation_entry_points": {
     "build": "dotnet build WinBridge.sln --no-restore",
-    "test": "dotnet test WinBridge.sln",
+    "test": "dotnet test WinBridge.sln --configuration Debug",
     "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",
     "refresh_generated_docs": "powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1",
     "ci": "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"

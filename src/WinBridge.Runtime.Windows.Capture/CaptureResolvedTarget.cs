@@ -12,4 +12,11 @@ internal sealed record CaptureResolvedTarget(
     int? EffectiveDpi,
     double? DpiScale,
     MonitorInfo? Monitor,
-    Bounds? FrameBounds = null);
+    Bounds? FrameBounds = null,
+    CaptureReferenceEligibility CaptureReferenceEligibility = CaptureReferenceEligibility.ObserveOnly);
+
+internal enum CaptureReferenceEligibility
+{
+    ObserveOnly,
+    Eligible,
+}

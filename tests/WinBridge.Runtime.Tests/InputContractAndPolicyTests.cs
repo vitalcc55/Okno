@@ -82,7 +82,8 @@ public sealed class InputContractAndPolicyTests
                 pixelHeight: 200,
                 effectiveDpi: 96,
                 capturedAtUtc: DateTimeOffset.UtcNow,
-                frameBounds: new InputBounds(10, 20, 226, 232)),
+                frameBounds: new InputBounds(10, 20, 226, 232),
+                targetIdentity: new InputTargetIdentity(100, 123, 456, "OknoWindow")),
             FrameBounds: new Bounds(10, 20, 226, 232));
 
         JsonElement metadataElement = JsonSerializer.SerializeToElement(
@@ -104,6 +105,11 @@ public sealed class InputContractAndPolicyTests
                 .Select(property => property.Name)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
+        JsonElement targetIdentity = metadataElement.GetProperty("captureReference").GetProperty("targetIdentity");
+        Assert.Equal(100, targetIdentity.GetProperty("hwnd").GetInt64());
+        Assert.Equal(123, targetIdentity.GetProperty("processId").GetInt32());
+        Assert.Equal(456, targetIdentity.GetProperty("threadId").GetInt32());
+        Assert.Equal("OknoWindow", targetIdentity.GetProperty("className").GetString());
     }
 
     [Fact]
@@ -1200,7 +1206,8 @@ public sealed class InputContractAndPolicyTests
                     CaptureReference = new InputCaptureReference(
                         new InputBounds(0, 0, 200, 200),
                         200,
-                        200),
+                        200,
+                        targetIdentity: new InputTargetIdentity(101, 123, 456, "OknoWindow")),
                 },
             ],
         };
@@ -1291,6 +1298,32 @@ public sealed class InputContractAndPolicyTests
         WindowTargetResolver resolver = new(new FakeWindowManager([explicitWindow]));
 
         InputTargetResolution resolution = resolver.ResolveInputTarget(explicitWindow.Hwnd, attachedWindow: null);
+
+        Assert.Null(resolution.Window);
+        Assert.Null(resolution.Source);
+        Assert.Equal(InputTargetFailureValues.StaleExplicitTarget, resolution.FailureCode);
+    }
+
+    [Fact]
+    public void ResolveInputTargetRejectsExplicitWindowWhenAttachedIdentityForSameHwndNoLongerMatches()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(
+            hwnd: 101,
+            title: "Observed",
+            isForeground: true,
+            processId: 123,
+            threadId: 456,
+            className: "ObservedWindow");
+        WindowDescriptor recycledWindow = CreateWindow(
+            hwnd: 101,
+            title: "Recycled",
+            isForeground: true,
+            processId: 999,
+            threadId: 777,
+            className: "RecycledWindow");
+        WindowTargetResolver resolver = new(new FakeWindowManager([recycledWindow]));
+
+        InputTargetResolution resolution = resolver.ResolveInputTarget(explicitHwnd: 101, attachedWindow);
 
         Assert.Null(resolution.Window);
         Assert.Null(resolution.Source);
@@ -1391,7 +1424,8 @@ public sealed class InputContractAndPolicyTests
             200,
             200,
             96,
-            DateTimeOffset.Parse("2026-04-10T12:00:00Z", CultureInfo.InvariantCulture));
+            DateTimeOffset.Parse("2026-04-10T12:00:00Z", CultureInfo.InvariantCulture),
+            targetIdentity: new InputTargetIdentity(101, 123, 456, "OknoWindow"));
 
     private static InputRequest DeserializeRequest(string json) =>
         JsonSerializer.Deserialize<InputRequest>(json)

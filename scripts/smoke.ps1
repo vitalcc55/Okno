@@ -1385,6 +1385,11 @@ function New-InputCaptureReference {
     Assert-Condition -Condition ([int]$reference.bounds.bottom -eq [int]$bounds.bottom) -Message 'captureReference.bounds.bottom must match capture payload bounds.bottom.'
     Assert-Condition -Condition ([int]$reference.pixelWidth -eq [int]$CapturePayload.pixelWidth) -Message 'captureReference.pixelWidth must match capture payload pixelWidth.'
     Assert-Condition -Condition ([int]$reference.pixelHeight -eq [int]$CapturePayload.pixelHeight) -Message 'captureReference.pixelHeight must match capture payload pixelHeight.'
+    Assert-Condition -Condition ($null -ne $reference.targetIdentity) -Message 'Input smoke captureReference is missing targetIdentity.'
+    Assert-Condition -Condition ([int64]$reference.targetIdentity.hwnd -eq [int64]$CapturePayload.hwnd) -Message 'captureReference.targetIdentity.hwnd must match capture payload hwnd.'
+    Assert-Condition -Condition ([int]$reference.targetIdentity.processId -gt 0) -Message 'captureReference.targetIdentity.processId must be positive.'
+    Assert-Condition -Condition ([int]$reference.targetIdentity.threadId -gt 0) -Message 'captureReference.targetIdentity.threadId must be positive.'
+    Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace([string]$reference.targetIdentity.className)) -Message 'captureReference.targetIdentity.className must be populated.'
 
     if (($payloadProperties -contains 'frameBounds') -and $null -ne $CapturePayload.frameBounds) {
         $frameBounds = $CapturePayload.frameBounds
@@ -2497,6 +2502,7 @@ try {
         Assert-Condition -Condition ($null -ne $freshInputActionProperties.type) -Message 'Fresh host windows.input schema is missing action type.'
         Assert-Condition -Condition ($null -ne $freshInputActionProperties.point) -Message 'Fresh host windows.input schema is missing action point.'
         Assert-Condition -Condition ($null -ne $freshInputActionProperties.captureReference.properties.frameBounds) -Message 'Fresh host windows.input schema is missing captureReference.frameBounds.'
+        Assert-Condition -Condition ($null -ne $freshInputActionProperties.captureReference.properties.targetIdentity) -Message 'Fresh host windows.input schema is missing captureReference.targetIdentity.'
         Assert-Condition -Condition ($null -eq $freshInputActionProperties.text) -Message 'Fresh host windows.input schema unexpectedly exposes text.'
         Assert-Condition -Condition ($null -eq $freshInputActionProperties.key) -Message 'Fresh host windows.input schema unexpectedly exposes key.'
         Assert-Condition -Condition ($null -eq $freshInputActionProperties.keys) -Message 'Fresh host windows.input schema unexpectedly exposes keys.'

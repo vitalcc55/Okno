@@ -9,6 +9,7 @@
     <ProjectReference Include="..\WinBridge.Runtime.Contracts\WinBridge.Runtime.Contracts.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Diagnostics\WinBridge.Runtime.Diagnostics.csproj" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.Display\WinBridge.Runtime.Windows.Display.csproj" />
+    <ProjectReference Include="..\WinBridge.Runtime.Windows.Shell\WinBridge.Runtime.Windows.Shell.csproj" />
   </ItemGroup>
 
 </Project>

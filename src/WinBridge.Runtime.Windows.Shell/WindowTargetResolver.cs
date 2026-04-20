@@ -77,6 +77,14 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
                 return new(FailureCode: InputTargetFailureValues.StaleExplicitTarget);
             }
 
+            if (attachedWindow is not null
+                && attachedWindow.Hwnd == hwnd
+                && WindowIdentityValidator.TryValidateStableIdentity(attachedWindow, out _)
+                && !WindowIdentityValidator.MatchesStableIdentity(explicitWindow, attachedWindow))
+            {
+                return new(FailureCode: InputTargetFailureValues.StaleExplicitTarget);
+            }
+
             return explicitWindow is null
                 ? new(FailureCode: InputTargetFailureValues.StaleExplicitTarget)
                 : new(explicitWindow, InputTargetSourceValues.Explicit);
