@@ -8,7 +8,7 @@ public sealed class WindowsInputSourceOfTruthTests
     public void WindowsInputFeaturePromotionIsConsistentAcrossInteropAndManifestSources()
     {
         string repoRoot = GetRepositoryRoot();
-        string windowsInputPlan = File.ReadAllText(Path.Combine(repoRoot, "docs", "exec-plans", "active", "windows-input.md"));
+        string windowsInputPlan = File.ReadAllText(Path.Combine(repoRoot, "docs", "exec-plans", "completed", "completed-2026-04-20-windows-input.md"));
         string interopPlan = File.ReadAllText(Path.Combine(repoRoot, "docs", "exec-plans", "active", "openai-computer-use-interop.md"));
         string interopArchitecture = File.ReadAllText(Path.Combine(repoRoot, "docs", "architecture", "openai-computer-use-interop.md"));
         ToolContractExportDocument exportDocument = ToolContractExporter.CreateDocument();

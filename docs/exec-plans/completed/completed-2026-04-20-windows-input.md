@@ -2,6 +2,7 @@
 
 Статус: completed; shipped click-first subset, broad input extensions deferred
 Создан: 2026-04-10
+Архивирован: 2026-04-20
 
 ## 1. Goal
 
