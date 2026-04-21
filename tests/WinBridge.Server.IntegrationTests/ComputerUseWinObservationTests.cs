@@ -52,6 +52,25 @@ public sealed class ComputerUseWinObservationTests
     }
 
     [Fact]
+    public async Task AppStateObserverMaterializesUnexpectedSnapshotExceptionsAsStructuredFailure()
+    {
+        ComputerUseWinAppStateObserver observer = CreateObserver(
+            captureService: new SuccessfulCaptureService(),
+            uiAutomationService: new FakeUiAutomationService((_, _, _) => throw new InvalidOperationException("secret uia failure")));
+
+        ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
+            CreateWindow(),
+            appId: "explorer",
+            maxNodes: 128,
+            warnings: [],
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, outcome.FailureCode);
+        Assert.DoesNotContain("secret", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AppStateObserverPublishesKeyboardFocusAndStateTokenOnSuccess()
     {
         ComputerUseWinAppStateObserver observer = CreateObserver(
@@ -96,6 +115,8 @@ public sealed class ComputerUseWinObservationTests
         Assert.NotNull(outcome.Payload.StateToken);
         Assert.Contains("activation degraded", outcome.Payload.Warnings!);
         Assert.Contains(outcome.Payload.AccessibilityTree!, element => element.HasKeyboardFocus);
+        Assert.NotNull(outcome.StoredState);
+        Assert.Equal(128, outcome.StoredState!.Observation.RequestedMaxNodes);
     }
 
     private static ComputerUseWinAppStateObserver CreateObserver(

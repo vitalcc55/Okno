@@ -306,7 +306,7 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
-    public async Task ComputerUseWinGetAppStateDoesNotAttachWindowWhenObservationFails()
+    public async Task ComputerUseWinGetAppStateDoesNotAttachWindowWhenRequestIsInvalid()
     {
         using Process helper = StartHelperWindow(
             title: $"Okno Smoke Helper Failed Observation {Guid.NewGuid():N}",
@@ -350,7 +350,7 @@ public sealed class McpProtocolSmokeTests
             Assert.True(failedResult.GetProperty("isError").GetBoolean());
             JsonElement failedPayload = failedResult.GetProperty("structuredContent");
             Assert.Equal(ComputerUseWinStatusValues.Failed, failedPayload.GetProperty("status").GetString());
-            Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, failedPayload.GetProperty("failureCode").GetString());
+            Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, failedPayload.GetProperty("failureCode").GetString());
             Assert.Contains("maxNodes", failedPayload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
 
             using JsonDocument noArgsResponse = await session.CallToolAsync(
@@ -370,7 +370,7 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
-    public async Task ComputerUseWinGetAppStateFailsWhenUiAutomationSnapshotDoesNotComplete()
+    public async Task ComputerUseWinGetAppStateRejectsInvalidMaxNodesBeforeObservation()
     {
         using Process helper = StartHelperWindow(
             title: $"Okno Smoke Helper Snapshot Failure {Guid.NewGuid():N}",
@@ -414,7 +414,7 @@ public sealed class McpProtocolSmokeTests
             Assert.True(result.GetProperty("isError").GetBoolean());
             JsonElement payload = result.GetProperty("structuredContent");
             Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, payload.GetProperty("failureCode").GetString());
+            Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
             Assert.Contains("maxNodes", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
             Assert.False(payload.TryGetProperty("stateToken", out _));
             Assert.False(payload.TryGetProperty("accessibilityTree", out _));

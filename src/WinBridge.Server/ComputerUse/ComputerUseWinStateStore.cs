@@ -98,7 +98,12 @@ internal sealed record ComputerUseWinStoredState(
     WindowDescriptor Window,
     InputCaptureReference? CaptureReference,
     IReadOnlyDictionary<int, ComputerUseWinStoredElement> Elements,
+    ComputerUseWinObservationEnvelope Observation,
     DateTimeOffset CapturedAtUtc);
+
+internal sealed record ComputerUseWinObservationEnvelope(
+    int RequestedDepth,
+    int RequestedMaxNodes);
 
 internal sealed record ComputerUseWinStoredElement(
     int Index,

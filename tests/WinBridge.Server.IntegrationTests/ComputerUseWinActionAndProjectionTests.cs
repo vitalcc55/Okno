@@ -86,6 +86,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             CancellationToken.None);
 
         Assert.True(resolution.IsSuccess);
+        Assert.Equal(768, uiAutomationService.LastRequest?.MaxNodes);
         Assert.NotNull(resolution.Action);
         Assert.Equal(InputCoordinateSpaceValues.Screen, resolution.Action!.CoordinateSpace);
         Assert.Equal(new InputPoint(140, 140), resolution.Action.Point);
@@ -131,6 +132,45 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, resolution.FailureCode);
     }
 
+    [Fact]
+    public async Task ClickTargetResolverReturnsObservationFailedWhenFreshSnapshotDoesNotComplete()
+    {
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Failed,
+                Reason: "UIA worker did not complete.",
+                Window: CreateObservedWindow(window),
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        ComputerUseWinClickTargetResolver resolver = new(uiAutomationService);
+
+        ComputerUseWinClickTargetResolution resolution = await resolver.ResolveAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(ElementIndex: 1),
+            CancellationToken.None);
+
+        Assert.False(resolution.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, resolution.FailureCode);
+        Assert.Contains("UIA worker", resolution.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ClickTargetResolverMaterializesUnexpectedSnapshotExceptionsAsStructuredFailure()
+    {
+        FakeUiAutomationService uiAutomationService = new((_, _, _) => throw new InvalidOperationException("secret uia failure"));
+        ComputerUseWinClickTargetResolver resolver = new(uiAutomationService);
+
+        ComputerUseWinClickTargetResolution resolution = await resolver.ResolveAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(ElementIndex: 1),
+            CancellationToken.None);
+
+        Assert.False(resolution.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, resolution.FailureCode);
+        Assert.DoesNotContain("secret", resolution.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ComputerUseWinStoredState CreateStoredState() =>
         new(
             new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
@@ -148,6 +188,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
                     HasKeyboardFocus: false,
                     Actions: [ToolNames.ComputerUseWinClick]),
             },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
             CapturedAtUtc: DateTimeOffset.UtcNow);
 
     private static WindowDescriptor CreateWindow() =>

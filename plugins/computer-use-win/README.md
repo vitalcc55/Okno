@@ -40,7 +40,7 @@ powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-
 Skill требует state-first discipline:
 
 - каждый GUI turn начинать с `get_app_state`;
-- считать `stateToken` короткоживущим proof-артефактом, а не долговечной session cache;
+- считать `stateToken` короткоживущим proof-артефактом вместе с его observation envelope, а не долговечной session cache;
 - предпочитать `elementIndex` над coordinate click;
 - использовать coordinate click только с явным `confirm`, если semantic element не доказан;
 - после action делать новый `get_app_state` или явную verify-step;

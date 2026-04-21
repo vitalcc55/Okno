@@ -6,26 +6,31 @@ internal static class ToolSurfaceProfileResolver
 {
     public static string Resolve(string[] args)
     {
-        string? explicitProfile = TryReadExplicitProfile(args);
-        if (string.IsNullOrWhiteSpace(explicitProfile))
+        ToolSurfaceProfileSelection selection = ReadSelection(args);
+        if (!selection.IsExplicit)
         {
             return ToolSurfaceProfileValues.WindowsEngine;
         }
 
-        return ToolContractManifest.GetProfile(explicitProfile).Name;
+        if (string.IsNullOrWhiteSpace(selection.Value))
+        {
+            throw new ArgumentOutOfRangeException(nameof(args), selection.Value, "Явно переданный tool surface profile не может быть пустым.");
+        }
+
+        return ToolContractManifest.GetProfile(selection.Value).Name;
     }
 
-    private static string? TryReadExplicitProfile(string[] args)
+    private static ToolSurfaceProfileSelection ReadSelection(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
         {
             if (string.Equals(args[i], "--tool-surface-profile", StringComparison.Ordinal))
             {
-                return ReadValue(args, ref i, "--tool-surface-profile");
+                return new(true, ReadValue(args, ref i, "--tool-surface-profile"));
             }
         }
 
-        return null;
+        return new(false, null);
     }
 
     private static string ReadValue(string[] args, ref int index, string optionName)
@@ -39,3 +44,5 @@ internal static class ToolSurfaceProfileResolver
         return args[index];
     }
 }
+
+internal readonly record struct ToolSurfaceProfileSelection(bool IsExplicit, string? Value);

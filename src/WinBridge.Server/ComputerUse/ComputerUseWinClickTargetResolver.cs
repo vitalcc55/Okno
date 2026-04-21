@@ -16,50 +16,64 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
 
         if (request.ElementIndex is int elementIndex)
         {
-            if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
-                || storedElement.Bounds is null)
+            try
             {
-                return ComputerUseWinClickTargetResolution.Failure(
-                    ComputerUseWinFailureCodeValues.InvalidRequest,
-                    $"elementIndex {elementIndex} не существует или не даёт кликабельных bounds.");
-            }
-
-            UiaSnapshotResult snapshot = await uiAutomationService.SnapshotAsync(
-                state.Window,
-                new UiaSnapshotRequest
+                if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
+                    || storedElement.Bounds is null)
                 {
-                    Depth = UiaSnapshotDefaults.Depth,
-                    MaxNodes = UiaSnapshotDefaults.MaxNodes,
-                },
-                cancellationToken).ConfigureAwait(false);
+                    return ComputerUseWinClickTargetResolution.Failure(
+                        ComputerUseWinFailureCodeValues.InvalidRequest,
+                        $"elementIndex {elementIndex} не существует или не даёт кликабельных bounds.");
+                }
 
-            if (!string.Equals(snapshot.Status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal)
-                || snapshot.Root is null)
-            {
-                return ComputerUseWinClickTargetResolution.Failure(
-                    ComputerUseWinFailureCodeValues.StaleState,
-                    snapshot.Reason ?? "Не удалось пере-подтвердить target из stateToken по свежему UIA snapshot.");
-            }
+                UiaSnapshotResult snapshot = await uiAutomationService.SnapshotAsync(
+                    state.Window,
+                    new UiaSnapshotRequest
+                    {
+                        Depth = state.Observation.RequestedDepth,
+                        MaxNodes = state.Observation.RequestedMaxNodes,
+                    },
+                    cancellationToken).ConfigureAwait(false);
 
-            IReadOnlyDictionary<int, ComputerUseWinStoredElement> freshElements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
-            if (!TryResolveFreshElement(freshElements, storedElement, out ComputerUseWinStoredElement? effectiveElement)
-                || effectiveElement?.Bounds is not Bounds freshBounds)
-            {
-                return ComputerUseWinClickTargetResolution.Failure(
-                    ComputerUseWinFailureCodeValues.StaleState,
-                    "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.");
-            }
-
-            return ComputerUseWinClickTargetResolution.Success(
-                new InputAction
+                if (!string.Equals(snapshot.Status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal)
+                    || snapshot.Root is null)
                 {
-                    Type = InputActionTypeValues.Click,
-                    CoordinateSpace = InputCoordinateSpaceValues.Screen,
-                    Point = new InputPoint((freshBounds.Left + freshBounds.Right) / 2, (freshBounds.Top + freshBounds.Bottom) / 2),
-                    Button = string.IsNullOrWhiteSpace(request.Button) ? InputButtonValues.Left : request.Button,
-                },
-                effectiveElement,
-                ComputerUseWinTargetPolicy.RequiresRiskConfirmation(effectiveElement, ToolNames.ComputerUseWinClick));
+                    return ComputerUseWinClickTargetResolution.Failure(
+                        ComputerUseWinFailureCodeValues.ObservationFailed,
+                        snapshot.Reason ?? "Computer Use for Windows не смог пере-подтвердить target по fresh observation path.");
+                }
+
+                IReadOnlyDictionary<int, ComputerUseWinStoredElement> freshElements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
+                if (!TryResolveFreshElement(freshElements, storedElement, out ComputerUseWinStoredElement? effectiveElement)
+                    || effectiveElement?.Bounds is not Bounds freshBounds)
+                {
+                    return ComputerUseWinClickTargetResolution.Failure(
+                        ComputerUseWinFailureCodeValues.StaleState,
+                        "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.");
+                }
+
+                return ComputerUseWinClickTargetResolution.Success(
+                    new InputAction
+                    {
+                        Type = InputActionTypeValues.Click,
+                        CoordinateSpace = InputCoordinateSpaceValues.Screen,
+                        Point = new InputPoint((freshBounds.Left + freshBounds.Right) / 2, (freshBounds.Top + freshBounds.Bottom) / 2),
+                        Button = string.IsNullOrWhiteSpace(request.Button) ? InputButtonValues.Left : request.Button,
+                    },
+                    effectiveElement,
+                    ComputerUseWinTargetPolicy.RequiresRiskConfirmation(effectiveElement, ToolNames.ComputerUseWinClick));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ComputerUseWinObservationFailure failure = ComputerUseWinObservationFailureTranslator.Translate(
+                    exception,
+                    "Computer Use for Windows не смог пере-подтвердить target по fresh observation path.");
+                return ComputerUseWinClickTargetResolution.Failure(failure.FailureCode, failure.Reason);
+            }
         }
 
         if (request.Point is not InputPoint point)

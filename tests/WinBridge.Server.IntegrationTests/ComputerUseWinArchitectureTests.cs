@@ -100,6 +100,49 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ToolRequestBinderRejectsSchemaInvalidRangeForComputerUseRequests()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"maxNodes":2048}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["maxNodes"] = document.RootElement.GetProperty("maxNodes").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinGetAppStateRequest(),
+            out ComputerUseWinGetAppStateRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinGetAppStateRequest(), request);
+        Assert.Contains("1024", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsNestedAdditionalPropertiesForComputerUseClickPoint()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"point":{"x":10,"y":20,"extra":true}}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("extra", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ToolRequestBinderTreatsOmittedArgumentsAsEmptyRequestForWindowInputDto()
     {
         bool success = ToolRequestBinder.TryBind(
@@ -147,6 +190,14 @@ public sealed class ComputerUseWinArchitectureTests
     public void ToolSurfaceProfileResolverReturnsDefaultWindowsEngineWhenProfileIsAbsent()
     {
         Assert.Equal(ToolSurfaceProfileValues.WindowsEngine, ToolSurfaceProfileResolver.Resolve([]));
+    }
+
+    [Fact]
+    public void ToolSurfaceProfileResolverRejectsExplicitBlankProfile()
+    {
+        string[] args = ["--tool-surface-profile", "   "];
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => ToolSurfaceProfileResolver.Resolve(args));
     }
 
     [Fact]
@@ -243,6 +294,7 @@ public sealed class ComputerUseWinArchitectureTests
                     HasKeyboardFocus: false,
                     Actions: [ToolNames.ComputerUseWinClick]),
             },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 128),
             CapturedAtUtc: capturedAtUtc);
 
     private static WindowDescriptor CreateWindow(string processName) =>

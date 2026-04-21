@@ -833,7 +833,8 @@ internal sealed class ComputerUseWinTools
             requestContext.Params?.Arguments,
             fallbackRequest,
             out T request,
-            out string? reason)
+            out string? reason,
+            ComputerUseWinRequestContractValidator.Validate)
             ? new(true, request, null, null)
             : new(false, fallbackRequest, ComputerUseWinFailureCodeValues.InvalidRequest, $"Transport arguments не прошли binding: {reason}");
 

@@ -27,6 +27,7 @@ Public plugin `plugins/computer-use-win/` уже публикует правил
 4. Integration tests доказывают launcher из temp plugin copy вне repo tree без env/hint dependency.
 5. Docs и generated commands переводятся на publish/install flow вместо hint/install flow.
 6. Follow-up hardening на этой же ветке оставляет public product surface fail-closed: explicit profile валидируется через shared source of truth, app/process identity канонизируется для policy/playbook/appId, `get_app_state` не commit-ит session и не выдаёт `stateToken` при broken observation, а low-confidence coordinate click требует explicit confirm.
+7. `stateToken` и downstream action revalidation используют один observation envelope: click revalidation не ослабляет исходный `maxNodes` budget, а malformed request shapes fail-close-ятся как `invalid_request` до observation/runtime stages.
 
 ## Acceptance criteria
 
@@ -34,6 +35,8 @@ Public plugin `plugins/computer-use-win/` уже публикует правил
 - `plugins/computer-use-win/runtime/win-x64/Okno.Server.exe` materialize-ится через publish script и используется как единственный runtime source для plugin.
 - Temp plugin copy вне repo tree публикует только `list_apps`, `get_app_state`, `click`.
 - Unknown `--tool-surface-profile` не widen-ит surface, а fail-close-ится на старте.
+- Explicit blank `--tool-surface-profile` тоже считается invalid input и не эквивалентен отсутствующему selector.
 - `get_app_state` публикует action-ready state только после успешного capture + UIA proof и не мутирует attached session на failed observation path.
+- request schema для shipped public tools enforcing-ится на boundary: nested extra fields и invalid `maxNodes` не уходят в поздний runtime failure.
 - Docs больше не рекламируют repo-root hint как install path для `computer-use-win`.
 - Milestone считается полностью закрытым только после fresh-thread black-box proof на cache-installed copy.

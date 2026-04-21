@@ -140,7 +140,7 @@ internal static class ComputerUseWinToolRegistration
                     ["appId"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
                     ["hwnd"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
-                    ["maxNodes"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 1024 },
+                    ["maxNodes"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = UiaSnapshotRequestValidator.MaxNodesCeiling },
                 },
             });
 

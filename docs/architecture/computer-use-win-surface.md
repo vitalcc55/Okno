@@ -88,9 +88,11 @@ list_apps -> get_app_state -> click -> get_app_state
 - canonical app/process identity нормализуется к одному bare process name без `.exe`, чтобы block policy, playbooks и appId не drift-или между собой;
 - risky action confirmation — отдельный product-facing шаг;
 - coordinate click считается low-confidence target path и требует explicit confirm, если target не доказан через semantic element из последнего `get_app_state`;
-- `elementIndex` click не должен слепо доверять сохранённым bounds: перед dispatch runtime заново разрешает target через свежий UIA snapshot и fail-close-ит как `stale_state`, если сопоставление больше не доказуемо;
+- `stateToken` несёт observation envelope, на котором был получен semantic state; downstream revalidation не должна тихо откатываться к более слабым defaults;
+- `elementIndex` click не должен слепо доверять сохранённым bounds: перед dispatch runtime заново разрешает target через свежий UIA snapshot с тем же observation budget и fail-close-ит как `stale_state`, только если semantic match больше не доказуем;
 - ordinary actions внутри already-approved app должны быть дешевле, чем low-level per-step friction;
 - `get_app_state` публикует `stateToken` и commit-ит session только после успешного capture + UIA observation; broken observation stages возвращают structured `failed`, а не quiet `ok` с warnings;
+- malformed request shapes должны отсекаться на public boundary как `invalid_request`: explicit invalid `tool-surface-profile`, nested extra fields и schema-invalid `maxNodes` не должны уходить в widened surface или поздний `observation_failed`;
 - `stateToken` имеет bounded retention и short-lived stale-state discipline вместо неограниченного in-memory накопления;
 - blocked targets должны отсеиваться на public surface до unsafe dispatch.
 

@@ -17,6 +17,8 @@ internal sealed class ComputerUseWinAppStateObserver(
         IReadOnlyList<string> warnings,
         CancellationToken cancellationToken)
     {
+        int effectiveMaxNodes = maxNodes <= 0 ? 128 : maxNodes;
+
         try
         {
             CaptureResult capture = await captureService.CaptureAsync(
@@ -28,7 +30,7 @@ internal sealed class ComputerUseWinAppStateObserver(
                 new UiaSnapshotRequest
                 {
                     Depth = UiaSnapshotDefaults.Depth,
-                    MaxNodes = maxNodes <= 0 ? 128 : maxNodes,
+                    MaxNodes = effectiveMaxNodes,
                 },
                 cancellationToken).ConfigureAwait(false);
 
@@ -47,13 +49,16 @@ internal sealed class ComputerUseWinAppStateObserver(
                 Title: selectedWindow.Title,
                 ProcessName: selectedWindow.ProcessName,
                 ProcessId: selectedWindow.ProcessId);
-            string stateToken = stateStore.Create(
-                new ComputerUseWinStoredState(
-                    session,
-                    selectedWindow,
-                    capture.Metadata.CaptureReference,
-                    elements,
-                    capture.Metadata.CapturedAtUtc));
+            ComputerUseWinStoredState storedState = new(
+                session,
+                selectedWindow,
+                capture.Metadata.CaptureReference,
+                elements,
+                new ComputerUseWinObservationEnvelope(
+                    RequestedDepth: UiaSnapshotDefaults.Depth,
+                    RequestedMaxNodes: effectiveMaxNodes),
+                capture.Metadata.CapturedAtUtc);
+            string stateToken = stateStore.Create(storedState);
 
             ComputerUseWinGetAppStateResult payload = new(
                 Status: ComputerUseWinStatusValues.Ok,
@@ -64,13 +69,18 @@ internal sealed class ComputerUseWinAppStateObserver(
                 Instructions: playbookProvider.GetInstructions(selectedWindow.ProcessName),
                 Warnings: warnings);
 
-            return ComputerUseWinAppStateObservationOutcome.Success(payload, capture.PngBytes, capture.Metadata.MimeType);
+            return ComputerUseWinAppStateObservationOutcome.Success(payload, capture.PngBytes, capture.Metadata.MimeType, storedState);
         }
-        catch (CaptureOperationException exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return ComputerUseWinAppStateObservationOutcome.Failure(
-                ComputerUseWinFailureCodeValues.ObservationFailed,
-                exception.Message);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            ComputerUseWinObservationFailure failure = ComputerUseWinObservationFailureTranslator.Translate(
+                exception,
+                "Computer Use for Windows не смог завершить observation stage для get_app_state.");
+            return ComputerUseWinAppStateObservationOutcome.Failure(failure.FailureCode, failure.Reason);
         }
     }
 }
@@ -81,14 +91,16 @@ internal sealed record ComputerUseWinAppStateObservationOutcome(
     byte[]? PngBytes,
     string? MimeType,
     string? FailureCode,
-    string? Reason)
+    string? Reason,
+    ComputerUseWinStoredState? StoredState)
 {
     public static ComputerUseWinAppStateObservationOutcome Success(
         ComputerUseWinGetAppStateResult payload,
         byte[] pngBytes,
-        string mimeType) =>
-        new(true, payload, pngBytes, mimeType, null, null);
+        string mimeType,
+        ComputerUseWinStoredState storedState) =>
+        new(true, payload, pngBytes, mimeType, null, null, storedState);
 
     public static ComputerUseWinAppStateObservationOutcome Failure(string failureCode, string reason) =>
-        new(false, null, null, null, failureCode, reason);
+        new(false, null, null, null, failureCode, reason, null);
 }

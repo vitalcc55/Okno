@@ -17,13 +17,14 @@ internal static class ToolRequestBinder
         IDictionary<string, JsonElement>? arguments,
         T fallbackRequest,
         out T request,
-        out string? reason)
+        out string? reason,
+        Func<T, string?>? validator = null)
     {
         if (arguments is null)
         {
             request = fallbackRequest;
-            reason = null;
-            return true;
+            reason = validator?.Invoke(request);
+            return reason is null;
         }
 
         try
@@ -31,7 +32,13 @@ internal static class ToolRequestBinder
             JsonElement rawArguments = JsonSerializer.SerializeToElement(arguments, BindingJsonOptions);
             request = rawArguments.Deserialize<T>(BindingJsonOptions)
                 ?? throw new JsonException($"Transport arguments did not deserialize to {typeof(T).Name}.");
-            reason = null;
+            reason = validator?.Invoke(request);
+            if (reason is not null)
+            {
+                request = fallbackRequest;
+                return false;
+            }
+
             return true;
         }
         catch (JsonException exception)
