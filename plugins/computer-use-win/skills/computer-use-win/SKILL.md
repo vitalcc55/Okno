@@ -1,0 +1,67 @@
+---
+name: "computer-use-win"
+description: "Workflow для работы с Computer Use for Windows в этом репозитории: каждый GUI turn начинать с get_app_state, предпочитать element-targeted actions, повторно наблюдать state после действий и не автоматизировать blocked targets."
+---
+
+# Computer Use for Windows
+
+## Когда использовать
+
+- Нужно работать с публичным Codex surface `computer-use-win`, а не с внутренними `windows.*` engine tools.
+- Нужно пройти Windows GUI workflow через `list_apps -> get_app_state -> click`.
+- Нужно держать Computer Use turn discipline и app approvals.
+
+## Важный контекст
+
+- Этот skill рассчитан на plugin-local MCP server `computer-use-win`.
+- Внутри plugin работает `Okno` engine, но снаружи user-facing product name — `Computer Use for Windows`.
+- Каждый GUI turn начинай с `get_app_state`.
+- Предпочитай `elementIndex` над coordinate click, если index доступен.
+- После action делай повторный `get_app_state` или явную verify-step, а не гадай по результату.
+- Не автоматизируй terminal apps, сам Codex и другие blocked targets.
+- Все shell-команды ниже предполагают, что current working directory уже находится в корне этого репозитория.
+
+## Шаги
+
+1. Для публичного surface ориентируйся на loop:
+
+```text
+list_apps -> get_app_state -> click -> get_app_state
+```
+
+2. Если задача меняет runtime, server, tool contract, diagnostics или verification path, сначала запусти:
+
+```powershell
+.\scripts\codex\verify.ps1
+```
+
+3. Если нужен свежий evidence pack для shipped runtime path, запусти:
+
+```powershell
+.\scripts\smoke.ps1
+```
+
+4. Если smoke или direct runtime flow упал, запусти:
+
+```powershell
+.\scripts\investigate.ps1
+```
+
+5. Для анализа результата проверь:
+   - `artifacts/smoke/<run_id>/report.json`;
+   - `artifacts/diagnostics/<run_id>/summary.md`;
+   - `docs/generated/project-interfaces.md`;
+   - `docs/generated/commands.md`.
+
+6. Если менялся публичный contract, lifecycle tools или diagnostics schema, синхронизируй generated docs в том же цикле:
+
+```powershell
+.\scripts\refresh-generated-docs.ps1
+```
+
+## Definition of done
+
+- verify/smoke выполнены по необходимости;
+- evidence pack или diagnostics path сохранены;
+- при изменении contract/docs generated docs синхронизированы;
+- user-facing контекст использует имя `Computer Use for Windows`, а `Okno` упоминается как внутренний engine.

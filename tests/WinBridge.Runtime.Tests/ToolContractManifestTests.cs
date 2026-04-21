@@ -6,6 +6,40 @@ namespace WinBridge.Runtime.Tests;
 public sealed class ToolContractManifestTests
 {
     [Fact]
+    public void ComputerUseWinProfilePublishesVendorLikeImplementedSurface()
+    {
+        ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
+
+        Assert.Equal(ToolSurfaceProfileValues.ComputerUseWin, profile.Name);
+        Assert.Equal(
+            [
+                ToolNames.ComputerUseWinListApps,
+                ToolNames.ComputerUseWinGetAppState,
+                ToolNames.ComputerUseWinClick,
+            ],
+            profile.ImplementedNames);
+        Assert.Equal(
+            [
+                ToolNames.ComputerUseWinTypeText,
+                ToolNames.ComputerUseWinPressKey,
+                ToolNames.ComputerUseWinScroll,
+                ToolNames.ComputerUseWinDrag,
+            ],
+            profile.Deferred.Select(static descriptor => descriptor.Name).ToArray());
+    }
+
+    [Fact]
+    public void WindowsEngineProfileKeepsCurrentInternalSurface()
+    {
+        ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.WindowsEngine);
+
+        Assert.Equal(ToolSurfaceProfileValues.WindowsEngine, profile.Name);
+        Assert.Contains(profile.ImplementedNames, toolName => toolName == ToolNames.WindowsCapture);
+        Assert.Contains(profile.ImplementedNames, toolName => toolName == ToolNames.WindowsInput);
+        Assert.DoesNotContain(profile.ImplementedNames, toolName => toolName == ToolNames.ComputerUseWinGetAppState);
+    }
+
+    [Fact]
     public void AllToolNamesAreUnique()
     {
         string[] names = ToolContractManifest.All.Select(descriptor => descriptor.Name).ToArray();

@@ -14,19 +14,21 @@ public static class ToolContractExporter
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
     };
 
-    public static ToolContractExportDocument CreateDocument()
-        => new(
+    public static ToolContractExportDocument CreateDocument(string? toolSurfaceProfile = null)
+    {
+        ToolContractProfile profile = ToolContractManifest.GetProfile(toolSurfaceProfile);
+        return new(
             Transport: new ToolTransportDescriptor("stdio", "2025-06-18", "src/WinBridge.Server/Program.cs", "product-ready target"),
             FutureTransports:
             [
                 new FutureTransportDescriptor("http", "not implemented", "after stable stdio only"),
             ],
             Tools: new ToolContractToolSection(
-                Implemented: ToolContractManifest.Implemented.Select(ContractToolDescriptorFactory.FromToolDescriptor).ToArray(),
-                Deferred: ToolContractManifest.Deferred.Select(ContractToolDescriptorFactory.FromToolDescriptor).ToArray(),
-                ImplementedNames: ToolContractManifest.ImplementedNames,
-                SmokeRequiredNames: ToolContractManifest.SmokeRequiredToolNames,
-                DeferredPhaseMap: ToolContractManifest.DeferredPhaseMap),
+                Implemented: profile.Implemented.Select(ContractToolDescriptorFactory.FromToolDescriptor).ToArray(),
+                Deferred: profile.Deferred.Select(ContractToolDescriptorFactory.FromToolDescriptor).ToArray(),
+                ImplementedNames: profile.ImplementedNames,
+                SmokeRequiredNames: profile.SmokeRequiredToolNames,
+                DeferredPhaseMap: profile.DeferredPhaseMap),
             Scripts:
             [
                 "scripts/bootstrap.ps1",
@@ -52,17 +54,18 @@ public static class ToolContractExporter
                 "artifacts/smoke/<run_id>/report.json",
                 "artifacts/smoke/<run_id>/summary.md",
             ]);
-
-    public static void ExportJson(string path)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(CreateDocument(), JsonOptions), new UTF8Encoding(false));
     }
 
-    public static void ExportMarkdown(string path)
+    public static void ExportJson(string path, string? toolSurfaceProfile = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, RenderMarkdown(CreateDocument()), new UTF8Encoding(false));
+        File.WriteAllText(path, JsonSerializer.Serialize(CreateDocument(toolSurfaceProfile), JsonOptions), new UTF8Encoding(false));
+    }
+
+    public static void ExportMarkdown(string path, string? toolSurfaceProfile = null)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, RenderMarkdown(CreateDocument(toolSurfaceProfile)), new UTF8Encoding(false));
     }
 
     public static string RenderMarkdown(ToolContractExportDocument document)

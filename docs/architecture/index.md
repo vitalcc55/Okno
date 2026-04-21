@@ -19,6 +19,7 @@ Product-ready delivery target на текущем этапе только оди
 ## Где смотреть дальше
 
 - [capability-design-policy.md](capability-design-policy.md)
+- [computer-use-win-surface.md](computer-use-win-surface.md)
 - [layers.md](layers.md)
 - [openai-computer-use-interop.md](openai-computer-use-interop.md)
 - [observe-capture.md](observe-capture.md)

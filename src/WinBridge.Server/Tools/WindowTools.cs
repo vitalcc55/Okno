@@ -1217,67 +1217,58 @@ public sealed class WindowTools
     private static LaunchProcessTransportBinding BindLaunchProcessRequest(
         RequestContext<CallToolRequestParams> requestContext)
     {
-        IDictionary<string, JsonElement>? arguments = requestContext.Params?.Arguments;
-
-        try
-        {
-            JsonElement rawArguments = JsonSerializer.SerializeToElement(arguments);
-            LaunchProcessRequest request = rawArguments.Deserialize<LaunchProcessRequest>()
-                ?? throw new JsonException("Transport arguments did not deserialize to LaunchProcessRequest.");
-            return new(true, request, null, null);
-        }
-        catch (JsonException exception)
+        if (!ToolRequestBinder.TryBind(
+                requestContext.Params?.Arguments,
+                new LaunchProcessRequest(),
+                out LaunchProcessRequest request,
+                out string? reason))
         {
             return new(
                 false,
                 new LaunchProcessRequest(),
                 LaunchProcessFailureCodeValues.InvalidRequest,
-                $"Transport arguments для launch_process не прошли binding: {exception.Message}");
+                $"Transport arguments для launch_process не прошли binding: {reason}");
         }
+
+        return new(true, request, null, null);
     }
 
     private static OpenTargetTransportBinding BindOpenTargetRequest(
         RequestContext<CallToolRequestParams> requestContext)
     {
-        IDictionary<string, JsonElement>? arguments = requestContext.Params?.Arguments;
-
-        try
-        {
-            JsonElement rawArguments = JsonSerializer.SerializeToElement(arguments);
-            OpenTargetRequest request = rawArguments.Deserialize<OpenTargetRequest>()
-                ?? throw new JsonException("Transport arguments did not deserialize to OpenTargetRequest.");
-            return new(true, request, null, null);
-        }
-        catch (JsonException exception)
+        if (!ToolRequestBinder.TryBind(
+                requestContext.Params?.Arguments,
+                new OpenTargetRequest(),
+                out OpenTargetRequest request,
+                out string? reason))
         {
             return new(
                 false,
                 new OpenTargetRequest(),
                 OpenTargetFailureCodeValues.InvalidRequest,
-                $"Transport arguments для open_target не прошли binding: {exception.Message}");
+                $"Transport arguments для open_target не прошли binding: {reason}");
         }
+
+        return new(true, request, null, null);
     }
 
     private static InputTransportBinding BindInputRequest(
         RequestContext<CallToolRequestParams> requestContext)
     {
-        IDictionary<string, JsonElement>? arguments = requestContext.Params?.Arguments;
-
-        try
-        {
-            JsonElement rawArguments = JsonSerializer.SerializeToElement(arguments);
-            InputRequest request = rawArguments.Deserialize<InputRequest>()
-                ?? throw new JsonException("Transport arguments did not deserialize to InputRequest.");
-            return new(true, request, null, null);
-        }
-        catch (JsonException exception)
+        if (!ToolRequestBinder.TryBind(
+                requestContext.Params?.Arguments,
+                new InputRequest(),
+                out InputRequest request,
+                out string? reason))
         {
             return new(
                 false,
                 new InputRequest(),
                 InputFailureCodeValues.InvalidRequest,
-                $"Transport arguments для windows.input не прошли binding: {exception.Message}");
+                $"Transport arguments для windows.input не прошли binding: {reason}");
         }
+
+        return new(true, request, null, null);
     }
 
     private static LaunchProcessResult CreateRejectedLaunchProcessResult(

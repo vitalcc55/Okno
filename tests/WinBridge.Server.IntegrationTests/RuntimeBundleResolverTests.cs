@@ -424,6 +424,33 @@ public sealed class RuntimeBundleResolverTests
         Assert.Contains("RunId", result.Stderr, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ResolveOknoServerLaunchTargetPrefersAppHostWhenBundleContainsExecutable()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", "local");
+
+        using JsonDocument payload = InvokeJsonScript(
+            Path.Combine(repoRoot, "scripts", "codex", "resolve-okno-server-launch-target.ps1"),
+            repoRoot,
+            startInfo =>
+            {
+                startInfo.ArgumentList.Add("-RepoRoot");
+                startInfo.ArgumentList.Add(repoRoot);
+                startInfo.ArgumentList.Add("-ArtifactsRoot");
+                startInfo.ArgumentList.Add(artifactsRoot);
+                startInfo.ArgumentList.Add("-PreferredSourceContextName");
+                startInfo.ArgumentList.Add("artifacts_root");
+                startInfo.ArgumentList.Add("-ForcePrepare");
+            });
+
+        JsonElement root = payload.RootElement;
+        Assert.Equal("apphost", root.GetProperty("launchMode").GetString());
+        Assert.EndsWith("Okno.Server.exe", root.GetProperty("launchTarget").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("Okno.Server.dll", root.GetProperty("serverDll").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("Okno.Server.exe", root.GetProperty("serverExe").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static JsonElement InvokeBundleResolver(string repoRoot, Action<ProcessStartInfo> configure)
     {
         using JsonDocument payload = InvokeJsonScript(

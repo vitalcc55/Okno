@@ -217,6 +217,13 @@ internal sealed class FakeInputService(
         InputRequest request,
         InputExecutionContext context,
         CancellationToken cancellationToken)
+        => ExecuteAsync(request, context, InputExecutionProfileValues.ClickFirstPublic, cancellationToken);
+
+    public Task<InputResult> ExecuteAsync(
+        InputRequest request,
+        InputExecutionContext context,
+        string executionProfile,
+        CancellationToken cancellationToken)
     {
         Calls++;
         LastRequest = request;

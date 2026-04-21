@@ -1,11 +1,10 @@
-# Okno repo-local plugin
+# Okno internal repo plugin
 
-Этот plugin добавляет installable Codex surface для продукта `Okno` внутри текущего репозитория.
+Этот plugin больше не является главным public-facing продуктовым surface. Он сохраняется как внутренний/dev install surface для работы с engine `Okno` внутри текущего репозитория.
 
 ## Зачем он нужен
 
-- дать аккуратный repo-local entry point в Codex plugin directory;
-- упаковать workflow-слой под продуктовым именем `Okno`, а не под внутренним namespace `WinBridge`;
+- дать внутренний repo-local entry point для engine/debug сценариев;
 - не ломать текущую схему, где MCP lifecycle и запуск runtime живут отдельно от plugin metadata.
 
 ## Что plugin делает
@@ -40,7 +39,7 @@
 
 ## Relation to OpenAI computer use
 
-Этот plugin остаётся текущим локальным integration path для `Codex app/CLI/IDE` и не зависит от built-in OpenAI `computer use`.
+Этот plugin больше не является главным product path для `Codex app/CLI/IDE`. Публичный путь должен идти через `plugins/computer-use-win/`, а этот plugin остаётся внутренним dev/engine surface.
 
 Практическая модель такая:
 

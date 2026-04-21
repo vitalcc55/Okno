@@ -2,6 +2,14 @@ namespace WinBridge.Runtime.Tooling;
 
 public static class ToolNames
 {
+    public const string ComputerUseWinListApps = "list_apps";
+    public const string ComputerUseWinGetAppState = "get_app_state";
+    public const string ComputerUseWinClick = "click";
+    public const string ComputerUseWinTypeText = "type_text";
+    public const string ComputerUseWinPressKey = "press_key";
+    public const string ComputerUseWinScroll = "scroll";
+    public const string ComputerUseWinDrag = "drag";
+
     public const string OknoHealth = "okno.health";
     public const string OknoContract = "okno.contract";
     public const string OknoSessionState = "okno.session_state";

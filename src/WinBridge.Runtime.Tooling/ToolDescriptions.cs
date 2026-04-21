@@ -2,6 +2,14 @@ namespace WinBridge.Runtime.Tooling;
 
 public static class ToolDescriptions
 {
+    public const string ComputerUseWinListAppsTool = "Возвращает running Windows apps для Computer Use for Windows. Публичный operator surface: показывает app identity, foreground hints, approval status и window metadata без low-level engine tool noise.";
+    public const string ComputerUseWinGetAppStateTool = "Начинает или продолжает app use session и возвращает action-ready состояние app window: screenshot, compact accessibility tree, stateToken, captureReference и warnings. stateToken публикуется только если capture и accessibility tree построены успешно; observation failure отвечает structured `failed` без session commit.";
+    public const string ComputerUseWinClickTool = "Кликает по elementIndex или pixel coordinates из последнего app state. При наличии elementIndex runtime сначала пере-подтверждает target через свежий UIA snapshot; coordinate click остаётся low-confidence path и требует explicit confirm.";
+    public const string ComputerUseWinTypeTextTool = "Печатает текст в текущий app session через реальный input path без hidden clipboard fallback.";
+    public const string ComputerUseWinPressKeyTool = "Нажимает клавишу или сочетание клавиш в текущий app session.";
+    public const string ComputerUseWinScrollTool = "Скроллит app session по elementIndex или point из последнего app state.";
+    public const string ComputerUseWinDragTool = "Делает drag gesture в app session по element indices или coordinates из последнего app state.";
+
     public const string OknoHealthTool = "Возвращает сводку состояния runtime и консервативный readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains и capability status без hidden enforcement.";
 
     public const string OknoContractTool = "Возвращает текущий MCP contract runtime: implemented tools, deferred tools, execution_policy metadata для policy-bearing public tools и declared deferred tools, а также notes без вызова side effects.";

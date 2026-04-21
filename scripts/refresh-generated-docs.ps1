@@ -6,6 +6,8 @@ Set-Location $repoRoot
 
 $projectInterfacesJsonPath = Join-Path $repoRoot 'docs\generated\project-interfaces.json'
 $projectInterfacesMarkdownPath = Join-Path $repoRoot 'docs\generated\project-interfaces.md'
+$computerUseWinInterfacesJsonPath = Join-Path $repoRoot 'docs\generated\computer-use-win-interfaces.json'
+$computerUseWinInterfacesMarkdownPath = Join-Path $repoRoot 'docs\generated\computer-use-win-interfaces.md'
 $commandsMarkdownPath = Join-Path $repoRoot 'docs\generated\commands.md'
 $testMatrixMarkdownPath = Join-Path $repoRoot 'docs\generated\test-matrix.md'
 $stackInventoryMarkdownPath = Join-Path $repoRoot 'docs\generated\stack-inventory.md'
@@ -18,6 +20,9 @@ $serverDll = [string]$bundle.serverDll
 
 Invoke-NativeCommand -Description 'tool contract export' -Command {
     dotnet "$serverDll" --export-tool-contract-json "$projectInterfacesJsonPath" --export-tool-contract-markdown "$projectInterfacesMarkdownPath"
+}
+Invoke-NativeCommand -Description 'computer-use-win tool contract export' -Command {
+    dotnet "$serverDll" --tool-surface-profile computer-use-win --export-tool-contract-json "$computerUseWinInterfacesJsonPath" --export-tool-contract-markdown "$computerUseWinInterfacesMarkdownPath"
 }
 
 function Convert-ToRepoRelative {
@@ -88,8 +93,10 @@ function New-CommandsMarkdown {
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/bootstrap.ps1` | Codex bootstrap handshake |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/prepare-okno-test-bundle.ps1` | stage immutable server/helper run bundle for integration and smoke |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/resolve-okno-test-bundle.ps1` | resolve or materialize the effective staged bundle for the current verification context |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/resolve-okno-server-launch-target.ps1` | resolve the effective staged Windows launch target from pinned `artifacts_root` (`Okno.Server.exe` preferred, `dotnet + .dll` fallback) |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1` | publish self-contained `computer-use-win` runtime bundle into `plugins/computer-use-win/runtime/win-x64/` |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |',
-        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1` | stamp repo-root hint into plugin install surface before reinstall or refresh |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1` | stamp repo-root hint into internal okno plugin install surface before reinstall or refresh |',
         '| `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |',
         '',
         '## Validation Entry Points',

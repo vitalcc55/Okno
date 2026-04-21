@@ -2101,6 +2101,34 @@ public sealed class Win32InputServiceTests
                     Reason: "Dispatch failed.");
         }
 
+        public InputDispatchResult DispatchText(InputTextDispatchContext context) =>
+            new(
+                Success: false,
+                CommittedSideEffects: false,
+                FailureCode: InputFailureCodeValues.UnsupportedActionType,
+                Reason: "Fake platform does not implement text dispatch in this test.");
+
+        public InputDispatchResult DispatchKeypress(InputKeypressDispatchContext context) =>
+            new(
+                Success: false,
+                CommittedSideEffects: false,
+                FailureCode: InputFailureCodeValues.UnsupportedActionType,
+                Reason: "Fake platform does not implement key dispatch in this test.");
+
+        public InputDispatchResult DispatchScroll(InputScrollDispatchContext context) =>
+            new(
+                Success: false,
+                CommittedSideEffects: false,
+                FailureCode: InputFailureCodeValues.UnsupportedActionType,
+                Reason: "Fake platform does not implement scroll dispatch in this test.");
+
+        public InputDispatchResult DispatchDrag(InputDragDispatchContext context) =>
+            new(
+                Success: false,
+                CommittedSideEffects: false,
+                FailureCode: InputFailureCodeValues.UnsupportedActionType,
+                Reason: "Fake platform does not implement drag dispatch in this test.");
+
         public bool WaitForFirstDispatchEntered(TimeSpan timeout) =>
             _firstDispatchEntered.Wait(timeout);
 

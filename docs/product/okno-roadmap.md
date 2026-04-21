@@ -60,10 +60,10 @@ _Живой delivery roadmap проекта: текущий capability map, по
 | 06 | `okno.health` + runtime guard layer + safety baseline | readiness snapshot, shared gate, dry-run/confirmation model, redaction-first launch/input/clipboard baseline | `реализовано` | `95%` | `Ядро` |
 | 07 | `src/WinBridge.Runtime.Windows.Launch` + `windows.launch_process` | direct process launch через `ProcessStartInfo`, preview, factual result modes, launch artifacts | `реализовано` | `90%` | `Ядро` |
 | 08 | `src/WinBridge.Runtime.Windows.Launch` + `windows.open_target` | shell-open для `document` / `folder` / `url(http/https)`, safe preview, factual result, open-target artifacts | `реализовано` | `90%` | `Ядро` |
-| 09 | `src/WinBridge.Runtime.Windows.Input` + `windows.input` (`click` first + action schema freeze) | implemented public click-first MCP boundary, coordinate model, `click(button=right)` path, input artifacts/events, smoke/fresh-host proof, post-action verification contract | `реализовано` | `85%` | `R2-следом` |
-| 10 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, low-noise visual proof and future OCR fallback bridge | `запланировано` | `0%` | `R2-следом` |
-| 11 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2-следом` |
-| 12 | `src/WinBridge.Runtime.Windows.Input` + `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`) | расширение action coverage после `click`, `region_capture` и clipboard | `декларировано` | `10%` | `R2` |
+| 09 | `plugins/computer-use-win` + `src/WinBridge.Server/ComputerUse` | public-facing Codex operator surface `list_apps`, `get_app_state`, `click` поверх внутреннего Okno engine, отдельный publication profile и self-contained plugin-local install artifact | `частично` | `55%` | `R2-следом` |
+| 10 | `src/WinBridge.Runtime.Windows.Input` + public Computer Use action wave (`type_text`, `press_key`, `scroll`, `drag`) | следующая глобальная action wave для `computer-use-win`; сейчас только planning/touchpoints, не shipped implementation | `декларировано` | `10%` | `R2-следом` |
+| 11 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, low-noise visual proof and future OCR fallback bridge | `запланировано` | `0%` | `R2` |
+| 12 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2` |
 | 13 | `src/WinBridge.Runtime.Windows.UIA` + `windows.uia_action` | semantic action layer поверх shipped `uia_snapshot` и gate/readiness foundation | `декларировано` | `10%` | `R2` |
 | 14 | proposed `windows.dialog` | common dialogs: open/save/confirm, path input, accept/close flow | `запланировано` | `0%` | `R2` |
 | 15 | proposed `windows.surface_lifecycle` | claim/reconcile/close only owned shell/window/dialog surfaces after `launch_process` / `open_target`; fail-closed на reused unowned surface | `запланировано` | `0%` | `R2-R3` |
@@ -75,13 +75,15 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 Текущий practical order такой:
 
-1. `windows.region_capture`
-2. `windows.clipboard_get` / `windows.clipboard_set`
-3. `windows.input` (`type`, `keypress`, `hotkey`, `paste`, `scroll`, `drag`)
-4. `windows.uia_action`
-5. `windows.dialog`
-6. `windows.surface_lifecycle`
-7. `windows.menu` / `windows.taskbar` / `windows.tray`
+1. public Computer Use action wave: `type_text`, `press_key`, `scroll`, `drag`
+2. app approvals hardening + risky action confirmation
+3. app playbooks expansion
+4. `windows.region_capture`
+5. `windows.clipboard_get` / `windows.clipboard_set`
+6. `windows.uia_action`
+7. `windows.dialog`
+8. `windows.surface_lifecycle`
+9. `windows.menu` / `windows.taskbar` / `windows.tray`
 
 Почему именно так:
 

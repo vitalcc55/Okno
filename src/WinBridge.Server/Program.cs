@@ -14,9 +14,11 @@ using WinBridge.Runtime.Windows.Input;
 using WinBridge.Runtime.Windows.Launch;
 using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Runtime.Windows.UIA;
+using WinBridge.Server.ComputerUse;
 using WinBridge.Server.Tools;
 
-if (TryRunExportMode(args))
+string toolSurfaceProfile = global::WinBridge.Server.ToolSurfaceProfileResolver.Resolve(args);
+if (TryRunExportMode(args, toolSurfaceProfile))
 {
     return;
 }
@@ -34,9 +36,17 @@ McpServerTool openTargetTool = WindowsOpenTargetToolRegistration.Create(
 McpServerTool inputTool = WindowsInputToolRegistration.Create(
     () => hostServices?.GetRequiredService<WindowTools>()
         ?? throw new InvalidOperationException("WindowTools service is not available yet."));
+IReadOnlyList<McpServerTool> computerUseWinTools = ComputerUseWinToolRegistration.Create(
+    () => hostServices?.GetRequiredService<ComputerUseWinTools>()
+        ?? throw new InvalidOperationException("ComputerUseWinTools service is not available yet."));
 builder.Logging.ClearProviders();
 builder.Services.AddWinBridgeRuntime(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);
 builder.Services.AddWinBridgeRuntimeWindowsUia(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);
+builder.Services.AddSingleton(static services =>
+    ComputerUseWinOptions.Resolve(services.GetRequiredService<IHostEnvironment>().ContentRootPath));
+builder.Services.AddSingleton<ComputerUseWinApprovalStore>();
+builder.Services.AddSingleton<ComputerUseWinStateStore>();
+builder.Services.AddSingleton<ComputerUseWinPlaybookProvider>();
 builder.Services.AddSingleton<AdminTools>();
 builder.Services.AddSingleton(static services => new WindowTools(
     services.GetRequiredService<AuditLog>(),
@@ -53,17 +63,28 @@ builder.Services.AddSingleton(static services => new WindowTools(
     services.GetRequiredService<IInputService>(),
     services.GetRequiredService<IProcessLaunchService>(),
     services.GetRequiredService<IOpenTargetService>()));
-builder.Services
+builder.Services.AddSingleton<ComputerUseWinTools>();
+
+IMcpServerBuilder serverBuilder = builder.Services
     .AddMcpServer()
-    .WithStdioServerTransport()
-    .WithTools([launchProcessTool, openTargetTool, inputTool])
-    .WithToolsFromAssembly(typeof(Program).Assembly);
+    .WithStdioServerTransport();
+
+if (string.Equals(toolSurfaceProfile, ToolSurfaceProfileValues.ComputerUseWin, StringComparison.Ordinal))
+{
+    serverBuilder.WithTools(computerUseWinTools);
+}
+else
+{
+    serverBuilder
+        .WithTools([launchProcessTool, openTargetTool, inputTool])
+        .WithToolsFromAssembly(typeof(Program).Assembly);
+}
 
 using IHost host = builder.Build();
 hostServices = host.Services;
 await host.RunAsync();
 
-static bool TryRunExportMode(string[] args)
+static bool TryRunExportMode(string[] args, string toolSurfaceProfile)
 {
     string? jsonPath = null;
     string? markdownPath = null;
@@ -88,12 +109,12 @@ static bool TryRunExportMode(string[] args)
 
     if (jsonPath is not null)
     {
-        ToolContractExporter.ExportJson(Path.GetFullPath(jsonPath));
+        ToolContractExporter.ExportJson(Path.GetFullPath(jsonPath), toolSurfaceProfile);
     }
 
     if (markdownPath is not null)
     {
-        ToolContractExporter.ExportMarkdown(Path.GetFullPath(markdownPath));
+        ToolContractExporter.ExportMarkdown(Path.GetFullPath(markdownPath), toolSurfaceProfile);
     }
 
     return true;

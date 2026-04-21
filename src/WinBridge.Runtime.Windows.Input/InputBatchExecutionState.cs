@@ -76,7 +76,8 @@ internal sealed class InputBatchExecutionState
     public void RecordCommittedSideEffect(InputIrreversiblePhase phase)
     {
         InputActionExecutionState current = EnsureCurrentAction();
-        if (current.ResolvedScreenPoint is not InputPoint resolvedScreenPoint)
+        if (current.ResolvedScreenPoint is not InputPoint resolvedScreenPoint
+            && ActionRequiresResolvedPoint(current.Action))
         {
             throw new InvalidOperationException("Committed side effect требует authoritative resolved screen point.");
         }
@@ -86,7 +87,7 @@ internal sealed class InputBatchExecutionState
             ActionIndex: current.ActionIndex,
             Action: current.Action,
             Phase: phase,
-            ResolvedScreenPoint: resolvedScreenPoint,
+            ResolvedScreenPoint: current.ResolvedScreenPoint,
             Button: current.EffectiveButton,
             TargetHwnd: current.TargetHwnd);
     }
@@ -94,12 +95,13 @@ internal sealed class InputBatchExecutionState
     public void CompleteCurrentActionSuccess()
     {
         InputActionExecutionState current = EnsureCurrentAction();
-        if (current.ResolvedScreenPoint is not InputPoint resolvedScreenPoint)
+        if (current.ResolvedScreenPoint is not InputPoint resolvedScreenPoint
+            && ActionRequiresResolvedPoint(current.Action))
         {
             throw new InvalidOperationException("Successful action result требует authoritative resolved screen point.");
         }
 
-        actionResults.Add(CreateSuccessfulActionResult(current.Action, resolvedScreenPoint, current.EffectiveButton));
+        actionResults.Add(CreateSuccessfulActionResult(current.Action, current.ResolvedScreenPoint, current.EffectiveButton));
         CompletedActionCount++;
         ResetCurrentAction();
     }
@@ -336,7 +338,7 @@ internal sealed class InputBatchExecutionState
 
     private static InputActionResult CreateSuccessfulActionResult(
         InputAction action,
-        InputPoint resolvedScreenPoint,
+        InputPoint? resolvedScreenPoint,
         string? button) =>
         new(
             Type: action.Type,
@@ -346,7 +348,7 @@ internal sealed class InputBatchExecutionState
             RequestedPoint: action.Point,
             ResolvedScreenPoint: resolvedScreenPoint,
             Button: button,
-            Keys: action.Keys);
+            Keys: ResolveActionKeys(action));
 
     private static InputActionResult CreateFailedActionResult(
         InputAction action,
@@ -363,5 +365,26 @@ internal sealed class InputBatchExecutionState
             RequestedPoint: action.Point,
             ResolvedScreenPoint: resolvedScreenPoint,
             Button: button ?? action.Button,
-            Keys: action.Keys);
+            Keys: ResolveActionKeys(action));
+
+    private static IReadOnlyList<string>? ResolveActionKeys(InputAction action)
+    {
+        if (action.Keys is { Count: > 0 })
+        {
+            return action.Keys;
+        }
+
+        return string.IsNullOrWhiteSpace(action.Key)
+            ? null
+            : [action.Key];
+    }
+
+    private static bool ActionRequiresResolvedPoint(InputAction action) =>
+        action.Point is not null
+        || action.Path is not null
+        || string.Equals(action.Type, InputActionTypeValues.Move, StringComparison.Ordinal)
+        || string.Equals(action.Type, InputActionTypeValues.Click, StringComparison.Ordinal)
+        || string.Equals(action.Type, InputActionTypeValues.DoubleClick, StringComparison.Ordinal)
+        || string.Equals(action.Type, InputActionTypeValues.Scroll, StringComparison.Ordinal)
+        || string.Equals(action.Type, InputActionTypeValues.Drag, StringComparison.Ordinal);
 }

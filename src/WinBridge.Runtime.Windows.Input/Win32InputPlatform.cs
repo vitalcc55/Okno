@@ -188,6 +188,34 @@ internal sealed class Win32InputPlatform : IInputPlatform
             compensationExpectedEvents: sent > 0 ? 1u : 0u);
     }
 
+    public InputDispatchResult DispatchText(InputTextDispatchContext context) =>
+        new(
+            Success: false,
+            CommittedSideEffects: false,
+            FailureCode: InputFailureCodeValues.UnsupportedActionType,
+            Reason: "Runtime touchpoint для type_text подготовлен, но shipped Win32 text input path ещё не реализован.");
+
+    public InputDispatchResult DispatchKeypress(InputKeypressDispatchContext context) =>
+        new(
+            Success: false,
+            CommittedSideEffects: false,
+            FailureCode: InputFailureCodeValues.UnsupportedActionType,
+            Reason: "Runtime touchpoint для press_key подготовлен, но shipped Win32 keypress path ещё не реализован.");
+
+    public InputDispatchResult DispatchScroll(InputScrollDispatchContext context) =>
+        new(
+            Success: false,
+            CommittedSideEffects: false,
+            FailureCode: InputFailureCodeValues.UnsupportedActionType,
+            Reason: "Runtime touchpoint для scroll подготовлен, но shipped Win32 scroll path ещё не реализован.");
+
+    public InputDispatchResult DispatchDrag(InputDragDispatchContext context) =>
+        new(
+            Success: false,
+            CommittedSideEffects: false,
+            FailureCode: InputFailureCodeValues.UnsupportedActionType,
+            Reason: "Runtime touchpoint для drag подготовлен, но shipped Win32 drag path ещё не реализован.");
+
     private static InputClickDispatchResult ValidateDispatchEnvironment(InputClickDispatchContext context, out bool mouseButtonsSwapped)
     {
         mouseButtonsSwapped = false;

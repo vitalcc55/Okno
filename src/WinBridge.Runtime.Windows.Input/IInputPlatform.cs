@@ -15,4 +15,12 @@ internal interface IInputPlatform
     bool TryGetCursorPosition(out InputPoint screenPoint);
 
     InputClickDispatchResult DispatchClick(InputClickDispatchContext context);
+
+    InputDispatchResult DispatchText(InputTextDispatchContext context);
+
+    InputDispatchResult DispatchKeypress(InputKeypressDispatchContext context);
+
+    InputDispatchResult DispatchScroll(InputScrollDispatchContext context);
+
+    InputDispatchResult DispatchDrag(InputDragDispatchContext context);
 }

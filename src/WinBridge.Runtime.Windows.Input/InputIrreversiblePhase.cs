@@ -7,4 +7,8 @@ internal enum InputIrreversiblePhase
     AfterClickTap,
     AfterDoubleClickFirstTap,
     AfterDoubleClickSecondTap,
+    AfterTypeTextDispatch,
+    AfterKeypressDispatch,
+    AfterScrollDispatch,
+    AfterDragDispatch,
 }

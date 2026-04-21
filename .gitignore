@@ -76,6 +76,7 @@ artifacts/
 .tmp/
 references/
 plugins/okno/.okno-repo-root.txt
+plugins/computer-use-win/runtime/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

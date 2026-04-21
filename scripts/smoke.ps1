@@ -51,9 +51,11 @@ $waitTimeoutElementGoneMs = 5000
 $waitTimeoutVisualMs = 6000
 $helperLaunchWaitTimeoutMs = 10000
 $helperWindowMaterializationTimeoutMs = 10000
-$helperLifetimeSafetyBufferMs = 120000
+$helperLifetimeSafetyBufferMs = 30000
 $helperVisualBurstMs = $waitTimeoutVisualMs + 2000
 $helperTitleResolutionPollIntervalMs = 100
+$smokeStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$helperClosedEarly = $false
 $expectedHealthDomains = @('desktop_session', 'session_alignment', 'integrity', 'uiaccess')
 $expectedHealthCapabilities = @('capture', 'uia', 'wait', 'input', 'clipboard', 'launch')
 $allowedGuardStatuses = @('ready', 'degraded', 'blocked', 'unknown')
@@ -1266,6 +1268,77 @@ function Wait-ForVisibleHelperWindow {
     throw 'Smoke helper window did not appear in visible windows.list_windows inventory in time.'
 }
 
+function Get-VisibleWindowsInventory {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [string] $RequestName
+    )
+
+    return Invoke-ToolCall -Process $Process -Name 'windows.list_windows' -Arguments @{ includeInvisible = $false } -RequestName $RequestName
+}
+
+function Resolve-SmokeOwnedOpenTargetWindow {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [string] $ExpectedTitle,
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory)]
+        [int64[]] $BaselineWindowHwnds,
+        [int] $TimeoutMilliseconds = 3000,
+        [int] $PollMilliseconds = 150
+    )
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    do {
+        $inventory = Get-VisibleWindowsInventory -Process $Process -RequestName 'windows.list_windows(open_target owned window resolution)'
+        $matchingWindows = @(
+            $inventory.Payload.windows |
+                Where-Object {
+                    ([string]$_.title -eq $ExpectedTitle) -and
+                    ([int64]$_.hwnd -notin $BaselineWindowHwnds)
+                })
+
+        if ($matchingWindows.Count -eq 1) {
+            return [PSCustomObject]@{
+                Inventory = $inventory
+                Hwnd = [int64]$matchingWindows[0].hwnd
+                Title = [string]$matchingWindows[0].title
+            }
+        }
+
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+    while ((Get-Date) -lt $deadline)
+
+    return $null
+}
+
+function Close-SmokeOwnedWindow {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)]
+        [int64] $Hwnd,
+        [int] $TimeoutMilliseconds = 5000,
+        [int] $PollMilliseconds = 150
+    )
+
+    $wmClose = 0x0010
+    $posted = [WinBridgeSmoke.User32]::PostMessage([IntPtr]::new($Hwnd), $wmClose, [IntPtr]::Zero, [IntPtr]::Zero)
+    Assert-Condition -Condition $posted -Message "Smoke could not post WM_CLOSE to owned open_target window hwnd '$Hwnd'."
+
+    $closed = Wait-Until -TimeoutMilliseconds $TimeoutMilliseconds -PollMilliseconds $PollMilliseconds -Predicate {
+        $inventory = Get-VisibleWindowsInventory -Process $Process -RequestName 'windows.list_windows(open_target close verification)'
+        -not (@($inventory.Payload.windows | ForEach-Object { [int64]$_.hwnd }) -contains $Hwnd)
+    }
+
+    Assert-Condition -Condition $closed -Message "Owned open_target window hwnd '$Hwnd' did not close after WM_CLOSE."
+}
+
 function Get-AuditEvents {
     param(
         [Parameter(Mandatory)]
@@ -1915,6 +1988,33 @@ function Stop-StagedMcpHost {
     }
 }
 
+function Stop-SmokeOwnedHelperProcess {
+    param(
+        [AllowNull()]
+        [System.Diagnostics.Process] $Process,
+        [AllowNull()]
+        [int] $ProcessId
+    )
+
+    if ($null -ne $Process -and -not $Process.HasExited) {
+        $Process.Kill()
+        $Process.WaitForExit()
+        return
+    }
+
+    if ($null -ne $ProcessId -and $ProcessId -gt 0) {
+        try {
+            $fallback = [System.Diagnostics.Process]::GetProcessById([int]$ProcessId)
+            if (-not $fallback.HasExited) {
+                $fallback.Kill()
+                $fallback.WaitForExit()
+            }
+        }
+        catch [System.ArgumentException] {
+        }
+    }
+}
+
 $process = Start-StagedMcpHost -ServerDll $serverDll -WorkingDirectory $repoRoot
 $freshProcess = $null
 $helperProcess = $null
@@ -2414,13 +2514,20 @@ try {
         Assert-Condition -Condition (Test-Path $visualCurrentArtifactPath) -Message "visual_changed current artifact '$visualCurrentArtifactPath' was not created."
     }
 
+    Stop-SmokeOwnedHelperProcess -Process $helperProcess -ProcessId $helperProcessId
+    $helperClosedEarly = $true
+    $helperProcess = $null
+
     # Terminal unowned shell-open proof: run after all owned helper-based checks and keep the
-    # probe folder as retained evidence, because Explorer ownership/reuse cannot be proven safely.
+    # probe folder as retained evidence unless smoke can prove that a new Explorer window hwnd
+    # was materialized specifically for this probe and close that exact window safely.
     $openTargetFolderPath = New-SmokeUnownedProbeFolder -RunId $runId -FolderName 'open-target-folder'
     $openTargetFolderIdentity = Split-Path -Leaf $openTargetFolderPath
     $openTargetPreviewEventCountBefore = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.open_target' -EventName 'open_target.preview.completed'
     $openTargetRuntimeEventCountBefore = Get-AuditEventCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -ToolName 'windows.open_target' -EventName 'open_target.runtime.completed'
     $openTargetArtifactCountBefore = Get-OpenTargetArtifactCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory)
+    $openTargetBaselineWindows = Get-VisibleWindowsInventory -Process $process -RequestName 'windows.list_windows(open_target baseline)'
+    $openTargetBaselineWindowHwnds = @($openTargetBaselineWindows.Payload.windows | ForEach-Object { [int64]$_.hwnd })
 
     $openTargetDryRunCall = Invoke-ToolCall -Process $process -Name 'windows.open_target' -Arguments @{
         targetKind = 'folder'
@@ -2461,6 +2568,14 @@ try {
     Assert-Condition -Condition ((Get-OpenTargetArtifactCount -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory)) -eq ($openTargetArtifactCountBefore + 1)) -Message 'Live open_target did not materialize exactly one runtime artifact.'
     Assert-OpenTargetArtifact -ArtifactsDirectory ([string]$healthPayload.artifactsDirectory) -OpenTargetPayload $openTargetLivePayload
     $openTargetProbeDisposition = 'external_retained_evidence'
+    $openTargetOwnedWindow = Resolve-SmokeOwnedOpenTargetWindow `
+        -Process $process `
+        -ExpectedTitle $openTargetFolderIdentity `
+        -BaselineWindowHwnds $openTargetBaselineWindowHwnds
+    if ($null -ne $openTargetOwnedWindow) {
+        Close-SmokeOwnedWindow -Process $process -Hwnd ([int64]$openTargetOwnedWindow.Hwnd)
+        $openTargetProbeDisposition = 'owned_window_closed'
+    }
 
     $attachedHwnd = $null
     if ($null -ne $attachedWindow) {
@@ -2605,6 +2720,7 @@ try {
             artifact_validation = 'verified'
             helper_lifetime_ms = $helperLifetimeMs
             helper_visual_burst_ms = $helperVisualBurstMs
+            helper_closed_early = $helperClosedEarly
         }
         monitors = $monitorsPayload
         windows = $windowsPayload
@@ -2650,6 +2766,9 @@ try {
             probe_target_disposition = $openTargetProbeDisposition
         }
         fresh_host_acceptance = $freshHostAcceptance
+        timings = [ordered]@{
+            total_duration_ms = $smokeStopwatch.ElapsedMilliseconds
+        }
         raw_requests = [ordered]@{
             initialize = $rawInitializeRequest
             list_tools = $rawListRequest
@@ -2768,6 +2887,8 @@ try {
         "- fresh_host_windows_input_tools_list: verified",
         "- fresh_host_windows_input_contract: verified",
         "- fresh_host_windows_input_missing_target: $($freshHostAcceptance.input_missing_target.status)/$($freshHostAcceptance.input_missing_target.failureCode)",
+        "- helper_closed_early: $helperClosedEarly",
+        "- smoke_duration_ms: $($smokeStopwatch.ElapsedMilliseconds)",
         "- audit_dir: $($healthPayload.artifactsDirectory)",
         "- report: $reportPath"
     )
@@ -2777,6 +2898,8 @@ try {
     Get-Content $summaryPath
 }
 finally {
+    $smokeStopwatch.Stop()
+
     if ($null -ne $helperProcess -and -not $helperProcess.HasExited) {
         $helperProcess.Kill()
         $helperProcess.WaitForExit()

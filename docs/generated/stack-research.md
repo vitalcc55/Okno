@@ -66,8 +66,8 @@
 
 ### Где проект соответствует
 
-- Capture и UIA в текущем репозитории уже реализованы и подтверждаются build/test/smoke.
-- Deferred state сохраняется только у следующих slices: input, clipboard и semantic actions.
+- Capture, UIA, wait и click-first `windows.input` в текущем репозитории уже реализованы и подтверждаются build/test/smoke.
+- Deferred state сохраняется у clipboard, semantic actions и broad input actions beyond click-first.
 
 ## 4. Observability
 

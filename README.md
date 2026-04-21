@@ -1,8 +1,8 @@
-# Okno
+# Computer Use for Windows
 
-Okno — это Windows-native MCP runtime для локальной desktop automation под Windows 11. Проект строится как product-ready `STDIO` local process для агентных сценариев `observe -> act -> verify`, где приоритетом являются надёжность, проверяемость и предсказуемое поведение, а не максимальное покрытие фич с первого дня.
+Computer Use for Windows — это Codex-native Windows desktop control plugin, построенный поверх внутреннего `Okno` / `WinBridge` engine. Проект развивается как product-ready `STDIO` local process для агентных сценариев `observe -> act -> verify`, где приоритетом являются надёжность, проверяемость и предсказуемое поведение.
 
-Внутренний runtime теперь разделён на отдельные проекты по ответственности, а единый source of truth для MCP tools закреплён в `ToolNames` + `ToolContractManifest`.
+Снаружи продуктовым front door должен быть `computer-use-win`, а `Okno` остаётся внутренним Windows-native engine и codename-слоем.
 
 ## Что делает проект
 
@@ -92,25 +92,32 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 
 ## Codex plugin
 
-В репозитории есть repo-local Codex plugin под продуктовым именем `Okno`:
+В репозитории теперь есть один главный public-facing Codex plugin:
 
 - marketplace: `.agents/plugins/marketplace.json`
-- plugin root: `plugins/okno/`
-- plugin MCP: `plugins/okno/.mcp.json`
+- plugin root: `plugins/computer-use-win/`
+- plugin MCP: `plugins/computer-use-win/.mcp.json`
 
-Этот plugin добавляет repo-local MCP identity `okno` и bundled skill surface, не переписывая legacy home-level `windows` server в локальном Codex config.
+Этот plugin публикует quiet operator surface:
 
-Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после перемещения checkout или после изменения plugin layout нужно обновить repo-root hint командой `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex.
+- `list_apps`
+- `get_app_state`
+- `click`
+
+`Okno` остаётся внутренним engine и execution substrate под этим plugin surface.
+
+Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после перемещения checkout или после изменения plugin layout нужно обновить repo-root hint командой `powershell -ExecutionPolicy Bypass -File scripts/codex/write-computer-use-win-plugin-repo-root-hint.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex.
 
 ## OpenAI interop
 
-`Okno` не должен конкурировать с `shell`, `skills`, `MCP` или `computer use` из OpenAI ecosystem. Для этого репозитория правильная модель такая:
+Computer Use for Windows не должен конкурировать с `shell`, `skills`, `MCP` или built-in `computer use` из OpenAI ecosystem. Для этого репозитория правильная модель такая:
 
 - `shell` закрывает terminal/code side;
-- `Okno` закрывает Windows desktop side;
+- `Okno` закрывает внутренний Windows desktop engine side;
+- `computer-use-win` даёт публичный Codex-native operator surface;
 - `skills` служат routing/procedure слоем;
 - `MCP` остаётся transport/integration boundary;
-- `computer use` рассматривается как будущая compatibility track, а не как немедленная замена локального Windows runtime.
+- built-in OpenAI `computer use` остаётся внешним compatibility target, а не заменой локальному engine path.
 
 Практический вывод:
 
@@ -122,6 +129,7 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 
 - [docs/product/index.md](docs/product/index.md)
 - [docs/architecture/index.md](docs/architecture/index.md)
+- [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
 - [docs/architecture/openai-computer-use-interop.md](docs/architecture/openai-computer-use-interop.md)
 - [docs/generated/commands.md](docs/generated/commands.md)
 - [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md)

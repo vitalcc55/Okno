@@ -6,6 +6,6 @@ internal sealed record InputCommittedSideEffectContext(
     int ActionIndex,
     InputAction Action,
     InputIrreversiblePhase Phase,
-    InputPoint ResolvedScreenPoint,
+    InputPoint? ResolvedScreenPoint,
     string? Button,
     long? TargetHwnd);

@@ -116,6 +116,52 @@ public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindow
         }
 
         bool success = SetForegroundWindow(target);
+        if (success || GetForegroundWindowNativeHwnd() == hwnd)
+        {
+            return true;
+        }
+
+        IntPtr foregroundWindow = GetForegroundWindow();
+        uint currentThreadId = GetCurrentThreadId();
+        uint targetThreadId = GetWindowThreadProcessId(target, out _);
+        uint foregroundThreadId = foregroundWindow == IntPtr.Zero
+            ? 0
+            : GetWindowThreadProcessId(foregroundWindow, out _);
+
+        bool attachedToForeground = false;
+        bool attachedToTarget = false;
+        try
+        {
+            _ = PeekMessage(out _, IntPtr.Zero, 0, 0, PmNoRemove);
+
+            if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
+            {
+                attachedToForeground = AttachThreadInput(currentThreadId, foregroundThreadId, true);
+            }
+
+            if (targetThreadId != 0 && targetThreadId != currentThreadId && targetThreadId != foregroundThreadId)
+            {
+                attachedToTarget = AttachThreadInput(currentThreadId, targetThreadId, true);
+            }
+
+            _ = BringWindowToTop(target);
+            _ = SetActiveWindow(target);
+            _ = SetFocus(target);
+            success = SetForegroundWindow(target);
+        }
+        finally
+        {
+            if (attachedToTarget)
+            {
+                _ = AttachThreadInput(currentThreadId, targetThreadId, false);
+            }
+
+            if (attachedToForeground)
+            {
+                _ = AttachThreadInput(currentThreadId, foregroundThreadId, false);
+            }
+        }
+
         return success || GetForegroundWindowNativeHwnd() == hwnd;
     }
 
@@ -214,7 +260,20 @@ public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindow
     private const int SwShowMinimized = 2;
     private const int SwMinimize = 6;
     private const int SwShowMinNoActive = 7;
+    private const uint PmNoRemove = 0x0000;
     private static readonly Lazy<IsWindowArrangedInvoker?> s_isWindowArrangedInvoker = new(LoadIsWindowArrangedInvoker);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public UIntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+        public uint lPrivate;
+    }
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -242,6 +301,24 @@ public sealed class Win32WindowManager(IMonitorManager monitorManager) : IWindow
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetActiveWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
 
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hWnd);

@@ -20,9 +20,9 @@
 
 ## Что это значит для текущего продукта
 
-- Для локального `Codex app/CLI/IDE` основной путь остаётся `shell + Okno(MCP/plugin) + skills`.
+- Для локального `Codex app/CLI/IDE` основной путь теперь идёт как `shell + computer-use-win plugin + skills`, где `Okno` остаётся внутренним engine/runtime.
 - Built-in `computer use` не нужен для того, чтобы текущий `Okno` уже был полезным.
-- Current repo-local plugin `okno` остаётся каноническим local integration entry point.
+- Current public-facing local integration entry point должен быть `computer-use-win`, а не low-level engine plugin narrative.
 - Любой будущий bridge к OpenAI `computer use` должен быть adapter-слоем поверх `Okno`, а не частью core runtime.
 
 ## Architectural boundary

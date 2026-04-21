@@ -10,14 +10,23 @@ internal sealed class Win32InputService(
     TimeProvider timeProvider,
     InputResultMaterializer? resultMaterializer = null) : IInputService
 {
-    private static readonly string[] SupportedActionTypes =
+    private static readonly string[] ClickFirstSupportedActionTypes =
     [.. InputClickFirstSubsetContract.SupportedActionTypes];
+    private static readonly string[] ComputerUseCoreSupportedActionTypes =
+    [.. InputActionTypeValues.StructuralFreeze];
 
     private static readonly TimeSpan DoubleClickDelay = TimeSpan.FromMilliseconds(50);
 
     public async Task<InputResult> ExecuteAsync(
         InputRequest request,
         InputExecutionContext context,
+        CancellationToken cancellationToken)
+        => await ExecuteAsync(request, context, InputExecutionProfileValues.ClickFirstPublic, cancellationToken).ConfigureAwait(false);
+
+    public async Task<InputResult> ExecuteAsync(
+        InputRequest request,
+        InputExecutionContext context,
+        string executionProfile,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -31,14 +40,19 @@ internal sealed class Win32InputService(
         InputResult MaterializeFactual(InputResult result, string? failureStage = null, Exception? failureException = null) =>
             Materialize(result, failureStage ?? ResolveFailureStage(result.FailureCode), failureException);
 
-        if (!InputRequestValidator.TryValidateSupportedSubset(request, SupportedActionTypes, out string? failureCode, out string? reason))
+        string[] supportedActionTypes = string.Equals(executionProfile, InputExecutionProfileValues.ComputerUseCore, StringComparison.Ordinal)
+            ? ComputerUseCoreSupportedActionTypes
+            : ClickFirstSupportedActionTypes;
+
+        if (!InputRequestValidator.TryValidateSupportedSubset(request, supportedActionTypes, out string? failureCode, out string? reason))
         {
             return MaterializeFactual(CreateFailureResult(
                 failureCode ?? InputFailureCodeValues.InvalidRequest,
                 reason ?? "Input request не прошёл validation."));
         }
 
-        if (!InputClickFirstRuntimeSubsetPolicy.TryValidateRequest(request, out failureCode, out reason))
+        if (string.Equals(executionProfile, InputExecutionProfileValues.ClickFirstPublic, StringComparison.Ordinal)
+            && !InputClickFirstRuntimeSubsetPolicy.TryValidateRequest(request, out failureCode, out reason))
         {
             return MaterializeFactual(CreateFailureResult(
                 failureCode ?? InputFailureCodeValues.InvalidRequest,

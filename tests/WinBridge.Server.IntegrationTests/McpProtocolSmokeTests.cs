@@ -124,6 +124,364 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
+    public async Task ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools()
+    {
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument toolsResponse = await session.SendRequestAsync(
+                "tools/list",
+                new { },
+                "tools/list");
+
+            string[] toolNames = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Select(tool => tool.GetProperty("name").GetString()!)
+                .OrderBy(static item => item, StringComparer.Ordinal)
+                .ToArray();
+
+            Assert.Equal(
+                [
+                    ToolNames.ComputerUseWinClick,
+                    ToolNames.ComputerUseWinGetAppState,
+                    ToolNames.ComputerUseWinListApps,
+                ],
+                toolNames);
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinGetAppStateRequiresApprovalBeforeReturningState()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Approval {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument response = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                });
+
+            JsonElement payload = response.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
+            Assert.True(payload.GetProperty("approvalRequired").GetBoolean());
+            Assert.Equal(ComputerUseWinFailureCodeValues.ApprovalRequired, payload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinClickUsesStateTokenAndElementIndexAfterApprovedAppState()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Click {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument stateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement statePayload = stateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, statePayload.GetProperty("status").GetString());
+            Assert.Contains(
+                stateResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
+                block => block.GetProperty("type").GetString() == "image");
+
+            string stateToken = statePayload.GetProperty("stateToken").GetString()!;
+            JsonElement targetElement = statePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
+            int elementIndex = targetElement.GetProperty("index").GetInt32();
+
+            using JsonDocument clickResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinClick,
+                new
+                {
+                    stateToken,
+                    elementIndex,
+                });
+
+            JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, clickPayload.GetProperty("targetHwnd").GetInt64());
+            Assert.Equal(elementIndex, clickPayload.GetProperty("elementIndex").GetInt32());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinGetAppStateDoesNotAttachWindowWhenObservationFails()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Failed Observation {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument failedStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                    maxNodes = UiaSnapshotRequestValidator.MaxNodesCeiling + 1,
+                });
+
+            JsonElement failedResult = failedStateResponse.RootElement.GetProperty("result");
+            Assert.True(failedResult.GetProperty("isError").GetBoolean());
+            JsonElement failedPayload = failedResult.GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Failed, failedPayload.GetProperty("status").GetString());
+            Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, failedPayload.GetProperty("failureCode").GetString());
+            Assert.Contains("maxNodes", failedPayload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+
+            using JsonDocument noArgsResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new { });
+
+            JsonElement noArgsPayload = noArgsResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Failed, noArgsPayload.GetProperty("status").GetString());
+            Assert.Equal(ComputerUseWinFailureCodeValues.MissingTarget, noArgsPayload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinGetAppStateFailsWhenUiAutomationSnapshotDoesNotComplete()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Snapshot Failure {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument stateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                    maxNodes = UiaSnapshotRequestValidator.MaxNodesCeiling + 1,
+                });
+
+            JsonElement result = stateResponse.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("isError").GetBoolean());
+            JsonElement payload = result.GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, payload.GetProperty("failureCode").GetString());
+            Assert.Contains("maxNodes", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+            Assert.False(payload.TryGetProperty("stateToken", out _));
+            Assert.False(payload.TryGetProperty("accessibilityTree", out _));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinGetAppStatePublishesObservedKeyboardFocus()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Focus {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-06-18",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument stateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement payload = stateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, payload.GetProperty("status").GetString());
+            Assert.Contains(
+                payload.GetProperty("accessibilityTree").EnumerateArray(),
+                element => element.GetProperty("hasKeyboardFocus").GetBoolean());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
     public async Task ToolsListPublishesWindowsLaunchProcessWithSchemaAndAnnotations()
     {
         using Process process = StartServer();
@@ -1253,12 +1611,18 @@ public sealed class McpProtocolSmokeTests
         }
     }
 
-    private static Process StartServer()
+    private static Process StartServer(string? toolSurfaceProfile = null)
     {
+        string arguments = $"\"{GetServerDllPath()}\"";
+        if (!string.IsNullOrWhiteSpace(toolSurfaceProfile))
+        {
+            arguments += $" --tool-surface-profile {toolSurfaceProfile}";
+        }
+
         ProcessStartInfo startInfo = new()
         {
             FileName = "dotnet",
-            Arguments = $"\"{GetServerDllPath()}\"",
+            Arguments = arguments,
             WorkingDirectory = GetRepositoryRoot(),
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -1268,17 +1632,39 @@ public sealed class McpProtocolSmokeTests
             StandardErrorEncoding = Encoding.UTF8,
         };
 
+        if (string.Equals(toolSurfaceProfile, ToolSurfaceProfileValues.ComputerUseWin, StringComparison.Ordinal))
+        {
+            string repoRoot = GetRepositoryRoot();
+            string uniqueName = Guid.NewGuid().ToString("N");
+            startInfo.Environment["COMPUTER_USE_WIN_PLUGIN_ROOT"] = Path.Combine(repoRoot, "plugins", "computer-use-win");
+            startInfo.Environment["COMPUTER_USE_WIN_APPROVAL_STORE"] = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-approvals", $"{uniqueName}.json");
+        }
+
         Process process = new() { StartInfo = startInfo };
         process.Start();
         return process;
     }
 
-    private static Process StartHelperWindow()
+    private static Process StartHelperWindow(string? title = null, int? lifetimeMs = null)
     {
+        string effectiveTitle = string.IsNullOrWhiteSpace(title) ? "Okno Smoke Helper" : title;
+        List<string> arguments =
+        [
+            "--title",
+            effectiveTitle,
+        ];
+        if (lifetimeMs is int helperLifetimeMs and > 0)
+        {
+            arguments.Add("--lifetime-ms");
+            arguments.Add(helperLifetimeMs.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         ProcessStartInfo startInfo = new()
         {
             FileName = GetHelperWindowExePath(),
-            Arguments = "--title \"Okno Smoke Helper\"",
+            Arguments = string.Join(
+                " ",
+                arguments.Select(static item => item.Contains(' ', StringComparison.Ordinal) ? $"\"{item}\"" : item)),
             WorkingDirectory = GetRepositoryRoot(),
             UseShellExecute = false,
         };
@@ -1286,6 +1672,17 @@ public sealed class McpProtocolSmokeTests
         Process process = new() { StartInfo = startInfo };
         process.Start();
         return process;
+    }
+
+    private static async Task StopHelperWindowAsync(Process helper)
+    {
+        if (helper.HasExited)
+        {
+            return;
+        }
+
+        helper.Kill(entireProcessTree: true);
+        await helper.WaitForExitAsync().WaitAsync(ProcessExitTimeout);
     }
 
     private static async Task<long> WaitForMainWindowAsync(Process process)

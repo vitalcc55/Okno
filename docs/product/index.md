@@ -9,6 +9,7 @@
 - [okno-vision.md](okno-vision.md)
 - [okno-spec.md](okno-spec.md)
 - [okno-roadmap.md](okno-roadmap.md)
+- [../generated/computer-use-win-interfaces.md](../generated/computer-use-win-interfaces.md)
 
 ## Как использовать
 
@@ -25,8 +26,8 @@
 ## OpenAI interop note
 
 - `shell`, `skills`, `MCP` и `computer use` рассматриваются как соседние слои, а не как одна и та же feature под разными именами.
-- Для текущего продукта `Okno` остаётся Windows-native runtime и MCP surface, а built-in `computer use` рассматривается как будущая compatibility track.
-- Текущий локальный integration path для Codex остаётся plugin/MCP поверх этого репозитория; adapter к OpenAI `computer use` должен быть отдельным слоем и не должен менять ближайший roadmap продукта.
+- Для текущего продукта публичным Codex path становится `computer-use-win`, а `Okno` остаётся внутренним Windows-native runtime/engine.
+- Текущий локальный integration path для Codex идёт через plugin/MCP surface `computer-use-win` поверх этого репозитория; built-in OpenAI `computer use` остаётся внешней compatibility track и не меняет ближайший roadmap продукта.
 - Source of truth по этой теме лежит в [../architecture/openai-computer-use-interop.md](../architecture/openai-computer-use-interop.md) и дополняется roadmap в [okno-roadmap.md](okno-roadmap.md).
 
 ## Примечание о codename

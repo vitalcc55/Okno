@@ -1,0 +1,26 @@
+{
+  "name": "computer-use-win",
+  "version": "0.1.0",
+  "description": "Control Windows desktop apps from Codex through Computer Use for Windows powered by Okno.",
+  "author": {
+    "name": "Vlasov Vitaly"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Computer Use for Windows",
+    "shortDescription": "Control Windows apps from Codex through Okno",
+    "longDescription": "Computer Use for Windows is a Codex-native Windows desktop control plugin powered by the Okno engine. It provides a quiet operator surface for observing app state, clicking within app windows, and iterating through GUI tasks without exposing the low-level Windows engine tools as the main product UX.",
+    "developerName": "Vlasov Vitaly",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use Computer Use for Windows to inspect the target Windows app.",
+      "Get the current app state and click through the GUI step by step."
+    ]
+  }
+}

@@ -5,6 +5,8 @@ namespace WinBridge.Runtime.Tooling;
 public static class ToolContractManifest
 {
     private static readonly Dictionary<string, ToolDescriptor> AllByName;
+    private static readonly ToolContractProfile WindowsEngineProfile;
+    private static readonly ToolContractProfile ComputerUseWinProfile;
 
     internal static ToolDescriptor FutureLaunchProcessDescriptor { get; } =
         new(
@@ -63,6 +65,9 @@ public static class ToolContractManifest
     public static string ContractNotes { get; } =
         "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait, public windows.launch_process, public windows.open_target и public click-first `windows.input` boundary без hidden enforcement. Для `windows.input` сейчас опубликован только implemented subset `move`, `click`, `double_click`, `click(button=right)`; artifacts/events/materializer уже закрыты Package D через `input.runtime.completed` и `artifacts/diagnostics/<run_id>/input/input-*.json`, а smoke/fresh-host acceptance закрыты Package E через real helper click proof и fresh staged host binding proof.";
 
+    public static string ComputerUseWinContractNotes { get; } =
+        "Public product profile `computer-use-win` публикует vendor-like operator surface поверх внутреннего Okno engine. В текущем shipped subset в public profile входят `list_apps`, `get_app_state` и `click`; `type_text`, `press_key`, `scroll` и `drag` закреплены как следующий глобальный action wave и пока не публикуются как implemented product surface. Низкоуровневые `windows.*` tools остаются внутренним execution substrate и не являются главным product-facing Codex UX.";
+
     public static IReadOnlyList<ToolDescriptor> All { get; } =
         new[]
         {
@@ -88,6 +93,15 @@ public static class ToolContractManifest
     static ToolContractManifest()
     {
         AllByName = All.ToDictionary(descriptor => descriptor.Name, StringComparer.Ordinal);
+        WindowsEngineProfile = new(
+            ToolSurfaceProfileValues.WindowsEngine,
+            Implemented,
+            Deferred,
+            ImplementedNames,
+            SmokeRequiredToolNames,
+            DeferredPhaseMap,
+            ContractNotes);
+        ComputerUseWinProfile = CreateComputerUseWinProfile();
     }
 
     internal static IReadOnlyDictionary<string, ToolExecutionPolicyDescriptor> FutureLaunchFamilyPolicyPresets { get; } =
@@ -120,6 +134,48 @@ public static class ToolContractManifest
         return FutureLaunchFamilyPolicyPresets.TryGetValue(toolName, out ToolExecutionPolicyDescriptor? preset)
             ? preset
             : null;
+    }
+
+    public static ToolContractProfile GetProfile(string? profileName)
+    {
+        if (string.IsNullOrWhiteSpace(profileName)
+            || string.Equals(profileName, ToolSurfaceProfileValues.WindowsEngine, StringComparison.Ordinal))
+        {
+            return WindowsEngineProfile;
+        }
+
+        if (string.Equals(profileName, ToolSurfaceProfileValues.ComputerUseWin, StringComparison.Ordinal))
+        {
+            return ComputerUseWinProfile;
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(profileName), profileName, "Неизвестный tool surface profile.");
+    }
+
+    private static ToolContractProfile CreateComputerUseWinProfile()
+    {
+        ToolDescriptor[] implemented =
+        [
+            new(ToolNames.ComputerUseWinListApps, "computer_use_win.apps", ToolLifecycle.Implemented, ToolSafetyClass.ReadOnly, ToolDescriptions.ComputerUseWinListAppsTool, null, null, true),
+            new(ToolNames.ComputerUseWinGetAppState, "computer_use_win.state", ToolLifecycle.Implemented, ToolSafetyClass.ReadOnly, ToolDescriptions.ComputerUseWinGetAppStateTool, null, null, true),
+            new(ToolNames.ComputerUseWinClick, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinClickTool, null, null, true),
+        ];
+        ToolDescriptor[] deferred =
+        [
+            new(ToolNames.ComputerUseWinTypeText, "computer_use_win.action", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinTypeTextTool, "computer-use-win action wave 2", "После shipped first operator loop реализовать real text input path.", false),
+            new(ToolNames.ComputerUseWinPressKey, "computer_use_win.action", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinPressKeyTool, "computer-use-win action wave 2", "После shipped first operator loop реализовать keypress path.", false),
+            new(ToolNames.ComputerUseWinScroll, "computer_use_win.action", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinScrollTool, "computer-use-win action wave 2", "После shipped first operator loop реализовать scroll path.", false),
+            new(ToolNames.ComputerUseWinDrag, "computer_use_win.action", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinDragTool, "computer-use-win action wave 2", "После shipped first operator loop реализовать drag path.", false),
+        ];
+
+        return new(
+            ToolSurfaceProfileValues.ComputerUseWin,
+            implemented,
+            deferred,
+            implemented.Select(static descriptor => descriptor.Name).ToArray(),
+            implemented.Where(static descriptor => descriptor.SmokeRequired).Select(static descriptor => descriptor.Name).ToArray(),
+            deferred.ToDictionary(static descriptor => descriptor.Name, static descriptor => descriptor.PlannedPhase!, StringComparer.Ordinal),
+            ComputerUseWinContractNotes);
     }
 
     private static ToolExecutionPolicyDescriptor CreateExecutionPolicy(
