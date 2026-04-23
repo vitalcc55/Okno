@@ -50,6 +50,8 @@ Remove-DirectoryIfExists -Path $swapRoot
 Remove-DirectoryIfExists -Path $backupRoot
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $runtimeParent -Force | Out-Null
+$promoteCompleted = $false
+$restoreCompleted = $false
 
 try {
     & dotnet publish $serverProjectPath `
@@ -73,7 +75,6 @@ try {
         throw "Plugin runtime swap directory '$swapRoot' does not contain Okno.Server.exe."
     }
 
-    $restoredBackup = $false
     try {
         if (Test-Path $runtimeRoot -PathType Container) {
             Move-Item -LiteralPath $runtimeRoot -Destination $backupRoot
@@ -84,16 +85,17 @@ try {
         }
 
         Move-Item -LiteralPath $swapRoot -Destination $runtimeRoot
+        $promoteCompleted = $true
         Remove-DirectoryIfExists -Path $backupRoot
     }
     catch {
         if (-not (Test-Path $runtimeRoot -PathType Container) -and (Test-Path $backupRoot -PathType Container)) {
-            Move-Item -LiteralPath $backupRoot -Destination $runtimeRoot
-            $restoredBackup = $true
-        }
+            if ($env:COMPUTER_USE_WIN_TEST_FAIL_RESTORE -eq '1') {
+                throw "Synthetic publish restore failure after promote error."
+            }
 
-        if (-not $restoredBackup -and (Test-Path $backupRoot -PathType Container) -and -not (Test-Path $runtimeRoot -PathType Container)) {
-            throw
+            Move-Item -LiteralPath $backupRoot -Destination $runtimeRoot
+            $restoreCompleted = $true
         }
 
         throw
@@ -102,7 +104,9 @@ try {
 finally {
     Remove-DirectoryIfExists -Path $stagingRoot
     Remove-DirectoryIfExists -Path $swapRoot
-    Remove-DirectoryIfExists -Path $backupRoot
+    if ($promoteCompleted -or $restoreCompleted) {
+        Remove-DirectoryIfExists -Path $backupRoot
+    }
 }
 
 [pscustomobject]@{

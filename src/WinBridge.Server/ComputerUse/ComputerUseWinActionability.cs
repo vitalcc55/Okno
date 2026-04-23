@@ -27,7 +27,6 @@ internal static class ComputerUseWinActionability
     {
         ArgumentNullException.ThrowIfNull(element);
 
-        return !string.IsNullOrWhiteSpace(element.Name)
-            || !string.IsNullOrWhiteSpace(element.AutomationId);
+        return !string.IsNullOrWhiteSpace(element.AutomationId);
     }
 }

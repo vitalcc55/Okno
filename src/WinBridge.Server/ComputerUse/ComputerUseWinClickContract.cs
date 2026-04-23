@@ -13,7 +13,12 @@ internal static class ComputerUseWinClickContract
         [InputButtonValues.Left, InputButtonValues.Right];
 
     public static string? ValidateRequest(ComputerUseWinClickRequest request) =>
-        ValidateSelectorMode(request)
+        ValidateStateToken(request.StateToken)
+        ?? ValidateResolvedRequest(request);
+
+    private static string? ValidateResolvedRequest(ComputerUseWinClickRequest request) =>
+        ValidateSelectorPresence(request)
+        ?? ValidateSelectorMode(request)
         ?? ValidatePoint(request.Point, "point")
         ?? ValidateCoordinateSpace(request.CoordinateSpace)
         ?? ValidateButton(request.Button);
@@ -23,6 +28,7 @@ internal static class ComputerUseWinClickContract
         {
             ["type"] = "string",
             ["minLength"] = 1,
+            ["pattern"] = @".*\S.*",
         };
 
     public static JsonArray CreateSelectorModeSchema() =>
@@ -56,10 +62,11 @@ internal static class ComputerUseWinClickContract
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        if (!TryValidateRequest(request, out string? failureCode, out string? reason))
+        string? validationFailure = ValidateResolvedRequest(request);
+        if (validationFailure is not null)
         {
             outcome = ComputerUseWinClickExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(failureCode!, reason!));
+                ComputerUseWinFailureDetails.Expected(ComputerUseWinFailureCodeValues.InvalidRequest, validationFailure));
             return true;
         }
 
@@ -118,24 +125,6 @@ internal static class ComputerUseWinClickContract
         return true;
     }
 
-    private static bool TryValidateRequest(
-        ComputerUseWinClickRequest request,
-        out string? failureCode,
-        out string? reason)
-    {
-        string? validationFailure = ValidateRequest(request);
-        if (validationFailure is null)
-        {
-            failureCode = null;
-            reason = null;
-            return true;
-        }
-
-        failureCode = ComputerUseWinFailureCodeValues.InvalidRequest;
-        reason = validationFailure;
-        return false;
-    }
-
     private static string? ValidateSelectorMode(ComputerUseWinClickRequest request)
     {
         if (request.ElementIndex is not null && request.Point is not null)
@@ -145,6 +134,21 @@ internal static class ComputerUseWinClickContract
 
         return null;
     }
+
+    private static string? ValidateSelectorPresence(ComputerUseWinClickRequest request)
+    {
+        if (request.ElementIndex is null && request.Point is null)
+        {
+            return "Для click требуется elementIndex или point.";
+        }
+
+        return null;
+    }
+
+    private static string? ValidateStateToken(string? stateToken) =>
+        string.IsNullOrWhiteSpace(stateToken)
+            ? "Параметр stateToken обязателен для click."
+            : null;
 
     private static string? ValidateCoordinateSpace(string? coordinateSpace)
     {

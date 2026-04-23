@@ -88,6 +88,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - canonical app/process identity нормализуется к одному bare process name без `.exe`, чтобы block policy, playbooks и appId не drift-или между собой;
 - approval/block policy и `list_apps` app grouping допускаются только при доказанной stable process identity; окна без канонического process identity не должны получать public appId на основе `hwnd-*` и fail-close-ятся до approval/observation path;
 - risky action confirmation — отдельный product-facing шаг;
+- risky action confirmation не должна зависеть только от английской UI: policy использует и multilingual label signals, и более стабильные `AutomationId`/process-family markers там, где они доступны;
 - coordinate click считается low-confidence target path и требует explicit confirm, если target не доказан через semantic element из последнего `get_app_state`;
 - `stateToken` несёт observation envelope, на котором был получен semantic state; downstream revalidation не должна тихо откатываться к более слабым defaults;
 - `elementIndex` click не должен слепо доверять сохранённым bounds: перед dispatch runtime заново разрешает target через свежий UIA snapshot с тем же observation budget и fail-close-ит как `stale_state`, только если semantic match больше не доказуем;
@@ -97,6 +98,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - malformed request shapes должны отсекаться на public boundary как `invalid_request`: explicit invalid `tool-surface-profile`, nested extra fields и schema-invalid `maxNodes` не должны уходить в widened surface или поздний `observation_failed`;
 - public `click` contract должен совпадать в validator, `tools/list` schema и generated exports: допустимые `button`/`coordinateSpace`, обязательный `stateToken` и selector mode (`elementIndex` xor `point`) публикуются из того же owner-слоя, что и runtime enforcement;
 - public `computer-use-win` action payload обязан emit-ить только product-owned `failureCode` и `reason`; low-level `windows.input` evidence остаётся допустимым в audit/evidence, но не протекает наружу как несанкционированный payload wording;
+- public action result должен materialize-иться из явной lifecycle phase: `pre_dispatch_reject`, `pre_dispatch_after_activation`, `post_dispatch_factual_failure`, `success`; pre-dispatch reject без side effects не должен требовать refresh, а unexpected internal failure всё равно обязан нести product-owned `failureCode`;
 - semantic click admissibility должна совпадать между public tree и runtime revalidation: runtime не должен dispatch-ить `elementIndex`, если fresh element больше не clickable или semantic fallback свёлся к слишком слабому proof;
 - `stateToken` имеет bounded retention и short-lived stale-state discipline вместо неограниченного in-memory накопления;
 - blocked targets должны отсеиваться на public surface до unsafe dispatch.

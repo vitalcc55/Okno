@@ -18,6 +18,12 @@ internal static class ComputerUseWinRequestContractValidator
 
     private static string? Validate(ComputerUseWinGetAppStateRequest request)
     {
+        string? appIdFailure = ValidateOptionalNonBlankString(request.AppId, "appId");
+        if (appIdFailure is not null)
+        {
+            return appIdFailure;
+        }
+
         if (!string.IsNullOrWhiteSpace(request.AppId) && request.Hwnd is not null)
         {
             return "Для get_app_state нужно передать либо appId, либо hwnd, но не оба селектора сразу.";
@@ -91,4 +97,9 @@ internal static class ComputerUseWinRequestContractValidator
 
         return null;
     }
+
+    private static string? ValidateOptionalNonBlankString(string? value, string parameterName) =>
+        value is not null && string.IsNullOrWhiteSpace(value)
+            ? $"Параметр {parameterName} не поддерживает пустое или whitespace-only значение."
+            : null;
 }

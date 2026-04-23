@@ -146,7 +146,7 @@ internal static class ComputerUseWinToolRegistration
                 },
                 ["properties"] = new JsonObject
                 {
-                    ["appId"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
+                    ["appId"] = CreateNullableNonBlankStringSchema(),
                     ["hwnd"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
                     ["maxNodes"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = UiaSnapshotRequestValidator.MaxNodesCeiling },
@@ -287,6 +287,13 @@ internal static class ComputerUseWinToolRegistration
             ["enum"] = enumValues,
         };
     }
+
+    private static JsonObject CreateNullableNonBlankStringSchema() =>
+        new()
+        {
+            ["type"] = CreateTypeSet("string", "null"),
+            ["pattern"] = @".*\S.*",
+        };
 
     private static JsonElement ParseSchema(JsonObject schema)
     {

@@ -77,15 +77,14 @@ internal static class ComputerUseWinActionFinalizer
         Exception exception,
         bool preDispatchStateMutationPossible)
     {
-        ComputerUseWinActionResult payload = new(
-            Status: ComputerUseWinStatusValues.Failed,
-            RefreshStateRecommended: preDispatchStateMutationPossible,
-            FailureCode: null,
-            Reason: preDispatchStateMutationPossible
+        ComputerUseWinActionResult payload = CreatePreDispatchFailurePayload(
+            ComputerUseWinFailureCodeValues.UnexpectedInternalFailure,
+            preDispatchStateMutationPossible
                 ? "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; из-за возможной активации окна перед retry сначала обнови состояние через get_app_state."
                 : "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; можно повторить запрос после устранения причины, refresh через get_app_state не обязателен.",
-            TargetHwnd: targetHwnd,
-            ElementIndex: elementIndex);
+            targetHwnd,
+            elementIndex,
+            refreshStateRecommended: preDispatchStateMutationPossible);
 
         ComputerUseWinFailureCompletion.CompleteFailure(
             invocation,
@@ -168,4 +167,30 @@ internal static class ComputerUseWinActionFinalizer
             ],
         };
     }
+
+    internal static ComputerUseWinActionResult CreatePreDispatchFailurePayload(
+        string failureCode,
+        string reason,
+        long? targetHwnd,
+        int? elementIndex,
+        bool refreshStateRecommended = false) =>
+        new(
+            Status: ComputerUseWinStatusValues.Failed,
+            RefreshStateRecommended: refreshStateRecommended,
+            FailureCode: failureCode,
+            Reason: reason,
+            TargetHwnd: targetHwnd,
+            ElementIndex: elementIndex);
+
+    internal static ComputerUseWinActionResult CreatePreDispatchApprovalRequiredPayload(
+        string reason,
+        long? targetHwnd,
+        int? elementIndex) =>
+        new(
+            Status: ComputerUseWinStatusValues.ApprovalRequired,
+            RefreshStateRecommended: false,
+            FailureCode: ComputerUseWinFailureCodeValues.ApprovalRequired,
+            Reason: reason,
+            TargetHwnd: targetHwnd,
+            ElementIndex: elementIndex);
 }

@@ -935,12 +935,11 @@ internal sealed class ComputerUseWinTools
         int? elementIndex = null,
         Exception? auditException = null)
     {
-        ComputerUseWinActionResult payload = new(
-            Status: ComputerUseWinStatusValues.Failed,
-            FailureCode: failureCode,
-            Reason: reason,
-            TargetHwnd: targetHwnd,
-            ElementIndex: elementIndex);
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreatePreDispatchFailurePayload(
+            failureCode,
+            reason,
+            targetHwnd,
+            elementIndex);
         ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, failureCode, targetHwnd, auditException);
         return CreateToolResult(payload, isError: true);
     }
@@ -952,12 +951,10 @@ internal sealed class ComputerUseWinTools
         int? elementIndex,
         string reason)
     {
-        ComputerUseWinActionResult payload = new(
-            Status: ComputerUseWinStatusValues.ApprovalRequired,
-            FailureCode: ComputerUseWinFailureCodeValues.ApprovalRequired,
-            Reason: reason,
-            TargetHwnd: targetHwnd,
-            ElementIndex: elementIndex);
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreatePreDispatchApprovalRequiredPayload(
+            reason,
+            targetHwnd,
+            elementIndex);
         ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, ComputerUseWinFailureCodeValues.ApprovalRequired, targetHwnd);
         return CreateToolResult(payload, isError: true);
     }

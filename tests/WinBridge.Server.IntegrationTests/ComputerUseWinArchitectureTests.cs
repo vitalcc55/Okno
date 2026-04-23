@@ -18,6 +18,37 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Contains("powershell", reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("conhost.exe")]
+    [InlineData("OpenConsole.exe")]
+    public void BlockPolicyCoversConsoleHostFamilies(string processName)
+    {
+        WindowDescriptor window = CreateWindow(processName: processName);
+
+        bool isBlocked = ComputerUseWinTargetPolicy.TryGetBlockedReason(window, out string? reason);
+
+        Assert.True(isBlocked);
+        Assert.Contains(processName, reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RiskPolicyRequiresConfirmationForRussianDestructiveLabels()
+    {
+        ComputerUseWinStoredElement element = new(
+            Index: 1,
+            ElementId: "path:0",
+            Name: "Удалить",
+            AutomationId: "DangerButton",
+            ControlType: "button",
+            Bounds: new Bounds(10, 10, 110, 40),
+            HasKeyboardFocus: false,
+            Actions: [ToolNames.ComputerUseWinClick]);
+
+        bool requiresConfirmation = ComputerUseWinTargetPolicy.RequiresRiskConfirmation(element, ToolNames.ComputerUseWinClick);
+
+        Assert.True(requiresConfirmation);
+    }
+
     [Fact]
     public void PlaybookProviderMatchesBareRuntimeProcessName()
     {
@@ -170,9 +201,10 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ToolRequestBinderRejectsNestedAdditionalPropertiesForComputerUseClickPoint()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"point":{"x":10,"y":20,"extra":true}}""");
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true}}""");
         Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
         {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
             ["point"] = document.RootElement.GetProperty("point").Clone(),
         };
 
@@ -192,9 +224,10 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ToolRequestBinderRejectsUnsupportedCoordinateSpaceForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"point":{"x":10,"y":20},"coordinateSpace":"bogus","confirm":true}""");
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"bogus","confirm":true}""");
         Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
         {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
             ["point"] = document.RootElement.GetProperty("point").Clone(),
             ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
             ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
@@ -215,9 +248,10 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ToolRequestBinderRejectsUnsupportedButtonForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"elementIndex":1,"button":"middle","confirm":true}""");
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"button":"middle","confirm":true}""");
         Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
         {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
             ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
             ["button"] = document.RootElement.GetProperty("button").Clone(),
             ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
@@ -233,6 +267,74 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.False(success);
         Assert.Equal(new ComputerUseWinClickRequest(), request);
         Assert.Contains("button", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsMissingStateTokenForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"elementIndex":1,"confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("stateToken", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsMissingSelectorForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("elementIndex", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsWhitespaceStateTokenForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"   ","elementIndex":1,"confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("stateToken", reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -259,11 +361,34 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
-    public void ToolRequestBinderRejectsConflictingSelectorsForComputerUseClick()
+    public void ToolRequestBinderRejectsWhitespaceAppIdWhenHwndIsPresent()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"elementIndex":1,"point":{"x":10,"y":20},"confirm":true}""");
+        using JsonDocument document = JsonDocument.Parse("""{"appId":"   ","hwnd":123}""");
         Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
         {
+            ["appId"] = document.RootElement.GetProperty("appId").Clone(),
+            ["hwnd"] = document.RootElement.GetProperty("hwnd").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinGetAppStateRequest(),
+            out ComputerUseWinGetAppStateRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinGetAppStateRequest(), request);
+        Assert.Contains("appId", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsConflictingSelectorsForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"point":{"x":10,"y":20},"confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
             ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
             ["point"] = document.RootElement.GetProperty("point").Clone(),
             ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
@@ -337,6 +462,16 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ComputerUseWinClickToolSchemaRejectsWhitespaceOnlyStateToken()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var clickTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinClick, StringComparison.Ordinal));
+        JsonElement inputSchema = clickTool.ProtocolTool.InputSchema;
+
+        Assert.Equal(@".*\S.*", inputSchema.GetProperty("properties").GetProperty("stateToken").GetProperty("pattern").GetString());
+    }
+
+    [Fact]
     public void ComputerUseWinGetAppStateToolSchemaRejectsConflictingSelectors()
     {
         var tools = ComputerUseWinToolRegistration.Create(static () => null!);
@@ -349,6 +484,16 @@ public sealed class ComputerUseWinArchitectureTests
             .Cast<string>()
             .ToArray();
         Assert.Equal(["appId", "hwnd"], notRequired);
+    }
+
+    [Fact]
+    public void ComputerUseWinGetAppStateToolSchemaRejectsWhitespaceOnlyAppId()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var getAppStateTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinGetAppState, StringComparison.Ordinal));
+        JsonElement inputSchema = getAppStateTool.ProtocolTool.InputSchema;
+
+        Assert.Equal(@".*\S.*", inputSchema.GetProperty("properties").GetProperty("appId").GetProperty("pattern").GetString());
     }
 
     [Fact]

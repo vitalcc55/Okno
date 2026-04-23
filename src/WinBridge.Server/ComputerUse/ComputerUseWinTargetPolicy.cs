@@ -16,6 +16,8 @@ internal static class ComputerUseWinTargetPolicy
             ComputerUseWinAppIdentity.NormalizeProcessIdentity("bash.exe")!,
             ComputerUseWinAppIdentity.NormalizeProcessIdentity("wt.exe")!,
             ComputerUseWinAppIdentity.NormalizeProcessIdentity("windowsterminal.exe")!,
+            ComputerUseWinAppIdentity.NormalizeProcessIdentity("conhost.exe")!,
+            ComputerUseWinAppIdentity.NormalizeProcessIdentity("openconsole.exe")!,
         };
 
     private static readonly string[] RiskyElementKeywords =
@@ -28,6 +30,11 @@ internal static class ComputerUseWinTargetPolicy
         "purchase",
         "pay",
         "confirm",
+        "отправ",
+        "удал",
+        "оплат",
+        "подтверд",
+        "куп",
     ];
 
     public static bool TryGetBlockedReason(WindowDescriptor window, out string? reason)

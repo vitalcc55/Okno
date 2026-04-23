@@ -370,6 +370,44 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ClickTargetResolverDoesNotFallbackOnLabelOnlyMatch()
+    {
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Done,
+                Window: CreateObservedWindow(window),
+                Root: new UiaElementSnapshot
+                {
+                    ElementId = "root",
+                    ControlType = "window",
+                    Children =
+                    [
+                        new UiaElementSnapshot
+                        {
+                            ElementId = "other",
+                            ControlType = "button",
+                            Name = "Delete item",
+                            BoundingRectangle = new Bounds(100, 120, 180, 160),
+                            IsEnabled = true,
+                            IsOffscreen = false,
+                        },
+                    ],
+                },
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        ComputerUseWinClickTargetResolver resolver = new(uiAutomationService);
+
+        ComputerUseWinClickTargetResolution resolution = await resolver.ResolveAsync(
+            CreateLabelOnlyStoredState(),
+            new ComputerUseWinClickRequest(ElementIndex: 1),
+            CancellationToken.None);
+
+        Assert.False(resolution.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, resolution.FailureCode);
+    }
+
+    [Fact]
     public async Task ClickExecutionCoordinatorReresolvesElementTargetAfterActivationRetry()
     {
         int snapshotCall = 0;
@@ -598,6 +636,26 @@ public sealed class ComputerUseWinActionAndProjectionTests
                     Index: 1,
                     ElementId: "path:0",
                     Name: null,
+                    AutomationId: null,
+                    ControlType: "button",
+                    Bounds: new Bounds(10, 20, 50, 60),
+                    HasKeyboardFocus: false,
+                    Actions: [ToolNames.ComputerUseWinClick]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateLabelOnlyStoredState() =>
+        new(
+            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:0",
+                    Name: "Delete item",
                     AutomationId: null,
                     ControlType: "button",
                     Bounds: new Bounds(10, 20, 50, 60),

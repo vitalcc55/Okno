@@ -203,6 +203,41 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void ActionFinalizerPublishesFailureCodeForUnexpectedInternalFailure()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-unexpected-code-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-unexpected-code-tests")).GetSnapshot());
+
+            CallToolResult result = ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                exception: new InvalidOperationException("secret setup failure"));
+
+            Assert.True(result.IsError);
+            JsonElement payload = result.StructuredContent!.Value;
+            Assert.Equal(ComputerUseWinFailureCodeValues.UnexpectedInternalFailure, payload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ActionFinalizerMapsInternalFailureCodesToPublicVocabulary()
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
@@ -326,6 +361,44 @@ public sealed class ComputerUseWinFinalizationTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void BoundaryActionFailureDoesNotRecommendRefreshByDefault()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreatePreDispatchFailurePayload(
+                ComputerUseWinFailureCodeValues.InvalidRequest,
+                "Malformed click request.",
+                targetHwnd: 101,
+                elementIndex: null);
+
+            Assert.False(payload.RefreshStateRecommended);
+            Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.FailureCode);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BoundaryActionApprovalRequiredDoesNotRecommendRefreshByDefault()
+    {
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreatePreDispatchApprovalRequiredPayload(
+            "Confirm required.",
+            targetHwnd: 101,
+            elementIndex: 1);
+
+        Assert.False(payload.RefreshStateRecommended);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ApprovalRequired, payload.FailureCode);
     }
 
     [Fact]

@@ -51,6 +51,7 @@ internal static class ComputerUseWinFailureCodeMapper
             ComputerUseWinFailureCodeValues.StaleState or
             ComputerUseWinFailureCodeValues.ObservationFailed or
             ComputerUseWinFailureCodeValues.UnsupportedAction or
+            ComputerUseWinFailureCodeValues.UnexpectedInternalFailure or
             ComputerUseWinFailureCodeValues.CaptureReferenceRequired or
             ComputerUseWinFailureCodeValues.TargetPreflightFailed or
             ComputerUseWinFailureCodeValues.TargetNotForeground or
@@ -67,6 +68,8 @@ internal static class ComputerUseWinFailureCodeMapper
                 "Запрос больше не соответствует публичному click contract; проверь selector и повтори вызов с актуальными аргументами.",
             ComputerUseWinFailureCodeValues.UnsupportedAction =>
                 "Computer Use for Windows получил неподдерживаемый action outcome; повтори сценарий через актуальный публичный contract.",
+            ComputerUseWinFailureCodeValues.UnexpectedInternalFailure =>
+                "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого runtime action outcome.",
             ComputerUseWinFailureCodeValues.MissingTarget =>
                 "Целевое окно больше не найдено; заново вызови get_app_state и повтори действие только после нового stateToken.",
             ComputerUseWinFailureCodeValues.StaleState =>
