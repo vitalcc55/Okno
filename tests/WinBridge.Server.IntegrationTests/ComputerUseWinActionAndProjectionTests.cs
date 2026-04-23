@@ -192,6 +192,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             CancellationToken.None);
 
         Assert.True(outcome.IsApprovalRequired);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.BeforeActivation, outcome.Phase);
         Assert.Null(activationService.LastHwnd);
         Assert.Equal(0, inputService.Calls);
     }
@@ -289,6 +290,33 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.False(outcome.IsSuccess);
         Assert.False(outcome.IsApprovalRequired);
         Assert.Equal(ComputerUseWinFailureCodeValues.CaptureReferenceRequired, outcome.FailureDetails?.FailureCode);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.BeforeActivation, outcome.Phase);
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ClickExecutionCoordinatorRejectsCapturePixelsPointOutsideStoredRasterBeforeActivation()
+    {
+        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(Point: new InputPoint(9999, 30), Confirm: true),
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.False(outcome.IsApprovalRequired);
+        Assert.Equal(ComputerUseWinFailureCodeValues.PointOutOfBounds, outcome.FailureDetails?.FailureCode);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.BeforeActivation, outcome.Phase);
         Assert.Null(activationService.LastHwnd);
         Assert.Equal(0, inputService.Calls);
     }
@@ -551,6 +579,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             CancellationToken.None);
 
         Assert.True(outcome.IsApprovalRequired);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch, outcome.Phase);
         Assert.Equal(1, inputService.Calls);
         Assert.Equal(2, activationCalls);
         Assert.Equal(2, snapshotCall);

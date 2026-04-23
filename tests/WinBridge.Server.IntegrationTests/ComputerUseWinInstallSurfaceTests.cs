@@ -101,11 +101,10 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 });
 
             Assert.NotEqual(0, result.ExitCode);
+            Assert.True(File.Exists(Path.Combine(runtimeRoot, "Okno.Server.exe")));
+            Assert.True(File.Exists(sentinelPath));
+            Assert.Equal("keep", File.ReadAllText(sentinelPath));
 
-            string[] backupCandidates = Directory.Exists(runtimeParent)
-                ? Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly)
-                : [];
-            Assert.NotEmpty(backupCandidates);
         }
         finally
         {
@@ -116,6 +115,36 @@ public sealed class ComputerUseWinInstallSurfaceTests
             }
 
             DeleteDirectoryIfExists(backupRoot);
+            foreach (string backupCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(backupCandidate);
+            }
+        }
+    }
+
+    [Fact]
+    public void PublishComputerUseWinPluginTreatsBackupCleanupFailureAsBestEffortAfterSuccessfulPromote()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
+        string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
+
+        try
+        {
+            ScriptInvocationResult result = InvokePowerShellScript(
+                scriptPath,
+                repoRoot,
+                startInfo => startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_BACKUP_CLEANUP"] = "1");
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.True(File.Exists(Path.Combine(runtimeRoot, "Okno.Server.exe")));
+            Assert.NotEmpty(Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly));
+        }
+        finally
+        {
             foreach (string backupCandidate in Directory.Exists(runtimeParent)
                          ? Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly)
                          : [])

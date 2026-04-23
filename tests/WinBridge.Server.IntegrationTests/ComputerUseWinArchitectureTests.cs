@@ -246,9 +246,57 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ToolRequestBinderRejectsWhitespaceCoordinateSpaceForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"   ","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ToolRequestBinderRejectsUnsupportedButtonForComputerUseClick()
     {
         using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"button":"middle","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
+            ["button"] = document.RootElement.GetProperty("button").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("button", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsWhitespaceButtonForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"button":"   ","confirm":true}""");
         Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
         {
             ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
@@ -416,6 +464,17 @@ public sealed class ComputerUseWinArchitectureTests
 
         Assert.False(success);
         Assert.Null(appId);
+    }
+
+    [Fact]
+    public void GetAppStateIdentityProofFailureUsesRetriableFailedPayload()
+    {
+        ComputerUseWinGetAppStateResult payload = ComputerUseWinGetAppStateFinalizer.CreateIdentityProofFailurePayload(
+            "Computer Use for Windows не смог подтвердить стабильную process identity окна.");
+
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.Status);
+        Assert.Equal(ComputerUseWinFailureCodeValues.IdentityProofUnavailable, payload.FailureCode);
+        Assert.False(payload.ApprovalRequired);
     }
 
     [Fact]

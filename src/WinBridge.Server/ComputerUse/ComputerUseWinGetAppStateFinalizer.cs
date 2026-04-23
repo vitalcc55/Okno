@@ -9,6 +9,32 @@ namespace WinBridge.Server.ComputerUse;
 
 internal static class ComputerUseWinGetAppStateFinalizer
 {
+    internal static ComputerUseWinGetAppStateResult CreateFailurePayload(string failureCode, string reason) =>
+        new(
+            Status: ComputerUseWinStatusValues.Failed,
+            FailureCode: failureCode,
+            Reason: reason);
+
+    internal static ComputerUseWinGetAppStateResult CreateBlockedPayload(string reason) =>
+        new(
+            Status: ComputerUseWinStatusValues.Blocked,
+            FailureCode: ComputerUseWinFailureCodeValues.BlockedTarget,
+            Reason: reason);
+
+    internal static ComputerUseWinGetAppStateResult CreateApprovalRequiredPayload(WindowDescriptor window, string appId) =>
+        new(
+            Status: ComputerUseWinStatusValues.ApprovalRequired,
+            Session: new ComputerUseWinAppSession(appId, window.Hwnd, window.Title, window.ProcessName, window.ProcessId),
+            ApprovalRequired: true,
+            FailureCode: ComputerUseWinFailureCodeValues.ApprovalRequired,
+            Reason: $"App '{appId}' ещё не одобрена для Computer Use for Windows.");
+
+    internal static ComputerUseWinGetAppStateResult CreateIdentityProofFailurePayload(string reason) =>
+        new(
+            Status: ComputerUseWinStatusValues.Failed,
+            FailureCode: ComputerUseWinFailureCodeValues.IdentityProofUnavailable,
+            Reason: reason);
+
     public static CallToolResult FinalizeSuccess(
         AuditInvocationScope invocation,
         string appId,

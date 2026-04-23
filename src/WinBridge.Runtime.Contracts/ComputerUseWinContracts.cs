@@ -17,6 +17,7 @@ public static class ComputerUseWinFailureCodeValues
     public const string AmbiguousTarget = "ambiguous_target";
     public const string ApprovalRequired = "approval_required";
     public const string BlockedTarget = "blocked_target";
+    public const string IdentityProofUnavailable = "identity_proof_unavailable";
     public const string StateRequired = "state_required";
     public const string StaleState = "stale_state";
     public const string ObservationFailed = "observation_failed";

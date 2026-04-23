@@ -47,6 +47,7 @@ internal static class ComputerUseWinFailureCodeMapper
             ComputerUseWinFailureCodeValues.AmbiguousTarget or
             ComputerUseWinFailureCodeValues.ApprovalRequired or
             ComputerUseWinFailureCodeValues.BlockedTarget or
+            ComputerUseWinFailureCodeValues.IdentityProofUnavailable or
             ComputerUseWinFailureCodeValues.StateRequired or
             ComputerUseWinFailureCodeValues.StaleState or
             ComputerUseWinFailureCodeValues.ObservationFailed or
@@ -70,6 +71,8 @@ internal static class ComputerUseWinFailureCodeMapper
                 "Computer Use for Windows получил неподдерживаемый action outcome; повтори сценарий через актуальный публичный contract.",
             ComputerUseWinFailureCodeValues.UnexpectedInternalFailure =>
                 "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого runtime action outcome.",
+            ComputerUseWinFailureCodeValues.IdentityProofUnavailable =>
+                "Computer Use for Windows не смог подтвердить стабильную process identity окна; повтори get_app_state после нового live proof.",
             ComputerUseWinFailureCodeValues.MissingTarget =>
                 "Целевое окно больше не найдено; заново вызови get_app_state и повтори действие только после нового stateToken.",
             ComputerUseWinFailureCodeValues.StaleState =>

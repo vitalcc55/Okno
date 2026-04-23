@@ -363,22 +363,26 @@ public sealed class ComputerUseWinFinalizationTests
         }
     }
 
-    [Fact]
-    public void BoundaryActionFailureDoesNotRecommendRefreshByDefault()
+    [Theory]
+    [InlineData(ComputerUseWinFailureCodeValues.StateRequired)]
+    [InlineData(ComputerUseWinFailureCodeValues.StaleState)]
+    [InlineData(ComputerUseWinFailureCodeValues.CaptureReferenceRequired)]
+    public void StructuredBoundaryFailuresThatNeedFreshStateRecommendRefresh(string failureCode)
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
 
         try
         {
-            ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreatePreDispatchFailurePayload(
-                ComputerUseWinFailureCodeValues.InvalidRequest,
-                "Malformed click request.",
+            ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredFailurePayload(
+                failureCode,
+                "Refresh is required.",
                 targetHwnd: 101,
-                elementIndex: null);
+                elementIndex: null,
+                phase: ComputerUseWinActionLifecyclePhase.BeforeActivation);
 
-            Assert.False(payload.RefreshStateRecommended);
-            Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.FailureCode);
+            Assert.True(payload.RefreshStateRecommended);
+            Assert.Equal(failureCode, payload.FailureCode);
         }
         finally
         {
@@ -390,14 +394,55 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
-    public void BoundaryActionApprovalRequiredDoesNotRecommendRefreshByDefault()
+    public void BoundaryActionFailureDoesNotRecommendRefreshForMalformedRequestBeforeActivation()
     {
-        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreatePreDispatchApprovalRequiredPayload(
-            "Confirm required.",
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredFailurePayload(
+            ComputerUseWinFailureCodeValues.InvalidRequest,
+            "Malformed click request.",
             targetHwnd: 101,
-            elementIndex: 1);
+            elementIndex: null,
+            phase: ComputerUseWinActionLifecyclePhase.BeforeActivation);
 
         Assert.False(payload.RefreshStateRecommended);
+        Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.FailureCode);
+    }
+
+    [Fact]
+    public void BoundaryActionApprovalRequiredDoesNotRecommendRefreshBeforeActivation()
+    {
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredApprovalRequiredPayload(
+            "Confirm required.",
+            targetHwnd: 101,
+            elementIndex: 1,
+            phase: ComputerUseWinActionLifecyclePhase.BeforeActivation);
+
+        Assert.False(payload.RefreshStateRecommended);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ApprovalRequired, payload.FailureCode);
+    }
+
+    [Fact]
+    public void StructuredActionFailureRecommendsRefreshAfterActivationBeforeDispatch()
+    {
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredFailurePayload(
+            ComputerUseWinFailureCodeValues.StaleState,
+            "State became stale after activation.",
+            targetHwnd: 101,
+            elementIndex: 1,
+            phase: ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch);
+
+        Assert.True(payload.RefreshStateRecommended);
+    }
+
+    [Fact]
+    public void StructuredActionApprovalRequiredRecommendsRefreshAfterRetryReresolution()
+    {
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredApprovalRequiredPayload(
+            "Confirm required after retry.",
+            targetHwnd: 101,
+            elementIndex: 1,
+            phase: ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch);
+
+        Assert.True(payload.RefreshStateRecommended);
         Assert.Equal(ComputerUseWinFailureCodeValues.ApprovalRequired, payload.FailureCode);
     }
 

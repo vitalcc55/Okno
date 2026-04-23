@@ -29,7 +29,8 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
             return ComputerUseWinClickExecutionOutcome.Failure(
                 ComputerUseWinFailureDetails.Expected(
                     ComputerUseWinFailureCodeValues.BlockedTarget,
-                    activation.Reason ?? "Computer Use for Windows не смог подготовить окно к клику."));
+                    activation.Reason ?? "Computer Use for Windows не смог подготовить окно к клику."),
+                ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch);
         }
 
         ComputerUseWinStoredState resolvedState = state with
@@ -40,7 +41,9 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
         ComputerUseWinClickTargetResolution resolution = await clickTargetResolver.ResolveAsync(resolvedState, request, cancellationToken).ConfigureAwait(false);
         if (!resolution.IsSuccess)
         {
-            return ComputerUseWinClickExecutionOutcome.Failure(resolution.FailureDetails!);
+            return ComputerUseWinClickExecutionOutcome.Failure(
+                resolution.FailureDetails!,
+                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch);
         }
 
         if (resolution.RequiresConfirmation && !request.Confirm)
@@ -48,7 +51,8 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
             return ComputerUseWinClickExecutionOutcome.ApprovalRequired(
                 request.ElementIndex is null
                     ? ComputerUseWinClickContract.CoordinateApprovalReason
-                    : "Клик по выбранному элементу требует явного подтверждения.");
+                    : "Клик по выбранному элементу требует явного подтверждения.",
+                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch);
         }
 
         InputResult input = await ExecuteInputAsync(resolvedState, resolution.Action!, cancellationToken).ConfigureAwait(false);
@@ -69,12 +73,16 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
                     ComputerUseWinClickTargetResolution retryResolution = await clickTargetResolver.ResolveAsync(resolvedState, request, cancellationToken).ConfigureAwait(false);
                     if (!retryResolution.IsSuccess)
                     {
-                        return ComputerUseWinClickExecutionOutcome.Failure(retryResolution.FailureDetails!);
+                        return ComputerUseWinClickExecutionOutcome.Failure(
+                            retryResolution.FailureDetails!,
+                            ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch);
                     }
 
                     if (retryResolution.RequiresConfirmation && !request.Confirm)
                     {
-                        return ComputerUseWinClickExecutionOutcome.ApprovalRequired("Клик по выбранному элементу требует явного подтверждения.");
+                        return ComputerUseWinClickExecutionOutcome.ApprovalRequired(
+                            "Клик по выбранному элементу требует явного подтверждения.",
+                            ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch);
                     }
 
                     retryAction = retryResolution.Action!;
@@ -110,18 +118,23 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
 internal sealed record ComputerUseWinClickExecutionOutcome(
     InputResult? Input,
     ComputerUseWinFailureDetails? FailureDetails,
-    string? ApprovalReason)
+    string? ApprovalReason,
+    ComputerUseWinActionLifecyclePhase Phase)
 {
     public bool IsSuccess => Input is not null;
 
     public bool IsApprovalRequired => ApprovalReason is not null;
 
     public static ComputerUseWinClickExecutionOutcome Success(InputResult input) =>
-        new(input, null, null);
+        new(input, null, null, ComputerUseWinActionLifecyclePhase.PostDispatch);
 
-    public static ComputerUseWinClickExecutionOutcome Failure(ComputerUseWinFailureDetails failure) =>
-        new(null, failure, null);
+    public static ComputerUseWinClickExecutionOutcome Failure(
+        ComputerUseWinFailureDetails failure,
+        ComputerUseWinActionLifecyclePhase phase) =>
+        new(null, failure, null, phase);
 
-    public static ComputerUseWinClickExecutionOutcome ApprovalRequired(string reason) =>
-        new(null, null, reason);
+    public static ComputerUseWinClickExecutionOutcome ApprovalRequired(
+        string reason,
+        ComputerUseWinActionLifecyclePhase phase) =>
+        new(null, null, reason, phase);
 }

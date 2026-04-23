@@ -77,14 +77,17 @@ internal static class ComputerUseWinActionFinalizer
         Exception exception,
         bool preDispatchStateMutationPossible)
     {
-        ComputerUseWinActionResult payload = CreatePreDispatchFailurePayload(
+        ComputerUseWinActionLifecyclePhase phase = preDispatchStateMutationPossible
+            ? ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch
+            : ComputerUseWinActionLifecyclePhase.BeforeActivation;
+        ComputerUseWinActionResult payload = CreateStructuredFailurePayload(
             ComputerUseWinFailureCodeValues.UnexpectedInternalFailure,
             preDispatchStateMutationPossible
                 ? "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; из-за возможной активации окна перед retry сначала обнови состояние через get_app_state."
                 : "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; можно повторить запрос после устранения причины, refresh через get_app_state не обязателен.",
             targetHwnd,
             elementIndex,
-            refreshStateRecommended: preDispatchStateMutationPossible);
+            phase);
 
         ComputerUseWinFailureCompletion.CompleteFailure(
             invocation,
@@ -93,7 +96,7 @@ internal static class ComputerUseWinActionFinalizer
             payload.TargetHwnd,
             exception,
             bestEffort: true,
-            data: CreateUnexpectedFailureAuditData(preDispatchStateMutationPossible ? "pre_dispatch_after_activation" : "pre_dispatch_internal"));
+            data: CreateUnexpectedFailureAuditData(phase));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -144,10 +147,28 @@ internal static class ComputerUseWinActionFinalizer
         return data;
     }
 
-    private static Dictionary<string, string?> CreateUnexpectedFailureAuditData(string failurePhase) =>
+    internal static Dictionary<string, string?> CreateStructuredPhaseAuditData(ComputerUseWinActionLifecyclePhase phase) =>
         new(StringComparer.Ordinal)
         {
-            ["failure_phase"] = failurePhase,
+            ["failure_phase"] = phase switch
+            {
+                ComputerUseWinActionLifecyclePhase.BeforeActivation => "pre_dispatch_reject",
+                ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch => "pre_dispatch_after_activation",
+                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch => "after_revalidation_before_dispatch",
+                _ => "post_dispatch",
+            },
+        };
+
+    private static Dictionary<string, string?> CreateUnexpectedFailureAuditData(ComputerUseWinActionLifecyclePhase phase) =>
+        new(StringComparer.Ordinal)
+        {
+            ["failure_phase"] = phase switch
+            {
+                ComputerUseWinActionLifecyclePhase.BeforeActivation => "pre_dispatch_internal",
+                ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch => "pre_dispatch_after_activation",
+                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch => "after_revalidation_before_dispatch",
+                _ => "post_dispatch",
+            },
         };
 
     private static CallToolResult CreateToolResult(ComputerUseWinActionResult payload, bool isError)
@@ -168,27 +189,45 @@ internal static class ComputerUseWinActionFinalizer
         };
     }
 
-    internal static ComputerUseWinActionResult CreatePreDispatchFailurePayload(
+    private static bool ShouldRecommendRefresh(
+        string? failureCode,
+        ComputerUseWinActionLifecyclePhase phase)
+    {
+        if (phase is ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch
+            or ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch
+            or ComputerUseWinActionLifecyclePhase.PostDispatch)
+        {
+            return true;
+        }
+
+        string? publicFailureCode = ComputerUseWinFailureCodeMapper.ToPublicFailureCode(failureCode);
+        return publicFailureCode is ComputerUseWinFailureCodeValues.StateRequired
+            or ComputerUseWinFailureCodeValues.StaleState
+            or ComputerUseWinFailureCodeValues.CaptureReferenceRequired;
+    }
+
+    internal static ComputerUseWinActionResult CreateStructuredFailurePayload(
         string failureCode,
         string reason,
         long? targetHwnd,
         int? elementIndex,
-        bool refreshStateRecommended = false) =>
+        ComputerUseWinActionLifecyclePhase phase) =>
         new(
             Status: ComputerUseWinStatusValues.Failed,
-            RefreshStateRecommended: refreshStateRecommended,
+            RefreshStateRecommended: ShouldRecommendRefresh(failureCode, phase),
             FailureCode: failureCode,
             Reason: reason,
             TargetHwnd: targetHwnd,
             ElementIndex: elementIndex);
 
-    internal static ComputerUseWinActionResult CreatePreDispatchApprovalRequiredPayload(
+    internal static ComputerUseWinActionResult CreateStructuredApprovalRequiredPayload(
         string reason,
         long? targetHwnd,
-        int? elementIndex) =>
+        int? elementIndex,
+        ComputerUseWinActionLifecyclePhase phase) =>
         new(
             Status: ComputerUseWinStatusValues.ApprovalRequired,
-            RefreshStateRecommended: false,
+            RefreshStateRecommended: phase is not ComputerUseWinActionLifecyclePhase.BeforeActivation,
             FailureCode: ComputerUseWinFailureCodeValues.ApprovalRequired,
             Reason: reason,
             TargetHwnd: targetHwnd,

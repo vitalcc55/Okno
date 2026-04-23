@@ -66,7 +66,8 @@ internal static class ComputerUseWinClickContract
         if (validationFailure is not null)
         {
             outcome = ComputerUseWinClickExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(ComputerUseWinFailureCodeValues.InvalidRequest, validationFailure));
+                ComputerUseWinFailureDetails.Expected(ComputerUseWinFailureCodeValues.InvalidRequest, validationFailure),
+                ComputerUseWinActionLifecyclePhase.BeforeActivation);
             return true;
         }
 
@@ -78,14 +79,17 @@ internal static class ComputerUseWinClickContract
                 outcome = ComputerUseWinClickExecutionOutcome.Failure(
                     ComputerUseWinFailureDetails.Expected(
                         ComputerUseWinFailureCodeValues.InvalidRequest,
-                        $"elementIndex {elementIndex} не существует или больше не является clickable target в последнем get_app_state."));
+                        $"elementIndex {elementIndex} не существует или больше не является clickable target в последнем get_app_state."),
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation);
                 return true;
             }
 
             if (!request.Confirm
                 && ComputerUseWinTargetPolicy.RequiresRiskConfirmation(storedElement, ToolNames.ComputerUseWinClick))
             {
-                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired("Клик по выбранному элементу требует явного подтверждения.");
+                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired(
+                    "Клик по выбранному элементу требует явного подтверждения.",
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation);
                 return true;
             }
 
@@ -95,22 +99,41 @@ internal static class ComputerUseWinClickContract
 
         if (request.Point is not null)
         {
-            string coordinateSpace = string.IsNullOrWhiteSpace(request.CoordinateSpace)
+            string coordinateSpace = request.CoordinateSpace is null
                 ? InputCoordinateSpaceValues.CapturePixels
                 : request.CoordinateSpace!;
-            if (string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
-                && state.CaptureReference is null)
+            if (string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
             {
-                outcome = ComputerUseWinClickExecutionOutcome.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
-                        "Для coordinate click по screenshot coordinates нужен актуальный get_app_state со свежим capture proof."));
-                return true;
+                if (state.CaptureReference is null)
+                {
+                    outcome = ComputerUseWinClickExecutionOutcome.Failure(
+                        ComputerUseWinFailureDetails.Expected(
+                            ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
+                            "Для coordinate click по screenshot coordinates нужен актуальный get_app_state со свежим capture proof."),
+                        ComputerUseWinActionLifecyclePhase.BeforeActivation);
+                    return true;
+                }
+
+                InputPoint point = request.Point;
+                if (point.X < 0
+                    || point.Y < 0
+                    || point.X >= state.CaptureReference.PixelWidth
+                    || point.Y >= state.CaptureReference.PixelHeight)
+                {
+                    outcome = ComputerUseWinClickExecutionOutcome.Failure(
+                        ComputerUseWinFailureDetails.Expected(
+                            ComputerUseWinFailureCodeValues.PointOutOfBounds,
+                            "Указанная capture_pixels point выходит за пределы capture raster из последнего get_app_state; скорректируй point перед retry."),
+                        ComputerUseWinActionLifecyclePhase.BeforeActivation);
+                    return true;
+                }
             }
 
             if (!request.Confirm)
             {
-                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired(CoordinateApprovalReason);
+                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired(
+                    CoordinateApprovalReason,
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation);
                 return true;
             }
 
@@ -121,7 +144,8 @@ internal static class ComputerUseWinClickContract
         outcome = ComputerUseWinClickExecutionOutcome.Failure(
             ComputerUseWinFailureDetails.Expected(
                 ComputerUseWinFailureCodeValues.InvalidRequest,
-                "Для click требуется elementIndex или point."));
+                "Для click требуется elementIndex или point."),
+            ComputerUseWinActionLifecyclePhase.BeforeActivation);
         return true;
     }
 
@@ -152,29 +176,36 @@ internal static class ComputerUseWinClickContract
 
     private static string? ValidateCoordinateSpace(string? coordinateSpace)
     {
-        if (string.IsNullOrWhiteSpace(coordinateSpace))
-        {
-            return null;
-        }
-
-        if (!AllowedCoordinateSpaceValues.Contains(coordinateSpace, StringComparer.Ordinal))
-        {
-            return $"Параметр coordinateSpace использует неподдерживаемое значение '{coordinateSpace}'.";
-        }
-
-        return null;
+        return ValidateOptionalEnumToken(
+            coordinateSpace,
+            "coordinateSpace",
+            AllowedCoordinateSpaceValues);
     }
 
-    private static string? ValidateButton(string? button)
+    private static string? ValidateButton(string? button) =>
+        ValidateOptionalEnumToken(
+            button,
+            "button",
+            AllowedButtonValues);
+
+    private static string? ValidateOptionalEnumToken(
+        string? value,
+        string parameterName,
+        IReadOnlyList<string> allowedValues)
     {
-        if (string.IsNullOrWhiteSpace(button))
+        if (value is null)
         {
             return null;
         }
 
-        if (!AllowedButtonValues.Contains(button, StringComparer.Ordinal))
+        if (string.IsNullOrWhiteSpace(value))
         {
-            return $"Параметр button использует неподдерживаемое значение '{button}'.";
+            return $"Параметр {parameterName} не поддерживает пустую строку.";
+        }
+
+        if (!allowedValues.Contains(value, StringComparer.Ordinal))
+        {
+            return $"Параметр {parameterName} использует неподдерживаемое значение '{value}'.";
         }
 
         return null;

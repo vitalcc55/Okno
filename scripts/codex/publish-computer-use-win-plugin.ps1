@@ -23,6 +23,26 @@ function Remove-DirectoryIfExists {
     }
 }
 
+function Remove-DirectoryBestEffort {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Path,
+        [Parameter(Mandatory)]
+        [string] $Description
+    )
+
+    try {
+        if ($env:COMPUTER_USE_WIN_TEST_FAIL_BACKUP_CLEANUP -eq '1' -and [System.IO.Path]::GetFullPath($Path) -eq [System.IO.Path]::GetFullPath($backupRoot)) {
+            throw "Synthetic backup cleanup failure."
+        }
+
+        Remove-DirectoryIfExists -Path $Path
+    }
+    catch {
+        Write-Warning "$Description failed: $($_.Exception.Message)"
+    }
+}
+
 function Copy-DirectoryContents {
     param(
         [Parameter(Mandatory)]
@@ -52,6 +72,7 @@ New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $runtimeParent -Force | Out-Null
 $promoteCompleted = $false
 $restoreCompleted = $false
+$terminalState = 'publishing'
 
 try {
     & dotnet publish $serverProjectPath `
@@ -86,26 +107,44 @@ try {
 
         Move-Item -LiteralPath $swapRoot -Destination $runtimeRoot
         $promoteCompleted = $true
-        Remove-DirectoryIfExists -Path $backupRoot
+        $terminalState = 'promote_succeeded'
     }
     catch {
         if (-not (Test-Path $runtimeRoot -PathType Container) -and (Test-Path $backupRoot -PathType Container)) {
-            if ($env:COMPUTER_USE_WIN_TEST_FAIL_RESTORE -eq '1') {
-                throw "Synthetic publish restore failure after promote error."
+            try {
+                if ($env:COMPUTER_USE_WIN_TEST_FAIL_RESTORE -eq '1') {
+                    throw "Synthetic publish restore failure after promote error."
+                }
+
+                Move-Item -LiteralPath $backupRoot -Destination $runtimeRoot
+            }
+            catch {
+                if (-not (Test-Path $runtimeRoot -PathType Container)) {
+                    New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+                }
+
+                Copy-DirectoryContents -SourceRoot $backupRoot -DestinationRoot $runtimeRoot
+                $restoredServerExePath = Join-Path $runtimeRoot 'Okno.Server.exe'
+                if (-not (Test-Path $restoredServerExePath -PathType Leaf)) {
+                    throw
+                }
             }
 
-            Move-Item -LiteralPath $backupRoot -Destination $runtimeRoot
             $restoreCompleted = $true
+            $terminalState = 'restore_succeeded'
+        }
+        else {
+            $terminalState = 'recovery_incomplete'
         }
 
         throw
     }
 }
 finally {
-    Remove-DirectoryIfExists -Path $stagingRoot
-    Remove-DirectoryIfExists -Path $swapRoot
+    Remove-DirectoryBestEffort -Path $stagingRoot -Description 'staging cleanup'
+    Remove-DirectoryBestEffort -Path $swapRoot -Description 'swap cleanup'
     if ($promoteCompleted -or $restoreCompleted) {
-        Remove-DirectoryIfExists -Path $backupRoot
+        Remove-DirectoryBestEffort -Path $backupRoot -Description "backup cleanup after $terminalState"
     }
 }
 

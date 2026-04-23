@@ -188,7 +188,10 @@ internal sealed class ComputerUseWinTools
 
         if (!ComputerUseWinAppIdentity.TryCreateStableAppId(selectedWindow, out string? stableAppId))
         {
-            return CreateStateBlocked(invocation, selectedWindow, "Computer Use for Windows не смог подтвердить стабильную process identity окна; approval и observation fail-close-ятся до нового live proof.");
+            return CreateStateIdentityProofFailure(
+                invocation,
+                selectedWindow,
+                "Computer Use for Windows не смог подтвердить стабильную process identity окна; approval и observation fail-close-ятся до нового live proof.");
         }
 
         string appId = stableAppId!;
@@ -270,7 +273,8 @@ internal sealed class ComputerUseWinTools
                     ToolNames.ComputerUseWinClick,
                     resolvedState.Session.Hwnd,
                     request.ElementIndex,
-                    outcome.ApprovalReason!);
+                    outcome.ApprovalReason!,
+                    outcome.Phase);
             }
 
             if (!outcome.IsSuccess)
@@ -280,7 +284,8 @@ internal sealed class ComputerUseWinTools
                     ToolNames.ComputerUseWinClick,
                     outcome.FailureDetails!,
                     resolvedState.Session.Hwnd,
-                    request.ElementIndex);
+                    request.ElementIndex,
+                    outcome.Phase);
             }
 
             return CreateActionToolResult(invocation, ToolNames.ComputerUseWinClick, resolvedState.Session.Hwnd, request.ElementIndex, outcome.Input!);
@@ -888,33 +893,29 @@ internal sealed class ComputerUseWinTools
         long? targetHwnd = null,
         Exception? auditException = null)
     {
-        ComputerUseWinGetAppStateResult payload = new(
-            Status: ComputerUseWinStatusValues.Failed,
-            FailureCode: failureCode,
-            Reason: reason);
+        ComputerUseWinGetAppStateResult payload = ComputerUseWinGetAppStateFinalizer.CreateFailurePayload(failureCode, reason);
         ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, failureCode, targetHwnd, auditException);
         return CreateToolResult(payload, isError: true);
     }
 
     private static CallToolResult CreateStateBlocked(AuditInvocationScope invocation, WindowDescriptor window, string reason)
     {
-        ComputerUseWinGetAppStateResult payload = new(
-            Status: ComputerUseWinStatusValues.Blocked,
-            FailureCode: ComputerUseWinFailureCodeValues.BlockedTarget,
-            Reason: reason);
+        ComputerUseWinGetAppStateResult payload = ComputerUseWinGetAppStateFinalizer.CreateBlockedPayload(reason);
         ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, ComputerUseWinFailureCodeValues.BlockedTarget, window.Hwnd);
         return CreateToolResult(payload, isError: true);
     }
 
     private static CallToolResult CreateStateApprovalRequired(AuditInvocationScope invocation, WindowDescriptor window, string appId)
     {
-        ComputerUseWinGetAppStateResult payload = new(
-            Status: ComputerUseWinStatusValues.ApprovalRequired,
-            Session: new ComputerUseWinAppSession(appId, window.Hwnd, window.Title, window.ProcessName, window.ProcessId),
-            ApprovalRequired: true,
-            FailureCode: ComputerUseWinFailureCodeValues.ApprovalRequired,
-            Reason: $"App '{appId}' ещё не одобрена для Computer Use for Windows.");
+        ComputerUseWinGetAppStateResult payload = ComputerUseWinGetAppStateFinalizer.CreateApprovalRequiredPayload(window, appId);
         ComputerUseWinFailureCompletion.CompleteFailure(invocation, payload.Reason!, ComputerUseWinFailureCodeValues.ApprovalRequired, window.Hwnd);
+        return CreateToolResult(payload, isError: true);
+    }
+
+    private static CallToolResult CreateStateIdentityProofFailure(AuditInvocationScope invocation, WindowDescriptor window, string reason)
+    {
+        ComputerUseWinGetAppStateResult payload = ComputerUseWinGetAppStateFinalizer.CreateIdentityProofFailurePayload(reason);
+        ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, ComputerUseWinFailureCodeValues.IdentityProofUnavailable, window.Hwnd);
         return CreateToolResult(payload, isError: true);
     }
 
@@ -923,8 +924,9 @@ internal sealed class ComputerUseWinTools
         string toolName,
         ComputerUseWinFailureDetails failure,
         long? targetHwnd = null,
-        int? elementIndex = null) =>
-        CreateActionFailure(invocation, toolName, failure.FailureCode, failure.Reason, targetHwnd, elementIndex, failure.AuditException);
+        int? elementIndex = null,
+        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation) =>
+        CreateActionFailure(invocation, toolName, failure.FailureCode, failure.Reason, targetHwnd, elementIndex, failure.AuditException, phase);
 
     private static CallToolResult CreateActionFailure(
         AuditInvocationScope invocation,
@@ -933,14 +935,22 @@ internal sealed class ComputerUseWinTools
         string reason,
         long? targetHwnd = null,
         int? elementIndex = null,
-        Exception? auditException = null)
+        Exception? auditException = null,
+        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation)
     {
-        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreatePreDispatchFailurePayload(
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredFailurePayload(
             failureCode,
             reason,
             targetHwnd,
-            elementIndex);
-        ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, failureCode, targetHwnd, auditException);
+            elementIndex,
+            phase);
+        ComputerUseWinFailureCompletion.CompleteFailure(
+            invocation,
+            reason,
+            failureCode,
+            targetHwnd,
+            auditException,
+            data: ComputerUseWinActionFinalizer.CreateStructuredPhaseAuditData(phase));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -949,13 +959,20 @@ internal sealed class ComputerUseWinTools
         string toolName,
         long? targetHwnd,
         int? elementIndex,
-        string reason)
+        string reason,
+        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation)
     {
-        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreatePreDispatchApprovalRequiredPayload(
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredApprovalRequiredPayload(
             reason,
             targetHwnd,
-            elementIndex);
-        ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, ComputerUseWinFailureCodeValues.ApprovalRequired, targetHwnd);
+            elementIndex,
+            phase);
+        ComputerUseWinFailureCompletion.CompleteFailure(
+            invocation,
+            reason,
+            ComputerUseWinFailureCodeValues.ApprovalRequired,
+            targetHwnd,
+            data: ComputerUseWinActionFinalizer.CreateStructuredPhaseAuditData(phase));
         return CreateToolResult(payload, isError: true);
     }
 

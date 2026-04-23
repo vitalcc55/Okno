@@ -63,7 +63,7 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
                         Type = InputActionTypeValues.Click,
                         CoordinateSpace = InputCoordinateSpaceValues.Screen,
                         Point = new InputPoint((freshBounds.Left + freshBounds.Right) / 2, (freshBounds.Top + freshBounds.Bottom) / 2),
-                        Button = string.IsNullOrWhiteSpace(request.Button) ? InputButtonValues.Left : request.Button,
+                        Button = request.Button is null ? InputButtonValues.Left : request.Button,
                     },
                     effectiveElement,
                     ComputerUseWinTargetPolicy.RequiresRiskConfirmation(effectiveElement, ToolNames.ComputerUseWinClick));
@@ -89,7 +89,7 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
                     "Для click требуется elementIndex или point."));
         }
 
-        string coordinateSpace = string.IsNullOrWhiteSpace(request.CoordinateSpace)
+        string coordinateSpace = request.CoordinateSpace is null
             ? InputCoordinateSpaceValues.CapturePixels
             : request.CoordinateSpace!;
         return ComputerUseWinClickTargetResolution.Success(
@@ -98,7 +98,7 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
                 Type = InputActionTypeValues.Click,
                 CoordinateSpace = coordinateSpace,
                 Point = point,
-                Button = string.IsNullOrWhiteSpace(request.Button) ? InputButtonValues.Left : request.Button,
+                Button = request.Button is null ? InputButtonValues.Left : request.Button,
                 CaptureReference = string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
                     ? state.CaptureReference
                     : null,
