@@ -86,6 +86,7 @@ list_apps -> get_app_state -> click -> get_app_state
 
 - app approval — product-facing gate;
 - canonical app/process identity нормализуется к одному bare process name без `.exe`, чтобы block policy, playbooks и appId не drift-или между собой;
+- approval/block policy и `list_apps` app grouping допускаются только при доказанной stable process identity; окна без канонического process identity не должны получать public appId на основе `hwnd-*` и fail-close-ятся до approval/observation path;
 - risky action confirmation — отдельный product-facing шаг;
 - coordinate click считается low-confidence target path и требует explicit confirm, если target не доказан через semantic element из последнего `get_app_state`;
 - `stateToken` несёт observation envelope, на котором был получен semantic state; downstream revalidation не должна тихо откатываться к более слабым defaults;
@@ -94,8 +95,9 @@ list_apps -> get_app_state -> click -> get_app_state
 - `get_app_state` разделяет critical observation и advisory enrichment: screenshot + accessibility tree определяют success/failure; expected advisory-unavailable path для playbook hints не имеет права downcast-ить успешный observation result, но unexpected provider/runtime bug всё ещё materialize-ится как truthful `observation_failed` с sanitized audit provenance;
 - `get_app_state` публикует `stateToken` и commit-ит shared state только после полной успешной materialization public result; failed observation не должна оставлять ghost tokens или другие скрытые bounded-state commits;
 - malformed request shapes должны отсекаться на public boundary как `invalid_request`: explicit invalid `tool-surface-profile`, nested extra fields и schema-invalid `maxNodes` не должны уходить в widened surface или поздний `observation_failed`;
-- public `click` contract должен совпадать в validator, `tools/list` schema и generated exports: допустимые `button`/`coordinateSpace` публикуются из того же owner-слоя, что и runtime enforcement;
-- public `computer-use-win` action payload обязан emit-ить только vocabulary из `ComputerUseWinFailureCodeValues`; low-level `windows.input` evidence остаётся допустимым в audit/evidence, но не протекает наружу как несанкционированный `failureCode`;
+- public `click` contract должен совпадать в validator, `tools/list` schema и generated exports: допустимые `button`/`coordinateSpace`, обязательный `stateToken` и selector mode (`elementIndex` xor `point`) публикуются из того же owner-слоя, что и runtime enforcement;
+- public `computer-use-win` action payload обязан emit-ить только product-owned `failureCode` и `reason`; low-level `windows.input` evidence остаётся допустимым в audit/evidence, но не протекает наружу как несанкционированный payload wording;
+- semantic click admissibility должна совпадать между public tree и runtime revalidation: runtime не должен dispatch-ить `elementIndex`, если fresh element больше не clickable или semantic fallback свёлся к слишком слабому proof;
 - `stateToken` имеет bounded retention и short-lived stale-state discipline вместо неограниченного in-memory накопления;
 - blocked targets должны отсеиваться на public surface до unsafe dispatch.
 

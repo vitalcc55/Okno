@@ -5,14 +5,21 @@ namespace WinBridge.Server.ComputerUse;
 
 internal static class ComputerUseWinAppIdentity
 {
+    public static bool TryCreateStableAppId(WindowDescriptor window, out string? appId)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        appId = NormalizeProcessIdentity(window.ProcessName);
+        return !string.IsNullOrWhiteSpace(appId);
+    }
+
     public static string CreateAppId(WindowDescriptor window)
     {
         ArgumentNullException.ThrowIfNull(window);
 
-        string? processName = NormalizeProcessIdentity(window.ProcessName);
-        if (!string.IsNullOrWhiteSpace(processName))
+        if (TryCreateStableAppId(window, out string? processName))
         {
-            return processName;
+            return processName!;
         }
 
         return $"hwnd-{window.Hwnd.ToString(CultureInfo.InvariantCulture)}";

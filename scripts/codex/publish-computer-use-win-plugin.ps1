@@ -10,6 +10,7 @@ $runtimeRoot = Join-Path $runtimeParent 'win-x64'
 $publishRoot = Join-Path $repoRoot '.tmp\.codex\publish\computer-use-win\win-x64'
 $stagingRoot = Join-Path $publishRoot ('staging-' + [Guid]::NewGuid().ToString('N'))
 $swapRoot = Join-Path $runtimeParent ('win-x64.publish-' + [Guid]::NewGuid().ToString('N'))
+$backupRoot = Join-Path $runtimeParent ('win-x64.backup-' + [Guid]::NewGuid().ToString('N'))
 
 function Remove-DirectoryIfExists {
     param(
@@ -46,6 +47,7 @@ function Copy-DirectoryContents {
 
 Remove-DirectoryIfExists -Path $stagingRoot
 Remove-DirectoryIfExists -Path $swapRoot
+Remove-DirectoryIfExists -Path $backupRoot
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $runtimeParent -Force | Out-Null
 
@@ -71,12 +73,36 @@ try {
         throw "Plugin runtime swap directory '$swapRoot' does not contain Okno.Server.exe."
     }
 
-    Remove-DirectoryIfExists -Path $runtimeRoot
-    Move-Item -LiteralPath $swapRoot -Destination $runtimeRoot
+    $restoredBackup = $false
+    try {
+        if (Test-Path $runtimeRoot -PathType Container) {
+            Move-Item -LiteralPath $runtimeRoot -Destination $backupRoot
+        }
+
+        if ($env:COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP -eq '1') {
+            throw "Synthetic publish promote failure after backup handoff."
+        }
+
+        Move-Item -LiteralPath $swapRoot -Destination $runtimeRoot
+        Remove-DirectoryIfExists -Path $backupRoot
+    }
+    catch {
+        if (-not (Test-Path $runtimeRoot -PathType Container) -and (Test-Path $backupRoot -PathType Container)) {
+            Move-Item -LiteralPath $backupRoot -Destination $runtimeRoot
+            $restoredBackup = $true
+        }
+
+        if (-not $restoredBackup -and (Test-Path $backupRoot -PathType Container) -and -not (Test-Path $runtimeRoot -PathType Container)) {
+            throw
+        }
+
+        throw
+    }
 }
 finally {
     Remove-DirectoryIfExists -Path $stagingRoot
     Remove-DirectoryIfExists -Path $swapRoot
+    Remove-DirectoryIfExists -Path $backupRoot
 }
 
 [pscustomobject]@{

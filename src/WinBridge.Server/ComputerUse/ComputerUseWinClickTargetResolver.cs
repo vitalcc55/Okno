@@ -19,12 +19,12 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
             try
             {
                 if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
-                    || storedElement.Bounds is null)
+                    || !ComputerUseWinActionability.IsClickActionable(storedElement))
                 {
                     return ComputerUseWinClickTargetResolution.Failure(
                         ComputerUseWinFailureDetails.Expected(
                             ComputerUseWinFailureCodeValues.InvalidRequest,
-                            $"elementIndex {elementIndex} не существует или не даёт кликабельных bounds."));
+                            $"elementIndex {elementIndex} не существует или больше не является clickable target в последнем get_app_state."));
                 }
 
                 UiaSnapshotResult snapshot = await uiAutomationService.SnapshotAsync(
@@ -47,7 +47,9 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
 
                 IReadOnlyDictionary<int, ComputerUseWinStoredElement> freshElements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
                 if (!TryResolveFreshElement(freshElements, storedElement, out ComputerUseWinStoredElement? effectiveElement)
-                    || effectiveElement?.Bounds is not Bounds freshBounds)
+                    || effectiveElement is null
+                    || !ComputerUseWinActionability.IsClickActionable(effectiveElement)
+                    || effectiveElement.Bounds is not Bounds freshBounds)
                 {
                     return ComputerUseWinClickTargetResolution.Failure(
                         ComputerUseWinFailureDetails.Expected(
@@ -115,6 +117,12 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
         if (effectiveElement is not null)
         {
             return true;
+        }
+
+        if (!ComputerUseWinActionability.HasSemanticFallbackSignal(storedElement))
+        {
+            effectiveElement = null;
+            return false;
         }
 
         ComputerUseWinStoredElement[] fallbackMatches = freshElements.Values

@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
 
@@ -12,9 +13,41 @@ internal static class ComputerUseWinClickContract
         [InputButtonValues.Left, InputButtonValues.Right];
 
     public static string? ValidateRequest(ComputerUseWinClickRequest request) =>
-        ValidatePoint(request.Point, "point")
+        ValidateSelectorMode(request)
+        ?? ValidatePoint(request.Point, "point")
         ?? ValidateCoordinateSpace(request.CoordinateSpace)
         ?? ValidateButton(request.Button);
+
+    public static JsonObject CreateRequiredStateTokenSchema() =>
+        new()
+        {
+            ["type"] = "string",
+            ["minLength"] = 1,
+        };
+
+    public static JsonArray CreateSelectorModeSchema() =>
+        new()
+        {
+            new JsonObject
+            {
+                ["required"] = new JsonArray("elementIndex"),
+                ["properties"] = new JsonObject
+                {
+                    ["elementIndex"] = new JsonObject
+                    {
+                        ["type"] = "integer",
+                    },
+                },
+            },
+            new JsonObject
+            {
+                ["required"] = new JsonArray("point"),
+                ["properties"] = new JsonObject
+                {
+                    ["point"] = CreateRequiredPointSchema(),
+                },
+            },
+        };
 
     public static bool TryClassifyBeforeActivation(
         ComputerUseWinStoredState state,
@@ -33,12 +66,12 @@ internal static class ComputerUseWinClickContract
         if (request.ElementIndex is int elementIndex)
         {
             if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
-                || storedElement.Bounds is null)
+                || !ComputerUseWinActionability.IsClickActionable(storedElement))
             {
                 outcome = ComputerUseWinClickExecutionOutcome.Failure(
                     ComputerUseWinFailureDetails.Expected(
                         ComputerUseWinFailureCodeValues.InvalidRequest,
-                        $"elementIndex {elementIndex} не существует или не даёт кликабельных bounds."));
+                        $"elementIndex {elementIndex} не существует или больше не является clickable target в последнем get_app_state."));
                 return true;
             }
 
@@ -64,7 +97,7 @@ internal static class ComputerUseWinClickContract
                 outcome = ComputerUseWinClickExecutionOutcome.Failure(
                     ComputerUseWinFailureDetails.Expected(
                         ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
-                        $"Действие actions[0] с coordinateSpace '{InputCoordinateSpaceValues.CapturePixels}' должно содержать captureReference."));
+                        "Для coordinate click по screenshot coordinates нужен актуальный get_app_state со свежим capture proof."));
                 return true;
             }
 
@@ -101,6 +134,16 @@ internal static class ComputerUseWinClickContract
         failureCode = ComputerUseWinFailureCodeValues.InvalidRequest;
         reason = validationFailure;
         return false;
+    }
+
+    private static string? ValidateSelectorMode(ComputerUseWinClickRequest request)
+    {
+        if (request.ElementIndex is not null && request.Point is not null)
+        {
+            return "Для click нужно передать либо elementIndex, либо point, но не оба селектора сразу.";
+        }
+
+        return null;
     }
 
     private static string? ValidateCoordinateSpace(string? coordinateSpace)
@@ -158,6 +201,19 @@ internal static class ComputerUseWinClickContract
 
         return null;
     }
+
+    private static JsonObject CreateRequiredPointSchema() =>
+        new()
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["x"] = new JsonObject { ["type"] = "integer" },
+                ["y"] = new JsonObject { ["type"] = "integer" },
+            },
+            ["required"] = new JsonArray("x", "y"),
+            ["additionalProperties"] = false,
+        };
 
     internal const string CoordinateApprovalReason =
         "Coordinate click требует явного подтверждения, потому что target не доказан через semantic element из последнего get_app_state.";

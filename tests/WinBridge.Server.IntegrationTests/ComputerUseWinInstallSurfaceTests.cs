@@ -28,6 +28,48 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
+    public void PublishComputerUseWinPluginRestoresPreviousRuntimeWhenPromoteFails()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
+        string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup", Guid.NewGuid().ToString("N"));
+        string sentinelPath = Path.Combine(runtimeRoot, "keep.txt");
+
+        try
+        {
+            if (Directory.Exists(runtimeRoot))
+            {
+                CopyDirectory(runtimeRoot, backupRoot, _ => true);
+                DeleteDirectoryIfExists(runtimeRoot);
+            }
+
+            Directory.CreateDirectory(runtimeRoot);
+            File.WriteAllText(Path.Combine(runtimeRoot, "Okno.Server.exe"), "old-runtime");
+            File.WriteAllText(sentinelPath, "keep");
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                scriptPath,
+                repoRoot,
+                startInfo => startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1");
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.True(File.Exists(sentinelPath));
+            Assert.Equal("keep", File.ReadAllText(sentinelPath));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(runtimeRoot);
+            if (Directory.Exists(backupRoot))
+            {
+                CopyDirectory(backupRoot, runtimeRoot, _ => true);
+            }
+
+            DeleteDirectoryIfExists(backupRoot);
+        }
+    }
+
+    [Fact]
     public void ComputerUseWinLauncherFailsFastWhenPluginLocalRuntimeIsMissing()
     {
         string repoRoot = GetRepositoryRoot();

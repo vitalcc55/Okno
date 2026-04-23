@@ -236,6 +236,64 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ToolRequestBinderRejectsConflictingSelectorsForGetAppState()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"appId":"explorer","hwnd":123}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["appId"] = document.RootElement.GetProperty("appId").Clone(),
+            ["hwnd"] = document.RootElement.GetProperty("hwnd").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinGetAppStateRequest(),
+            out ComputerUseWinGetAppStateRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinGetAppStateRequest(), request);
+        Assert.Contains("appId", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hwnd", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsConflictingSelectorsForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"elementIndex":1,"point":{"x":10,"y":20},"confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("elementIndex", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StableAppIdentityRequiresCanonicalProcessName()
+    {
+        WindowDescriptor unstableWindow = CreateWindow(processName: null);
+
+        bool success = ComputerUseWinAppIdentity.TryCreateStableAppId(unstableWindow, out string? appId);
+
+        Assert.False(success);
+        Assert.Null(appId);
+    }
+
+    [Fact]
     public void ComputerUseWinClickToolSchemaPublishesOnlyAllowedButtonAndCoordinateSpaceValues()
     {
         var tools = ComputerUseWinToolRegistration.Create(static () => null!);
@@ -256,6 +314,41 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Equal(
             [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
             coordinateSpace.GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+    }
+
+    [Fact]
+    public void ComputerUseWinClickToolSchemaRequiresStateTokenAndExactlyOneSelector()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var clickTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinClick, StringComparison.Ordinal));
+        JsonElement inputSchema = clickTool.ProtocolTool.InputSchema;
+
+        string[] required = inputSchema.GetProperty("required").EnumerateArray()
+            .Select(item => item.GetString())
+            .Where(static item => item is not null)
+            .Cast<string>()
+            .ToArray();
+        Assert.Equal(["stateToken"], required);
+
+        JsonElement[] selectorModes = [.. inputSchema.GetProperty("oneOf").EnumerateArray()];
+        Assert.Equal(2, selectorModes.Length);
+        Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
+        Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
+    }
+
+    [Fact]
+    public void ComputerUseWinGetAppStateToolSchemaRejectsConflictingSelectors()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var getAppStateTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinGetAppState, StringComparison.Ordinal));
+        JsonElement inputSchema = getAppStateTool.ProtocolTool.InputSchema;
+
+        string[] notRequired = inputSchema.GetProperty("not").GetProperty("required").EnumerateArray()
+            .Select(item => item.GetString())
+            .Where(static item => item is not null)
+            .Cast<string>()
+            .ToArray();
+        Assert.Equal(["appId", "hwnd"], notRequired);
     }
 
     [Fact]
@@ -453,7 +546,7 @@ public sealed class ComputerUseWinArchitectureTests
             Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 128),
             CapturedAtUtc: capturedAtUtc);
 
-    private static WindowDescriptor CreateWindow(string processName) =>
+    private static WindowDescriptor CreateWindow(string? processName) =>
         new(
             Hwnd: 101,
             Title: "Test window",

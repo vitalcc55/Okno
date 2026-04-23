@@ -186,7 +186,12 @@ internal sealed class ComputerUseWinTools
             return CreateStateBlocked(invocation, selectedWindow, blockReason!);
         }
 
-        string appId = ComputerUseWinAppIdentity.CreateAppId(selectedWindow);
+        if (!ComputerUseWinAppIdentity.TryCreateStableAppId(selectedWindow, out string? stableAppId))
+        {
+            return CreateStateBlocked(invocation, selectedWindow, "Computer Use for Windows не смог подтвердить стабильную process identity окна; approval и observation fail-close-ятся до нового live proof.");
+        }
+
+        string appId = stableAppId!;
         if (!approvalStore.IsApproved(appId))
         {
             if (!request.Confirm)
@@ -301,7 +306,8 @@ internal sealed class ComputerUseWinTools
                 ToolNames.ComputerUseWinClick,
                 resolvedState.Session.Hwnd,
                 request.ElementIndex,
-                exception);
+                exception,
+                preDispatchStateMutationPossible: true);
         }
     }
 
@@ -484,7 +490,12 @@ internal sealed class ComputerUseWinTools
         IReadOnlyList<WindowDescriptor> windows = windowManager.ListWindows();
         return windows
             .Where(static item => item.IsVisible)
-            .GroupBy(ComputerUseWinAppIdentity.CreateAppId)
+            .Select(static item => ComputerUseWinAppIdentity.TryCreateStableAppId(item, out string? appId)
+                ? new StableIdentityWindow(item, appId!)
+                : null)
+            .Where(static item => item is not null)
+            .Cast<StableIdentityWindow>()
+            .GroupBy(static item => item.AppId, static item => item.Window)
             .Select(group =>
             {
                 WindowDescriptor selected = group
@@ -532,7 +543,8 @@ internal sealed class ComputerUseWinTools
         if (!string.IsNullOrWhiteSpace(appId))
         {
             WindowDescriptor[] candidates = windows
-                .Where(item => string.Equals(ComputerUseWinAppIdentity.CreateAppId(item), appId, StringComparison.OrdinalIgnoreCase))
+                .Where(item => ComputerUseWinAppIdentity.TryCreateStableAppId(item, out string? candidateAppId)
+                    && string.Equals(candidateAppId, appId, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
             if (candidates.Length == 0)
             {
@@ -963,4 +975,6 @@ internal sealed class ComputerUseWinTools
         T Request,
         string? FailureCode,
         string? Reason);
+
+    private sealed record StableIdentityWindow(WindowDescriptor Window, string AppId);
 }

@@ -2,6 +2,8 @@ using WinBridge.Runtime.Contracts;
 
 namespace WinBridge.Server.ComputerUse;
 
+internal sealed record ComputerUseWinFailureTranslation(string? FailureCode, string? Reason);
+
 internal static class ComputerUseWinFailureCodeMapper
 {
     public static string? ToPublicFailureCode(string? failureCode) =>
@@ -27,6 +29,17 @@ internal static class ComputerUseWinFailureCodeMapper
             _ => ComputerUseWinFailureCodeValues.InputDispatchFailed,
         };
 
+    public static ComputerUseWinFailureTranslation ToPublicFailure(string? failureCode, string? rawReason)
+    {
+        string? publicFailureCode = ToPublicFailureCode(failureCode);
+        if (publicFailureCode is null)
+        {
+            return new(null, rawReason);
+        }
+
+        return new(publicFailureCode, CreatePublicReason(publicFailureCode, rawReason));
+    }
+
     private static bool IsPublicFailureCode(string? failureCode) =>
         failureCode is
             ComputerUseWinFailureCodeValues.InvalidRequest or
@@ -46,4 +59,30 @@ internal static class ComputerUseWinFailureCodeMapper
             ComputerUseWinFailureCodeValues.PointOutOfBounds or
             ComputerUseWinFailureCodeValues.CursorMoveFailed or
             ComputerUseWinFailureCodeValues.InputDispatchFailed;
+
+    private static string CreatePublicReason(string failureCode, string? rawReason) =>
+        failureCode switch
+        {
+            ComputerUseWinFailureCodeValues.InvalidRequest =>
+                "Запрос больше не соответствует публичному click contract; проверь selector и повтори вызов с актуальными аргументами.",
+            ComputerUseWinFailureCodeValues.UnsupportedAction =>
+                "Computer Use for Windows получил неподдерживаемый action outcome; повтори сценарий через актуальный публичный contract.",
+            ComputerUseWinFailureCodeValues.MissingTarget =>
+                "Целевое окно больше не найдено; заново вызови get_app_state и повтори действие только после нового stateToken.",
+            ComputerUseWinFailureCodeValues.StaleState =>
+                "Состояние окна устарело; заново вызови get_app_state и используй свежий stateToken перед retry.",
+            ComputerUseWinFailureCodeValues.CaptureReferenceRequired =>
+                "Для coordinate click по screenshot coordinates нужен актуальный get_app_state со свежим capture proof.",
+            ComputerUseWinFailureCodeValues.TargetPreflightFailed or ComputerUseWinFailureCodeValues.TargetNotForeground or ComputerUseWinFailureCodeValues.TargetMinimized =>
+                "Окно изменило live activation state до dispatch; перед retry сначала заново вызови get_app_state.",
+            ComputerUseWinFailureCodeValues.TargetIntegrityBlocked =>
+                "Windows заблокировала input к целевому окну из-за integrity boundary.",
+            ComputerUseWinFailureCodeValues.PointOutOfBounds =>
+                "Координаты больше не соответствуют текущему окну; заново вызови get_app_state перед повтором.",
+            ComputerUseWinFailureCodeValues.CursorMoveFailed =>
+                "Windows не подтвердила позиционирование указателя; перед retry сначала обнови состояние через get_app_state.",
+            ComputerUseWinFailureCodeValues.InputDispatchFailed =>
+                "Windows не подтвердила выполнение действия; перед повтором сначала перепроверь состояние приложения через get_app_state.",
+            _ => rawReason ?? "Computer Use for Windows завершился structured failure.",
+        };
 }

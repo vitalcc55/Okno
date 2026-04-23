@@ -160,6 +160,49 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void ActionFinalizerTranslatesInternalReasonToPublicMessage()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-reason-translation-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-reason-translation-tests")).GetSnapshot());
+
+            CallToolResult result = ComputerUseWinActionFinalizer.FinalizeResult(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                new InputResult(
+                    Status: InputStatusValues.Failed,
+                    Decision: InputStatusValues.Failed,
+                    FailureCode: InputFailureCodeValues.TargetNotForeground,
+                    Reason: "windows.input target_not_foreground preflight rejected dispatch.",
+                    TargetHwnd: 101));
+
+            Assert.True(result.IsError);
+            JsonElement payload = result.StructuredContent!.Value;
+            Assert.Equal(ComputerUseWinFailureCodeValues.TargetNotForeground, payload.GetProperty("failureCode").GetString());
+            string reason = payload.GetProperty("reason").GetString()!;
+            Assert.DoesNotContain("windows.input", reason, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("target_not_foreground", reason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ActionFinalizerMapsInternalFailureCodesToPublicVocabulary()
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
@@ -275,6 +318,45 @@ public sealed class ComputerUseWinFinalizationTests
             string reason = payload.GetProperty("reason").GetString()!;
             Assert.Contains("до подтверждённого action dispatch", reason, StringComparison.Ordinal);
             Assert.DoesNotContain("после action dispatch", reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ActionFinalizerRecommendsRefreshWhenPreDispatchFailureMayFollowActivation()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-pre-dispatch-activation-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-pre-dispatch-activation-tests")).GetSnapshot());
+
+            CallToolResult result = ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                exception: new InvalidOperationException("secret setup failure"),
+                factualFailure: null,
+                preDispatchStateMutationPossible: true);
+
+            Assert.True(result.IsError);
+            JsonElement payload = result.StructuredContent!.Value;
+            Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
+            string reason = payload.GetProperty("reason").GetString()!;
+            Assert.Contains("возможной активации окна", reason, StringComparison.Ordinal);
         }
         finally
         {

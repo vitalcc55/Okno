@@ -18,6 +18,11 @@ internal static class ComputerUseWinRequestContractValidator
 
     private static string? Validate(ComputerUseWinGetAppStateRequest request)
     {
+        if (!string.IsNullOrWhiteSpace(request.AppId) && request.Hwnd is not null)
+        {
+            return "Для get_app_state нужно передать либо appId, либо hwnd, но не оба селектора сразу.";
+        }
+
         if (request.MaxNodes < 1 || request.MaxNodes > UiaSnapshotRequestValidator.MaxNodesCeiling)
         {
             return $"Параметр maxNodes для get_app_state должен быть в диапазоне 1..{UiaSnapshotRequestValidator.MaxNodesCeiling}.";

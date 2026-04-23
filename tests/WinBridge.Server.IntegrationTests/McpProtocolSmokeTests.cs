@@ -177,6 +177,7 @@ public sealed class McpProtocolSmokeTests
                 .EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinClick);
             JsonElement clickProperties = clickDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            AssertSchemaRequiredContains(clickDescriptor.GetProperty("inputSchema"), "stateToken");
 
             Assert.Equal(
                 [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
@@ -184,6 +185,11 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal(
                 [InputButtonValues.Left, InputButtonValues.Right],
                 clickProperties.GetProperty("button").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+
+            JsonElement[] selectorModes = [.. clickDescriptor.GetProperty("inputSchema").GetProperty("oneOf").EnumerateArray()];
+            Assert.Equal(2, selectorModes.Length);
+            Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
+            Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
         }
         finally
         {

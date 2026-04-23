@@ -135,6 +135,15 @@ internal static class ComputerUseWinToolRegistration
             {
                 ["type"] = "object",
                 ["additionalProperties"] = false,
+                ["not"] = new JsonObject
+                {
+                    ["required"] = CreateStringArray("appId", "hwnd"),
+                    ["properties"] = new JsonObject
+                    {
+                        ["appId"] = new JsonObject { ["type"] = "string" },
+                        ["hwnd"] = new JsonObject { ["type"] = "integer" },
+                    },
+                },
                 ["properties"] = new JsonObject
                 {
                     ["appId"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
@@ -150,9 +159,11 @@ internal static class ComputerUseWinToolRegistration
             {
                 ["type"] = "object",
                 ["additionalProperties"] = false,
+                ["required"] = CreateStringArray("stateToken"),
+                ["oneOf"] = ComputerUseWinClickContract.CreateSelectorModeSchema(),
                 ["properties"] = new JsonObject
                 {
-                    ["stateToken"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
+                    ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
                     ["elementIndex"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
                     ["point"] = CreatePointSchema(),
                     ["coordinateSpace"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedCoordinateSpaceValues),

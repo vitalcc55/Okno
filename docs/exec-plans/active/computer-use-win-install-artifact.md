@@ -23,12 +23,13 @@ Public plugin `plugins/computer-use-win/` уже публикует правил
 
 1. `scripts/codex/publish-computer-use-win-plugin.ps1` materialize-ит self-contained `win-x64` runtime bundle в `plugins/computer-use-win/runtime/win-x64/`.
 2. `plugins/computer-use-win/run-computer-use-win-mcp.ps1` стартует только `runtime/win-x64/Okno.Server.exe --tool-surface-profile computer-use-win`.
-3. Repo-root resolver, hint script и hint narrative удаляются из public plugin path.
-4. Integration tests доказывают launcher из temp plugin copy вне repo tree без env/hint dependency.
-5. Docs и generated commands переводятся на publish/install flow вместо hint/install flow.
-6. Follow-up hardening на этой же ветке оставляет public product surface fail-closed: explicit profile валидируется через shared source of truth, app/process identity канонизируется для policy/playbook/appId, `get_app_state` не commit-ит session и не выдаёт `stateToken` при broken observation, а low-confidence coordinate click требует explicit confirm.
-7. `stateToken` и downstream action revalidation используют один observation envelope: click revalidation не ослабляет исходный `maxNodes` budget, а malformed request shapes fail-close-ятся как `invalid_request` до observation/runtime stages.
-8. `get_app_state` оформлен как `prepare observation -> materialize response -> commit shared state`: expected advisory-unavailable path для instruction loading не валит successful capture/UIA result, unexpected provider/runtime bug materialize-ится как truthful `observation_failed`, а hidden token inserts до полного success boundary не допускаются.
+3. Publish promote path сохраняет last-known-good runtime до тех пор, пока swap новой директории не завершён успешно; failure не должен оставлять plugin без runnable runtime.
+4. Repo-root resolver, hint script и hint narrative удаляются из public plugin path.
+5. Integration tests доказывают launcher из temp plugin copy вне repo tree без env/hint dependency.
+6. Docs и generated commands переводятся на publish/install flow вместо hint/install flow.
+7. Follow-up hardening на этой же ветке оставляет public product surface fail-closed: explicit profile валидируется через shared source of truth, app/process identity канонизируется для policy/playbook/appId и остаётся обязательной для approval path, `get_app_state` не commit-ит session и не выдаёт `stateToken` при broken observation, а low-confidence coordinate click требует explicit confirm.
+8. `stateToken` и downstream action revalidation используют один observation envelope: click revalidation не ослабляет исходный `maxNodes` budget, malformed request shapes fail-close-ятся как `invalid_request` до observation/runtime stages, а published click schema требует `stateToken` и ровно один selector mode.
+9. `get_app_state` оформлен как `prepare observation -> materialize response -> commit shared state`: expected advisory-unavailable path для instruction loading не валит successful capture/UIA result, unexpected provider/runtime bug materialize-ится как truthful `observation_failed`, а hidden token inserts до полного success boundary не допускаются.
 
 ## Acceptance criteria
 

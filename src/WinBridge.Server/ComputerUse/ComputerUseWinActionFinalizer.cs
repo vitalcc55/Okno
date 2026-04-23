@@ -36,45 +36,54 @@ internal static class ComputerUseWinActionFinalizer
         long? targetHwnd,
         int? elementIndex,
         Exception exception,
-        InputResult? factualFailure = null)
+        InputResult? factualFailure = null,
+        bool preDispatchStateMutationPossible = false)
     {
         ArgumentNullException.ThrowIfNull(invocation);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
         ArgumentNullException.ThrowIfNull(exception);
 
         return factualFailure is null
-            ? FinalizeUnexpectedInternalFailure(invocation, toolName, targetHwnd, elementIndex, exception)
+            ? FinalizeUnexpectedInternalFailure(invocation, toolName, targetHwnd, elementIndex, exception, preDispatchStateMutationPossible)
             : FinalizeUnexpectedFactualFailure(invocation, toolName, targetHwnd, elementIndex, exception, factualFailure);
     }
 
     private static ComputerUseWinActionResult CreatePayload(
         long? targetHwnd,
         int? elementIndex,
-        InputResult input) =>
-        new(
-            Status: string.Equals(input.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal)
-                ? ComputerUseWinStatusValues.VerifyNeeded
-                : string.Equals(input.Status, InputStatusValues.Done, StringComparison.Ordinal)
-                    ? ComputerUseWinStatusValues.Done
-                    : ComputerUseWinStatusValues.Failed,
+        InputResult input)
+    {
+        string status = string.Equals(input.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal)
+            ? ComputerUseWinStatusValues.VerifyNeeded
+            : string.Equals(input.Status, InputStatusValues.Done, StringComparison.Ordinal)
+                ? ComputerUseWinStatusValues.Done
+                : ComputerUseWinStatusValues.Failed;
+        ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(input.FailureCode, input.Reason);
+
+        return new(
+            Status: status,
             RefreshStateRecommended: true,
-            FailureCode: ComputerUseWinFailureCodeMapper.ToPublicFailureCode(input.FailureCode),
-            Reason: input.Reason,
+            FailureCode: failure.FailureCode,
+            Reason: status == ComputerUseWinStatusValues.Failed ? failure.Reason : input.Reason,
             TargetHwnd: input.TargetHwnd ?? targetHwnd,
             ElementIndex: elementIndex);
+    }
 
     private static CallToolResult FinalizeUnexpectedInternalFailure(
         AuditInvocationScope invocation,
         string toolName,
         long? targetHwnd,
         int? elementIndex,
-        Exception exception)
+        Exception exception,
+        bool preDispatchStateMutationPossible)
     {
         ComputerUseWinActionResult payload = new(
             Status: ComputerUseWinStatusValues.Failed,
-            RefreshStateRecommended: false,
+            RefreshStateRecommended: preDispatchStateMutationPossible,
             FailureCode: null,
-            Reason: "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; можно повторить запрос после устранения причины, refresh через get_app_state не обязателен.",
+            Reason: preDispatchStateMutationPossible
+                ? "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; из-за возможной активации окна перед retry сначала обнови состояние через get_app_state."
+                : "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; можно повторить запрос после устранения причины, refresh через get_app_state не обязателен.",
             TargetHwnd: targetHwnd,
             ElementIndex: elementIndex);
 
@@ -85,7 +94,7 @@ internal static class ComputerUseWinActionFinalizer
             payload.TargetHwnd,
             exception,
             bestEffort: true,
-            data: CreateUnexpectedFailureAuditData("pre_dispatch_internal"));
+            data: CreateUnexpectedFailureAuditData(preDispatchStateMutationPossible ? "pre_dispatch_after_activation" : "pre_dispatch_internal"));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -112,13 +121,16 @@ internal static class ComputerUseWinActionFinalizer
 
     private static Dictionary<string, string?> CreateActionAuditData(InputResult input, string? failurePhase = null)
     {
+        ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(input.FailureCode, input.Reason);
         Dictionary<string, string?> data = new(StringComparer.Ordinal)
         {
             ["status"] = input.Status,
             ["decision"] = input.Decision,
             ["result_mode"] = input.ResultMode,
             ["failure_code"] = input.FailureCode,
-            ["public_failure_code"] = ComputerUseWinFailureCodeMapper.ToPublicFailureCode(input.FailureCode),
+            ["public_failure_code"] = failure.FailureCode,
+            ["raw_reason"] = input.Reason,
+            ["public_reason"] = failure.Reason,
             ["target_hwnd"] = input.TargetHwnd?.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["target_source"] = input.TargetSource,
             ["completed_action_count"] = input.CompletedActionCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -138,6 +150,7 @@ internal static class ComputerUseWinActionFinalizer
         {
             ["failure_phase"] = failurePhase,
         };
+
     private static CallToolResult CreateToolResult(ComputerUseWinActionResult payload, bool isError)
     {
         JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, ComputerUseWinTools.PayloadJsonOptions);

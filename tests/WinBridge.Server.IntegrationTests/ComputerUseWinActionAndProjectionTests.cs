@@ -245,6 +245,30 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ClickExecutionCoordinatorRejectsStoredElementWithoutClickAffordanceBeforeActivation()
+    {
+        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateNonActionableStoredState(),
+            new ComputerUseWinClickRequest(ElementIndex: 1, Confirm: true),
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, outcome.FailureDetails?.FailureCode);
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
     public async Task ClickExecutionCoordinatorRejectsCapturePixelsWithoutStoredCaptureReferenceBeforeActivation()
     {
         FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
@@ -267,6 +291,82 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal(ComputerUseWinFailureCodeValues.CaptureReferenceRequired, outcome.FailureDetails?.FailureCode);
         Assert.Null(activationService.LastHwnd);
         Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ClickTargetResolverReturnsStaleStateWhenFreshElementLosesClickAffordance()
+    {
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Done,
+                Window: CreateObservedWindow(window),
+                Root: new UiaElementSnapshot
+                {
+                    ElementId = "root",
+                    ControlType = "window",
+                    Children =
+                    [
+                        new UiaElementSnapshot
+                        {
+                            ElementId = "path:0",
+                            ControlType = "button",
+                            Name = "Delete item",
+                            AutomationId = "DeleteButton",
+                            BoundingRectangle = new Bounds(100, 120, 180, 160),
+                            IsEnabled = false,
+                            IsOffscreen = false,
+                        },
+                    ],
+                },
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        ComputerUseWinClickTargetResolver resolver = new(uiAutomationService);
+
+        ComputerUseWinClickTargetResolution resolution = await resolver.ResolveAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(ElementIndex: 1),
+            CancellationToken.None);
+
+        Assert.False(resolution.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, resolution.FailureCode);
+    }
+
+    [Fact]
+    public async Task ClickTargetResolverDoesNotFallbackOnControlTypeOnlyMatch()
+    {
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Done,
+                Window: CreateObservedWindow(window),
+                Root: new UiaElementSnapshot
+                {
+                    ElementId = "root",
+                    ControlType = "window",
+                    Children =
+                    [
+                        new UiaElementSnapshot
+                        {
+                            ElementId = "other",
+                            ControlType = "button",
+                            BoundingRectangle = new Bounds(100, 120, 180, 160),
+                            IsEnabled = true,
+                            IsOffscreen = false,
+                        },
+                    ],
+                },
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        ComputerUseWinClickTargetResolver resolver = new(uiAutomationService);
+
+        ComputerUseWinClickTargetResolution resolution = await resolver.ResolveAsync(
+            CreateUnnamedStoredState(),
+            new ComputerUseWinClickRequest(ElementIndex: 1),
+            CancellationToken.None);
+
+        Assert.False(resolution.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, resolution.FailureCode);
     }
 
     [Fact]
@@ -464,6 +564,46 @@ public sealed class ComputerUseWinActionAndProjectionTests
             CreateWindow(),
             CaptureReference: null,
             Elements: new Dictionary<int, ComputerUseWinStoredElement>(),
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateNonActionableStoredState() =>
+        new(
+            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:0",
+                    Name: "Status only",
+                    AutomationId: "StatusLabel",
+                    ControlType: "button",
+                    Bounds: new Bounds(10, 20, 50, 60),
+                    HasKeyboardFocus: false,
+                    Actions: []),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateUnnamedStoredState() =>
+        new(
+            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:0",
+                    Name: null,
+                    AutomationId: null,
+                    ControlType: "button",
+                    Bounds: new Bounds(10, 20, 50, 60),
+                    HasKeyboardFocus: false,
+                    Actions: [ToolNames.ComputerUseWinClick]),
+            },
             Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
             CapturedAtUtc: DateTimeOffset.UtcNow);
 

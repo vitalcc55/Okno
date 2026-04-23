@@ -15,9 +15,7 @@ internal static class ComputerUseWinAffordanceResolver
         ArgumentNullException.ThrowIfNull(node);
 
         List<string> actions = [];
-        if (node.BoundingRectangle is not null
-            && !node.IsOffscreen
-            && node.IsEnabled
+        if (ComputerUseWinActionability.IsClickActionable(node)
             && ImplementedToolNames.Contains(ToolNames.ComputerUseWinClick))
         {
             actions.Add(ToolNames.ComputerUseWinClick);
