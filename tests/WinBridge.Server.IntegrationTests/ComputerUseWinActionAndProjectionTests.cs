@@ -245,6 +245,31 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ClickExecutionCoordinatorRejectsCapturePixelsWithoutStoredCaptureReferenceBeforeActivation()
+    {
+        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredStateWithoutCaptureReference(),
+            new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.False(outcome.IsApprovalRequired);
+        Assert.Equal(InputFailureCodeValues.CaptureReferenceRequired, outcome.FailureDetails?.FailureCode);
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
     public async Task ClickExecutionCoordinatorReresolvesElementTargetAfterActivationRetry()
     {
         int snapshotCall = 0;
@@ -430,6 +455,15 @@ public sealed class ComputerUseWinActionAndProjectionTests
                     HasKeyboardFocus: false,
                     Actions: [ToolNames.ComputerUseWinClick]),
             },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateStoredStateWithoutCaptureReference() =>
+        new(
+            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateWindow(),
+            CaptureReference: null,
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>(),
             Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
             CapturedAtUtc: DateTimeOffset.UtcNow);
 

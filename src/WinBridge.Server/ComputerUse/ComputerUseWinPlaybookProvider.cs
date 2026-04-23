@@ -39,13 +39,17 @@ internal sealed class ComputerUseWinPlaybookProvider : IComputerUseWinInstructio
                 .Where(static line => !string.IsNullOrWhiteSpace(line))
                 .ToArray();
         }
-        catch (FileNotFoundException)
+        catch (FileNotFoundException exception)
         {
-            return Array.Empty<string>();
+            throw new ComputerUseWinInstructionUnavailableException(
+                "Computer Use for Windows не смог прочитать advisory instructions для этого приложения.",
+                exception);
         }
-        catch (DirectoryNotFoundException)
+        catch (DirectoryNotFoundException exception)
         {
-            return Array.Empty<string>();
+            throw new ComputerUseWinInstructionUnavailableException(
+                "Computer Use for Windows не смог прочитать advisory instructions для этого приложения.",
+                exception);
         }
         catch (IOException exception)
         {

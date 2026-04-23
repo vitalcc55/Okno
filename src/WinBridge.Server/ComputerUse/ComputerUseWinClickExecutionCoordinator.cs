@@ -17,7 +17,7 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        if (TryClassifyBeforeActivation(state, request, out ComputerUseWinClickExecutionOutcome? preActivationOutcome))
+        if (ComputerUseWinClickContract.TryClassifyBeforeActivation(state, request, out ComputerUseWinClickExecutionOutcome? preActivationOutcome))
         {
             return preActivationOutcome!;
         }
@@ -47,7 +47,7 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
         {
             return ComputerUseWinClickExecutionOutcome.ApprovalRequired(
                 request.ElementIndex is null
-                    ? CoordinateApprovalReason
+                    ? ComputerUseWinClickContract.CoordinateApprovalReason
                     : "Клик по выбранному элементу требует явного подтверждения.");
         }
 
@@ -87,53 +87,6 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
         return ComputerUseWinClickExecutionOutcome.Success(input);
     }
 
-    private static bool TryClassifyBeforeActivation(
-        ComputerUseWinStoredState state,
-        ComputerUseWinClickRequest request,
-        out ComputerUseWinClickExecutionOutcome? outcome)
-    {
-        if (request.ElementIndex is int elementIndex)
-        {
-            if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
-                || storedElement.Bounds is null)
-            {
-                outcome = ComputerUseWinClickExecutionOutcome.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.InvalidRequest,
-                        $"elementIndex {elementIndex} не существует или не даёт кликабельных bounds."));
-                return true;
-            }
-
-            if (!request.Confirm
-                && ComputerUseWinTargetPolicy.RequiresRiskConfirmation(storedElement, ToolNames.ComputerUseWinClick))
-            {
-                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired("Клик по выбранному элементу требует явного подтверждения.");
-                return true;
-            }
-
-            outcome = null;
-            return false;
-        }
-
-        if (request.Point is not null)
-        {
-            if (!request.Confirm)
-            {
-                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired(CoordinateApprovalReason);
-                return true;
-            }
-
-            outcome = null;
-            return false;
-        }
-
-        outcome = ComputerUseWinClickExecutionOutcome.Failure(
-            ComputerUseWinFailureDetails.Expected(
-                ComputerUseWinFailureCodeValues.InvalidRequest,
-                "Для click требуется elementIndex или point."));
-        return true;
-    }
-
     private Task<InputResult> ExecuteInputAsync(
         ComputerUseWinStoredState state,
         InputAction action,
@@ -152,9 +105,6 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
         string.Equals(input.Status, InputStatusValues.Failed, StringComparison.Ordinal)
         && (string.Equals(input.FailureCode, InputFailureCodeValues.TargetNotForeground, StringComparison.Ordinal)
             || string.Equals(input.FailureCode, InputFailureCodeValues.TargetPreflightFailed, StringComparison.Ordinal));
-
-    private const string CoordinateApprovalReason =
-        "Coordinate click требует явного подтверждения, потому что target не доказан через semantic element из последнего get_app_state.";
 }
 
 internal sealed record ComputerUseWinClickExecutionOutcome(

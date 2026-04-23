@@ -27,7 +27,7 @@ internal static class ComputerUseWinRequestContractValidator
     }
 
     private static string? Validate(ComputerUseWinClickRequest request) =>
-        ValidatePoint(request.Point, "point");
+        ComputerUseWinClickContract.ValidateRequest(request);
 
     private static string? Validate(ComputerUseWinTypeTextRequest request) => null;
 

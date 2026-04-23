@@ -73,6 +73,29 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void PlaybookProviderRaisesUnavailableWhenMappedPlaybookAssetIsMissing()
+    {
+        string root = CreateTempDirectory();
+        try
+        {
+            string instructionsRoot = Path.Combine(root, "references", "AppInstructions");
+            Directory.CreateDirectory(instructionsRoot);
+
+            ComputerUseWinPlaybookProvider provider = new(
+                new ComputerUseWinOptions(
+                    PluginRoot: root,
+                    AppInstructionsRoot: instructionsRoot,
+                    ApprovalStorePath: Path.Combine(root, "AppApprovals.json")));
+
+            Assert.Throws<ComputerUseWinInstructionUnavailableException>(() => provider.GetInstructions("explorer"));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [Fact]
     public void AffordanceResolverEmitsOnlyImplementedActionsForComputerUseProfile()
     {
         UiaElementSnapshot node = new()
@@ -164,6 +187,52 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Equal(new ComputerUseWinClickRequest(), request);
         Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("extra", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsUnsupportedCoordinateSpaceForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"point":{"x":10,"y":20},"coordinateSpace":"bogus","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsUnsupportedButtonForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"elementIndex":1,"button":"middle","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
+            ["button"] = document.RootElement.GetProperty("button").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("button", reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
