@@ -173,6 +173,105 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.IsType<InvalidOperationException>(resolution.FailureDetails!.AuditException);
     }
 
+    [Fact]
+    public async Task ClickExecutionCoordinatorRejectsCoordinateClickWithoutActivationWhenConfirmMissing()
+    {
+        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: false),
+            CancellationToken.None);
+
+        Assert.True(outcome.IsApprovalRequired);
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ClickExecutionCoordinatorReresolvesElementTargetAfterActivationRetry()
+    {
+        int snapshotCall = 0;
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+        {
+            snapshotCall++;
+            Bounds bounds = snapshotCall == 1
+                ? new Bounds(100, 100, 140, 140)
+                : new Bounds(200, 200, 240, 240);
+            return Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "button",
+                                Name = "Delete item",
+                                AutomationId = "DeleteButton",
+                                BoundingRectangle = bounds,
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow));
+        });
+        int activationCalls = 0;
+        FakeWindowActivationService activationService = new(window =>
+        {
+            activationCalls++;
+            return new ActivateWindowResult("done", null, window with { Bounds = new Bounds(50, 50, 500, 500) }, false, true);
+        });
+        int inputCalls = 0;
+        FakeInputService inputService = new((request, _, _) =>
+        {
+            inputCalls++;
+            return Task.FromResult(
+                inputCalls == 1
+                    ? new InputResult(
+                        Status: InputStatusValues.Failed,
+                        Decision: InputStatusValues.Failed,
+                        FailureCode: InputFailureCodeValues.TargetNotForeground,
+                        Reason: "target not foreground",
+                        TargetHwnd: 101)
+                    : new InputResult(
+                        Status: InputStatusValues.Done,
+                        Decision: InputStatusValues.Done,
+                        TargetHwnd: 101));
+        });
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(uiAutomationService),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(ElementIndex: 1, Confirm: true),
+            CancellationToken.None);
+
+        Assert.True(outcome.IsSuccess);
+        Assert.Equal(2, inputService.Calls);
+        Assert.Equal(2, activationCalls);
+        Assert.Equal(2, snapshotCall);
+        Assert.Equal(new InputPoint(220, 220), inputService.LastRequest!.Actions[0].Point);
+    }
+
     private static ComputerUseWinStoredState CreateStoredState() =>
         new(
             new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),

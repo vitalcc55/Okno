@@ -27,7 +27,7 @@ internal sealed class ComputerUseWinTools
 
     private readonly ComputerUseWinApprovalStore approvalStore;
     private readonly ComputerUseWinAppStateObserver appStateObserver;
-    private readonly ComputerUseWinClickTargetResolver clickTargetResolver;
+    private readonly ComputerUseWinClickExecutionCoordinator clickExecutionCoordinator;
     private readonly ComputerUseWinStateStore stateStore;
     private readonly AuditLog auditLog;
     private readonly ICaptureService captureService;
@@ -59,7 +59,10 @@ internal sealed class ComputerUseWinTools
         this.stateStore = stateStore;
         this.windowActivationService = windowActivationService;
         appStateObserver = new ComputerUseWinAppStateObserver(captureService, uiAutomationService, playbookProvider);
-        clickTargetResolver = new ComputerUseWinClickTargetResolver(uiAutomationService);
+        clickExecutionCoordinator = new ComputerUseWinClickExecutionCoordinator(
+            windowActivationService,
+            new ComputerUseWinClickTargetResolver(uiAutomationService),
+            inputService);
     }
 
     public CallToolResult ListApps()
@@ -247,86 +250,59 @@ internal sealed class ComputerUseWinTools
         }
 
         ComputerUseWinStoredState resolvedState = state!;
-        ActivateWindowResult activation = await windowActivationService.ActivateAsync(resolvedState.Window, cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(activation.Status, "done", StringComparison.Ordinal)
-            && !string.Equals(activation.Status, "already_active", StringComparison.Ordinal))
-        {
-            return CreateActionFailure(
-                invocation,
-                ToolNames.ComputerUseWinClick,
-                ComputerUseWinFailureCodeValues.BlockedTarget,
-                activation.Reason ?? "Computer Use for Windows не смог подготовить окно к клику.",
-                resolvedState.Session.Hwnd,
-                request.ElementIndex);
-        }
 
-        resolvedState = resolvedState with
+        try
         {
-            Window = activation.Window ?? resolvedState.Window,
-        };
-        ComputerUseWinClickTargetResolution resolution = await clickTargetResolver.ResolveAsync(resolvedState, request, cancellationToken).ConfigureAwait(false);
-        if (!resolution.IsSuccess)
-        {
-            return CreateActionFailure(invocation, ToolNames.ComputerUseWinClick, resolution.FailureDetails!, resolvedState.Session.Hwnd, request.ElementIndex);
-        }
+            ComputerUseWinClickExecutionOutcome outcome = await clickExecutionCoordinator.ExecuteAsync(
+                resolvedState,
+                request,
+                cancellationToken).ConfigureAwait(false);
 
-        if (resolution.RequiresConfirmation && !request.Confirm)
+            if (outcome.IsApprovalRequired)
+            {
+                return CreateActionApprovalRequired(
+                    invocation,
+                    ToolNames.ComputerUseWinClick,
+                    resolvedState.Session.Hwnd,
+                    request.ElementIndex,
+                    outcome.ApprovalReason!);
+            }
+
+            if (!outcome.IsSuccess)
+            {
+                return CreateActionFailure(
+                    invocation,
+                    ToolNames.ComputerUseWinClick,
+                    outcome.FailureDetails!,
+                    resolvedState.Session.Hwnd,
+                    request.ElementIndex);
+            }
+
+            return CreateActionToolResult(invocation, ToolNames.ComputerUseWinClick, resolvedState.Session.Hwnd, request.ElementIndex, outcome.Input!);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return CreateActionApprovalRequired(
+            throw;
+        }
+        catch (InputExecutionFailureException exception)
+        {
+            return ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
                 invocation,
                 ToolNames.ComputerUseWinClick,
                 resolvedState.Session.Hwnd,
                 request.ElementIndex,
-                request.ElementIndex is null
-                    ? "Coordinate click требует явного подтверждения, потому что target не доказан через semantic element из последнего get_app_state."
-                    : "Клик по выбранному элементу требует явного подтверждения.");
+                exception.InnerException ?? exception,
+                exception.Result);
         }
-
-        return await ExecuteActionAsync(
-            invocation,
-            ToolNames.ComputerUseWinClick,
-            resolvedState.Session.Hwnd,
-            request.ElementIndex,
-            async ct =>
-            {
-                InputResult input = await inputService.ExecuteAsync(
-                    new InputRequest
-                    {
-                        Hwnd = resolvedState.Session.Hwnd,
-                        Actions = [resolution.Action!],
-                    },
-                    new InputExecutionContext(resolvedState.Window),
-                    InputExecutionProfileValues.ComputerUseCore,
-                    ct).ConfigureAwait(false);
-
-                if (string.Equals(input.Status, InputStatusValues.Failed, StringComparison.Ordinal)
-                    && (string.Equals(input.FailureCode, InputFailureCodeValues.TargetNotForeground, StringComparison.Ordinal)
-                        || string.Equals(input.FailureCode, InputFailureCodeValues.TargetPreflightFailed, StringComparison.Ordinal)))
-                {
-                    ActivateWindowResult retryActivation = await windowActivationService.ActivateAsync(resolvedState.Window, ct).ConfigureAwait(false);
-                    if (string.Equals(retryActivation.Status, "done", StringComparison.Ordinal)
-                        || string.Equals(retryActivation.Status, "already_active", StringComparison.Ordinal))
-                    {
-                        resolvedState = resolvedState with
-                        {
-                            Window = retryActivation.Window ?? resolvedState.Window,
-                        };
-
-                        input = await inputService.ExecuteAsync(
-                            new InputRequest
-                            {
-                                Hwnd = resolvedState.Session.Hwnd,
-                                Actions = [resolution.Action!],
-                            },
-                            new InputExecutionContext(resolvedState.Window),
-                            InputExecutionProfileValues.ComputerUseCore,
-                            ct).ConfigureAwait(false);
-                    }
-                }
-
-                return input;
-            },
-            cancellationToken).ConfigureAwait(false);
+        catch (Exception exception)
+        {
+            return ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                resolvedState.Session.Hwnd,
+                request.ElementIndex,
+                exception);
+        }
     }
 
     private async Task<CallToolResult> ExecuteTypeTextAsync(

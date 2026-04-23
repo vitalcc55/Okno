@@ -69,7 +69,7 @@ internal sealed class ComputerUseWinAppStateObserver(
             {
                 throw;
             }
-            catch (Exception)
+            catch (ComputerUseWinInstructionUnavailableException)
             {
                 effectiveWarnings.Add("Computer Use for Windows не смог загрузить advisory instructions для этого приложения; observation result сохранён без playbook hints.");
             }

@@ -25,7 +25,8 @@ internal static class ComputerUseWinActionFinalizer
         invocation.CompleteBestEffort(
             auditOutcome,
             payload.Reason ?? $"Computer Use action '{toolName}' завершён.",
-            payload.TargetHwnd);
+            payload.TargetHwnd,
+            CreateActionAuditData(input));
         return CreateToolResult(payload, isError: payload.Status == ComputerUseWinStatusValues.Failed);
     }
 
@@ -57,7 +58,8 @@ internal static class ComputerUseWinActionFinalizer
             payload.FailureCode,
             payload.TargetHwnd,
             exception,
-            bestEffort: true);
+            bestEffort: true,
+            data: factualFailure is null ? null : CreateActionAuditData(factualFailure));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -76,6 +78,20 @@ internal static class ComputerUseWinActionFinalizer
             Reason: input.Reason,
             TargetHwnd: input.TargetHwnd ?? targetHwnd,
             ElementIndex: elementIndex);
+
+    private static Dictionary<string, string?> CreateActionAuditData(InputResult input) =>
+        new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["status"] = input.Status,
+            ["decision"] = input.Decision,
+            ["result_mode"] = input.ResultMode,
+            ["failure_code"] = input.FailureCode,
+            ["target_hwnd"] = input.TargetHwnd?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["target_source"] = input.TargetSource,
+            ["completed_action_count"] = input.CompletedActionCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["failed_action_index"] = input.FailedActionIndex?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["artifact_path"] = input.ArtifactPath,
+        };
 
     private static CallToolResult CreateToolResult(ComputerUseWinActionResult payload, bool isError)
     {

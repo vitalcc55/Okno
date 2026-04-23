@@ -1,3 +1,5 @@
+using System.Security;
+
 namespace WinBridge.Server.ComputerUse;
 
 internal sealed class ComputerUseWinPlaybookProvider : IComputerUseWinInstructionProvider
@@ -35,9 +37,30 @@ internal sealed class ComputerUseWinPlaybookProvider : IComputerUseWinInstructio
             return Array.Empty<string>();
         }
 
-        return File.ReadAllLines(path)
-            .Select(static line => line.Trim())
-            .Where(static line => !string.IsNullOrWhiteSpace(line))
-            .ToArray();
+        try
+        {
+            return File.ReadAllLines(path)
+                .Select(static line => line.Trim())
+                .Where(static line => !string.IsNullOrWhiteSpace(line))
+                .ToArray();
+        }
+        catch (IOException exception)
+        {
+            throw new ComputerUseWinInstructionUnavailableException(
+                "Computer Use for Windows не смог прочитать advisory instructions для этого приложения.",
+                exception);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw new ComputerUseWinInstructionUnavailableException(
+                "Computer Use for Windows не смог прочитать advisory instructions для этого приложения.",
+                exception);
+        }
+        catch (SecurityException exception)
+        {
+            throw new ComputerUseWinInstructionUnavailableException(
+                "Computer Use for Windows не смог прочитать advisory instructions для этого приложения.",
+                exception);
+        }
     }
 }

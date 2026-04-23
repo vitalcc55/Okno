@@ -44,7 +44,10 @@ internal sealed class ComputerUseWinStateStore
         lock (gate)
         {
             EvictExpired_NoLock();
-            states[token] = state;
+            states[token] = state with
+            {
+                IssuedAtUtc = timeProvider.GetUtcNow(),
+            };
             EvictOverflow_NoLock();
         }
     }
@@ -71,7 +74,7 @@ internal sealed class ComputerUseWinStateStore
     {
         DateTimeOffset now = timeProvider.GetUtcNow();
         string[] expiredTokens = states
-            .Where(entry => now - entry.Value.CapturedAtUtc > stateTtl)
+            .Where(entry => now - entry.Value.IssuedAtUtc > stateTtl)
             .Select(static entry => entry.Key)
             .ToArray();
 
@@ -89,7 +92,7 @@ internal sealed class ComputerUseWinStateStore
         }
 
         string[] tokensToRemove = states
-            .OrderBy(static entry => entry.Value.CapturedAtUtc)
+            .OrderBy(static entry => entry.Value.IssuedAtUtc)
             .ThenBy(static entry => entry.Key, StringComparer.Ordinal)
             .Take(states.Count - maxEntries)
             .Select(static entry => entry.Key)
@@ -108,7 +111,8 @@ internal sealed record ComputerUseWinStoredState(
     InputCaptureReference? CaptureReference,
     IReadOnlyDictionary<int, ComputerUseWinStoredElement> Elements,
     ComputerUseWinObservationEnvelope Observation,
-    DateTimeOffset CapturedAtUtc);
+    DateTimeOffset CapturedAtUtc,
+    DateTimeOffset IssuedAtUtc = default);
 
 internal sealed record ComputerUseWinObservationEnvelope(
     int RequestedDepth,

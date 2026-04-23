@@ -223,6 +223,37 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void StateStoreUsesIssuedTimeInsteadOfCaptureTimeForTtl()
+    {
+        MutableTimeProvider timeProvider = new(new DateTimeOffset(2026, 4, 21, 12, 0, 0, TimeSpan.Zero));
+        ComputerUseWinStateStore store = new(timeProvider, TimeSpan.FromSeconds(10), maxEntries: 2);
+
+        string token = store.Create(CreateStoredState(timeProvider.GetUtcNow().AddMinutes(-5)));
+
+        Assert.True(store.TryGet(token, out _));
+
+        timeProvider.Advance(TimeSpan.FromSeconds(9));
+        Assert.True(store.TryGet(token, out _));
+
+        timeProvider.Advance(TimeSpan.FromSeconds(2));
+        Assert.False(store.TryGet(token, out _));
+    }
+
+    [Fact]
+    public void StateStoreOverflowUsesIssuedTimeInsteadOfCaptureTime()
+    {
+        MutableTimeProvider timeProvider = new(new DateTimeOffset(2026, 4, 21, 12, 0, 0, TimeSpan.Zero));
+        ComputerUseWinStateStore store = new(timeProvider, TimeSpan.FromSeconds(30), maxEntries: 1);
+
+        string firstToken = store.Create(CreateStoredState(timeProvider.GetUtcNow()));
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        string secondToken = store.Create(CreateStoredState(timeProvider.GetUtcNow().AddHours(-1)));
+
+        Assert.False(store.TryGet(firstToken, out _));
+        Assert.True(store.TryGet(secondToken, out _));
+    }
+
+    [Fact]
     public void ApprovalStoreRecoversFromCorruptJsonAndRewritesAtomically()
     {
         string root = CreateTempDirectory();

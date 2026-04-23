@@ -97,7 +97,9 @@ public sealed class ComputerUseWinFinalizationTests
             JsonElement payload = result.StructuredContent!.Value;
             string stateToken = payload.GetProperty("stateToken").GetString()!;
             Assert.True(stateStore.TryGet(stateToken, out ComputerUseWinStoredState? storedState));
-            Assert.Equal(preparedState.StoredState, storedState);
+            Assert.NotNull(storedState);
+            Assert.NotEqual(default, storedState!.IssuedAtUtc);
+            Assert.Equal(preparedState.StoredState with { IssuedAtUtc = storedState.IssuedAtUtc }, storedState);
             Assert.Equal(selectedWindow.Hwnd, sessionManager.GetAttachedWindow()?.Window.Hwnd);
         }
         finally
@@ -158,6 +160,53 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void ActionFinalizerIncludesEvidenceInTopLevelCompletionAudit()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-evidence-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-evidence-tests")).GetSnapshot());
+
+            _ = ComputerUseWinActionFinalizer.FinalizeResult(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                new InputResult(
+                    Status: InputStatusValues.VerifyNeeded,
+                    Decision: InputStatusValues.VerifyNeeded,
+                    ResultMode: "dispatch_only",
+                    FailureCode: null,
+                    Reason: "Проверь результат клика по приложению вручную.",
+                    TargetHwnd: 101,
+                    TargetSource: InputTargetSourceValues.Attached,
+                    CompletedActionCount: 1,
+                    FailedActionIndex: null,
+                    ArtifactPath: "C:\\temp\\click.json"));
+
+            string completedEvent = File.ReadLines(options.EventsPath)
+                .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
+            Assert.Contains("\"completed_action_count\":\"1\"", completedEvent, StringComparison.Ordinal);
+            Assert.Contains("\"artifact_path\":\"C:\\\\temp\\\\click.json\"", completedEvent, StringComparison.Ordinal);
+            Assert.Contains("\"result_mode\":\"dispatch_only\"", completedEvent, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ActionFinalizerUsesBestEffortSanitizedAuditForUnexpectedFactualFailure()
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
@@ -198,6 +247,55 @@ public sealed class ComputerUseWinFinalizationTests
             Assert.Equal(InputFailureCodeValues.InputDispatchFailed, payload.GetProperty("failureCode").GetString());
             Assert.Equal(101, payload.GetProperty("targetHwnd").GetInt64());
             Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ActionFinalizerIncludesFactualFailureEvidenceInTopLevelAudit()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-factual-evidence-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-factual-evidence-tests")).GetSnapshot());
+
+            _ = ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                exception: new InvalidOperationException("secret click failure"),
+                factualFailure: new InputResult(
+                    Status: InputStatusValues.Failed,
+                    Decision: InputStatusValues.Failed,
+                    ResultMode: "dispatch_only",
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "Runtime столкнулся с unexpected failure после committed input side effect; retry без явной проверки результата небезопасен.",
+                    TargetHwnd: 101,
+                    TargetSource: InputTargetSourceValues.Attached,
+                    CompletedActionCount: 1,
+                    FailedActionIndex: 0,
+                    ArtifactPath: "C:\\temp\\click-failure.json"));
+
+            string completedEvent = File.ReadLines(options.EventsPath)
+                .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
+            Assert.Contains("\"failure_code\":\"input_dispatch_failed\"", completedEvent, StringComparison.Ordinal);
+            Assert.Contains("\"completed_action_count\":\"1\"", completedEvent, StringComparison.Ordinal);
+            Assert.Contains("\"failed_action_index\":\"0\"", completedEvent, StringComparison.Ordinal);
+            Assert.Contains("\"artifact_path\":\"C:\\\\temp\\\\click-failure.json\"", completedEvent, StringComparison.Ordinal);
         }
         finally
         {

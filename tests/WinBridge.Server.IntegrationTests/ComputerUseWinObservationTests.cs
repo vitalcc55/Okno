@@ -156,6 +156,39 @@ public sealed class ComputerUseWinObservationTests
         Assert.True(stateStore.TryGet(existingToken, out _));
     }
 
+    [Fact]
+    public async Task AppStateObserverTreatsUnexpectedInstructionProviderBugAsStructuredFailure()
+    {
+        ComputerUseWinAppStateObserver observer = CreateObserver(
+            captureService: new SuccessfulCaptureService(),
+            uiAutomationService: new FakeUiAutomationService((window, request, _) => Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow))),
+            instructionProvider: new BuggyInstructionProvider());
+
+        ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
+            CreateWindow(),
+            appId: "explorer",
+            maxNodes: 128,
+            warnings: [],
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, outcome.FailureCode);
+        Assert.DoesNotContain("secret", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(outcome.FailureDetails?.AuditException);
+        Assert.IsType<InvalidOperationException>(outcome.FailureDetails!.AuditException);
+    }
+
     private static ComputerUseWinAppStateObserver CreateObserver(
         ICaptureService captureService,
         FakeUiAutomationService uiAutomationService,
@@ -247,7 +280,15 @@ public sealed class ComputerUseWinObservationTests
     private sealed class ThrowingInstructionProvider : IComputerUseWinInstructionProvider
     {
         public IReadOnlyList<string> GetInstructions(string? processName) =>
-            throw new IOException("instructions unavailable");
+            throw new ComputerUseWinInstructionUnavailableException(
+                "Computer Use for Windows не смог прочитать advisory instructions для этого приложения.",
+                new IOException("instructions unavailable"));
+    }
+
+    private sealed class BuggyInstructionProvider : IComputerUseWinInstructionProvider
+    {
+        public IReadOnlyList<string> GetInstructions(string? processName) =>
+            throw new InvalidOperationException("secret provider bug");
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
