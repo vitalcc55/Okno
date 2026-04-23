@@ -222,25 +222,13 @@ internal sealed class ComputerUseWinTools
         }
 
         ComputerUseWinPreparedAppState preparedState = observation.PreparedState!;
-        string stateToken = ComputerUseWinStateStore.CreateToken();
-        ComputerUseWinGetAppStateResult payload = preparedState.CreatePayload(stateToken);
-        CallToolResult result = CreateImageToolResult(payload, preparedState.PngBytes, preparedState.MimeType);
-        stateStore.Commit(stateToken, preparedState.StoredState);
-        sessionManager.Attach(selectedWindow, "computer-use-win");
-
-        invocation.Complete(
-            "done",
-            "Возвращено актуальное состояние приложения для Computer Use for Windows.",
-            selectedWindow.Hwnd,
-            new Dictionary<string, string?>
-            {
-                ["app_id"] = appId,
-                ["state_token"] = payload.StateToken,
-                ["element_count"] = payload.AccessibilityTree!.Count.ToString(CultureInfo.InvariantCulture),
-                ["capture_artifact_path"] = payload.Capture!.ArtifactPath,
-            });
-
-        return result;
+        return ComputerUseWinGetAppStateFinalizer.FinalizeSuccess(
+            invocation,
+            appId,
+            selectedWindow,
+            preparedState,
+            stateStore,
+            sessionManager);
     }
 
     private async Task<CallToolResult> ExecuteClickAsync(
