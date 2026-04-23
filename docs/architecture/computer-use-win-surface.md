@@ -103,6 +103,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - semantic click admissibility должна совпадать между public tree и runtime revalidation: runtime не должен dispatch-ить `elementIndex`, если fresh element больше не clickable или semantic fallback свёлся к слишком слабому proof;
 - `stateToken` имеет bounded retention и short-lived stale-state discipline вместо неограниченного in-memory накопления;
 - blocked targets должны отсеиваться на public surface до unsafe dispatch.
+- plugin-local runtime install path должен оставаться integrity-safe: `runtime/win-x64` не используется как repair scratch space, publish/recovery materialize-ят bundle в side directories и handoff-ят canonical path только после completion proof по обязательным runtime files.
 
 ## Что не делать дальше
 

@@ -83,14 +83,15 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
         try
         {
+            EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+
             if (Directory.Exists(runtimeRoot))
             {
                 CopyDirectory(runtimeRoot, backupRoot, _ => true);
                 DeleteDirectoryIfExists(runtimeRoot);
             }
 
-            Directory.CreateDirectory(runtimeRoot);
-            File.WriteAllText(Path.Combine(runtimeRoot, "Okno.Server.exe"), "old-runtime");
+            CopyDirectory(backupRoot, runtimeRoot, _ => true);
             File.WriteAllText(sentinelPath, "keep");
 
             ScriptInvocationResult result = InvokePowerShellScript(
@@ -127,6 +128,68 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
+    public void PublishComputerUseWinPluginDoesNotLeavePartialCanonicalRuntimeWhenRepairCopyFails()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
+        string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
+        string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-repair", Guid.NewGuid().ToString("N"));
+        string sentinelPath = Path.Combine(runtimeRoot, "keep.txt");
+
+        try
+        {
+            EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+
+            if (Directory.Exists(runtimeRoot))
+            {
+                CopyDirectory(runtimeRoot, backupRoot, _ => true);
+                DeleteDirectoryIfExists(runtimeRoot);
+            }
+
+            CopyDirectory(backupRoot, runtimeRoot, _ => true);
+            File.WriteAllText(sentinelPath, "keep");
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                scriptPath,
+                repoRoot,
+                startInfo =>
+                {
+                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
+                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_RESTORE"] = "1";
+                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_REPAIR_COPY_AFTER_SERVER"] = "1";
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.False(Directory.Exists(runtimeRoot));
+            Assert.NotEmpty(Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(runtimeRoot);
+            if (Directory.Exists(backupRoot))
+            {
+                CopyDirectory(backupRoot, runtimeRoot, _ => true);
+            }
+
+            DeleteDirectoryIfExists(backupRoot);
+            foreach (string backupCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(backupCandidate);
+            }
+
+            foreach (string repairCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.repair-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(repairCandidate);
+            }
+        }
+    }
+
+    [Fact]
     public void PublishComputerUseWinPluginTreatsBackupCleanupFailureAsBestEffortAfterSuccessfulPromote()
     {
         string repoRoot = GetRepositoryRoot();
@@ -136,6 +199,8 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
         try
         {
+            EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+
             ScriptInvocationResult result = InvokePowerShellScript(
                 scriptPath,
                 repoRoot,
@@ -184,6 +249,44 @@ public sealed class ComputerUseWinInstallSurfaceTests
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("publish-computer-use-win-plugin.ps1", result.Stderr, StringComparison.OrdinalIgnoreCase);
             Assert.Contains(Path.Combine("runtime", "win-x64", "Okno.Server.exe"), result.Stderr, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(tempPluginRoot);
+        }
+    }
+
+    [Fact]
+    public void ComputerUseWinLauncherFailsFastWhenPluginLocalRuntimeBundleIsIncomplete()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
+        string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-partial-runtime", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            CopyDirectory(sourcePluginRoot, tempPluginRoot, _ => true);
+            string runtimeRoot = Path.Combine(tempPluginRoot, "runtime", "win-x64");
+            string serverDllPath = Path.Combine(runtimeRoot, "Okno.Server.dll");
+            if (File.Exists(serverDllPath))
+            {
+                File.Delete(serverDllPath);
+            }
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                Path.Combine(tempPluginRoot, "run-computer-use-win-mcp.ps1"),
+                tempPluginRoot,
+                startInfo =>
+                {
+                    startInfo.Environment["COMPUTER_USE_WIN_REPO_ROOT"] = string.Empty;
+                    startInfo.Environment["WINBRIDGE_RUN_ID"] = string.Empty;
+                    startInfo.Environment["WINBRIDGE_RUN_ROOT"] = string.Empty;
+                    startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = string.Empty;
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.False(string.IsNullOrWhiteSpace(result.Stderr));
+            Assert.Contains("win-x64", result.Stderr, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -328,6 +431,32 @@ public sealed class ComputerUseWinInstallSurfaceTests
         {
             Directory.Delete(path, recursive: true);
         }
+    }
+
+    private static void EnsurePublishedRuntimeBundle(string repoRoot, string scriptPath, string runtimeRoot)
+    {
+        string[] requiredFiles =
+        [
+            "Okno.Server.exe",
+            "Okno.Server.dll",
+            "Okno.Server.deps.json",
+            "Okno.Server.runtimeconfig.json",
+        ];
+
+        bool complete = Directory.Exists(runtimeRoot)
+            && requiredFiles.All(file => File.Exists(Path.Combine(runtimeRoot, file)));
+        if (complete)
+        {
+            return;
+        }
+
+        ScriptInvocationResult result = InvokePowerShellScript(
+            scriptPath,
+            repoRoot,
+            _ => { });
+        Assert.True(
+            result.ExitCode == 0,
+            $"Publish script failed while preparing runtime baseline. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
     }
 
     private static ScriptInvocationResult InvokePowerShellScript(string scriptPath, string workingDirectory, Action<ProcessStartInfo> configure)

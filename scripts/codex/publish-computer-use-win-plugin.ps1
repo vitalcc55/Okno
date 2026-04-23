@@ -11,6 +11,7 @@ $publishRoot = Join-Path $repoRoot '.tmp\.codex\publish\computer-use-win\win-x64
 $stagingRoot = Join-Path $publishRoot ('staging-' + [Guid]::NewGuid().ToString('N'))
 $swapRoot = Join-Path $runtimeParent ('win-x64.publish-' + [Guid]::NewGuid().ToString('N'))
 $backupRoot = Join-Path $runtimeParent ('win-x64.backup-' + [Guid]::NewGuid().ToString('N'))
+$repairRoot = Join-Path $runtimeParent ('win-x64.repair-' + [Guid]::NewGuid().ToString('N'))
 
 function Remove-DirectoryIfExists {
     param(
@@ -92,12 +93,45 @@ function Copy-DirectoryContents {
         }
 
         Copy-Item -LiteralPath $_.FullName -Destination $destinationPath -Force
+
+        if ($env:COMPUTER_USE_WIN_TEST_FAIL_REPAIR_COPY_AFTER_SERVER -eq '1' `
+            -and [System.IO.Path]::GetFullPath($DestinationRoot) -eq [System.IO.Path]::GetFullPath($repairRoot) `
+            -and [string]::Equals($relativePath, 'Okno.Server.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Synthetic repair copy failure after Okno.Server.exe."
+        }
+    }
+}
+
+function Assert-RuntimeBundleComplete {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RootPath,
+        [Parameter(Mandatory)]
+        [string] $Description
+    )
+
+    $requiredFiles = @(
+        'Okno.Server.exe',
+        'Okno.Server.dll',
+        'Okno.Server.deps.json',
+        'Okno.Server.runtimeconfig.json'
+    )
+
+    $missing = @(
+        $requiredFiles | Where-Object {
+            -not (Test-Path (Join-Path $RootPath $_) -PathType Leaf)
+        }
+    )
+
+    if ($missing.Count -gt 0) {
+        throw "$Description is incomplete. Missing: $($missing -join ', ')."
     }
 }
 
 Remove-DirectoryIfExists -Path $stagingRoot
 Remove-DirectoryIfExists -Path $swapRoot
 Remove-DirectoryIfExists -Path $backupRoot
+Remove-DirectoryIfExists -Path $repairRoot
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $runtimeParent -Force | Out-Null
 $promoteCompleted = $false
@@ -116,17 +150,11 @@ try {
             --output $stagingRoot
     }
 
-    $serverExePath = Join-Path $stagingRoot 'Okno.Server.exe'
-    if (-not (Test-Path $serverExePath -PathType Leaf)) {
-        throw "Publish did not produce expected apphost '$serverExePath'."
-    }
+    Assert-RuntimeBundleComplete -RootPath $stagingRoot -Description "Published computer-use-win runtime bundle '$stagingRoot'"
 
     Copy-DirectoryContents -SourceRoot $stagingRoot -DestinationRoot $swapRoot
 
-    $swappedServerExePath = Join-Path $swapRoot 'Okno.Server.exe'
-    if (-not (Test-Path $swappedServerExePath -PathType Leaf)) {
-        throw "Plugin runtime swap directory '$swapRoot' does not contain Okno.Server.exe."
-    }
+    Assert-RuntimeBundleComplete -RootPath $swapRoot -Description "Plugin runtime swap directory '$swapRoot'"
 
     try {
         if (Test-Path $runtimeRoot -PathType Container) {
@@ -151,15 +179,15 @@ try {
                 Move-Item -LiteralPath $backupRoot -Destination $runtimeRoot
             }
             catch {
-                if (-not (Test-Path $runtimeRoot -PathType Container)) {
-                    New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+                Remove-DirectoryIfExists -Path $repairRoot
+                Copy-DirectoryContents -SourceRoot $backupRoot -DestinationRoot $repairRoot
+                Assert-RuntimeBundleComplete -RootPath $repairRoot -Description "Staged runtime repair directory '$repairRoot'"
+                if (Test-Path $runtimeRoot -PathType Container) {
+                    Remove-DirectoryIfExists -Path $runtimeRoot
                 }
 
-                Copy-DirectoryContents -SourceRoot $backupRoot -DestinationRoot $runtimeRoot
-                $restoredServerExePath = Join-Path $runtimeRoot 'Okno.Server.exe'
-                if (-not (Test-Path $restoredServerExePath -PathType Leaf)) {
-                    throw
-                }
+                Move-Item -LiteralPath $repairRoot -Destination $runtimeRoot
+                Assert-RuntimeBundleComplete -RootPath $runtimeRoot -Description "Canonical runtime path '$runtimeRoot' after restore repair"
             }
 
             $restoreCompleted = $true
@@ -175,6 +203,7 @@ try {
 finally {
     Remove-DirectoryBestEffort -Path $stagingRoot -Description 'staging cleanup'
     Remove-DirectoryBestEffort -Path $swapRoot -Description 'swap cleanup'
+    Remove-DirectoryBestEffort -Path $repairRoot -Description 'repair cleanup'
     if ($promoteCompleted -or $restoreCompleted) {
         Remove-DirectoryBestEffort -Path $backupRoot -Description "backup cleanup after $terminalState"
     }

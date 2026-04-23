@@ -22,8 +22,8 @@ Public plugin `plugins/computer-use-win/` уже публикует правил
 ## Repo changes
 
 1. `scripts/codex/publish-computer-use-win-plugin.ps1` materialize-ит self-contained `win-x64` runtime bundle в `plugins/computer-use-win/runtime/win-x64/`.
-2. `plugins/computer-use-win/run-computer-use-win-mcp.ps1` стартует только `runtime/win-x64/Okno.Server.exe --tool-surface-profile computer-use-win`.
-3. Publish promote path сохраняет last-known-good runtime до тех пор, пока swap новой директории не завершён успешно; failure не должен оставлять plugin без runnable runtime, rollback обязан пытаться восстановить canonical `runtime/win-x64`, а cleanup старого backup/staging/swap после terminal success считается best-effort и не должен превращать уже успешный promote в ложный install failure.
+2. `plugins/computer-use-win/run-computer-use-win-mcp.ps1` стартует только `runtime/win-x64/Okno.Server.exe --tool-surface-profile computer-use-win` и fail-fast-ится, если canonical runtime bundle неполон, а не только если отсутствует apphost.
+3. Publish promote path сохраняет last-known-good runtime до тех пор, пока swap новой директории не завершён успешно; failure не должен оставлять plugin без runnable runtime, rollback обязан пытаться восстановить canonical `runtime/win-x64`, а canonical path не должен использоваться как repair scratch space: restore-repair materialize-ится в side directory и handoff-ится только после completion proof по обязательным runtime files. Cleanup старого backup/staging/swap/repair после terminal success считается best-effort и не должен превращать уже успешный promote в ложный install failure.
 4. Repo-root resolver, hint script и hint narrative удаляются из public plugin path.
 5. Integration tests доказывают launcher из temp plugin copy вне repo tree без env/hint dependency.
 6. Docs и generated commands переводятся на publish/install flow вместо hint/install flow.
