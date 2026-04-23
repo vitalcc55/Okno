@@ -5,12 +5,54 @@ using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
+using WinBridge.Runtime.Windows.Input;
 using WinBridge.Server.ComputerUse;
 
 namespace WinBridge.Server.IntegrationTests;
 
 public sealed class ComputerUseWinFinalizationTests
 {
+    [Fact]
+    public void FailureCompletionPreservesSanitizedExceptionMetadataInAudit()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-failure-completion-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinGetAppState,
+                new { hwnd = 101 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-failure-completion-tests")).GetSnapshot());
+
+            ComputerUseWinFailureDetails failure = new(
+                ComputerUseWinFailureCodeValues.ObservationFailed,
+                "Computer Use for Windows не смог завершить observation stage для get_app_state.",
+                new InvalidOperationException("secret observation failure"));
+
+            ComputerUseWinFailureCompletion.CompleteFailure(
+                invocation,
+                failure.Reason,
+                failure.FailureCode,
+                targetHwnd: 101,
+                auditException: failure.AuditException);
+
+            string completedEvent = File.ReadLines(options.EventsPath)
+                .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
+            Assert.Contains("\"exception_type\":\"System.InvalidOperationException\"", completedEvent, StringComparison.Ordinal);
+            Assert.DoesNotContain("secret observation failure", completedEvent, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     [Fact]
     public void FinalizerUsesBestEffortAuditAfterSharedStateCommit()
     {
@@ -66,6 +108,115 @@ public sealed class ComputerUseWinFinalizationTests
             }
         }
     }
+
+    [Fact]
+    public void ActionFinalizerUsesBestEffortAuditAfterCommittedSideEffect()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-finalizer-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-finalizer-tests")).GetSnapshot());
+
+            File.Delete(options.EventsPath);
+            Directory.CreateDirectory(options.EventsPath);
+            File.Delete(options.SummaryPath);
+            Directory.CreateDirectory(options.SummaryPath);
+
+            CallToolResult result = ComputerUseWinActionFinalizer.FinalizeResult(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                new InputResult(
+                    Status: InputStatusValues.Done,
+                    Decision: InputStatusValues.Done,
+                    FailureCode: null,
+                    Reason: null,
+                    TargetHwnd: 101));
+
+            Assert.False(result.IsError);
+            JsonElement payload = result.StructuredContent!.Value;
+            Assert.Equal(ComputerUseWinStatusValues.Done, payload.GetProperty("status").GetString());
+            Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
+            Assert.Equal(101, payload.GetProperty("targetHwnd").GetInt64());
+            Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ActionFinalizerUsesBestEffortSanitizedAuditForUnexpectedFactualFailure()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-failure-finalizer-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-failure-finalizer-tests")).GetSnapshot());
+
+            File.Delete(options.EventsPath);
+            Directory.CreateDirectory(options.EventsPath);
+            File.Delete(options.SummaryPath);
+            Directory.CreateDirectory(options.SummaryPath);
+
+            CallToolResult result = ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                exception: new InvalidOperationException("secret click failure"),
+                factualFailure: new InputResult(
+                    Status: InputStatusValues.Failed,
+                    Decision: InputStatusValues.Failed,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "Runtime столкнулся с unexpected failure после committed input side effect; retry без явной проверки результата небезопасен.",
+                    TargetHwnd: 101,
+                    CompletedActionCount: 0,
+                    FailedActionIndex: 0));
+
+            Assert.True(result.IsError);
+            JsonElement payload = result.StructuredContent!.Value;
+            Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.Equal(InputFailureCodeValues.InputDispatchFailed, payload.GetProperty("failureCode").GetString());
+            Assert.Equal(101, payload.GetProperty("targetHwnd").GetInt64());
+            Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    private static AuditLogOptions CreateAuditOptions(string root, string runId) =>
+        new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: runId,
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", runId),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", runId, "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", runId, "summary.md"));
 
     private static WindowDescriptor CreateWindow() =>
         new(

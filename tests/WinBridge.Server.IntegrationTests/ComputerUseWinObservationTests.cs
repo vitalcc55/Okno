@@ -68,6 +68,8 @@ public sealed class ComputerUseWinObservationTests
         Assert.False(outcome.IsSuccess);
         Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, outcome.FailureCode);
         Assert.DoesNotContain("secret", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(outcome.FailureDetails);
+        Assert.IsType<InvalidOperationException>(outcome.FailureDetails!.AuditException);
     }
 
     [Fact]

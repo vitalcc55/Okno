@@ -216,8 +216,7 @@ internal sealed class ComputerUseWinTools
         {
             return CreateStateFailure(
                 invocation,
-                observation.FailureCode!,
-                observation.Reason!,
+                observation.FailureDetails!,
                 selectedWindow.Hwnd);
         }
 
@@ -268,7 +267,7 @@ internal sealed class ComputerUseWinTools
         ComputerUseWinClickTargetResolution resolution = await clickTargetResolver.ResolveAsync(resolvedState, request, cancellationToken).ConfigureAwait(false);
         if (!resolution.IsSuccess)
         {
-            return CreateActionFailure(invocation, ToolNames.ComputerUseWinClick, resolution.FailureCode!, resolution.Reason!, resolvedState.Session.Hwnd, request.ElementIndex);
+            return CreateActionFailure(invocation, ToolNames.ComputerUseWinClick, resolution.FailureDetails!, resolvedState.Session.Hwnd, request.ElementIndex);
         }
 
         if (resolution.RequiresConfirmation && !request.Confirm)
@@ -283,30 +282,14 @@ internal sealed class ComputerUseWinTools
                     : "Клик по выбранному элементу требует явного подтверждения.");
         }
 
-        InputResult input = await inputService.ExecuteAsync(
-            new InputRequest
+        return await ExecuteActionAsync(
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            resolvedState.Session.Hwnd,
+            request.ElementIndex,
+            async ct =>
             {
-                Hwnd = resolvedState.Session.Hwnd,
-                Actions = [resolution.Action!],
-            },
-            new InputExecutionContext(resolvedState.Window),
-            InputExecutionProfileValues.ComputerUseCore,
-            cancellationToken).ConfigureAwait(false);
-
-        if (string.Equals(input.Status, InputStatusValues.Failed, StringComparison.Ordinal)
-            && (string.Equals(input.FailureCode, InputFailureCodeValues.TargetNotForeground, StringComparison.Ordinal)
-                || string.Equals(input.FailureCode, InputFailureCodeValues.TargetPreflightFailed, StringComparison.Ordinal)))
-        {
-            ActivateWindowResult retryActivation = await windowActivationService.ActivateAsync(resolvedState.Window, cancellationToken).ConfigureAwait(false);
-            if (string.Equals(retryActivation.Status, "done", StringComparison.Ordinal)
-                || string.Equals(retryActivation.Status, "already_active", StringComparison.Ordinal))
-            {
-                resolvedState = resolvedState with
-                {
-                    Window = retryActivation.Window ?? resolvedState.Window,
-                };
-
-                input = await inputService.ExecuteAsync(
+                InputResult input = await inputService.ExecuteAsync(
                     new InputRequest
                     {
                         Hwnd = resolvedState.Session.Hwnd,
@@ -314,11 +297,36 @@ internal sealed class ComputerUseWinTools
                     },
                     new InputExecutionContext(resolvedState.Window),
                     InputExecutionProfileValues.ComputerUseCore,
-                    cancellationToken).ConfigureAwait(false);
-            }
-        }
+                    ct).ConfigureAwait(false);
 
-        return CreateActionToolResult(invocation, ToolNames.ComputerUseWinClick, resolvedState.Session.Hwnd, request.ElementIndex, input);
+                if (string.Equals(input.Status, InputStatusValues.Failed, StringComparison.Ordinal)
+                    && (string.Equals(input.FailureCode, InputFailureCodeValues.TargetNotForeground, StringComparison.Ordinal)
+                        || string.Equals(input.FailureCode, InputFailureCodeValues.TargetPreflightFailed, StringComparison.Ordinal)))
+                {
+                    ActivateWindowResult retryActivation = await windowActivationService.ActivateAsync(resolvedState.Window, ct).ConfigureAwait(false);
+                    if (string.Equals(retryActivation.Status, "done", StringComparison.Ordinal)
+                        || string.Equals(retryActivation.Status, "already_active", StringComparison.Ordinal))
+                    {
+                        resolvedState = resolvedState with
+                        {
+                            Window = retryActivation.Window ?? resolvedState.Window,
+                        };
+
+                        input = await inputService.ExecuteAsync(
+                            new InputRequest
+                            {
+                                Hwnd = resolvedState.Session.Hwnd,
+                                Actions = [resolution.Action!],
+                            },
+                            new InputExecutionContext(resolvedState.Window),
+                            InputExecutionProfileValues.ComputerUseCore,
+                            ct).ConfigureAwait(false);
+                    }
+                }
+
+                return input;
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<CallToolResult> ExecuteTypeTextAsync(
@@ -342,24 +350,28 @@ internal sealed class ComputerUseWinTools
             return failureResult!;
         }
 
-        InputResult input = await inputService.ExecuteAsync(
-            new InputRequest
-            {
-                Hwnd = state!.Session.Hwnd,
-                Actions =
-                [
-                    new InputAction
-                    {
-                        Type = InputActionTypeValues.Type,
-                        Text = request.Text,
-                    },
-                ],
-            },
-            new InputExecutionContext(state.Window),
-            InputExecutionProfileValues.ComputerUseCore,
+        return await ExecuteActionAsync(
+            invocation,
+            ToolNames.ComputerUseWinTypeText,
+            state!.Session.Hwnd,
+            null,
+            ct => inputService.ExecuteAsync(
+                new InputRequest
+                {
+                    Hwnd = state.Session.Hwnd,
+                    Actions =
+                    [
+                        new InputAction
+                        {
+                            Type = InputActionTypeValues.Type,
+                            Text = request.Text,
+                        },
+                    ],
+                },
+                new InputExecutionContext(state.Window),
+                InputExecutionProfileValues.ComputerUseCore,
+                ct),
             cancellationToken).ConfigureAwait(false);
-
-        return CreateActionToolResult(invocation, ToolNames.ComputerUseWinTypeText, state.Session.Hwnd, null, input);
     }
 
     private async Task<CallToolResult> ExecutePressKeyAsync(
@@ -388,25 +400,29 @@ internal sealed class ComputerUseWinTools
             return CreateActionApprovalRequired(invocation, ToolNames.ComputerUseWinPressKey, state!.Session.Hwnd, null, "Нажатие выбранной клавиши требует явного подтверждения.");
         }
 
-        InputResult input = await inputService.ExecuteAsync(
-            new InputRequest
-            {
-                Hwnd = state!.Session.Hwnd,
-                Actions =
-                [
-                    new InputAction
-                    {
-                        Type = InputActionTypeValues.Keypress,
-                        Key = request.Key,
-                        Repeat = request.Repeat,
-                    },
-                ],
-            },
-            new InputExecutionContext(state.Window),
-            InputExecutionProfileValues.ComputerUseCore,
+        return await ExecuteActionAsync(
+            invocation,
+            ToolNames.ComputerUseWinPressKey,
+            state!.Session.Hwnd,
+            null,
+            ct => inputService.ExecuteAsync(
+                new InputRequest
+                {
+                    Hwnd = state.Session.Hwnd,
+                    Actions =
+                    [
+                        new InputAction
+                        {
+                            Type = InputActionTypeValues.Keypress,
+                            Key = request.Key,
+                            Repeat = request.Repeat,
+                        },
+                    ],
+                },
+                new InputExecutionContext(state.Window),
+                InputExecutionProfileValues.ComputerUseCore,
+                ct),
             cancellationToken).ConfigureAwait(false);
-
-        return CreateActionToolResult(invocation, ToolNames.ComputerUseWinPressKey, state.Session.Hwnd, null, input);
     }
 
     private async Task<CallToolResult> ExecuteScrollAsync(
@@ -431,17 +447,21 @@ internal sealed class ComputerUseWinTools
             return CreateActionFailure(invocation, ToolNames.ComputerUseWinScroll, failureCode!, reason!, resolvedState.Session.Hwnd, request.ElementIndex);
         }
 
-        InputResult input = await inputService.ExecuteAsync(
-            new InputRequest
-            {
-                Hwnd = resolvedState.Session.Hwnd,
-                Actions = [action!],
-            },
-            new InputExecutionContext(resolvedState.Window),
-            InputExecutionProfileValues.ComputerUseCore,
+        return await ExecuteActionAsync(
+            invocation,
+            ToolNames.ComputerUseWinScroll,
+            resolvedState.Session.Hwnd,
+            request.ElementIndex,
+            ct => inputService.ExecuteAsync(
+                new InputRequest
+                {
+                    Hwnd = resolvedState.Session.Hwnd,
+                    Actions = [action!],
+                },
+                new InputExecutionContext(resolvedState.Window),
+                InputExecutionProfileValues.ComputerUseCore,
+                ct),
             cancellationToken).ConfigureAwait(false);
-
-        return CreateActionToolResult(invocation, ToolNames.ComputerUseWinScroll, resolvedState.Session.Hwnd, request.ElementIndex, input);
     }
 
     private async Task<CallToolResult> ExecuteDragAsync(
@@ -466,17 +486,21 @@ internal sealed class ComputerUseWinTools
             return CreateActionFailure(invocation, ToolNames.ComputerUseWinDrag, failureCode!, reason!, resolvedState.Session.Hwnd);
         }
 
-        InputResult input = await inputService.ExecuteAsync(
-            new InputRequest
-            {
-                Hwnd = resolvedState.Session.Hwnd,
-                Actions = [action!],
-            },
-            new InputExecutionContext(resolvedState.Window),
-            InputExecutionProfileValues.ComputerUseCore,
+        return await ExecuteActionAsync(
+            invocation,
+            ToolNames.ComputerUseWinDrag,
+            resolvedState.Session.Hwnd,
+            request.FromElementIndex ?? request.ToElementIndex,
+            ct => inputService.ExecuteAsync(
+                new InputRequest
+                {
+                    Hwnd = resolvedState.Session.Hwnd,
+                    Actions = [action!],
+                },
+                new InputExecutionContext(resolvedState.Window),
+                InputExecutionProfileValues.ComputerUseCore,
+                ct),
             cancellationToken).ConfigureAwait(false);
-
-        return CreateActionToolResult(invocation, ToolNames.ComputerUseWinDrag, resolvedState.Session.Hwnd, request.FromElementIndex ?? request.ToElementIndex, input);
     }
 
     private ComputerUseWinAppDescriptor[] BuildAppDescriptors()
@@ -828,13 +852,59 @@ internal sealed class ComputerUseWinTools
             ? new(true, request, null, null)
             : new(false, fallbackRequest, ComputerUseWinFailureCodeValues.InvalidRequest, $"Transport arguments не прошли binding: {reason}");
 
-    private static CallToolResult CreateStateFailure(AuditInvocationScope invocation, string failureCode, string reason, long? targetHwnd = null)
+    private static async Task<CallToolResult> ExecuteActionAsync(
+        AuditInvocationScope invocation,
+        string toolName,
+        long? targetHwnd,
+        int? elementIndex,
+        Func<CancellationToken, Task<InputResult>> executeAsync,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            InputResult input = await executeAsync(cancellationToken).ConfigureAwait(false);
+            return CreateActionToolResult(invocation, toolName, targetHwnd, elementIndex, input);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (InputExecutionFailureException exception)
+        {
+            return ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
+                invocation,
+                toolName,
+                targetHwnd,
+                elementIndex,
+                exception.InnerException ?? exception,
+                exception.Result);
+        }
+        catch (Exception exception)
+        {
+            return ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
+                invocation,
+                toolName,
+                targetHwnd,
+                elementIndex,
+                exception);
+        }
+    }
+
+    private static CallToolResult CreateStateFailure(AuditInvocationScope invocation, ComputerUseWinFailureDetails failure, long? targetHwnd = null) =>
+        CreateStateFailure(invocation, failure.FailureCode, failure.Reason, targetHwnd, failure.AuditException);
+
+    private static CallToolResult CreateStateFailure(
+        AuditInvocationScope invocation,
+        string failureCode,
+        string reason,
+        long? targetHwnd = null,
+        Exception? auditException = null)
     {
         ComputerUseWinGetAppStateResult payload = new(
             Status: ComputerUseWinStatusValues.Failed,
             FailureCode: failureCode,
             Reason: reason);
-        invocation.Complete("failed", reason, targetHwnd);
+        ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, failureCode, targetHwnd, auditException);
         return CreateToolResult(payload, isError: true);
     }
 
@@ -844,7 +914,7 @@ internal sealed class ComputerUseWinTools
             Status: ComputerUseWinStatusValues.Blocked,
             FailureCode: ComputerUseWinFailureCodeValues.BlockedTarget,
             Reason: reason);
-        invocation.Complete("failed", reason, window.Hwnd);
+        ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, ComputerUseWinFailureCodeValues.BlockedTarget, window.Hwnd);
         return CreateToolResult(payload, isError: true);
     }
 
@@ -856,9 +926,17 @@ internal sealed class ComputerUseWinTools
             ApprovalRequired: true,
             FailureCode: ComputerUseWinFailureCodeValues.ApprovalRequired,
             Reason: $"App '{appId}' ещё не одобрена для Computer Use for Windows.");
-        invocation.Complete("failed", payload.Reason!, window.Hwnd);
+        ComputerUseWinFailureCompletion.CompleteFailure(invocation, payload.Reason!, ComputerUseWinFailureCodeValues.ApprovalRequired, window.Hwnd);
         return CreateToolResult(payload, isError: true);
     }
+
+    private static CallToolResult CreateActionFailure(
+        AuditInvocationScope invocation,
+        string toolName,
+        ComputerUseWinFailureDetails failure,
+        long? targetHwnd = null,
+        int? elementIndex = null) =>
+        CreateActionFailure(invocation, toolName, failure.FailureCode, failure.Reason, targetHwnd, elementIndex, failure.AuditException);
 
     private static CallToolResult CreateActionFailure(
         AuditInvocationScope invocation,
@@ -866,7 +944,8 @@ internal sealed class ComputerUseWinTools
         string failureCode,
         string reason,
         long? targetHwnd = null,
-        int? elementIndex = null)
+        int? elementIndex = null,
+        Exception? auditException = null)
     {
         ComputerUseWinActionResult payload = new(
             Status: ComputerUseWinStatusValues.Failed,
@@ -874,7 +953,7 @@ internal sealed class ComputerUseWinTools
             Reason: reason,
             TargetHwnd: targetHwnd,
             ElementIndex: elementIndex);
-        invocation.Complete("failed", reason, targetHwnd);
+        ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, failureCode, targetHwnd, auditException);
         return CreateToolResult(payload, isError: true);
     }
 
@@ -891,7 +970,7 @@ internal sealed class ComputerUseWinTools
             Reason: reason,
             TargetHwnd: targetHwnd,
             ElementIndex: elementIndex);
-        invocation.Complete("failed", reason, targetHwnd);
+        ComputerUseWinFailureCompletion.CompleteFailure(invocation, reason, ComputerUseWinFailureCodeValues.ApprovalRequired, targetHwnd);
         return CreateToolResult(payload, isError: true);
     }
 
@@ -900,26 +979,8 @@ internal sealed class ComputerUseWinTools
         string toolName,
         long? targetHwnd,
         int? elementIndex,
-        InputResult input)
-    {
-        ComputerUseWinActionResult payload = new(
-            Status: string.Equals(input.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal)
-                ? ComputerUseWinStatusValues.VerifyNeeded
-                : string.Equals(input.Status, InputStatusValues.Done, StringComparison.Ordinal)
-                    ? ComputerUseWinStatusValues.Done
-                    : ComputerUseWinStatusValues.Failed,
-            RefreshStateRecommended: true,
-            FailureCode: input.FailureCode,
-            Reason: input.Reason,
-            TargetHwnd: input.TargetHwnd ?? targetHwnd,
-            ElementIndex: elementIndex);
-
-        string auditOutcome = payload.Status is ComputerUseWinStatusValues.Done or ComputerUseWinStatusValues.VerifyNeeded
-            ? "done"
-            : "failed";
-        invocation.Complete(auditOutcome, payload.Reason ?? $"Computer Use action '{toolName}' завершён.", payload.TargetHwnd);
-        return CreateToolResult(payload, isError: payload.Status == ComputerUseWinStatusValues.Failed);
-    }
+        InputResult input) =>
+        ComputerUseWinActionFinalizer.FinalizeResult(invocation, toolName, targetHwnd, elementIndex, input);
 
     private readonly record struct Binding<T>(
         bool IsSuccess,

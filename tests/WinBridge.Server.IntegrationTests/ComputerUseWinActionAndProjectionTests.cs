@@ -169,6 +169,8 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.False(resolution.IsSuccess);
         Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, resolution.FailureCode);
         Assert.DoesNotContain("secret", resolution.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(resolution.FailureDetails);
+        Assert.IsType<InvalidOperationException>(resolution.FailureDetails!.AuditException);
     }
 
     private static ComputerUseWinStoredState CreateStoredState() =>

@@ -37,8 +37,9 @@ internal sealed class ComputerUseWinAppStateObserver(
                 || snapshot.Root is null)
             {
                 return ComputerUseWinAppStateObservationOutcome.Failure(
-                    ComputerUseWinFailureCodeValues.ObservationFailed,
-                    snapshot.Reason ?? "UIA snapshot did not complete successfully.");
+                    ComputerUseWinFailureDetails.Expected(
+                        ComputerUseWinFailureCodeValues.ObservationFailed,
+                        snapshot.Reason ?? "UIA snapshot did not complete successfully."));
             }
 
             IReadOnlyDictionary<int, ComputerUseWinStoredElement> elements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
@@ -91,10 +92,10 @@ internal sealed class ComputerUseWinAppStateObserver(
         }
         catch (Exception exception)
         {
-            ComputerUseWinObservationFailure failure = ComputerUseWinObservationFailureTranslator.Translate(
+            ComputerUseWinFailureDetails failure = ComputerUseWinObservationFailureTranslator.Translate(
                 exception,
                 "Computer Use for Windows не смог завершить observation stage для get_app_state.");
-            return ComputerUseWinAppStateObservationOutcome.Failure(failure.FailureCode, failure.Reason);
+            return ComputerUseWinAppStateObservationOutcome.Failure(failure);
         }
     }
 }
@@ -102,14 +103,17 @@ internal sealed class ComputerUseWinAppStateObserver(
 internal sealed record ComputerUseWinAppStateObservationOutcome(
     bool IsSuccess,
     ComputerUseWinPreparedAppState? PreparedState,
-    string? FailureCode,
-    string? Reason)
+    ComputerUseWinFailureDetails? FailureDetails)
 {
-    public static ComputerUseWinAppStateObservationOutcome Success(ComputerUseWinPreparedAppState preparedState) =>
-        new(true, preparedState, null, null);
+    public string? FailureCode => FailureDetails?.FailureCode;
 
-    public static ComputerUseWinAppStateObservationOutcome Failure(string failureCode, string reason) =>
-        new(false, null, failureCode, reason);
+    public string? Reason => FailureDetails?.Reason;
+
+    public static ComputerUseWinAppStateObservationOutcome Success(ComputerUseWinPreparedAppState preparedState) =>
+        new(true, preparedState, null);
+
+    public static ComputerUseWinAppStateObservationOutcome Failure(ComputerUseWinFailureDetails failure) =>
+        new(false, null, failure);
 }
 
 internal sealed record ComputerUseWinPreparedAppState(

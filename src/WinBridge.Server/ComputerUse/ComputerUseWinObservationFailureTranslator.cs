@@ -5,23 +5,20 @@ namespace WinBridge.Server.ComputerUse;
 
 internal static class ComputerUseWinObservationFailureTranslator
 {
-    public static ComputerUseWinObservationFailure Translate(Exception exception, string unexpectedReason)
+    public static ComputerUseWinFailureDetails Translate(Exception exception, string unexpectedReason)
     {
         ArgumentNullException.ThrowIfNull(exception);
         ArgumentException.ThrowIfNullOrWhiteSpace(unexpectedReason);
 
         return exception switch
         {
-            CaptureOperationException captureException => new(
+            CaptureOperationException captureException => ComputerUseWinFailureDetails.Expected(
                 ComputerUseWinFailureCodeValues.ObservationFailed,
                 captureException.Message),
-            _ => new(
+            _ => ComputerUseWinFailureDetails.Unexpected(
                 ComputerUseWinFailureCodeValues.ObservationFailed,
-                unexpectedReason),
+                unexpectedReason,
+                exception),
         };
     }
 }
-
-internal sealed record ComputerUseWinObservationFailure(
-    string FailureCode,
-    string Reason);

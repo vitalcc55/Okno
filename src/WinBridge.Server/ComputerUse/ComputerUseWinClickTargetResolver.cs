@@ -22,8 +22,9 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
                     || storedElement.Bounds is null)
                 {
                     return ComputerUseWinClickTargetResolution.Failure(
-                        ComputerUseWinFailureCodeValues.InvalidRequest,
-                        $"elementIndex {elementIndex} не существует или не даёт кликабельных bounds.");
+                        ComputerUseWinFailureDetails.Expected(
+                            ComputerUseWinFailureCodeValues.InvalidRequest,
+                            $"elementIndex {elementIndex} не существует или не даёт кликабельных bounds."));
                 }
 
                 UiaSnapshotResult snapshot = await uiAutomationService.SnapshotAsync(
@@ -39,8 +40,9 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
                     || snapshot.Root is null)
                 {
                     return ComputerUseWinClickTargetResolution.Failure(
-                        ComputerUseWinFailureCodeValues.ObservationFailed,
-                        snapshot.Reason ?? "Computer Use for Windows не смог пере-подтвердить target по fresh observation path.");
+                        ComputerUseWinFailureDetails.Expected(
+                            ComputerUseWinFailureCodeValues.ObservationFailed,
+                            snapshot.Reason ?? "Computer Use for Windows не смог пере-подтвердить target по fresh observation path."));
                 }
 
                 IReadOnlyDictionary<int, ComputerUseWinStoredElement> freshElements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
@@ -48,8 +50,9 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
                     || effectiveElement?.Bounds is not Bounds freshBounds)
                 {
                     return ComputerUseWinClickTargetResolution.Failure(
-                        ComputerUseWinFailureCodeValues.StaleState,
-                        "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.");
+                        ComputerUseWinFailureDetails.Expected(
+                            ComputerUseWinFailureCodeValues.StaleState,
+                            "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element."));
                 }
 
                 return ComputerUseWinClickTargetResolution.Success(
@@ -69,18 +72,19 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
             }
             catch (Exception exception)
             {
-                ComputerUseWinObservationFailure failure = ComputerUseWinObservationFailureTranslator.Translate(
+                ComputerUseWinFailureDetails failure = ComputerUseWinObservationFailureTranslator.Translate(
                     exception,
                     "Computer Use for Windows не смог пере-подтвердить target по fresh observation path.");
-                return ComputerUseWinClickTargetResolution.Failure(failure.FailureCode, failure.Reason);
+                return ComputerUseWinClickTargetResolution.Failure(failure);
             }
         }
 
         if (request.Point is not InputPoint point)
         {
             return ComputerUseWinClickTargetResolution.Failure(
-                ComputerUseWinFailureCodeValues.InvalidRequest,
-                "Для click требуется elementIndex или point.");
+                ComputerUseWinFailureDetails.Expected(
+                    ComputerUseWinFailureCodeValues.InvalidRequest,
+                    "Для click требуется elementIndex или point."));
         }
 
         string coordinateSpace = string.IsNullOrWhiteSpace(request.CoordinateSpace)
@@ -136,15 +140,18 @@ internal sealed record ComputerUseWinClickTargetResolution(
     InputAction? Action,
     ComputerUseWinStoredElement? EffectiveElement,
     bool RequiresConfirmation,
-    string? FailureCode,
-    string? Reason)
+    ComputerUseWinFailureDetails? FailureDetails)
 {
+    public string? FailureCode => FailureDetails?.FailureCode;
+
+    public string? Reason => FailureDetails?.Reason;
+
     public static ComputerUseWinClickTargetResolution Success(
         InputAction action,
         ComputerUseWinStoredElement? element,
         bool requiresConfirmation) =>
-        new(true, action, element, requiresConfirmation, null, null);
+        new(true, action, element, requiresConfirmation, null);
 
-    public static ComputerUseWinClickTargetResolution Failure(string failureCode, string reason) =>
-        new(false, null, null, false, failureCode, reason);
+    public static ComputerUseWinClickTargetResolution Failure(ComputerUseWinFailureDetails failure) =>
+        new(false, null, null, false, failure);
 }
