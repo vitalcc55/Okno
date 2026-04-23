@@ -28,6 +28,7 @@ Public plugin `plugins/computer-use-win/` уже публикует правил
 5. Docs и generated commands переводятся на publish/install flow вместо hint/install flow.
 6. Follow-up hardening на этой же ветке оставляет public product surface fail-closed: explicit profile валидируется через shared source of truth, app/process identity канонизируется для policy/playbook/appId, `get_app_state` не commit-ит session и не выдаёт `stateToken` при broken observation, а low-confidence coordinate click требует explicit confirm.
 7. `stateToken` и downstream action revalidation используют один observation envelope: click revalidation не ослабляет исходный `maxNodes` budget, а malformed request shapes fail-close-ятся как `invalid_request` до observation/runtime stages.
+8. `get_app_state` оформлен как `prepare observation -> materialize response -> commit shared state`: advisory instruction loading не валит successful capture/UIA result, а hidden token inserts до полного success boundary не допускаются.
 
 ## Acceptance criteria
 

@@ -1,6 +1,6 @@
 namespace WinBridge.Server.ComputerUse;
 
-internal sealed class ComputerUseWinPlaybookProvider
+internal sealed class ComputerUseWinPlaybookProvider : IComputerUseWinInstructionProvider
 {
     private static readonly Dictionary<string, string> PlaybookMap =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

@@ -46,7 +46,7 @@ builder.Services.AddSingleton(static services =>
     ComputerUseWinOptions.Resolve(services.GetRequiredService<IHostEnvironment>().ContentRootPath));
 builder.Services.AddSingleton<ComputerUseWinApprovalStore>();
 builder.Services.AddSingleton<ComputerUseWinStateStore>();
-builder.Services.AddSingleton<ComputerUseWinPlaybookProvider>();
+builder.Services.AddSingleton<IComputerUseWinInstructionProvider, ComputerUseWinPlaybookProvider>();
 builder.Services.AddSingleton<AdminTools>();
 builder.Services.AddSingleton(static services => new WindowTools(
     services.GetRequiredService<AuditLog>(),

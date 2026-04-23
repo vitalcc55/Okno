@@ -29,15 +29,24 @@ internal sealed class ComputerUseWinStateStore
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        string token = Guid.NewGuid().ToString("N");
+        string token = CreateToken();
+        Commit(token, state);
+        return token;
+    }
+
+    public static string CreateToken() => Guid.NewGuid().ToString("N");
+
+    public void Commit(string token, ComputerUseWinStoredState state)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        ArgumentNullException.ThrowIfNull(state);
+
         lock (gate)
         {
             EvictExpired_NoLock();
             states[token] = state;
             EvictOverflow_NoLock();
         }
-
-        return token;
     }
 
     public bool TryGet(string stateToken, out ComputerUseWinStoredState? state)

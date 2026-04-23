@@ -28,7 +28,6 @@ internal sealed class ComputerUseWinTools
     private readonly ComputerUseWinApprovalStore approvalStore;
     private readonly ComputerUseWinAppStateObserver appStateObserver;
     private readonly ComputerUseWinClickTargetResolver clickTargetResolver;
-    private readonly ComputerUseWinPlaybookProvider playbookProvider;
     private readonly ComputerUseWinStateStore stateStore;
     private readonly AuditLog auditLog;
     private readonly ICaptureService captureService;
@@ -48,7 +47,7 @@ internal sealed class ComputerUseWinTools
         IInputService inputService,
         ComputerUseWinApprovalStore approvalStore,
         ComputerUseWinStateStore stateStore,
-        ComputerUseWinPlaybookProvider playbookProvider)
+        IComputerUseWinInstructionProvider playbookProvider)
     {
         this.auditLog = auditLog;
         this.sessionManager = sessionManager;
@@ -58,9 +57,8 @@ internal sealed class ComputerUseWinTools
         this.inputService = inputService;
         this.approvalStore = approvalStore;
         this.stateStore = stateStore;
-        this.playbookProvider = playbookProvider;
         this.windowActivationService = windowActivationService;
-        appStateObserver = new ComputerUseWinAppStateObserver(captureService, uiAutomationService, stateStore, playbookProvider);
+        appStateObserver = new ComputerUseWinAppStateObserver(captureService, uiAutomationService, playbookProvider);
         clickTargetResolver = new ComputerUseWinClickTargetResolver(uiAutomationService);
     }
 
@@ -223,7 +221,11 @@ internal sealed class ComputerUseWinTools
                 selectedWindow.Hwnd);
         }
 
-        ComputerUseWinGetAppStateResult payload = observation.Payload!;
+        ComputerUseWinPreparedAppState preparedState = observation.PreparedState!;
+        string stateToken = ComputerUseWinStateStore.CreateToken();
+        ComputerUseWinGetAppStateResult payload = preparedState.CreatePayload(stateToken);
+        CallToolResult result = CreateImageToolResult(payload, preparedState.PngBytes, preparedState.MimeType);
+        stateStore.Commit(stateToken, preparedState.StoredState);
         sessionManager.Attach(selectedWindow, "computer-use-win");
 
         invocation.Complete(
@@ -238,7 +240,7 @@ internal sealed class ComputerUseWinTools
                 ["capture_artifact_path"] = payload.Capture!.ArtifactPath,
             });
 
-        return CreateImageToolResult(payload, observation.PngBytes!, observation.MimeType!);
+        return result;
     }
 
     private async Task<CallToolResult> ExecuteClickAsync(

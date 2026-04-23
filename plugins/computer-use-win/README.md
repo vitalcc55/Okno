@@ -41,6 +41,7 @@ Skill требует state-first discipline:
 
 - каждый GUI turn начинать с `get_app_state`;
 - считать `stateToken` короткоживущим proof-артефактом вместе с его observation envelope, а не долговечной session cache;
+- advisory playbook hints могут отсутствовать или деградировать; это не должно ломать сам observation result;
 - предпочитать `elementIndex` над coordinate click;
 - использовать coordinate click только с явным `confirm`, если semantic element не доказан;
 - после action делать новый `get_app_state` или явную verify-step;

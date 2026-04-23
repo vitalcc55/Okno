@@ -7,8 +7,7 @@ namespace WinBridge.Server.ComputerUse;
 internal sealed class ComputerUseWinAppStateObserver(
     ICaptureService captureService,
     IUiAutomationService uiAutomationService,
-    ComputerUseWinStateStore stateStore,
-    ComputerUseWinPlaybookProvider playbookProvider)
+    IComputerUseWinInstructionProvider instructionProvider)
 {
     public async Task<ComputerUseWinAppStateObservationOutcome> ObserveAsync(
         WindowDescriptor selectedWindow,
@@ -58,18 +57,33 @@ internal sealed class ComputerUseWinAppStateObserver(
                     RequestedDepth: UiaSnapshotDefaults.Depth,
                     RequestedMaxNodes: effectiveMaxNodes),
                 capture.Metadata.CapturedAtUtc);
-            string stateToken = stateStore.Create(storedState);
+            List<string> effectiveWarnings = [.. warnings];
+            IReadOnlyList<string> instructions = [];
 
-            ComputerUseWinGetAppStateResult payload = new(
-                Status: ComputerUseWinStatusValues.Ok,
+            try
+            {
+                instructions = instructionProvider.GetInstructions(selectedWindow.ProcessName);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                effectiveWarnings.Add("Computer Use for Windows не смог загрузить advisory instructions для этого приложения; observation result сохранён без playbook hints.");
+            }
+
+            ComputerUseWinPreparedAppState preparedState = new(
                 Session: session,
-                StateToken: stateToken,
+                StoredState: storedState,
                 Capture: capture.Metadata,
                 AccessibilityTree: ComputerUseWinAccessibilityProjector.CreatePublicTree(elements),
-                Instructions: playbookProvider.GetInstructions(selectedWindow.ProcessName),
-                Warnings: warnings);
+                Instructions: instructions,
+                Warnings: effectiveWarnings,
+                PngBytes: capture.PngBytes,
+                MimeType: capture.Metadata.MimeType);
 
-            return ComputerUseWinAppStateObservationOutcome.Success(payload, capture.PngBytes, capture.Metadata.MimeType, storedState);
+            return ComputerUseWinAppStateObservationOutcome.Success(preparedState);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -87,20 +101,34 @@ internal sealed class ComputerUseWinAppStateObserver(
 
 internal sealed record ComputerUseWinAppStateObservationOutcome(
     bool IsSuccess,
-    ComputerUseWinGetAppStateResult? Payload,
-    byte[]? PngBytes,
-    string? MimeType,
+    ComputerUseWinPreparedAppState? PreparedState,
     string? FailureCode,
-    string? Reason,
-    ComputerUseWinStoredState? StoredState)
+    string? Reason)
 {
-    public static ComputerUseWinAppStateObservationOutcome Success(
-        ComputerUseWinGetAppStateResult payload,
-        byte[] pngBytes,
-        string mimeType,
-        ComputerUseWinStoredState storedState) =>
-        new(true, payload, pngBytes, mimeType, null, null, storedState);
+    public static ComputerUseWinAppStateObservationOutcome Success(ComputerUseWinPreparedAppState preparedState) =>
+        new(true, preparedState, null, null);
 
     public static ComputerUseWinAppStateObservationOutcome Failure(string failureCode, string reason) =>
-        new(false, null, null, null, failureCode, reason, null);
+        new(false, null, failureCode, reason);
+}
+
+internal sealed record ComputerUseWinPreparedAppState(
+    ComputerUseWinAppSession Session,
+    ComputerUseWinStoredState StoredState,
+    CaptureMetadata Capture,
+    IReadOnlyList<ComputerUseWinAccessibilityElement> AccessibilityTree,
+    IReadOnlyList<string> Instructions,
+    IReadOnlyList<string> Warnings,
+    byte[] PngBytes,
+    string MimeType)
+{
+    public ComputerUseWinGetAppStateResult CreatePayload(string stateToken) =>
+        new(
+            Status: ComputerUseWinStatusValues.Ok,
+            Session: Session,
+            StateToken: stateToken,
+            Capture: Capture,
+            AccessibilityTree: AccessibilityTree,
+            Instructions: Instructions,
+            Warnings: Warnings);
 }

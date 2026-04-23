@@ -109,19 +109,55 @@ public sealed class ComputerUseWinObservationTests
             CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
-        Assert.NotNull(outcome.Payload);
-        Assert.NotNull(outcome.PngBytes);
-        Assert.Equal(ComputerUseWinStatusValues.Ok, outcome.Payload!.Status);
-        Assert.NotNull(outcome.Payload.StateToken);
-        Assert.Contains("activation degraded", outcome.Payload.Warnings!);
-        Assert.Contains(outcome.Payload.AccessibilityTree!, element => element.HasKeyboardFocus);
-        Assert.NotNull(outcome.StoredState);
-        Assert.Equal(128, outcome.StoredState!.Observation.RequestedMaxNodes);
+        Assert.NotNull(outcome.PreparedState);
+        Assert.Equal(128, outcome.PreparedState!.StoredState.Observation.RequestedMaxNodes);
+        ComputerUseWinGetAppStateResult payload = outcome.PreparedState.CreatePayload("token-1");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, payload.Status);
+        Assert.Equal("token-1", payload.StateToken);
+        Assert.Contains("activation degraded", payload.Warnings!);
+        Assert.Contains(payload.AccessibilityTree!, element => element.HasKeyboardFocus);
+    }
+
+    [Fact]
+    public async Task AppStateObserverTreatsAdvisoryInstructionFailureAsWarningWithoutStateCommit()
+    {
+        MutableTimeProvider timeProvider = new(new DateTimeOffset(2026, 4, 21, 18, 0, 0, TimeSpan.Zero));
+        ComputerUseWinStateStore stateStore = new(timeProvider, TimeSpan.FromSeconds(30), maxEntries: 1);
+        string existingToken = stateStore.Create(CreateStoredState(timeProvider.GetUtcNow()));
+        ComputerUseWinAppStateObserver observer = CreateObserver(
+            captureService: new SuccessfulCaptureService(),
+            uiAutomationService: new FakeUiAutomationService((window, request, _) => Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow))),
+            instructionProvider: new ThrowingInstructionProvider());
+
+        ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
+            CreateWindow(),
+            appId: "explorer",
+            maxNodes: 128,
+            warnings: [],
+            CancellationToken.None);
+
+        Assert.True(outcome.IsSuccess);
+        Assert.NotNull(outcome.PreparedState);
+        Assert.Empty(outcome.PreparedState!.Instructions);
+        Assert.Contains(outcome.PreparedState.Warnings, warning => warning.Contains("advisory instructions", StringComparison.OrdinalIgnoreCase));
+        Assert.True(stateStore.TryGet(existingToken, out _));
     }
 
     private static ComputerUseWinAppStateObserver CreateObserver(
         ICaptureService captureService,
-        FakeUiAutomationService uiAutomationService)
+        FakeUiAutomationService uiAutomationService,
+        IComputerUseWinInstructionProvider? instructionProvider = null)
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -129,8 +165,7 @@ public sealed class ComputerUseWinObservationTests
         return new ComputerUseWinAppStateObserver(
             captureService,
             uiAutomationService,
-            new ComputerUseWinStateStore(),
-            new ComputerUseWinPlaybookProvider(
+            instructionProvider ?? new ComputerUseWinPlaybookProvider(
                 new ComputerUseWinOptions(
                     PluginRoot: root,
                     AppInstructionsRoot: Path.Combine(root, "references", "AppInstructions"),
@@ -166,6 +201,15 @@ public sealed class ComputerUseWinObservationTests
             MonitorId: window.MonitorId,
             MonitorFriendlyName: window.MonitorFriendlyName);
 
+    private static ComputerUseWinStoredState CreateStoredState(DateTimeOffset capturedAtUtc) =>
+        new(
+            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateWindow(),
+            CaptureReference: null,
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>(),
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 128),
+            CapturedAtUtc: capturedAtUtc);
+
     private sealed class ThrowingCaptureService(CaptureOperationException exception) : ICaptureService
     {
         public Task<CaptureResult> CaptureAsync(CaptureTarget target, CancellationToken cancellationToken) =>
@@ -196,5 +240,20 @@ public sealed class ComputerUseWinObservationTests
                             DpiScale: 1.0,
                             CaptureReference: null),
                     [1, 2, 3]));
+    }
+
+    private sealed class ThrowingInstructionProvider : IComputerUseWinInstructionProvider
+    {
+        public IReadOnlyList<string> GetInstructions(string? processName) =>
+            throw new IOException("instructions unavailable");
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        private DateTimeOffset current = now;
+
+        public override DateTimeOffset GetUtcNow() => current;
+
+        public void Advance(TimeSpan delta) => current = current.Add(delta);
     }
 }
