@@ -49,6 +49,30 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void PlaybookProviderRaisesUnavailableWhenPlaybookPathIsUnreadable()
+    {
+        string root = CreateTempDirectory();
+        try
+        {
+            string instructionsRoot = Path.Combine(root, "references", "AppInstructions");
+            Directory.CreateDirectory(instructionsRoot);
+            Directory.CreateDirectory(Path.Combine(instructionsRoot, "FileExplorer.md"));
+
+            ComputerUseWinPlaybookProvider provider = new(
+                new ComputerUseWinOptions(
+                    PluginRoot: root,
+                    AppInstructionsRoot: instructionsRoot,
+                    ApprovalStorePath: Path.Combine(root, "AppApprovals.json")));
+
+            Assert.Throws<ComputerUseWinInstructionUnavailableException>(() => provider.GetInstructions("explorer"));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [Fact]
     public void AffordanceResolverEmitsOnlyImplementedActionsForComputerUseProfile()
     {
         UiaElementSnapshot node = new()

@@ -32,17 +32,20 @@ internal sealed class ComputerUseWinPlaybookProvider : IComputerUseWinInstructio
         }
 
         string path = Path.Combine(appInstructionsRoot, playbookFileName);
-        if (!File.Exists(path))
-        {
-            return Array.Empty<string>();
-        }
-
         try
         {
             return File.ReadAllLines(path)
                 .Select(static line => line.Trim())
                 .Where(static line => !string.IsNullOrWhiteSpace(line))
                 .ToArray();
+        }
+        catch (FileNotFoundException)
+        {
+            return Array.Empty<string>();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return Array.Empty<string>();
         }
         catch (IOException exception)
         {

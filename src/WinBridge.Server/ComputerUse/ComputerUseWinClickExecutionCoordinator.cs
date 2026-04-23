@@ -1,4 +1,5 @@
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Input;
 using WinBridge.Runtime.Windows.Shell;
 
@@ -16,9 +17,9 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        if (request.ElementIndex is null && request.Point is not null && !request.Confirm)
+        if (TryClassifyBeforeActivation(state, request, out ComputerUseWinClickExecutionOutcome? preActivationOutcome))
         {
-            return ComputerUseWinClickExecutionOutcome.ApprovalRequired(CoordinateApprovalReason);
+            return preActivationOutcome!;
         }
 
         ActivateWindowResult activation = await windowActivationService.ActivateAsync(state.Window, cancellationToken).ConfigureAwait(false);
@@ -71,6 +72,11 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
                         return ComputerUseWinClickExecutionOutcome.Failure(retryResolution.FailureDetails!);
                     }
 
+                    if (retryResolution.RequiresConfirmation && !request.Confirm)
+                    {
+                        return ComputerUseWinClickExecutionOutcome.ApprovalRequired("Клик по выбранному элементу требует явного подтверждения.");
+                    }
+
                     retryAction = retryResolution.Action!;
                 }
 
@@ -79,6 +85,53 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
         }
 
         return ComputerUseWinClickExecutionOutcome.Success(input);
+    }
+
+    private static bool TryClassifyBeforeActivation(
+        ComputerUseWinStoredState state,
+        ComputerUseWinClickRequest request,
+        out ComputerUseWinClickExecutionOutcome? outcome)
+    {
+        if (request.ElementIndex is int elementIndex)
+        {
+            if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
+                || storedElement.Bounds is null)
+            {
+                outcome = ComputerUseWinClickExecutionOutcome.Failure(
+                    ComputerUseWinFailureDetails.Expected(
+                        ComputerUseWinFailureCodeValues.InvalidRequest,
+                        $"elementIndex {elementIndex} не существует или не даёт кликабельных bounds."));
+                return true;
+            }
+
+            if (!request.Confirm
+                && ComputerUseWinTargetPolicy.RequiresRiskConfirmation(storedElement, ToolNames.ComputerUseWinClick))
+            {
+                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired("Клик по выбранному элементу требует явного подтверждения.");
+                return true;
+            }
+
+            outcome = null;
+            return false;
+        }
+
+        if (request.Point is not null)
+        {
+            if (!request.Confirm)
+            {
+                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired(CoordinateApprovalReason);
+                return true;
+            }
+
+            outcome = null;
+            return false;
+        }
+
+        outcome = ComputerUseWinClickExecutionOutcome.Failure(
+            ComputerUseWinFailureDetails.Expected(
+                ComputerUseWinFailureCodeValues.InvalidRequest,
+                "Для click требуется elementIndex или point."));
+        return true;
     }
 
     private Task<InputResult> ExecuteInputAsync(
