@@ -23,6 +23,36 @@ function Remove-DirectoryIfExists {
     }
 }
 
+function Write-StderrDiagnostic {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Message
+    )
+
+    [Console]::Error.WriteLine($Message)
+}
+
+function Invoke-NativeCommandToStderr {
+    param(
+        [Parameter(Mandatory)]
+        [scriptblock] $Command,
+        [Parameter(Mandatory)]
+        [string] $FailureMessage
+    )
+
+    $output = & $Command 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        foreach ($line in $output) {
+            if ($null -ne $line) {
+                Write-StderrDiagnostic -Message ([string]$line)
+            }
+        }
+
+        throw "$FailureMessage ExitCode=$exitCode."
+    }
+}
+
 function Remove-DirectoryBestEffort {
     param(
         [Parameter(Mandatory)]
@@ -39,7 +69,7 @@ function Remove-DirectoryBestEffort {
         Remove-DirectoryIfExists -Path $Path
     }
     catch {
-        Write-Warning "$Description failed: $($_.Exception.Message)"
+        Write-StderrDiagnostic -Message "$Description failed: $($_.Exception.Message)"
     }
 }
 
@@ -75,14 +105,16 @@ $restoreCompleted = $false
 $terminalState = 'publishing'
 
 try {
-    & dotnet publish $serverProjectPath `
-        --configuration Release `
-        --runtime win-x64 `
-        --self-contained true `
-        -p:UseAppHost=true `
-        -p:PublishSingleFile=false `
-        -p:PublishTrimmed=false `
-        --output $stagingRoot
+    Invoke-NativeCommandToStderr -FailureMessage "dotnet publish failed for computer-use-win runtime bundle." -Command {
+        & dotnet publish $serverProjectPath `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:UseAppHost=true `
+            -p:PublishSingleFile=false `
+            -p:PublishTrimmed=false `
+            --output $stagingRoot
+    }
 
     $serverExePath = Join-Path $stagingRoot 'Okno.Server.exe'
     if (-not (Test-Path $serverExePath -PathType Leaf)) {

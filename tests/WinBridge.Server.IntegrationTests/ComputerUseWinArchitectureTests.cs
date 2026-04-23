@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
 using WinBridge.Server.ComputerUse;
 
@@ -478,6 +479,28 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void GetAppStateTargetResolverPreservesIdentityProofUnavailableForAttachedFallback()
+    {
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-target-resolution-tests"));
+        sessionManager.Attach(CreateWindow(processName: "explorer"), "computer-use-win");
+
+        WindowDescriptor liveWindowWithoutStableIdentity = CreateWindow(
+            processName: null,
+            processId: null,
+            threadId: null,
+            className: null);
+
+        ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            [liveWindowWithoutStableIdentity],
+            sessionManager,
+            appId: null,
+            hwnd: null);
+
+        Assert.False(resolution.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.IdentityProofUnavailable, resolution.FailureCode);
+    }
+
+    [Fact]
     public void ComputerUseWinClickToolSchemaPublishesOnlyAllowedButtonAndCoordinateSpaceValues()
     {
         var tools = ComputerUseWinToolRegistration.Create(static () => null!);
@@ -750,14 +773,18 @@ public sealed class ComputerUseWinArchitectureTests
             Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 128),
             CapturedAtUtc: capturedAtUtc);
 
-    private static WindowDescriptor CreateWindow(string? processName) =>
+    private static WindowDescriptor CreateWindow(
+        string? processName,
+        int? processId = 1001,
+        int? threadId = 2002,
+        string? className = "TestWindow") =>
         new(
             Hwnd: 101,
             Title: "Test window",
             ProcessName: processName,
-            ProcessId: 1001,
-            ThreadId: 2002,
-            ClassName: "TestWindow",
+            ProcessId: processId,
+            ThreadId: threadId,
+            ClassName: className,
             Bounds: new Bounds(0, 0, 640, 480),
             IsForeground: true,
             IsVisible: true);

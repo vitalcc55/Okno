@@ -21,10 +21,12 @@ public sealed class ComputerUseWinInstallSurfaceTests
             repoRoot,
             _ => { });
 
+        using JsonDocument payload = JsonDocument.Parse(result.Stdout);
         Assert.True(
             result.ExitCode == 0,
             $"Publish script failed. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
         Assert.True(File.Exists(Path.Combine(runtimeRoot, "Okno.Server.exe")));
+        Assert.Equal(runtimeRoot, payload.RootElement.GetProperty("runtimeRoot").GetString());
     }
 
     [Fact]
@@ -140,7 +142,9 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo => startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_BACKUP_CLEANUP"] = "1");
 
             Assert.Equal(0, result.ExitCode);
+            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
             Assert.True(File.Exists(Path.Combine(runtimeRoot, "Okno.Server.exe")));
+            Assert.Equal(runtimeRoot, payload.RootElement.GetProperty("runtimeRoot").GetString());
             Assert.NotEmpty(Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly));
         }
         finally
@@ -352,11 +356,12 @@ public sealed class ComputerUseWinInstallSurfaceTests
         using Process process = new() { StartInfo = startInfo };
         process.Start();
 
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
+        Task.WaitAll(stdoutTask, stderrTask);
 
-        return new ScriptInvocationResult(process.ExitCode, stdout, stderr);
+        return new ScriptInvocationResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
     }
 
     private static string GetRepositoryRoot()

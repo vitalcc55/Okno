@@ -175,12 +175,19 @@ internal sealed class ComputerUseWinTools
         }
 
         ComputerUseWinGetAppStateRequest request = binding.Request;
-        WindowDescriptor? selectedWindow = ResolveSelectedWindow(request.AppId, request.Hwnd, out string? failureCode, out string? reason);
-        if (selectedWindow is null)
+        ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            windowManager.ListWindows(),
+            sessionManager,
+            request.AppId,
+            request.Hwnd);
+        if (!resolution.IsSuccess)
         {
-            return CreateStateFailure(invocation, failureCode!, reason!);
+            return string.Equals(resolution.FailureCode, ComputerUseWinFailureCodeValues.IdentityProofUnavailable, StringComparison.Ordinal)
+                ? CreateStateIdentityProofFailure(invocation, resolution.Window!, resolution.Reason!)
+                : CreateStateFailure(invocation, resolution.FailureCode!, resolution.Reason!, resolution.Window?.Hwnd);
         }
 
+        WindowDescriptor selectedWindow = resolution.Window!;
         if (ComputerUseWinTargetPolicy.TryGetBlockedReason(selectedWindow, out string? blockReason))
         {
             return CreateStateBlocked(invocation, selectedWindow, blockReason!);
@@ -525,76 +532,6 @@ internal sealed class ComputerUseWinTools
             .OrderByDescending(static item => item.IsForeground)
             .ThenBy(static item => item.AppId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-    }
-
-    private WindowDescriptor? ResolveSelectedWindow(string? appId, long? hwnd, out string? failureCode, out string? reason)
-    {
-        IReadOnlyList<WindowDescriptor> windows = windowManager.ListWindows();
-        if (hwnd is not null)
-        {
-            WindowDescriptor? explicitWindow = windows.SingleOrDefault(item => item.Hwnd == hwnd.Value);
-            if (explicitWindow is null)
-            {
-                failureCode = ComputerUseWinFailureCodeValues.MissingTarget;
-                reason = "Окно по указанному hwnd не найдено.";
-                return null;
-            }
-
-            failureCode = null;
-            reason = null;
-            return explicitWindow;
-        }
-
-        if (!string.IsNullOrWhiteSpace(appId))
-        {
-            WindowDescriptor[] candidates = windows
-                .Where(item => ComputerUseWinAppIdentity.TryCreateStableAppId(item, out string? candidateAppId)
-                    && string.Equals(candidateAppId, appId, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-            if (candidates.Length == 0)
-            {
-                failureCode = ComputerUseWinFailureCodeValues.MissingTarget;
-                reason = $"App '{appId}' не найдена среди текущих окон.";
-                return null;
-            }
-
-            WindowDescriptor[] foregroundCandidates = candidates.Where(static item => item.IsForeground).ToArray();
-            if (foregroundCandidates.Length == 1)
-            {
-                failureCode = null;
-                reason = null;
-                return foregroundCandidates[0];
-            }
-
-            if (candidates.Length == 1)
-            {
-                failureCode = null;
-                reason = null;
-                return candidates[0];
-            }
-
-            failureCode = ComputerUseWinFailureCodeValues.AmbiguousTarget;
-            reason = $"App '{appId}' соответствует нескольким окнам; укажи hwnd или сфокусируй нужное окно.";
-            return null;
-        }
-
-        AttachedWindow? attached = sessionManager.GetAttachedWindow();
-        if (attached?.Window is WindowDescriptor attachedWindow)
-        {
-            WindowDescriptor? liveAttached = windows.SingleOrDefault(item =>
-                item.Hwnd == attachedWindow.Hwnd
-                && WindowIdentityValidator.MatchesStableIdentity(item, attachedWindow));
-            if (liveAttached is not null)
-            {
-                failureCode = null;
-                reason = null;
-                return liveAttached;
-            }
-        }
-
-        failureCode = ComputerUseWinFailureCodeValues.MissingTarget;
-        reason = "Для get_app_state нужно передать appId или hwnd, либо сначала иметь актуальный attached window.";
-        return null;
     }
 
     private static ComputerUseWinStoredElement? TryGetElement(ComputerUseWinStoredState state, int? elementIndex)
