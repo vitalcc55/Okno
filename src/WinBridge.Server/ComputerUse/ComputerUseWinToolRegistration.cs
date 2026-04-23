@@ -155,8 +155,8 @@ internal static class ComputerUseWinToolRegistration
                     ["stateToken"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
                     ["elementIndex"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
                     ["point"] = CreatePointSchema(),
-                    ["coordinateSpace"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["button"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
+                    ["coordinateSpace"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedCoordinateSpaceValues),
+                    ["button"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedButtonValues),
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
                 },
             });
@@ -259,6 +259,22 @@ internal static class ComputerUseWinToolRegistration
         }
 
         return array;
+    }
+
+    private static JsonObject CreateNullableStringEnumSchema(IReadOnlyList<string> values)
+    {
+        JsonArray enumValues = [];
+        foreach (string value in values)
+        {
+            enumValues.Add(value);
+        }
+
+        enumValues.Add(null);
+        return new JsonObject
+        {
+            ["type"] = CreateTypeSet("string", "null"),
+            ["enum"] = enumValues,
+        };
     }
 
     private static JsonElement ParseSchema(JsonObject schema)

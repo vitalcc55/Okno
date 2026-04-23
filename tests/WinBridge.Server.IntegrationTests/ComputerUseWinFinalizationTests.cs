@@ -160,6 +160,46 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void ActionFinalizerMapsInternalFailureCodesToPublicVocabulary()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-code-mapping-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-code-mapping-tests")).GetSnapshot());
+
+            CallToolResult result = ComputerUseWinActionFinalizer.FinalizeResult(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                new InputResult(
+                    Status: InputStatusValues.Failed,
+                    Decision: InputStatusValues.Failed,
+                    FailureCode: InputFailureCodeValues.UnsupportedActionType,
+                    Reason: "unsupported action type",
+                    TargetHwnd: 101));
+
+            Assert.True(result.IsError);
+            JsonElement payload = result.StructuredContent!.Value;
+            Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ActionFinalizerIncludesEvidenceInTopLevelCompletionAudit()
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
@@ -196,6 +236,45 @@ public sealed class ComputerUseWinFinalizationTests
             Assert.Contains("\"completed_action_count\":\"1\"", completedEvent, StringComparison.Ordinal);
             Assert.Contains("\"artifact_path\":\"C:\\\\temp\\\\click.json\"", completedEvent, StringComparison.Ordinal);
             Assert.Contains("\"result_mode\":\"dispatch_only\"", completedEvent, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ActionFinalizerDoesNotClaimPostDispatchForPreDispatchUnexpectedFailure()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-pre-dispatch-failure-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-pre-dispatch-failure-tests")).GetSnapshot());
+
+            CallToolResult result = ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                exception: new InvalidOperationException("secret setup failure"));
+
+            Assert.True(result.IsError);
+            JsonElement payload = result.StructuredContent!.Value;
+            Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+            Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
+            string reason = payload.GetProperty("reason").GetString()!;
+            Assert.Contains("до подтверждённого action dispatch", reason, StringComparison.Ordinal);
+            Assert.DoesNotContain("после action dispatch", reason, StringComparison.Ordinal);
         }
         finally
         {
@@ -244,7 +323,7 @@ public sealed class ComputerUseWinFinalizationTests
             Assert.True(result.IsError);
             JsonElement payload = result.StructuredContent!.Value;
             Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Equal(InputFailureCodeValues.InputDispatchFailed, payload.GetProperty("failureCode").GetString());
+            Assert.Equal(ComputerUseWinFailureCodeValues.InputDispatchFailed, payload.GetProperty("failureCode").GetString());
             Assert.Equal(101, payload.GetProperty("targetHwnd").GetInt64());
             Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
         }

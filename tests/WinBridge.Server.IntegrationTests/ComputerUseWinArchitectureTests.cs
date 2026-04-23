@@ -236,6 +236,29 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ComputerUseWinClickToolSchemaPublishesOnlyAllowedButtonAndCoordinateSpaceValues()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var clickTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinClick, StringComparison.Ordinal));
+        JsonElement inputSchema = clickTool.ProtocolTool.InputSchema;
+        JsonElement properties = inputSchema.GetProperty("properties");
+
+        JsonElement button = properties.GetProperty("button");
+        Assert.Equal("string", button.GetProperty("type")[0].GetString());
+        Assert.Equal("null", button.GetProperty("type")[1].GetString());
+        Assert.Equal(
+            [InputButtonValues.Left, InputButtonValues.Right],
+            button.GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+
+        JsonElement coordinateSpace = properties.GetProperty("coordinateSpace");
+        Assert.Equal("string", coordinateSpace.GetProperty("type")[0].GetString());
+        Assert.Equal("null", coordinateSpace.GetProperty("type")[1].GetString());
+        Assert.Equal(
+            [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+            coordinateSpace.GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+    }
+
+    [Fact]
     public void ToolRequestBinderTreatsOmittedArgumentsAsEmptyRequestForWindowInputDto()
     {
         bool success = ToolRequestBinder.TryBind(
@@ -401,6 +424,15 @@ public sealed class ComputerUseWinArchitectureTests
         }
     }
 
+    [Fact]
+    public void ReadmeUsesPublishFlowInsteadOfRemovedComputerUseWinRepoRootHint()
+    {
+        string readme = File.ReadAllText(ResolveRepoPath("README.md"));
+
+        Assert.DoesNotContain("write-computer-use-win-plugin-repo-root-hint.ps1", readme, StringComparison.Ordinal);
+        Assert.Contains("publish-computer-use-win-plugin.ps1", readme, StringComparison.Ordinal);
+    }
+
     private static ComputerUseWinStoredState CreateStoredState(DateTimeOffset capturedAtUtc) =>
         new(
             new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
@@ -438,6 +470,23 @@ public sealed class ComputerUseWinArchitectureTests
         string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static string ResolveRepoPath(string relativePath)
+    {
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            string candidate = Path.Combine(current.FullName, relativePath);
+            if (File.Exists(candidate) || Directory.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new DirectoryNotFoundException($"Не удалось найти '{relativePath}' от AppContext.BaseDirectory.");
     }
 
     private static void DeleteDirectoryIfExists(string path)

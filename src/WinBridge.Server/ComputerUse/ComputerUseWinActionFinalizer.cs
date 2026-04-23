@@ -42,25 +42,9 @@ internal static class ComputerUseWinActionFinalizer
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
         ArgumentNullException.ThrowIfNull(exception);
 
-        ComputerUseWinActionResult payload = factualFailure is null
-            ? new(
-                Status: ComputerUseWinStatusValues.Failed,
-                RefreshStateRecommended: true,
-                FailureCode: null,
-                Reason: "Computer Use for Windows столкнулся с unexpected failure после action dispatch; перед retry сначала перепроверь состояние приложения через get_app_state.",
-                TargetHwnd: targetHwnd,
-                ElementIndex: elementIndex)
-            : CreatePayload(targetHwnd, elementIndex, factualFailure);
-
-        ComputerUseWinFailureCompletion.CompleteFailure(
-            invocation,
-            payload.Reason ?? $"Computer Use action '{toolName}' завершился unexpected failure.",
-            payload.FailureCode,
-            payload.TargetHwnd,
-            exception,
-            bestEffort: true,
-            data: factualFailure is null ? null : CreateActionAuditData(factualFailure));
-        return CreateToolResult(payload, isError: true);
+        return factualFailure is null
+            ? FinalizeUnexpectedInternalFailure(invocation, toolName, targetHwnd, elementIndex, exception)
+            : FinalizeUnexpectedFactualFailure(invocation, toolName, targetHwnd, elementIndex, exception, factualFailure);
     }
 
     private static ComputerUseWinActionResult CreatePayload(
@@ -74,25 +58,86 @@ internal static class ComputerUseWinActionFinalizer
                     ? ComputerUseWinStatusValues.Done
                     : ComputerUseWinStatusValues.Failed,
             RefreshStateRecommended: true,
-            FailureCode: input.FailureCode,
+            FailureCode: ComputerUseWinFailureCodeMapper.ToPublicFailureCode(input.FailureCode),
             Reason: input.Reason,
             TargetHwnd: input.TargetHwnd ?? targetHwnd,
             ElementIndex: elementIndex);
 
-    private static Dictionary<string, string?> CreateActionAuditData(InputResult input) =>
-        new Dictionary<string, string?>(StringComparer.Ordinal)
+    private static CallToolResult FinalizeUnexpectedInternalFailure(
+        AuditInvocationScope invocation,
+        string toolName,
+        long? targetHwnd,
+        int? elementIndex,
+        Exception exception)
+    {
+        ComputerUseWinActionResult payload = new(
+            Status: ComputerUseWinStatusValues.Failed,
+            RefreshStateRecommended: false,
+            FailureCode: null,
+            Reason: "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; можно повторить запрос после устранения причины, refresh через get_app_state не обязателен.",
+            TargetHwnd: targetHwnd,
+            ElementIndex: elementIndex);
+
+        ComputerUseWinFailureCompletion.CompleteFailure(
+            invocation,
+            payload.Reason ?? $"Computer Use action '{toolName}' завершился unexpected internal failure.",
+            payload.FailureCode,
+            payload.TargetHwnd,
+            exception,
+            bestEffort: true,
+            data: CreateUnexpectedFailureAuditData("pre_dispatch_internal"));
+        return CreateToolResult(payload, isError: true);
+    }
+
+    private static CallToolResult FinalizeUnexpectedFactualFailure(
+        AuditInvocationScope invocation,
+        string toolName,
+        long? targetHwnd,
+        int? elementIndex,
+        Exception exception,
+        InputResult factualFailure)
+    {
+        ComputerUseWinActionResult payload = CreatePayload(targetHwnd, elementIndex, factualFailure);
+
+        ComputerUseWinFailureCompletion.CompleteFailure(
+            invocation,
+            payload.Reason ?? $"Computer Use action '{toolName}' завершился unexpected failure.",
+            payload.FailureCode,
+            payload.TargetHwnd,
+            exception,
+            bestEffort: true,
+            data: CreateActionAuditData(factualFailure, "post_dispatch_factual"));
+        return CreateToolResult(payload, isError: true);
+    }
+
+    private static Dictionary<string, string?> CreateActionAuditData(InputResult input, string? failurePhase = null)
+    {
+        Dictionary<string, string?> data = new(StringComparer.Ordinal)
         {
             ["status"] = input.Status,
             ["decision"] = input.Decision,
             ["result_mode"] = input.ResultMode,
             ["failure_code"] = input.FailureCode,
+            ["public_failure_code"] = ComputerUseWinFailureCodeMapper.ToPublicFailureCode(input.FailureCode),
             ["target_hwnd"] = input.TargetHwnd?.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["target_source"] = input.TargetSource,
             ["completed_action_count"] = input.CompletedActionCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["failed_action_index"] = input.FailedActionIndex?.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["artifact_path"] = input.ArtifactPath,
         };
+        if (!string.IsNullOrWhiteSpace(failurePhase))
+        {
+            data["failure_phase"] = failurePhase;
+        }
 
+        return data;
+    }
+
+    private static Dictionary<string, string?> CreateUnexpectedFailureAuditData(string failurePhase) =>
+        new(StringComparer.Ordinal)
+        {
+            ["failure_phase"] = failurePhase,
+        };
     private static CallToolResult CreateToolResult(ComputerUseWinActionResult payload, bool isError)
     {
         JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, ComputerUseWinTools.PayloadJsonOptions);

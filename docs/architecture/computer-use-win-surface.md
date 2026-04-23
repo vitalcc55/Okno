@@ -91,9 +91,11 @@ list_apps -> get_app_state -> click -> get_app_state
 - `stateToken` несёт observation envelope, на котором был получен semantic state; downstream revalidation не должна тихо откатываться к более слабым defaults;
 - `elementIndex` click не должен слепо доверять сохранённым bounds: перед dispatch runtime заново разрешает target через свежий UIA snapshot с тем же observation budget и fail-close-ит как `stale_state`, только если semantic match больше не доказуем;
 - ordinary actions внутри already-approved app должны быть дешевле, чем low-level per-step friction;
-- `get_app_state` разделяет critical observation и advisory enrichment: screenshot + accessibility tree определяют success/failure, а playbook hints не имеют права downcast-ить успешный observation result;
+- `get_app_state` разделяет critical observation и advisory enrichment: screenshot + accessibility tree определяют success/failure; expected advisory-unavailable path для playbook hints не имеет права downcast-ить успешный observation result, но unexpected provider/runtime bug всё ещё materialize-ится как truthful `observation_failed` с sanitized audit provenance;
 - `get_app_state` публикует `stateToken` и commit-ит shared state только после полной успешной materialization public result; failed observation не должна оставлять ghost tokens или другие скрытые bounded-state commits;
 - malformed request shapes должны отсекаться на public boundary как `invalid_request`: explicit invalid `tool-surface-profile`, nested extra fields и schema-invalid `maxNodes` не должны уходить в widened surface или поздний `observation_failed`;
+- public `click` contract должен совпадать в validator, `tools/list` schema и generated exports: допустимые `button`/`coordinateSpace` публикуются из того же owner-слоя, что и runtime enforcement;
+- public `computer-use-win` action payload обязан emit-ить только vocabulary из `ComputerUseWinFailureCodeValues`; low-level `windows.input` evidence остаётся допустимым в audit/evidence, но не протекает наружу как несанкционированный `failureCode`;
 - `stateToken` имеет bounded retention и short-lived stale-state discipline вместо неограниченного in-memory накопления;
 - blocked targets должны отсеиваться на public surface до unsafe dispatch.
 

@@ -21,6 +21,14 @@ public static class ComputerUseWinFailureCodeValues
     public const string StaleState = "stale_state";
     public const string ObservationFailed = "observation_failed";
     public const string UnsupportedAction = "unsupported_action";
+    public const string CaptureReferenceRequired = InputFailureCodeValues.CaptureReferenceRequired;
+    public const string TargetPreflightFailed = InputFailureCodeValues.TargetPreflightFailed;
+    public const string TargetNotForeground = InputFailureCodeValues.TargetNotForeground;
+    public const string TargetMinimized = InputFailureCodeValues.TargetMinimized;
+    public const string TargetIntegrityBlocked = InputFailureCodeValues.TargetIntegrityBlocked;
+    public const string PointOutOfBounds = InputFailureCodeValues.PointOutOfBounds;
+    public const string CursorMoveFailed = InputFailureCodeValues.CursorMoveFailed;
+    public const string InputDispatchFailed = InputFailureCodeValues.InputDispatchFailed;
 }
 
 public sealed record ComputerUseWinAppDescriptor(

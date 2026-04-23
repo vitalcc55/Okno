@@ -264,7 +264,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         Assert.False(outcome.IsSuccess);
         Assert.False(outcome.IsApprovalRequired);
-        Assert.Equal(InputFailureCodeValues.CaptureReferenceRequired, outcome.FailureDetails?.FailureCode);
+        Assert.Equal(ComputerUseWinFailureCodeValues.CaptureReferenceRequired, outcome.FailureDetails?.FailureCode);
         Assert.Null(activationService.LastHwnd);
         Assert.Equal(0, inputService.Calls);
     }

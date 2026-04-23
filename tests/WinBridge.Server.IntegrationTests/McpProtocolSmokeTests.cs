@@ -170,6 +170,20 @@ public sealed class McpProtocolSmokeTests
                     ToolNames.ComputerUseWinListApps,
                 ],
                 toolNames);
+
+            JsonElement clickDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinClick);
+            JsonElement clickProperties = clickDescriptor.GetProperty("inputSchema").GetProperty("properties");
+
+            Assert.Equal(
+                [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+                clickProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+            Assert.Equal(
+                [InputButtonValues.Left, InputButtonValues.Right],
+                clickProperties.GetProperty("button").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
         }
         finally
         {

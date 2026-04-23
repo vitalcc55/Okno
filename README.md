@@ -106,7 +106,7 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 
 `Okno` остаётся внутренним engine и execution substrate под этим plugin surface.
 
-Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после перемещения checkout или после изменения plugin layout нужно обновить repo-root hint командой `powershell -ExecutionPolicy Bypass -File scripts/codex/write-computer-use-win-plugin-repo-root-hint.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex.
+Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после изменения runtime/layout или после reinstall нужно заново materialize-ить plugin-local runtime bundle командой `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex. Repo-root hint больше не входит в public install path `computer-use-win`.
 
 ## OpenAI interop
 

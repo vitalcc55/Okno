@@ -5,6 +5,12 @@ namespace WinBridge.Server.ComputerUse;
 
 internal static class ComputerUseWinClickContract
 {
+    internal static IReadOnlyList<string> AllowedCoordinateSpaceValues { get; } =
+        [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels];
+
+    internal static IReadOnlyList<string> AllowedButtonValues { get; } =
+        [InputButtonValues.Left, InputButtonValues.Right];
+
     public static string? ValidateRequest(ComputerUseWinClickRequest request) =>
         ValidatePoint(request.Point, "point")
         ?? ValidateCoordinateSpace(request.CoordinateSpace)
@@ -57,7 +63,7 @@ internal static class ComputerUseWinClickContract
             {
                 outcome = ComputerUseWinClickExecutionOutcome.Failure(
                     ComputerUseWinFailureDetails.Expected(
-                        InputFailureCodeValues.CaptureReferenceRequired,
+                        ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
                         $"Действие actions[0] с coordinateSpace '{InputCoordinateSpaceValues.CapturePixels}' должно содержать captureReference."));
                 return true;
             }
@@ -92,9 +98,7 @@ internal static class ComputerUseWinClickContract
             return true;
         }
 
-        failureCode = validationFailure.Contains("coordinateSpace", StringComparison.OrdinalIgnoreCase)
-            ? InputFailureCodeValues.UnsupportedCoordinateSpace
-            : ComputerUseWinFailureCodeValues.InvalidRequest;
+        failureCode = ComputerUseWinFailureCodeValues.InvalidRequest;
         reason = validationFailure;
         return false;
     }
@@ -106,8 +110,7 @@ internal static class ComputerUseWinClickContract
             return null;
         }
 
-        if (!string.Equals(coordinateSpace, InputCoordinateSpaceValues.Screen, StringComparison.Ordinal)
-            && !string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
+        if (!AllowedCoordinateSpaceValues.Contains(coordinateSpace, StringComparer.Ordinal))
         {
             return $"Параметр coordinateSpace использует неподдерживаемое значение '{coordinateSpace}'.";
         }
@@ -122,8 +125,7 @@ internal static class ComputerUseWinClickContract
             return null;
         }
 
-        if (!string.Equals(button, InputButtonValues.Left, StringComparison.Ordinal)
-            && !string.Equals(button, InputButtonValues.Right, StringComparison.Ordinal))
+        if (!AllowedButtonValues.Contains(button, StringComparer.Ordinal))
         {
             return $"Параметр button использует неподдерживаемое значение '{button}'.";
         }
