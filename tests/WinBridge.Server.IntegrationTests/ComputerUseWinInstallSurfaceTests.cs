@@ -11,7 +11,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     public void PublishComputerUseWinPluginCreatesSelfContainedRuntimeBundle()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
 
         DeleteDirectoryIfExists(runtimeRoot);
@@ -33,7 +33,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     public void PublishComputerUseWinPluginRestoresPreviousRuntimeWhenPromoteFails()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup", Guid.NewGuid().ToString("N"));
 
@@ -48,7 +48,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo =>
                 {
                     UsePreparedPublishSource(startInfo, backupRoot);
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
                 });
 
             Assert.NotEqual(0, result.ExitCode);
@@ -70,7 +70,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     public void PublishComputerUseWinPluginPreservesBackupWhenRestoreFails()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-restore", Guid.NewGuid().ToString("N"));
@@ -93,8 +93,8 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo =>
                 {
                     UsePreparedPublishSource(startInfo, backupRoot);
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_RESTORE"] = "1";
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
+                    AddScriptSwitch(startInfo, "-FailRestore");
                 });
 
             Assert.NotEqual(0, result.ExitCode);
@@ -125,7 +125,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     public void PublishComputerUseWinPluginKeepsCanonicalRuntimeRunnableWhenRepairCopyFails()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-repair", Guid.NewGuid().ToString("N"));
@@ -148,9 +148,9 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo =>
                 {
                     UsePreparedPublishSource(startInfo, backupRoot);
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_RESTORE"] = "1";
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_REPAIR_COPY_AFTER_SERVER"] = "1";
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
+                    AddScriptSwitch(startInfo, "-FailRestore");
+                    AddScriptSwitch(startInfo, "-FailRepairCopyAfterServer");
                 });
 
             Assert.NotEqual(0, result.ExitCode);
@@ -185,7 +185,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     public void PublishComputerUseWinPluginRejectsIncompleteBackupRuntimeBundleDuringRepair()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-corrupt", Guid.NewGuid().ToString("N"));
@@ -204,8 +204,8 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo =>
                 {
                     UsePreparedPublishSource(startInfo, backupRoot);
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_RESTORE"] = "1";
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
+                    AddScriptSwitch(startInfo, "-FailRestore");
                 });
 
             Assert.NotEqual(0, result.ExitCode);
@@ -241,7 +241,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     public void PublishComputerUseWinPluginDoesNotConsumeInvalidBackupBeforeRestoreValidation()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-invalid-restore", Guid.NewGuid().ToString("N"));
@@ -260,7 +260,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo =>
                 {
                     UsePreparedPublishSource(startInfo, backupRoot);
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
                 });
 
             Assert.NotEqual(0, result.ExitCode);
@@ -293,10 +293,10 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
-    public void PublishComputerUseWinPluginRestoresPreManifestRuntimeWhenPromoteFails()
+    public void PublishComputerUseWinPluginRejectsPreManifestRuntimeWithoutManifestProofWhenPromoteFails()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-legacy", Guid.NewGuid().ToString("N"));
@@ -315,13 +315,68 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo =>
                 {
                     UsePreparedPublishSource(startInfo, backupRoot);
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
                 });
 
             Assert.NotEqual(0, result.ExitCode);
-            Assert.True(File.Exists(Path.Combine(runtimeRoot, "Okno.Server.exe")));
-            Assert.True(File.Exists(Path.Combine(runtimeRoot, "hostfxr.dll")));
-            AssertRuntimeBundleMatchesManifest(runtimeRoot);
+            Assert.False(Directory.Exists(runtimeRoot));
+            Assert.NotEmpty(Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(runtimeRoot);
+            if (Directory.Exists(backupRoot))
+            {
+                CopyDirectory(backupRoot, runtimeRoot, _ => true);
+            }
+
+            DeleteDirectoryIfExists(backupRoot);
+            foreach (string backupCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(backupCandidate);
+            }
+
+            foreach (string repairCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.repair-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(repairCandidate);
+            }
+        }
+    }
+
+    [Fact]
+    public void PublishComputerUseWinPluginRejectsPreManifestBackupMissingManagedDependency()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
+        string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
+        string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-legacy-missing-dependency", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+            CopyDirectory(runtimeRoot, backupRoot, _ => true);
+            File.Delete(Path.Combine(runtimeRoot, "okno-runtime-bundle-manifest.json"));
+            string dependencyPath = Path.Combine(runtimeRoot, "Microsoft.Extensions.Hosting.dll");
+            Assert.True(File.Exists(dependencyPath));
+            File.Delete(dependencyPath);
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                scriptPath,
+                repoRoot,
+                startInfo =>
+                {
+                    UsePreparedPublishSource(startInfo, backupRoot);
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.False(Directory.Exists(runtimeRoot));
+            Assert.NotEmpty(Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly));
         }
         finally
         {
@@ -352,7 +407,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     public void PublishComputerUseWinPluginKeepsCanonicalRuntimeRunnableWhenRepairHandoffFails()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-handoff", Guid.NewGuid().ToString("N"));
@@ -368,9 +423,9 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo =>
                 {
                     UsePreparedPublishSource(startInfo, backupRoot);
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_RESTORE"] = "1";
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_REPAIR_HANDOFF"] = "1";
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
+                    AddScriptSwitch(startInfo, "-FailRestore");
+                    AddScriptSwitch(startInfo, "-FailRepairHandoff");
                 });
 
             Assert.NotEqual(0, result.ExitCode);
@@ -404,10 +459,65 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
+    public void PublishComputerUseWinPluginDoesNotUseCanonicalRuntimeAsFallbackRepairWorkspace()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
+        string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
+        string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-fallback-handoff", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+            CopyDirectory(runtimeRoot, backupRoot, _ => true);
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                scriptPath,
+                repoRoot,
+                startInfo =>
+                {
+                    UsePreparedPublishSource(startInfo, backupRoot);
+                    AddScriptSwitch(startInfo, "-FailAfterBackup");
+                    AddScriptSwitch(startInfo, "-FailRestore");
+                    AddScriptSwitch(startInfo, "-FailRepairHandoff");
+                    AddScriptSwitch(startInfo, "-FailRepairFallbackHandoff");
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.False(Directory.Exists(runtimeRoot));
+            Assert.NotEmpty(Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(runtimeRoot);
+            if (Directory.Exists(backupRoot))
+            {
+                CopyDirectory(backupRoot, runtimeRoot, _ => true);
+            }
+
+            DeleteDirectoryIfExists(backupRoot);
+            foreach (string backupCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(backupCandidate);
+            }
+
+            foreach (string repairCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.repair-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(repairCandidate);
+            }
+        }
+    }
+
+    [Fact]
     public void PublishComputerUseWinPluginTreatsBackupCleanupFailureAsBestEffortAfterSuccessfulPromote()
     {
         string repoRoot = GetRepositoryRoot();
-        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string scriptPath = GetPublishTestScriptPath(repoRoot);
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
 
@@ -421,7 +531,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo =>
                 {
                     UsePreparedPublishSource(startInfo, runtimeRoot);
-                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_BACKUP_CLEANUP"] = "1";
+                    AddScriptSwitch(startInfo, "-FailBackupCleanup");
                 });
 
             Assert.Equal(0, result.ExitCode);
@@ -439,6 +549,17 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 DeleteDirectoryIfExists(backupCandidate);
             }
         }
+    }
+
+    [Fact]
+    public void PublishComputerUseWinPluginDoesNotReadInheritedTestEnvironmentOverrides()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string coreScriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin-core.ps1");
+
+        Assert.DoesNotContain("COMPUTER_USE_WIN_TEST_", File.ReadAllText(scriptPath), StringComparison.Ordinal);
+        Assert.DoesNotContain("COMPUTER_USE_WIN_TEST_", File.ReadAllText(coreScriptPath), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -758,7 +879,23 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
     private static void UsePreparedPublishSource(ProcessStartInfo startInfo, string sourceRoot)
     {
-        startInfo.Environment["COMPUTER_USE_WIN_TEST_PUBLISH_SOURCE_ROOT"] = sourceRoot;
+        startInfo.ArgumentList.Add("-PublishSourceRoot");
+        startInfo.ArgumentList.Add(sourceRoot);
+    }
+
+    private static void AddScriptSwitch(ProcessStartInfo startInfo, string switchName)
+    {
+        startInfo.ArgumentList.Add(switchName);
+    }
+
+    private static string GetPublishScriptPath(string repoRoot)
+    {
+        return Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+    }
+
+    private static string GetPublishTestScriptPath(string repoRoot)
+    {
+        return Path.Combine(repoRoot, "scripts", "codex", "test-publish-computer-use-win-plugin.ps1");
     }
 
     private static ScriptInvocationResult InvokePowerShellScript(string scriptPath, string workingDirectory, Action<ProcessStartInfo> configure)
