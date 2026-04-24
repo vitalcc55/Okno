@@ -112,6 +112,7 @@ public sealed class WindowSessionToolTests
         JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal("failed", payload.GetProperty("status").GetString());
         Assert.Contains("сначала прикрепи окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ActivationFailureKindValues.MissingTarget, payload.GetProperty("failureKind").GetString());
     }
 
     [Fact]
@@ -119,7 +120,7 @@ public sealed class WindowSessionToolTests
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 351, title: "Attached");
         FakeWindowActivationService activationService = new(
-            target => new ActivateWindowResult("done", null, target, WasMinimized: false, IsForeground: true));
+            target => ActivateWindowResult.Done(target, wasMinimized: false, isForeground: true));
         WindowTools tools = CreateTools(
             windows: [attachedWindow],
             attachedWindow: attachedWindow,
@@ -138,12 +139,12 @@ public sealed class WindowSessionToolTests
     {
         WindowDescriptor targetWindow = CreateWindow(hwnd: 352, title: "Ambiguous");
         FakeWindowActivationService activationService = new(
-            target => new ActivateWindowResult(
-                "ambiguous",
+            target => ActivateWindowResult.Ambiguous(
                 "Окно восстановлено, но foreground focus не удалось подтвердить.",
                 target,
-                WasMinimized: true,
-                IsForeground: false));
+                wasMinimized: true,
+                isForeground: false,
+                failureKind: ActivationFailureKindValues.ForegroundNotConfirmed));
         WindowTools tools = CreateTools(
             windows: [targetWindow],
             attachedWindow: targetWindow,
@@ -156,6 +157,7 @@ public sealed class WindowSessionToolTests
         Assert.Equal("ambiguous", payload.GetProperty("status").GetString());
         Assert.True(payload.GetProperty("wasMinimized").GetBoolean());
         Assert.False(payload.GetProperty("isForeground").GetBoolean());
+        Assert.Equal(ActivationFailureKindValues.ForegroundNotConfirmed, payload.GetProperty("failureKind").GetString());
     }
 
     [Fact]
@@ -169,6 +171,7 @@ public sealed class WindowSessionToolTests
         JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal("failed", payload.GetProperty("status").GetString());
         Assert.Contains("сначала прикрепи окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ActivationFailureKindValues.MissingTarget, payload.GetProperty("failureKind").GetString());
         Assert.False(payload.TryGetProperty("window", out _));
     }
 
@@ -189,7 +192,8 @@ public sealed class WindowSessionToolTests
         Assert.True(result.IsError);
         JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("не совпадает с live target", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Contains("identity", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Equal(ActivationFailureKindValues.IdentityChanged, payload.GetProperty("failureKind").GetString());
     }
 
     [Fact]

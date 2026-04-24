@@ -13,10 +13,10 @@ public sealed class WindowActivationService(
         long hwnd = targetWindow.Hwnd;
         if (!platform.IsWindow(hwnd))
         {
-            return Failed(
+            return ActivateWindowResult.Failed(
                 "Окно для активации больше не найдено.",
                 wasMinimized: false,
-                ActivationFailureKindValues.MissingTarget);
+                failureKind: ActivationFailureKindValues.MissingTarget);
         }
 
         bool wasMinimized = platform.IsIconic(hwnd);
@@ -26,10 +26,10 @@ public sealed class WindowActivationService(
             bool restored = await WaitUntilAsync(() => !platform.IsIconic(hwnd), options.RestoreTimeout, cancellationToken).ConfigureAwait(false);
             if (!restored)
             {
-                return Failed(
+                return ActivateWindowResult.Failed(
                     "Окно осталось свернутым после restore.",
                     wasMinimized,
-                    ActivationFailureKindValues.RestoreFailedStillMinimized);
+                    failureKind: ActivationFailureKindValues.RestoreFailedStillMinimized);
             }
         }
 
@@ -45,24 +45,21 @@ public sealed class WindowActivationService(
         ActivatedWindowVerificationResult verification = VerifyActivatedWindow(targetWindow);
         if (!verification.IdentityConfirmed || !verification.Exists || verification.ResolvedWindow is null)
         {
-            return Failed(verification.FailureReason!, wasMinimized, verification.FailureKind!);
+            return ActivateWindowResult.Failed(verification.FailureReason!, wasMinimized, failureKind: verification.FailureKind!);
         }
 
         if (IsUsableActivatedWindow(verification))
         {
-            return new ActivateWindowResult("done", null, verification.ResolvedWindow, wasMinimized, true);
+            return ActivateWindowResult.Done(verification.ResolvedWindow, wasMinimized, isForeground: true);
         }
 
         return CreateUnconfirmedResult(verification.ResolvedWindow, verification, wasMinimized, isForeground);
     }
 
-    private static ActivateWindowResult Failed(string reason, bool wasMinimized, string failureKind) =>
-        new("failed", reason, null, wasMinimized, false, failureKind);
-
     private ActivatedWindowVerificationResult VerifyActivatedWindow(WindowDescriptor expectedWindow)
     {
-        WindowDescriptor? resolvedWindow = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
-        if (resolvedWindow is null)
+        LiveWindowIdentityResolution resolution = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
+        if (!resolution.IsResolved)
         {
             return new(
                 null,
@@ -70,10 +67,11 @@ public sealed class WindowActivationService(
                 false,
                 false,
                 false,
-                "Окно для активации больше не найдено или больше не совпадает с исходной identity.",
-                ActivationFailureKindValues.MissingTarget);
+                resolution.Reason ?? "Окно для активации больше не найдено или больше не совпадает с исходной identity.",
+                FailureKind: resolution.FailureKind ?? ActivationFailureKindValues.PreflightFailed);
         }
 
+        WindowDescriptor resolvedWindow = resolution.Window!;
         ActivatedWindowVerificationSnapshot finalSnapshot = platform.ProbeWindow(resolvedWindow.Hwnd);
         if (!finalSnapshot.Exists)
         {
@@ -84,7 +82,7 @@ public sealed class WindowActivationService(
                 finalSnapshot.IsForeground,
                 finalSnapshot.IsMinimized,
                 "Окно исчезло до завершения финальной activation verification.",
-                ActivationFailureKindValues.MissingTarget);
+                FailureKind: ActivationFailureKindValues.MissingTarget);
         }
 
         if (!WindowIdentityValidator.MatchesStableIdentity(finalSnapshot, expectedWindow))
@@ -96,7 +94,7 @@ public sealed class WindowActivationService(
                 finalSnapshot.IsForeground,
                 finalSnapshot.IsMinimized,
                 "Окно для активации больше не найдено или больше не совпадает с исходной identity в финальном activation snapshot.",
-                ActivationFailureKindValues.IdentityChanged);
+                FailureKind: ActivationFailureKindValues.IdentityChanged);
         }
 
         return new(
@@ -140,11 +138,12 @@ public sealed class WindowActivationService(
                     ? "Окно кратковременно было foreground, но финальный live-state не подтвердил usability."
                     : "Windows отказалась перевести окно в foreground.";
 
-        string status = wasMinimized ? "ambiguous" : "failed";
         string failureKind = verification.IsMinimized
             ? ActivationFailureKindValues.RestoreFailedStillMinimized
             : ActivationFailureKindValues.ForegroundNotConfirmed;
-        return new ActivateWindowResult(status, reason, window, wasMinimized, false, failureKind);
+        return wasMinimized
+            ? ActivateWindowResult.Ambiguous(reason, window, wasMinimized, isForeground: false, failureKind: failureKind)
+            : ActivateWindowResult.Failed(reason, window, wasMinimized, isForeground: false, failureKind: failureKind);
     }
 
     private readonly record struct ActivatedWindowVerificationResult(

@@ -10,21 +10,28 @@ public sealed class WindowTargetResolver(IWindowManager windowManager) : IWindow
         return ResolveExplicitOrAttachedWindowCore(explicitHwnd, attachedWindow, liveWindows);
     }
 
-    public WindowDescriptor? ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow)
+    public LiveWindowIdentityResolution ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow)
     {
-        if (!WindowIdentityValidator.TryValidateStableIdentity(expectedWindow, out _))
+        if (!WindowIdentityValidator.TryValidateStableIdentity(expectedWindow, out string? expectedIdentityReason))
         {
-            return null;
+            return LiveWindowIdentityResolution.IdentityProofUnavailable(expectedIdentityReason!);
         }
 
         IReadOnlyList<WindowDescriptor> liveWindows = windowManager.ListWindows(includeInvisible: true);
         WindowDescriptor? liveCandidate = liveWindows.FirstOrDefault(candidate => candidate.Hwnd == expectedWindow.Hwnd);
         if (liveCandidate is null)
         {
-            return null;
+            return LiveWindowIdentityResolution.MissingTarget("Окно больше не найдено среди live top-level windows.");
         }
 
-        return WindowIdentityValidator.MatchesStableIdentity(liveCandidate, expectedWindow) ? liveCandidate : null;
+        if (!WindowIdentityValidator.TryValidateStableIdentity(liveCandidate, out string? liveIdentityReason))
+        {
+            return LiveWindowIdentityResolution.IdentityProofUnavailable(liveIdentityReason!);
+        }
+
+        return WindowIdentityValidator.MatchesStableIdentity(liveCandidate, expectedWindow)
+            ? LiveWindowIdentityResolution.Resolved(liveCandidate)
+            : LiveWindowIdentityResolution.IdentityChanged("Live HWND больше не совпадает с expected stable identity.");
     }
 
     public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow)

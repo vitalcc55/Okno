@@ -579,9 +579,10 @@ internal sealed class Win32InputService(
         out string? failureCode,
         out string? reason)
     {
-        liveTargetWindow = windowTargetResolver.ResolveLiveWindowByIdentity(batch.ExpectedTargetWindow);
+        LiveWindowIdentityResolution targetResolution = windowTargetResolver.ResolveLiveWindowByIdentity(batch.ExpectedTargetWindow);
+        liveTargetWindow = null;
         validatedDispatchPlan = dispatchPlan;
-        if (liveTargetWindow is null)
+        if (!targetResolution.IsResolved)
         {
             failureCode = MapStaleTargetFailureCode(batch.TargetSource);
             reason = CreateTargetFailureReason(failureCode);
@@ -589,6 +590,7 @@ internal sealed class Win32InputService(
             return false;
         }
 
+        liveTargetWindow = targetResolution.Window!;
         if (dispatchPlan is not null
             && !InputCoordinateMapper.TryValidateDispatchPlan(dispatchPlan, liveTargetWindow, out validatedDispatchPlan, out failureCode, out reason))
         {

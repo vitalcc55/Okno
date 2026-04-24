@@ -138,6 +138,35 @@ public sealed class WindowActivationServiceTests
     }
 
     [Fact]
+    public async Task ActivateAsyncReturnsIdentityChangedWhenLiveResolverSeesReusedHwnd()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 217, isForeground: true);
+        WindowDescriptor reusedWindow = CreateWindow(hwnd: 217, isForeground: true) with
+        {
+            ProcessId = 999,
+            ThreadId = 888,
+            ClassName = "ReplacementWindow",
+        };
+        FakeWindowManager windowManager = new(
+            windows: [reusedWindow],
+            onFocus: _ => { });
+        FakeWindowActivationPlatform platform = new(windowExists: true, iconic: false, foregroundWindow: 217);
+        WindowTargetResolver resolver = new(windowManager);
+        WindowActivationService service = new(
+            windowManager,
+            resolver,
+            platform,
+            new WindowActivationOptions(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero));
+
+        ActivateWindowResult result = await service.ActivateAsync(originalWindow, CancellationToken.None);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Contains("identity", result.Reason, StringComparison.Ordinal);
+        Assert.Null(result.Window);
+        Assert.Equal(ActivationFailureKindValues.IdentityChanged, result.FailureKind);
+    }
+
+    [Fact]
     public async Task ActivateAsyncKeepsIdentityFailureKindWhenMinimizedWindowIdentityChanges()
     {
         WindowDescriptor originalWindow = CreateWindow(hwnd: 218, isForeground: true);

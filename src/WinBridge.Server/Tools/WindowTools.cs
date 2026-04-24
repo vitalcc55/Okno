@@ -289,31 +289,28 @@ public sealed class WindowTools
                 WindowDescriptor? attachedWindow = _sessionManager.GetAttachedWindow()?.Window;
                 if (attachedWindow is null)
                 {
-                    ActivateWindowResult missingTarget = new(
-                        Status: "failed",
-                        Reason: "Для активации сначала прикрепи окно через windows.attach_window.",
-                        Window: null,
-                        WasMinimized: false,
-                        IsForeground: false);
+                    ActivateWindowResult missingTarget = ActivateWindowResult.Failed(
+                        "Для активации сначала прикрепи окно через windows.attach_window.",
+                        wasMinimized: false,
+                        failureKind: ActivationFailureKindValues.MissingTarget);
 
                     invocation.Complete("failed", missingTarget.Reason!);
                     return CreateToolResult(missingTarget, isError: true);
                 }
 
-                WindowDescriptor? targetWindow = _windowTargetResolver.ResolveExplicitOrAttachedWindow(null, attachedWindow);
-                if (targetWindow is null)
+                LiveWindowIdentityResolution targetResolution = _windowTargetResolver.ResolveLiveWindowByIdentity(attachedWindow);
+                if (!targetResolution.IsResolved)
                 {
-                    ActivateWindowResult missingWindow = new(
-                        Status: "failed",
-                        Reason: "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
-                        Window: null,
-                        WasMinimized: false,
-                        IsForeground: false);
+                    ActivateWindowResult missingWindow = ActivateWindowResult.Failed(
+                        targetResolution.Reason ?? "Прикрепленное окно больше не найдено или больше не совпадает с live target.",
+                        wasMinimized: false,
+                        failureKind: targetResolution.FailureKind ?? ActivationFailureKindValues.PreflightFailed);
 
                     invocation.Complete("failed", missingWindow.Reason!, attachedWindow?.Hwnd);
                     return CreateToolResult(missingWindow, isError: true);
                 }
 
+                WindowDescriptor targetWindow = targetResolution.Window!;
                 ActivateWindowResult result = await _windowActivationService
                     .ActivateAsync(targetWindow, cancellationToken)
                     .ConfigureAwait(false);

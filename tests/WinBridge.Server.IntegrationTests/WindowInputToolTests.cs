@@ -937,7 +937,7 @@ public sealed class WindowInputToolTests
         public WindowDescriptor? ResolveExplicitOrAttachedWindow(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw exception;
 
-        public WindowDescriptor? ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow) =>
+        public LiveWindowIdentityResolution ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow) =>
             throw exception;
 
         public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>

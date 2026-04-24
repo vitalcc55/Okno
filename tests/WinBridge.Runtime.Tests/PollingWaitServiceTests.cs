@@ -1393,7 +1393,13 @@ public sealed class PollingWaitServiceTests
         public WindowDescriptor? ResolveExplicitOrAttachedWindow(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw new NotSupportedException();
 
-        public WindowDescriptor? ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow) => resolver(expectedWindow);
+        public LiveWindowIdentityResolution ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow)
+        {
+            WindowDescriptor? resolvedWindow = resolver(expectedWindow);
+            return resolvedWindow is null
+                ? LiveWindowIdentityResolution.MissingTarget("Fake resolver did not resolve a live target.")
+                : LiveWindowIdentityResolution.Resolved(resolvedWindow);
+        }
 
         public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw new NotSupportedException();

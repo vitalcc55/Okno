@@ -132,25 +132,12 @@ internal static class ComputerUseWinActivationFailureMapper
         {
             ActivationFailureKindValues.MissingTarget => ComputerUseWinFailureCodeValues.MissingTarget,
             ActivationFailureKindValues.IdentityChanged => ComputerUseWinFailureCodeValues.StaleState,
+            ActivationFailureKindValues.IdentityProofUnavailable => ComputerUseWinFailureCodeValues.IdentityProofUnavailable,
             ActivationFailureKindValues.RestoreFailedStillMinimized => ComputerUseWinFailureCodeValues.TargetMinimized,
             ActivationFailureKindValues.ForegroundNotConfirmed => ComputerUseWinFailureCodeValues.TargetNotForeground,
             ActivationFailureKindValues.PreflightFailed => ComputerUseWinFailureCodeValues.TargetPreflightFailed,
-            _ => ClassifyUntypedFailure(activation),
+            _ => ComputerUseWinFailureCodeValues.TargetPreflightFailed,
         };
-
-    private static string ClassifyUntypedFailure(ActivateWindowResult activation)
-    {
-        if (activation.Window is null)
-        {
-            return ComputerUseWinFailureCodeValues.MissingTarget;
-        }
-
-        return string.Equals(activation.Window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal)
-            ? ComputerUseWinFailureCodeValues.TargetMinimized
-            : !activation.IsForeground
-                ? ComputerUseWinFailureCodeValues.TargetNotForeground
-                : ComputerUseWinFailureCodeValues.TargetPreflightFailed;
-    }
 }
 
 internal sealed record ComputerUseWinClickExecutionOutcome(

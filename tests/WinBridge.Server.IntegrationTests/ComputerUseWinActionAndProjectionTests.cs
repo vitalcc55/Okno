@@ -176,7 +176,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorRejectsCoordinateClickWithoutActivationWhenConfirmMissing()
     {
-        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -200,7 +200,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorRejectsMalformedRequestWithoutActivation()
     {
-        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -225,7 +225,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorRejectsRiskyElementWithoutActivationWhenConfirmMissing()
     {
-        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -248,7 +248,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorRejectsStoredElementWithoutClickAffordanceBeforeActivation()
     {
-        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -272,7 +272,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorRejectsCapturePixelsWithoutStoredCaptureReferenceBeforeActivation()
     {
-        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -298,7 +298,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorRejectsCapturePixelsPointOutsideStoredRasterBeforeActivation()
     {
-        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult("done", null, window, false, true));
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -324,12 +324,10 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorMapsMissingActivationTargetWithoutPolicyBlock()
     {
-        FakeWindowActivationService activationService = new(static _ => new ActivateWindowResult(
-            "failed",
+        FakeWindowActivationService activationService = new(static _ => ActivateWindowResult.Failed(
             "Окно для активации больше не найдено.",
-            null,
-            false,
-            false));
+            wasMinimized: false,
+            failureKind: ActivationFailureKindValues.MissingTarget));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -355,12 +353,12 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorMapsMinimizedActivationFailureWithoutPolicyBlock()
     {
-        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult(
-            "ambiguous",
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Ambiguous(
             "Окно снова оказалось свернутым до завершения активации.",
             window with { WindowState = WindowStateValues.Minimized },
-            true,
-            false));
+            wasMinimized: true,
+            isForeground: false,
+            failureKind: ActivationFailureKindValues.RestoreFailedStillMinimized));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -386,12 +384,10 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorDoesNotTreatMinimizedIdentityLossAsMinimizedFailure()
     {
-        FakeWindowActivationService activationService = new(static _ => new ActivateWindowResult(
-            "failed",
+        FakeWindowActivationService activationService = new(static _ => ActivateWindowResult.Failed(
             "Окно для активации больше не найдено или больше не совпадает с исходной identity.",
-            null,
-            true,
-            false));
+            wasMinimized: true,
+            failureKind: ActivationFailureKindValues.MissingTarget));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -418,13 +414,10 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorMapsTypedActivationIdentityChangedAsStaleState()
     {
-        FakeWindowActivationService activationService = new(static _ => new ActivateWindowResult(
-            "failed",
+        FakeWindowActivationService activationService = new(static _ => ActivateWindowResult.Failed(
             "Окно для активации больше не совпадает с исходной identity в финальном activation snapshot.",
-            null,
-            true,
-            false,
-            ActivationFailureKindValues.IdentityChanged));
+            wasMinimized: true,
+            failureKind: ActivationFailureKindValues.IdentityChanged));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -451,12 +444,12 @@ public sealed class ComputerUseWinActionAndProjectionTests
     [Fact]
     public async Task ClickExecutionCoordinatorMapsForegroundActivationFailureWithoutPolicyBlock()
     {
-        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult(
-            "failed",
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Failed(
             "Windows отказалась перевести окно в foreground.",
             window,
-            false,
-            false));
+            wasMinimized: false,
+            isForeground: false,
+            failureKind: ActivationFailureKindValues.ForegroundNotConfirmed));
         FakeInputService inputService = new((_, _, _) => Task.FromResult(
             new InputResult(
                 Status: InputStatusValues.Done,
@@ -633,7 +626,10 @@ public sealed class ComputerUseWinActionAndProjectionTests
         FakeWindowActivationService activationService = new(window =>
         {
             activationCalls++;
-            return new ActivateWindowResult("done", null, window with { Bounds = new Bounds(50, 50, 500, 500) }, false, true);
+            return ActivateWindowResult.Done(
+                window with { Bounds = new Bounds(50, 50, 500, 500) },
+                wasMinimized: false,
+                isForeground: true);
         });
         int inputCalls = 0;
         FakeInputService inputService = new((request, _, _) =>
@@ -716,7 +712,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         FakeWindowActivationService activationService = new(window =>
         {
             activationCalls++;
-            return new ActivateWindowResult("done", null, window, false, true);
+            return ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true);
         });
         FakeInputService inputService = new((request, _, _) =>
             Task.FromResult(

@@ -359,7 +359,7 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - используется как основной путь перед `window capture`, `input` и `wait`.
 
 Если Windows не подтверждает foreground после restore, допустим честный `ambiguous`, а не ложный `done`.
-Для `failed` / `ambiguous` result публикуется typed `failureKind`, чтобы caller и higher-level surfaces не выводили причину activation failure из косвенных фактов вроде `wasMinimized` или `isForeground`.
+Для `failed` / `ambiguous` result публикуется обязательный typed `failureKind`, чтобы caller и higher-level surfaces не выводили причину activation failure из косвенных фактов вроде `window == null`, `wasMinimized`, `isForeground` или текста `reason`. Причина задаётся source branch-ом runtime/resolver-а и сохраняет различие между `missing_target`, `identity_changed`, `identity_proof_unavailable`, `restore_failed_still_minimized` и `foreground_not_confirmed`.
 
 ---
 

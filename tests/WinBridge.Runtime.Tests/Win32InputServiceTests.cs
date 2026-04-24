@@ -1798,23 +1798,27 @@ public sealed class Win32InputServiceTests
         public WindowDescriptor? ResolveExplicitOrAttachedWindow(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw new NotSupportedException();
 
-        public WindowDescriptor? ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow)
+        public LiveWindowIdentityResolution ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow)
         {
             if (_revalidationIndex >= liveWindows.Count)
             {
-                return liveWindows.Count == 0 ? null : liveWindows[^1];
+                WindowDescriptor? fallbackWindow = liveWindows.Count == 0 ? null : liveWindows[^1];
+                return CreateLiveResolution(expectedWindow, fallbackWindow);
             }
 
             WindowDescriptor? resolvedWindow = liveWindows[_revalidationIndex++];
-            return resolvedWindow is null
-                ? null
-                : resolvedWindow with
+            return CreateLiveResolution(expectedWindow, resolvedWindow);
+        }
+
+        private static LiveWindowIdentityResolution CreateLiveResolution(WindowDescriptor expectedWindow, WindowDescriptor? resolvedWindow) =>
+            resolvedWindow is null
+                ? LiveWindowIdentityResolution.MissingTarget("Fake resolver did not resolve a live target.")
+                : LiveWindowIdentityResolution.Resolved(resolvedWindow with
                 {
                     ProcessId = expectedWindow.ProcessId,
                     ThreadId = expectedWindow.ThreadId,
                     ClassName = expectedWindow.ClassName,
-                };
-        }
+                });
 
         public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw new NotSupportedException();

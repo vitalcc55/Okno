@@ -306,8 +306,8 @@ public sealed class PollingWaitService(
     private WaitProbeSnapshot ProbeActiveWindow(WindowDescriptor expectedWindow, string? targetSource)
     {
         DateTimeOffset observedAtUtc = timeProvider.GetUtcNow();
-        WindowDescriptor? liveTarget = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
-        if (liveTarget is null)
+        LiveWindowIdentityResolution liveTargetResolution = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
+        if (!liveTargetResolution.IsResolved)
         {
             string failureCode = CreateStaleTargetFailureCode(targetSource);
             return new WaitProbeSnapshot(
@@ -321,6 +321,7 @@ public sealed class PollingWaitService(
                 ResolvedTargetWindow: null);
         }
 
+        WindowDescriptor liveTarget = liveTargetResolution.Window!;
         WindowDescriptor[] foregroundCandidates = windowManager.ListWindows(includeInvisible: true)
             .Where(candidate => candidate.IsForeground)
             .GroupBy(candidate => candidate.Hwnd)
@@ -372,8 +373,8 @@ public sealed class PollingWaitService(
         CancellationToken cancellationToken)
     {
         DateTimeOffset observedAtUtc = timeProvider.GetUtcNow();
-        WindowDescriptor? liveTarget = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
-        if (liveTarget is null)
+        LiveWindowIdentityResolution liveTargetResolution = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
+        if (!liveTargetResolution.IsResolved)
         {
             string failureCode = CreateStaleTargetFailureCode(targetSource);
             return new WaitProbeSnapshot(
@@ -387,6 +388,7 @@ public sealed class PollingWaitService(
                 ResolvedTargetWindow: null);
         }
 
+        WindowDescriptor liveTarget = liveTargetResolution.Window!;
         UiAutomationProbeExecutionResult probeExecution = await ExecuteUiAutomationProbeWithinDeadlineAsync(
             liveTarget,
             request,
@@ -422,8 +424,8 @@ public sealed class PollingWaitService(
         CancellationToken cancellationToken)
     {
         DateTimeOffset observedAtUtc = timeProvider.GetUtcNow();
-        WindowDescriptor? liveTarget = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
-        if (liveTarget is null)
+        LiveWindowIdentityResolution liveTargetResolution = windowTargetResolver.ResolveLiveWindowByIdentity(expectedWindow);
+        if (!liveTargetResolution.IsResolved)
         {
             string failureCode = CreateStaleTargetFailureCode(targetSource);
             return new WaitProbeSnapshot(
@@ -442,6 +444,7 @@ public sealed class PollingWaitService(
                 VisualEvidenceFrame: null);
         }
 
+        WindowDescriptor liveTarget = liveTargetResolution.Window!;
         WaitVisualExecutionResult probeExecution = await ExecuteVisualProbeWithinDeadlineAsync(
             liveTarget,
             deadlineUtc,
