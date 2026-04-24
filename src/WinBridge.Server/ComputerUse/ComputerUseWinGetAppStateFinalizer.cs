@@ -21,10 +21,10 @@ internal static class ComputerUseWinGetAppStateFinalizer
             FailureCode: ComputerUseWinFailureCodeValues.BlockedTarget,
             Reason: reason);
 
-    internal static ComputerUseWinGetAppStateResult CreateApprovalRequiredPayload(WindowDescriptor window, string appId) =>
+    internal static ComputerUseWinGetAppStateResult CreateApprovalRequiredPayload(WindowDescriptor window, string appId, string windowId) =>
         new(
             Status: ComputerUseWinStatusValues.ApprovalRequired,
-            Session: new ComputerUseWinAppSession(appId, window.Hwnd, window.Title, window.ProcessName, window.ProcessId),
+            Session: new ComputerUseWinAppSession(appId, windowId, window.Hwnd, window.Title, window.ProcessName, window.ProcessId),
             ApprovalRequired: true,
             FailureCode: ComputerUseWinFailureCodeValues.ApprovalRequired,
             Reason: $"App '{appId}' ещё не одобрена для Computer Use for Windows.");
@@ -37,14 +37,14 @@ internal static class ComputerUseWinGetAppStateFinalizer
 
     public static CallToolResult FinalizeSuccess(
         AuditInvocationScope invocation,
-        string appId,
+        ComputerUseWinExecutionTarget target,
         WindowDescriptor selectedWindow,
         ComputerUseWinPreparedAppState preparedState,
         ComputerUseWinStateStore stateStore,
         ISessionManager sessionManager)
     {
         ArgumentNullException.ThrowIfNull(invocation);
-        ArgumentException.ThrowIfNullOrWhiteSpace(appId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(target.ApprovalKey.Value);
         ArgumentNullException.ThrowIfNull(selectedWindow);
         ArgumentNullException.ThrowIfNull(preparedState);
         ArgumentNullException.ThrowIfNull(stateStore);
@@ -80,7 +80,8 @@ internal static class ComputerUseWinGetAppStateFinalizer
             selectedWindow.Hwnd,
             new Dictionary<string, string?>
             {
-                ["app_id"] = appId,
+                ["app_id"] = target.ApprovalKey.Value,
+                ["window_id"] = target.WindowId.Value,
                 ["state_token"] = payload.StateToken,
                 ["element_count"] = payload.AccessibilityTree!.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["capture_artifact_path"] = payload.Capture!.ArtifactPath,

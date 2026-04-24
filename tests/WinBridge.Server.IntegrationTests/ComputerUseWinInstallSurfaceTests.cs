@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Server.IntegrationTests;
@@ -720,6 +721,36 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 Assert.Equal(
                     [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinGetAppState, ToolNames.ComputerUseWinListApps],
                     toolNames);
+
+                JsonElement getAppStateDescriptor = toolsResponse.RootElement
+                    .GetProperty("result")
+                    .GetProperty("tools")
+                    .EnumerateArray()
+                    .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinGetAppState);
+                JsonElement properties = getAppStateDescriptor.GetProperty("inputSchema").GetProperty("properties");
+                Assert.True(properties.TryGetProperty("windowId", out _));
+                Assert.True(properties.TryGetProperty("hwnd", out _));
+                Assert.False(properties.TryGetProperty("appId", out _));
+
+                using JsonDocument listAppsResponse = await session.SendRequestAsync(
+                    "tools/call",
+                    new
+                    {
+                        name = ToolNames.ComputerUseWinListApps,
+                        arguments = new { },
+                    },
+                    "tools/call:list_apps");
+                JsonElement listAppsStructured = listAppsResponse.RootElement
+                    .GetProperty("result")
+                    .GetProperty("structuredContent");
+                Assert.Equal(ComputerUseWinStatusValues.Ok, listAppsStructured.GetProperty("status").GetString());
+                JsonElement apps = listAppsStructured.GetProperty("apps");
+                Assert.Equal(JsonValueKind.Array, apps.ValueKind);
+                foreach (JsonElement app in apps.EnumerateArray())
+                {
+                    Assert.True(app.TryGetProperty("windows", out JsonElement windows));
+                    Assert.Equal(JsonValueKind.Array, windows.ValueKind);
+                }
             }
             finally
             {
@@ -806,7 +837,9 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
     private static void EnsurePublishedRuntimeBundle(string repoRoot, string scriptPath, string runtimeRoot)
     {
-        if (Directory.Exists(runtimeRoot) && RuntimeBundleMatchesManifest(runtimeRoot))
+        if (Directory.Exists(runtimeRoot)
+            && RuntimeBundleMatchesManifest(runtimeRoot)
+            && PublishedRuntimeBundleIsFresh(repoRoot, runtimeRoot))
         {
             return;
         }
@@ -824,6 +857,71 @@ public sealed class ComputerUseWinInstallSurfaceTests
     private static void AssertRuntimeBundleMatchesManifest(string runtimeRoot)
     {
         Assert.True(RuntimeBundleMatchesManifest(runtimeRoot), $"Runtime bundle '{runtimeRoot}' does not match its manifest.");
+    }
+
+    private static bool PublishedRuntimeBundleIsFresh(string repoRoot, string runtimeRoot)
+    {
+        string manifestPath = Path.Combine(runtimeRoot, "okno-runtime-bundle-manifest.json");
+        if (!File.Exists(manifestPath))
+        {
+            return false;
+        }
+
+        DateTime manifestWriteUtc = File.GetLastWriteTimeUtc(manifestPath);
+        DateTime latestSourceWriteUtc = EnumeratePublishInputs(repoRoot)
+            .Select(File.GetLastWriteTimeUtc)
+            .DefaultIfEmpty(DateTime.MinValue)
+            .Max();
+        return manifestWriteUtc >= latestSourceWriteUtc;
+    }
+
+    private static IEnumerable<string> EnumeratePublishInputs(string repoRoot)
+    {
+        string srcRoot = Path.Combine(repoRoot, "src");
+        if (Directory.Exists(srcRoot))
+        {
+            foreach (string path in EnumerateFilesRecursively(srcRoot))
+            {
+                yield return path;
+            }
+        }
+
+        string pluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
+        if (Directory.Exists(pluginRoot))
+        {
+            foreach (string path in EnumerateFilesRecursively(pluginRoot))
+            {
+                if (path.Contains($"{Path.DirectorySeparatorChar}runtime{Path.DirectorySeparatorChar}win-x64{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                yield return path;
+            }
+        }
+
+        string scriptsRoot = Path.Combine(repoRoot, "scripts", "codex");
+        if (Directory.Exists(scriptsRoot))
+        {
+            foreach (string path in EnumerateFilesRecursively(scriptsRoot))
+            {
+                yield return path;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateFilesRecursively(string root)
+    {
+        foreach (string path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        {
+            if (path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+                || path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            yield return path;
+        }
     }
 
     private static bool RuntimeBundleMatchesManifest(string runtimeRoot)
@@ -900,7 +998,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
     private static ScriptInvocationResult InvokePowerShellScript(string scriptPath, string workingDirectory, Action<ProcessStartInfo> configure)
     {
-        TimeSpan timeout = TimeSpan.FromMinutes(5);
+        TimeSpan timeout = TimeSpan.FromMinutes(15);
         ProcessStartInfo startInfo = new()
         {
             FileName = "powershell",

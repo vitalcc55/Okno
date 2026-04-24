@@ -93,16 +93,16 @@ internal static class ComputerUseWinToolRegistration
                 ["additionalProperties"] = false,
                 ["not"] = new JsonObject
                 {
-                    ["required"] = CreateStringArray("appId", "hwnd"),
+                    ["required"] = CreateStringArray("windowId", "hwnd"),
                     ["properties"] = new JsonObject
                     {
-                        ["appId"] = new JsonObject { ["type"] = "string" },
+                        ["windowId"] = new JsonObject { ["type"] = "string" },
                         ["hwnd"] = new JsonObject { ["type"] = "integer" },
                     },
                 },
                 ["properties"] = new JsonObject
                 {
-                    ["appId"] = CreateNullableNonBlankStringSchema(),
+                    ["windowId"] = CreateNullableNonBlankStringSchema(),
                     ["hwnd"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
                     ["maxNodes"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = UiaSnapshotRequestValidator.MaxNodesCeiling },

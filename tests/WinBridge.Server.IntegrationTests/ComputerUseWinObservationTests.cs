@@ -6,6 +6,8 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed class ComputerUseWinObservationTests
 {
+    private const string WindowId = "cw_test_window";
+
     [Fact]
     public async Task AppStateObserverReturnsStructuredFailureWhenCaptureThrows()
     {
@@ -16,6 +18,7 @@ public sealed class ComputerUseWinObservationTests
         ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
             CreateWindow(),
             appId: "explorer",
+            windowId: WindowId,
             maxNodes: 128,
             warnings: [],
             CancellationToken.None);
@@ -42,6 +45,7 @@ public sealed class ComputerUseWinObservationTests
         ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
             CreateWindow(),
             appId: "explorer",
+            windowId: WindowId,
             maxNodes: 2048,
             warnings: [],
             CancellationToken.None);
@@ -61,6 +65,7 @@ public sealed class ComputerUseWinObservationTests
         ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
             CreateWindow(),
             appId: "explorer",
+            windowId: WindowId,
             maxNodes: 128,
             warnings: [],
             CancellationToken.None);
@@ -106,6 +111,7 @@ public sealed class ComputerUseWinObservationTests
         ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
             CreateWindow(),
             appId: "explorer",
+            windowId: WindowId,
             maxNodes: 128,
             warnings: ["activation degraded"],
             CancellationToken.None);
@@ -145,6 +151,7 @@ public sealed class ComputerUseWinObservationTests
         ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
             CreateWindow(),
             appId: "explorer",
+            windowId: WindowId,
             maxNodes: 128,
             warnings: [],
             CancellationToken.None);
@@ -178,6 +185,7 @@ public sealed class ComputerUseWinObservationTests
         ComputerUseWinAppStateObservationOutcome outcome = await observer.ObserveAsync(
             CreateWindow(),
             appId: "explorer",
+            windowId: WindowId,
             maxNodes: 128,
             warnings: [],
             CancellationToken.None);
@@ -238,7 +246,7 @@ public sealed class ComputerUseWinObservationTests
 
     private static ComputerUseWinStoredState CreateStoredState(DateTimeOffset capturedAtUtc) =>
         new(
-            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            new ComputerUseWinAppSession("explorer", WindowId, 101, "Explorer", "explorer", 1001),
             CreateWindow(),
             CaptureReference: null,
             Elements: new Dictionary<int, ComputerUseWinStoredElement>(),

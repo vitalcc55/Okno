@@ -2,8 +2,8 @@ namespace WinBridge.Runtime.Tooling;
 
 public static class ToolDescriptions
 {
-    public const string ComputerUseWinListAppsTool = "Возвращает running Windows apps для Computer Use for Windows. Публичный operator surface: показывает app identity, foreground hints, approval status и window metadata без low-level engine tool noise.";
-    public const string ComputerUseWinGetAppStateTool = "Начинает или продолжает app use session и возвращает action-ready состояние app window: screenshot, compact accessibility tree, stateToken, captureReference и warnings. stateToken публикуется только если capture и accessibility tree построены успешно; observation failure отвечает structured `failed` без session commit.";
+    public const string ComputerUseWinListAppsTool = "Возвращает running Windows apps для Computer Use for Windows. Публичный operator surface группирует visible window instances по app approval identity и публикует selectable `windows[]` с opaque `windowId`, foreground hints и approval/block metadata без low-level engine tool noise.";
+    public const string ComputerUseWinGetAppStateTool = "Начинает или продолжает app use session и возвращает action-ready состояние конкретного discovered window instance: screenshot, compact accessibility tree, stateToken, captureReference и warnings. Primary selector — `windowId`; `hwnd` остаётся explicit low-level/debug path. stateToken публикуется только если capture и accessibility tree построены успешно; observation failure отвечает structured `failed` без session commit.";
     public const string ComputerUseWinClickTool = "Кликает по elementIndex или pixel coordinates из последнего app state. При наличии elementIndex runtime сначала пере-подтверждает target через свежий UIA snapshot; coordinate click остаётся low-confidence path и требует explicit confirm.";
     public const string ComputerUseWinTypeTextTool = "Печатает текст в текущий app session через реальный input path без hidden clipboard fallback.";
     public const string ComputerUseWinPressKeyTool = "Нажимает клавишу или сочетание клавиш в текущий app session.";

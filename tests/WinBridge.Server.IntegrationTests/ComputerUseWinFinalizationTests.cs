@@ -85,9 +85,10 @@ public sealed class ComputerUseWinFinalizationTests
             File.Delete(options.SummaryPath);
             Directory.CreateDirectory(options.SummaryPath);
 
+            ComputerUseWinExecutionTarget target = CreateExecutionTarget(selectedWindow);
             CallToolResult result = ComputerUseWinGetAppStateFinalizer.FinalizeSuccess(
                 invocation,
-                appId: "explorer",
+                target,
                 selectedWindow,
                 preparedState,
                 stateStore,
@@ -609,7 +610,7 @@ public sealed class ComputerUseWinFinalizationTests
 
     private static ComputerUseWinPreparedAppState CreatePreparedState(WindowDescriptor selectedWindow)
     {
-        ComputerUseWinAppSession session = new("explorer", selectedWindow.Hwnd, selectedWindow.Title, selectedWindow.ProcessName, selectedWindow.ProcessId);
+        ComputerUseWinAppSession session = new("explorer", "cw_explorer_101", selectedWindow.Hwnd, selectedWindow.Title, selectedWindow.ProcessName, selectedWindow.ProcessId);
         ComputerUseWinStoredState storedState = new(
             session,
             selectedWindow,
@@ -645,4 +646,10 @@ public sealed class ComputerUseWinFinalizationTests
             PngBytes: [1, 2, 3],
             MimeType: "image/png");
     }
+
+    private static ComputerUseWinExecutionTarget CreateExecutionTarget(WindowDescriptor selectedWindow) =>
+        new(
+            new ComputerUseWinApprovalKey("explorer"),
+            new ComputerUseWinWindowInstanceIdentity("cw_explorer_101"),
+            selectedWindow);
 }

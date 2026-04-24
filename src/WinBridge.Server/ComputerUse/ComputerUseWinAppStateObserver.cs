@@ -12,6 +12,7 @@ internal sealed class ComputerUseWinAppStateObserver(
     public async Task<ComputerUseWinAppStateObservationOutcome> ObserveAsync(
         WindowDescriptor selectedWindow,
         string appId,
+        string windowId,
         int maxNodes,
         IReadOnlyList<string> warnings,
         CancellationToken cancellationToken)
@@ -45,6 +46,7 @@ internal sealed class ComputerUseWinAppStateObserver(
             IReadOnlyDictionary<int, ComputerUseWinStoredElement> elements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
             ComputerUseWinAppSession session = new(
                 AppId: appId,
+                WindowId: windowId,
                 Hwnd: selectedWindow.Hwnd,
                 Title: selectedWindow.Title,
                 ProcessName: selectedWindow.ProcessName,

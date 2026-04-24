@@ -523,7 +523,7 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
 - [x] Update generated exports and docs.
 - [x] Запустить review gate с official MCP source references в review prompt.
 - [x] Обработать review через systematic-debugging и re-review до approval.
-- [ ] Сделать отдельный commit для этого stage.
+- [x] Сделать отдельный commit для этого stage.
 
 **Команды проверки:**
 
@@ -538,9 +538,9 @@ scripts/refresh-generated-docs.ps1
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-deferred-work-implementation`
-- Commit SHA: `pending`
+- Commit SHA: `623390d`
 - TDD применялся: `да`
 - Проверки:
   - `M0` inventory зафиксирован в этой секции; live MCP stable подтверждён по official docs как `2025-11-25`
@@ -582,8 +582,8 @@ scripts/refresh-generated-docs.ps1
 - Остаточные риски:
   - broader MCP feature set beyond current `STDIO` product (`HTTP`, auth, prompts/resources/completions expansion, icons asset pipeline) остаётся out-of-scope и сознательно не реализуется этим stage
 - Разблокировка следующего этапа:
-  - сделать отдельный commit для `Stage 3`
-  - после появления SHA записать его в этот отчёт и только затем переходить к `Stage 4`
+  - `Stage 3` закрыт commit `623390d`
+  - `Stage 4` разблокирован
 
 ### Stage 4: Deferred class 1 instance-addressable discovery with A2/S1/C1
 
@@ -615,21 +615,28 @@ scripts/refresh-generated-docs.ps1
 
 **TDD-решение:** обязательно. Это product behavior и public contract redesign.
 
+**DTO decision (зафиксировано до кода):**
+
+- Выбрана grouped model: top-level `apps[]` сохраняет app-level approval/policy identity, а каждый app entry публикует `windows[]` со всеми selectable visible instances.
+- `windows[]` получает primary public selector `windowId` плюс explicit low-level/debug selector `hwnd`.
+- `get_app_state` переходит на targeting по `windowId | hwnd`; `appId` остаётся approval/session identity и убирается из execution selector path.
+- Rejected alternative: flat per-window top-level entries. Причина отказа: такой shape дублирует approval key на каждом окне, смешивает policy identity с execution target и оставляет public surface в ambiguity-классе, который этот stage как раз должен убрать.
+
 **Шаги:**
 
-- [ ] Choose DTO shape: per-window entries or grouped `windows[]`. Record decision and rejected alternative in this section before code.
-- [ ] Написать failing multi-window discovery test: two visible windows from same process/app identity both appear as selectable public entries.
-- [ ] Запустить targeted test и записать RED proof.
-- [ ] Написать failing test: `get_app_state` can target each discovered instance without ambiguous fallback.
-- [ ] Запустить targeted test и записать RED proof.
-- [ ] Introduce lightweight identity model for app policy key vs window execution target.
-- [ ] Implement discovery materializer in application owner layer.
-- [ ] Update `list_apps` payload/schema/docs.
-- [ ] Implement selection path in `get_app_state` from new public discovery fields.
-- [ ] Centralize result semantics needed for ambiguity/stale/missing/blocked states.
-- [ ] Update `ToolContractManifest`, registration, generated docs and install/publication acceptance.
-- [ ] Run integration tests and generated docs refresh.
-- [ ] Запустить review gate и re-review loop.
+- [x] Choose DTO shape: per-window entries or grouped `windows[]`. Record decision and rejected alternative in this section before code.
+- [x] Написать failing multi-window discovery test: two visible windows from same process/app identity both appear as selectable public entries.
+- [x] Запустить targeted test и записать RED proof.
+- [x] Написать failing test: `get_app_state` can target each discovered instance without ambiguous fallback.
+- [x] Запустить targeted test и записать RED proof.
+- [x] Introduce lightweight identity model for app policy key vs window execution target.
+- [x] Implement discovery materializer in application owner layer.
+- [x] Update `list_apps` payload/schema/docs.
+- [x] Implement selection path in `get_app_state` from new public discovery fields.
+- [x] Centralize result semantics needed for ambiguity/stale/missing/blocked states.
+- [x] Update `ToolContractManifest`, registration, generated docs and install/publication acceptance.
+- [x] Run integration tests and generated docs refresh.
+- [x] Запустить review gate и re-review loop.
 - [ ] Сделать отдельный commit для этого stage.
 
 **Команды проверки:**
@@ -644,18 +651,64 @@ scripts/refresh-generated-docs.ps1
 
 #### Отчёт этапа
 
-- Статус этапа: `not_started`
-- Branch:
-- Commit SHA:
-- TDD применялся:
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-deferred-work-implementation`
+- Commit SHA: `pending`
+- TDD применялся: `да`
 - Проверки:
+  - DTO decision зафиксирован до production code: grouped `apps[] + windows[]`, `windowId` как primary selector, flat per-window top-level model explicitly rejected
+  - RED proof: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinActionAndProjectionTests.ListAppsPublishesSelectableWindowInstancesInsideEachAppGroup|ComputerUseWinActionAndProjectionTests.GetAppStateTargetResolverResolvesEachDiscoveredWindowIdWithoutForegroundGuessing"` -> fail на отсутствии `ComputerUseWinAppDescriptor.Windows`, `ComputerUseWinWindowDescriptor` и `windowId` selector path в resolver
+  - targeted GREEN: тот же filter -> green, `2/2`
+  - affected contract contour: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinArchitectureTests|ComputerUseWinObservationTests|ComputerUseWinFinalizationTests|ComputerUseWinActionAndProjectionTests.ListAppsPublishesSelectableWindowInstancesInsideEachAppGroup|ComputerUseWinActionAndProjectionTests.GetAppStateTargetResolverResolvesEachDiscoveredWindowIdWithoutForegroundGuessing|McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools|ComputerUseWinInstallSurfaceTests.ComputerUseWinLauncherFromTempPluginCopyPublishesPublicSurfaceWithoutRepoHints"` -> green, `96/96`
+  - stage-wide `ComputerUseWin` contour: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"` -> green, `116/116`
+  - stage-wide smoke contour: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "McpProtocolSmokeTests"` -> green, `22/22`
+  - publication refresh: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\publish-computer-use-win-plugin.ps1` -> green
+  - generated docs refresh: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-generated-docs.ps1` -> green
 - Review agents:
+  - `019dc0fb-4a96-7a43-98c4-e7a4d7ca2c79` (`architecture/contract`) -> `changes_requested/approve`
+  - `019dc0fb-4f42-7c22-869a-a5b8f018663f` (`tests/failure/docs/generated`) -> `approve`
 - Подтверждённые замечания:
-- Отклонённые замечания:
+  - `[confirmed]` runtime/product gap: `list_apps` публиковал только один representative `HWND` на app group, а `get_app_state(appId)` оставался в ambiguous/foreground-guess path для multi-window app
+  - `[confirmed]` install/publication acceptance gap: helper `EnsurePublishedRuntimeBundle(...)` считал bundle готовым только по manifest completeness и мог reuse stale installed copy после contract change
+  - `[confirmed]` selection target semantics были split между resolver и handler: resolver уже знал `ComputerUseWinExecutionTarget`, но возвращал только `WindowDescriptor`, а handler повторно восстанавливал `appId/windowId`
+  - `[confirmed]` installed-copy acceptance проверял только `tools/list` schema и не делал real public `tools/call` из temp plugin copy
+- Отклонённые замечания: `нет`
 - Исправленные root causes:
+  - app-level approval identity и window-level execution target разведены в lightweight owner model (`ComputerUseWinApprovalKey`, `ComputerUseWinWindowInstanceIdentity`, `ComputerUseWinExecutionTarget`, `ComputerUseWinDiscoveredApp`)
+  - discovery materialization больше не collapse-ит app group в single representative hwnd: public payload теперь несёт nested `windows[]` со всеми selectable visible instances
+  - `get_app_state` больше не использует `appId` как execution selector; public targeting идёт по `windowId | hwnd`, а `appId` остаётся approval/session identity
+  - target failure semantics для `missing_target` / `identity_proof_unavailable` больше не живут ad hoc в handler branches: `ComputerUseWinGetAppStateTargetResolution` теперь несёт `Target`, а resolver остаётся единственным owner-слоем для selection result semantics
+  - install-surface harness теперь отличает stale bundle от fresh source tree и не reuse-ит outdated published runtime только потому, что bundle совпал со своим manifest
+  - installed-copy acceptance больше не ограничивается descriptor proof и теперь делает real `tools/call:list_apps` из fresh temp plugin copy
 - Проверенные соседние paths:
+  - `src/WinBridge.Runtime.Contracts/ComputerUseWinContracts.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinIdentityModel.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinAppDiscoveryService.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinListAppsHandler.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateTargetResolver.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateHandler.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateFinalizer.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinAppStateObserver.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinRequestContractValidator.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs`
+  - `src/WinBridge.Runtime.Tooling/ToolDescriptions.cs`
+  - `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinActionAndProjectionTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinObservationTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinFinalizationTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+  - `docs/architecture/computer-use-win-surface.md`
+  - `docs/generated/computer-use-win-interfaces.md`
+  - `docs/generated/computer-use-win-interfaces.json`
+  - `docs/CHANGELOG.md`
 - Остаточные риски:
+  - `windowId` сознательно discovery-scoped и derived from current live instance identity + hwnd; caller не должен считать его durable beyond window churn и должен refresh-ить discovery/state после window recreation
+  - pure observe split и advisory soft-fail policy по-прежнему out-of-scope этого stage и остаются decision gates `Stage 5/6`
 - Разблокировка следующего этапа:
+  - сделать отдельный commit для `Stage 4`
+  - после появления SHA записать его в этот отчёт и только затем переходить к `Stage 5`
 
 ### Stage 5: Deferred class 2 decision and optional pure observe split
 

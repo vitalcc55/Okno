@@ -255,6 +255,8 @@ public sealed class McpProtocolSmokeTests
                 .EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinGetAppState);
             JsonElement clickProperties = clickDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            JsonElement getAppStateSchema = getAppStateDescriptor.GetProperty("inputSchema");
+            JsonElement getAppStateProperties = getAppStateSchema.GetProperty("properties");
             AssertSchemaRequiredContains(clickDescriptor.GetProperty("inputSchema"), "stateToken");
 
             JsonElement getAppStateAnnotations = getAppStateDescriptor.GetProperty("annotations");
@@ -262,6 +264,19 @@ public sealed class McpProtocolSmokeTests
             Assert.False(getAppStateAnnotations.GetProperty("destructiveHint").GetBoolean());
             Assert.False(getAppStateAnnotations.GetProperty("idempotentHint").GetBoolean());
             Assert.True(getAppStateAnnotations.GetProperty("openWorldHint").GetBoolean());
+            Assert.True(getAppStateProperties.TryGetProperty("windowId", out JsonElement windowIdProperty));
+            Assert.True(getAppStateProperties.TryGetProperty("hwnd", out JsonElement getAppStateHwndProperty));
+            Assert.False(getAppStateProperties.TryGetProperty("appId", out _));
+            Assert.Contains("string", windowIdProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
+            Assert.Contains("null", windowIdProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
+            Assert.Equal(@".*\S.*", windowIdProperty.GetProperty("pattern").GetString());
+            Assert.Contains("integer", getAppStateHwndProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
+            string[] conflictingSelectors = getAppStateSchema.GetProperty("not").GetProperty("required").EnumerateArray()
+                .Select(item => item.GetString())
+                .Where(static item => item is not null)
+                .Cast<string>()
+                .ToArray();
+            Assert.Equal(["windowId", "hwnd"], conflictingSelectors);
 
             Assert.Equal(
                 [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],

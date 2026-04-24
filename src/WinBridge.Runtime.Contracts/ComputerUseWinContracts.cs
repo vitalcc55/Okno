@@ -33,14 +33,18 @@ public static class ComputerUseWinFailureCodeValues
     public const string InputDispatchFailed = InputFailureCodeValues.InputDispatchFailed;
 }
 
-public sealed record ComputerUseWinAppDescriptor(
-    string AppId,
+public sealed record ComputerUseWinWindowDescriptor(
+    string WindowId,
     long Hwnd,
     string Title,
     string? ProcessName,
     int? ProcessId,
     bool IsForeground,
-    bool IsVisible,
+    bool IsVisible);
+
+public sealed record ComputerUseWinAppDescriptor(
+    string AppId,
+    IReadOnlyList<ComputerUseWinWindowDescriptor> Windows,
     bool IsApproved,
     bool IsBlocked,
     string? BlockReason = null);
@@ -53,13 +57,14 @@ public sealed record ComputerUseWinListAppsResult(
     string? Reason = null);
 
 public sealed record ComputerUseWinGetAppStateRequest(
-    string? AppId = null,
+    string? WindowId = null,
     long? Hwnd = null,
     bool Confirm = false,
     int MaxNodes = 128);
 
 public sealed record ComputerUseWinAppSession(
     string AppId,
+    string WindowId,
     long Hwnd,
     string Title,
     string? ProcessName,

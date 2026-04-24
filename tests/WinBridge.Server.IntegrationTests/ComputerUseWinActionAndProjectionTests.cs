@@ -12,7 +12,7 @@ namespace WinBridge.Server.IntegrationTests;
 public sealed class ComputerUseWinActionAndProjectionTests
 {
     [Fact]
-    public void ListAppsGroupsVisibleWindowsByStableAppIdAndPrefersForegroundRepresentative()
+    public void ListAppsPublishesSelectableWindowInstancesInsideEachAppGroup()
     {
         using TempDirectoryScope temp = new();
         ComputerUseWinApprovalStore approvalStore = new(
@@ -42,20 +42,92 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal(2, payload.Count);
         Assert.Equal(2, payload.Apps.Count);
 
-        ComputerUseWinAppDescriptor foregroundExplorer = payload.Apps[0];
-        Assert.Equal("explorer", foregroundExplorer.AppId);
-        Assert.Equal(202, foregroundExplorer.Hwnd);
-        Assert.Equal("Explorer B", foregroundExplorer.Title);
-        Assert.True(foregroundExplorer.IsForeground);
-        Assert.True(foregroundExplorer.IsApproved);
-        Assert.False(foregroundExplorer.IsBlocked);
+        ComputerUseWinAppDescriptor explorer = payload.Apps[0];
+        Assert.Equal("explorer", explorer.AppId);
+        Assert.True(explorer.IsApproved);
+        Assert.False(explorer.IsBlocked);
+        Assert.Equal(2, explorer.Windows.Count);
+
+        ComputerUseWinWindowDescriptor explorerWindowA = explorer.Windows.Single(window => window.Hwnd == 101);
+        ComputerUseWinWindowDescriptor explorerWindowB = explorer.Windows.Single(window => window.Hwnd == 202);
+        Assert.False(string.IsNullOrWhiteSpace(explorerWindowA.WindowId));
+        Assert.False(string.IsNullOrWhiteSpace(explorerWindowB.WindowId));
+        Assert.NotEqual(explorerWindowA.WindowId, explorerWindowB.WindowId);
+        Assert.False(explorerWindowA.IsForeground);
+        Assert.True(explorerWindowB.IsForeground);
 
         ComputerUseWinAppDescriptor blockedConsole = payload.Apps[1];
         Assert.Equal("powershell", blockedConsole.AppId);
-        Assert.Equal(303, blockedConsole.Hwnd);
         Assert.False(blockedConsole.IsApproved);
         Assert.True(blockedConsole.IsBlocked);
         Assert.Contains("powershell", blockedConsole.BlockReason, StringComparison.OrdinalIgnoreCase);
+        ComputerUseWinWindowDescriptor consoleWindow = Assert.Single(blockedConsole.Windows);
+        Assert.Equal(303, consoleWindow.Hwnd);
+    }
+
+    [Fact]
+    public void GetAppStateTargetResolverCarriesExecutionTargetForWindowIdHwndAndAttachedFallback()
+    {
+        IReadOnlyList<WindowDescriptor> windows =
+        [
+            CreateWindow(hwnd: 101, title: "Explorer A", processName: "explorer", processId: 1001, isForeground: false),
+            CreateWindow(hwnd: 202, title: "Explorer B", processName: "explorer", processId: 1001, isForeground: true),
+        ];
+
+        using TempDirectoryScope temp = new();
+        ComputerUseWinApprovalStore approvalStore = new(
+            new ComputerUseWinOptions(
+                PluginRoot: temp.Root,
+                AppInstructionsRoot: Path.Combine(temp.Root, "references", "AppInstructions"),
+                ApprovalStorePath: Path.Combine(temp.Root, "AppApprovals.json")));
+        ComputerUseWinAppDiscoveryService discoveryService = new(new FakeListAppsWindowManager(windows), approvalStore);
+        ComputerUseWinDiscoveredApp explorer = Assert.Single(discoveryService.ListVisibleApps());
+        string firstWindowId = explorer.Windows.Single(window => window.Window.Hwnd == 101).WindowId.Value;
+        string secondWindowId = explorer.Windows.Single(window => window.Window.Hwnd == 202).WindowId.Value;
+        IReadOnlyList<ComputerUseWinExecutionTarget> executionTargets = ComputerUseWinExecutionTargetCatalog.Materialize(windows);
+
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-4-target-resolution-tests"));
+        ComputerUseWinGetAppStateTargetResolution firstResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            windows,
+            executionTargets,
+            sessionManager,
+            windowId: firstWindowId,
+            hwnd: null);
+        ComputerUseWinGetAppStateTargetResolution secondResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            windows,
+            executionTargets,
+            sessionManager,
+            windowId: secondWindowId,
+            hwnd: null);
+        ComputerUseWinGetAppStateTargetResolution explicitResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            windows,
+            executionTargets,
+            sessionManager,
+            windowId: null,
+            hwnd: 202);
+        sessionManager.Attach(CreateWindow(hwnd: 101, title: "Explorer A", processName: "explorer", processId: 1001, isForeground: false), "computer-use-win");
+        ComputerUseWinGetAppStateTargetResolution attachedResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            windows,
+            executionTargets,
+            sessionManager,
+            windowId: null,
+            hwnd: null);
+
+        Assert.True(firstResolution.IsSuccess);
+        Assert.NotNull(firstResolution.Target);
+        Assert.Equal(101, firstResolution.Window!.Hwnd);
+        Assert.Equal(firstWindowId, firstResolution.Target!.WindowId.Value);
+        Assert.Equal("explorer", firstResolution.Target.ApprovalKey.Value);
+        Assert.True(secondResolution.IsSuccess);
+        Assert.NotNull(secondResolution.Target);
+        Assert.Equal(202, secondResolution.Window!.Hwnd);
+        Assert.Equal(secondWindowId, secondResolution.Target!.WindowId.Value);
+        Assert.True(explicitResolution.IsSuccess);
+        Assert.NotNull(explicitResolution.Target);
+        Assert.Equal(secondWindowId, explicitResolution.Target!.WindowId.Value);
+        Assert.True(attachedResolution.IsSuccess);
+        Assert.NotNull(attachedResolution.Target);
+        Assert.Equal(firstWindowId, attachedResolution.Target!.WindowId.Value);
     }
 
     [Fact]
@@ -839,9 +911,12 @@ public sealed class ComputerUseWinActionAndProjectionTests
         return new AuditLog(options, TimeProvider.System);
     }
 
+    private static ComputerUseWinAppSession CreateSession() =>
+        new("explorer", "cw_explorer_101", 101, "Explorer", "explorer", 1001);
+
     private static ComputerUseWinStoredState CreateStoredState() =>
         new(
-            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateSession(),
             CreateWindow(),
             CaptureReference: CreateCaptureReference(),
             Elements: new Dictionary<int, ComputerUseWinStoredElement>
@@ -861,7 +936,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
     private static ComputerUseWinStoredState CreateSafeStoredState() =>
         new(
-            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateSession(),
             CreateWindow(),
             CaptureReference: CreateCaptureReference(),
             Elements: new Dictionary<int, ComputerUseWinStoredElement>
@@ -881,7 +956,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
     private static ComputerUseWinStoredState CreateStoredStateWithoutCaptureReference() =>
         new(
-            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateSession(),
             CreateWindow(),
             CaptureReference: null,
             Elements: new Dictionary<int, ComputerUseWinStoredElement>(),
@@ -890,7 +965,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
     private static ComputerUseWinStoredState CreateNonActionableStoredState() =>
         new(
-            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateSession(),
             CreateWindow(),
             CaptureReference: CreateCaptureReference(),
             Elements: new Dictionary<int, ComputerUseWinStoredElement>
@@ -910,7 +985,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
     private static ComputerUseWinStoredState CreateUnnamedStoredState() =>
         new(
-            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateSession(),
             CreateWindow(),
             CaptureReference: CreateCaptureReference(),
             Elements: new Dictionary<int, ComputerUseWinStoredElement>
@@ -930,7 +1005,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
     private static ComputerUseWinStoredState CreateLabelOnlyStoredState() =>
         new(
-            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            CreateSession(),
             CreateWindow(),
             CaptureReference: CreateCaptureReference(),
             Elements: new Dictionary<int, ComputerUseWinStoredElement>

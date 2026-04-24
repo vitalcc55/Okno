@@ -517,10 +517,10 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ToolRequestBinderRejectsConflictingSelectorsForGetAppState()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"appId":"explorer","hwnd":123}""");
+        using JsonDocument document = JsonDocument.Parse("""{"windowId":"cw_explorer_123","hwnd":123}""");
         Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
         {
-            ["appId"] = document.RootElement.GetProperty("appId").Clone(),
+            ["windowId"] = document.RootElement.GetProperty("windowId").Clone(),
             ["hwnd"] = document.RootElement.GetProperty("hwnd").Clone(),
         };
 
@@ -533,17 +533,17 @@ public sealed class ComputerUseWinArchitectureTests
 
         Assert.False(success);
         Assert.Equal(new ComputerUseWinGetAppStateRequest(), request);
-        Assert.Contains("appId", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("windowId", reason, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hwnd", reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void ToolRequestBinderRejectsWhitespaceAppIdWhenHwndIsPresent()
+    public void ToolRequestBinderRejectsWhitespaceWindowIdWhenHwndIsPresent()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"appId":"   ","hwnd":123}""");
+        using JsonDocument document = JsonDocument.Parse("""{"windowId":"   ","hwnd":123}""");
         Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
         {
-            ["appId"] = document.RootElement.GetProperty("appId").Clone(),
+            ["windowId"] = document.RootElement.GetProperty("windowId").Clone(),
             ["hwnd"] = document.RootElement.GetProperty("hwnd").Clone(),
         };
 
@@ -556,7 +556,7 @@ public sealed class ComputerUseWinArchitectureTests
 
         Assert.False(success);
         Assert.Equal(new ComputerUseWinGetAppStateRequest(), request);
-        Assert.Contains("appId", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("windowId", reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -620,8 +620,9 @@ public sealed class ComputerUseWinArchitectureTests
 
         ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
             [liveWindowWithoutStableIdentity],
+            [],
             sessionManager,
-            appId: null,
+            windowId: null,
             hwnd: null);
 
         Assert.False(resolution.IsSuccess);
@@ -693,17 +694,17 @@ public sealed class ComputerUseWinArchitectureTests
             .Where(static item => item is not null)
             .Cast<string>()
             .ToArray();
-        Assert.Equal(["appId", "hwnd"], notRequired);
+        Assert.Equal(["windowId", "hwnd"], notRequired);
     }
 
     [Fact]
-    public void ComputerUseWinGetAppStateToolSchemaRejectsWhitespaceOnlyAppId()
+    public void ComputerUseWinGetAppStateToolSchemaRejectsWhitespaceOnlyWindowId()
     {
         var tools = ComputerUseWinToolRegistration.Create(static () => null!);
         var getAppStateTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinGetAppState, StringComparison.Ordinal));
         JsonElement inputSchema = getAppStateTool.ProtocolTool.InputSchema;
 
-        Assert.Equal(@".*\S.*", inputSchema.GetProperty("properties").GetProperty("appId").GetProperty("pattern").GetString());
+        Assert.Equal(@".*\S.*", inputSchema.GetProperty("properties").GetProperty("windowId").GetProperty("pattern").GetString());
     }
 
     [Fact]
@@ -883,7 +884,7 @@ public sealed class ComputerUseWinArchitectureTests
 
     private static ComputerUseWinStoredState CreateStoredState(DateTimeOffset capturedAtUtc) =>
         new(
-            new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
+            new ComputerUseWinAppSession("explorer", "cw_explorer_101", 101, "Explorer", "explorer", 1001),
             CreateWindow(processName: "explorer"),
             CaptureReference: null,
             Elements: new Dictionary<int, ComputerUseWinStoredElement>

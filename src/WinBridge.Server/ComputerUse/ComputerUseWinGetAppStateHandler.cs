@@ -19,10 +19,13 @@ internal sealed class ComputerUseWinGetAppStateHandler(
         ComputerUseWinGetAppStateRequest request,
         CancellationToken cancellationToken)
     {
+        IReadOnlyList<WindowDescriptor> windows = windowManager.ListWindows();
+        IReadOnlyList<ComputerUseWinExecutionTarget> executionTargets = ComputerUseWinExecutionTargetCatalog.Materialize(windows);
         ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
-            windowManager.ListWindows(),
+            windows,
+            executionTargets,
             sessionManager,
-            request.AppId,
+            request.WindowId,
             request.Hwnd);
         if (!resolution.IsSuccess)
         {
@@ -31,26 +34,20 @@ internal sealed class ComputerUseWinGetAppStateHandler(
                 : ComputerUseWinToolResultFactory.CreateStateFailure(invocation, resolution.FailureCode!, resolution.Reason!, resolution.Window?.Hwnd);
         }
 
-        WindowDescriptor selectedWindow = resolution.Window!;
+        ComputerUseWinExecutionTarget selectedTarget = resolution.Target!;
+        WindowDescriptor selectedWindow = selectedTarget.Window;
         if (ComputerUseWinTargetPolicy.TryGetBlockedReason(selectedWindow, out string? blockReason))
         {
             return ComputerUseWinToolResultFactory.CreateStateBlocked(invocation, selectedWindow, blockReason!);
         }
 
-        if (!ComputerUseWinAppIdentity.TryCreateStableAppId(selectedWindow, out string? stableAppId))
-        {
-            return ComputerUseWinToolResultFactory.CreateStateIdentityProofFailure(
-                invocation,
-                selectedWindow,
-                "Computer Use for Windows не смог подтвердить стабильную process identity окна; approval и observation fail-close-ятся до нового live proof.");
-        }
-
-        string appId = stableAppId!;
+        string appId = selectedTarget.ApprovalKey.Value;
+        string windowId = selectedTarget.WindowId.Value;
         if (!approvalStore.IsApproved(appId))
         {
             if (!request.Confirm)
             {
-                return ComputerUseWinToolResultFactory.CreateStateApprovalRequired(invocation, selectedWindow, appId);
+                return ComputerUseWinToolResultFactory.CreateStateApprovalRequired(invocation, selectedWindow, appId, windowId);
             }
 
             approvalStore.Approve(appId);
@@ -71,6 +68,7 @@ internal sealed class ComputerUseWinGetAppStateHandler(
         ComputerUseWinAppStateObservationOutcome observation = await appStateObserver.ObserveAsync(
             selectedWindow,
             appId,
+            windowId,
             request.MaxNodes,
             warnings,
             cancellationToken).ConfigureAwait(false);
@@ -85,7 +83,7 @@ internal sealed class ComputerUseWinGetAppStateHandler(
         ComputerUseWinPreparedAppState preparedState = observation.PreparedState!;
         return ComputerUseWinGetAppStateFinalizer.FinalizeSuccess(
             invocation,
-            appId,
+            selectedTarget,
             selectedWindow,
             preparedState,
             stateStore,

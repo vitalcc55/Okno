@@ -7,39 +7,26 @@ internal sealed class ComputerUseWinAppDiscoveryService(
     IWindowManager windowManager,
     ComputerUseWinApprovalStore approvalStore)
 {
-    public IReadOnlyList<ComputerUseWinAppDescriptor> ListVisibleApps() =>
-        windowManager.ListWindows()
-            .Where(static item => item.IsVisible)
-            .Select(static item => ComputerUseWinAppIdentity.TryCreateStableAppId(item, out string? appId)
-                ? new StableIdentityWindow(item, appId!)
-                : null)
-            .Where(static item => item is not null)
-            .Cast<StableIdentityWindow>()
-            .GroupBy(static item => item.AppId, static item => item.Window)
+    public IReadOnlyList<ComputerUseWinDiscoveredApp> ListVisibleApps() =>
+        ComputerUseWinExecutionTargetCatalog.Materialize(windowManager.ListWindows())
+            .GroupBy(static item => item.ApprovalKey.Value, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
-                WindowDescriptor selected = group
-                    .OrderByDescending(static item => item.IsForeground)
-                    .ThenByDescending(static item => item.IsVisible)
-                    .ThenBy(static item => item.Hwnd)
-                    .First();
+                ComputerUseWinExecutionTarget[] windows = group
+                    .OrderByDescending(static item => item.Window.IsForeground)
+                    .ThenBy(static item => item.Window.Hwnd)
+                    .ToArray();
+                WindowDescriptor representative = windows[0].Window;
 
-                bool isBlocked = ComputerUseWinTargetPolicy.TryGetBlockedReason(selected, out string? blockReason);
-                return new ComputerUseWinAppDescriptor(
-                    AppId: group.Key,
-                    Hwnd: selected.Hwnd,
-                    Title: selected.Title,
-                    ProcessName: selected.ProcessName,
-                    ProcessId: selected.ProcessId,
-                    IsForeground: selected.IsForeground,
-                    IsVisible: selected.IsVisible,
+                bool isBlocked = ComputerUseWinTargetPolicy.TryGetBlockedReason(representative, out string? blockReason);
+                return new ComputerUseWinDiscoveredApp(
+                    ApprovalKey: windows[0].ApprovalKey,
+                    Windows: windows,
                     IsApproved: approvalStore.IsApproved(group.Key),
                     IsBlocked: isBlocked,
                     BlockReason: blockReason);
             })
-            .OrderByDescending(static item => item.IsForeground)
-            .ThenBy(static item => item.AppId, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(static item => item.Windows.Any(static window => window.Window.IsForeground))
+            .ThenBy(static item => item.ApprovalKey.Value, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-
-    private sealed record StableIdentityWindow(WindowDescriptor Window, string AppId);
 }

@@ -18,15 +18,15 @@ internal static class ComputerUseWinRequestContractValidator
 
     private static string? Validate(ComputerUseWinGetAppStateRequest request)
     {
-        string? appIdFailure = ValidateOptionalNonBlankString(request.AppId, "appId");
-        if (appIdFailure is not null)
+        string? windowIdFailure = ValidateOptionalNonBlankString(request.WindowId, "windowId");
+        if (windowIdFailure is not null)
         {
-            return appIdFailure;
+            return windowIdFailure;
         }
 
-        if (!string.IsNullOrWhiteSpace(request.AppId) && request.Hwnd is not null)
+        if (!string.IsNullOrWhiteSpace(request.WindowId) && request.Hwnd is not null)
         {
-            return "Для get_app_state нужно передать либо appId, либо hwnd, но не оба селектора сразу.";
+            return "Для get_app_state нужно передать либо windowId, либо hwnd, но не оба селектора сразу.";
         }
 
         if (request.MaxNodes < 1 || request.MaxNodes > UiaSnapshotRequestValidator.MaxNodesCeiling)

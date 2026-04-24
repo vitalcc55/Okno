@@ -43,6 +43,14 @@ Codex
 list_apps -> get_app_state -> click -> get_app_state
 ```
 
+Текущая discovery model после `Stage 4`:
+
+- `list_apps` сохраняет top-level `apps[]` как app-level approval/policy groups;
+- каждый app entry публикует `windows[]` со всеми selectable visible window instances;
+- primary public selector для instance targeting — opaque `windowId`;
+- `hwnd` остаётся explicit low-level/debug selector и не является единственным публичным semantic selector;
+- `appId` остаётся approval/session identity и не используется как ambiguous execution selector для `get_app_state`.
+
 `type_text`, `press_key`, `scroll` и `drag` закреплены как следующий глобальный action wave, но пока не считаются shipped public implementation.
 
 ## Что остаётся внутренним engine surface
@@ -87,7 +95,8 @@ list_apps -> get_app_state -> click -> get_app_state
 
 - app approval — product-facing gate;
 - canonical app/process identity нормализуется к одному bare process name без `.exe`, чтобы block policy, playbooks и appId не drift-или между собой;
-- approval/block policy и `list_apps` app grouping допускаются только при доказанной stable process identity; окна без канонического process identity не должны получать public appId на основе `hwnd-*` и fail-close-ятся до approval/observation path;
+- approval/block policy и `list_apps` app grouping допускаются только при доказанной stable process identity; окна без канонического process identity или без достаточной live instance identity не должны получать public app/window selectors и fail-close-ятся до approval/observation path;
+- public discovery обязан различать app-level approval key и window-level execution target: `appId` группирует policy, а `windowId` выбирает конкретный visible instance без foreground guessing;
 - risky action confirmation — отдельный product-facing шаг;
 - risky action confirmation не должна зависеть только от английской UI: policy использует и multilingual label signals, и более стабильные `AutomationId`/process-family markers там, где они доступны;
 - coordinate click считается low-confidence target path и требует explicit confirm, если target не доказан через semantic element из последнего `get_app_state`;

@@ -8,7 +8,22 @@ internal sealed class ComputerUseWinListAppsHandler(ComputerUseWinAppDiscoverySe
 {
     public CallToolResult Execute(AuditInvocationScope invocation)
     {
-        IReadOnlyList<ComputerUseWinAppDescriptor> apps = appDiscoveryService.ListVisibleApps();
+        IReadOnlyList<ComputerUseWinAppDescriptor> apps = appDiscoveryService.ListVisibleApps()
+            .Select(static app => new ComputerUseWinAppDescriptor(
+                AppId: app.ApprovalKey.Value,
+                Windows: app.Windows.Select(static window => new ComputerUseWinWindowDescriptor(
+                    WindowId: window.WindowId.Value,
+                    Hwnd: window.Window.Hwnd,
+                    Title: window.Window.Title,
+                    ProcessName: window.Window.ProcessName,
+                    ProcessId: window.Window.ProcessId,
+                    IsForeground: window.Window.IsForeground,
+                    IsVisible: window.Window.IsVisible))
+                    .ToArray(),
+                IsApproved: app.IsApproved,
+                IsBlocked: app.IsBlocked,
+                BlockReason: app.BlockReason))
+            .ToArray();
         ComputerUseWinListAppsResult payload = new(
             Status: ComputerUseWinStatusValues.Ok,
             Apps: apps,
