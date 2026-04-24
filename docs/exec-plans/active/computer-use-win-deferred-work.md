@@ -637,7 +637,7 @@ scripts/refresh-generated-docs.ps1
 - [x] Update `ToolContractManifest`, registration, generated docs and install/publication acceptance.
 - [x] Run integration tests and generated docs refresh.
 - [x] Запустить review gate и re-review loop.
-- [ ] Сделать отдельный commit для этого stage.
+- [x] Сделать отдельный commit для этого stage.
 
 **Команды проверки:**
 
@@ -651,9 +651,9 @@ scripts/refresh-generated-docs.ps1
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-deferred-work-implementation`
-- Commit SHA: `pending`
+- Commit SHA: `41acfbf`
 - TDD применялся: `да`
 - Проверки:
   - DTO decision зафиксирован до production code: grouped `apps[] + windows[]`, `windowId` как primary selector, flat per-window top-level model explicitly rejected
@@ -707,8 +707,8 @@ scripts/refresh-generated-docs.ps1
   - `windowId` сознательно discovery-scoped и derived from current live instance identity + hwnd; caller не должен считать его durable beyond window churn и должен refresh-ить discovery/state после window recreation
   - pure observe split и advisory soft-fail policy по-прежнему out-of-scope этого stage и остаются decision gates `Stage 5/6`
 - Разблокировка следующего этапа:
-  - сделать отдельный commit для `Stage 4`
-  - после появления SHA записать его в этот отчёт и только затем переходить к `Stage 5`
+  - `Stage 4` закрыт commit `41acfbf`
+  - `Stage 5` decision gate разблокирован
 
 ### Stage 5: Deferred class 2 decision and optional pure observe split
 
@@ -728,10 +728,20 @@ scripts/refresh-generated-docs.ps1
 
 **Decision gate:**
 
-- [ ] Confirm whether clients/models need safe automatic observation.
-- [ ] If not needed, record decision: current `get_app_state` remains action-ready and side-effecting; close this deferred class as rejected without code.
-- [ ] If needed, choose public model: new observe tool, renamed prepare path, or another explicit split.
-- [ ] Do not mark current `get_app_state` as read-only unless its side effects are removed by design.
+**Decision outcome (зафиксировано до кода):**
+
+- На текущем product/client evidence отдельный pure observe tool не нужен.
+- Подтверждения:
+  - shipped loop по repo docs остаётся `list_apps -> get_app_state -> click -> get_app_state`, а не `observe -> prepare -> act`;
+  - [computer-use-win-surface.md](docs/architecture/computer-use-win-surface.md) уже явно фиксирует, что `get_app_state` не является observation-only read-only hint и может мутировать approval/focus/session state;
+  - `Stage 4` уже убрал ambiguity через instance-addressable discovery (`windowId`) без добавления второй state tool boundary;
+  - в product docs, roadmap и текущем test surface нет явной client/model need для public read-only observation token, который не может вести к action-ready loop.
+- Decision: current `get_app_state` остаётся action-ready и side-effecting; `Stage 5` закрывается decision-only без кода и без нового public tool.
+
+- [x] Confirm whether clients/models need safe automatic observation.
+- [x] If not needed, record decision: current `get_app_state` remains action-ready and side-effecting; close this deferred class as rejected without code.
+- [x] Decision outcome: separate observe public model не выбран, потому что pure observe split отклонён на текущем product stage.
+- [x] Do not mark current `get_app_state` as read-only unless its side effects are removed by design.
 
 **Целевая модель, если решение принято:**
 
@@ -766,18 +776,35 @@ scripts/refresh-generated-docs.ps1
 
 #### Отчёт этапа
 
-- Статус этапа: `not_started`
-- Branch:
-- Commit SHA:
-- TDD применялся:
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-deferred-work-implementation`
+- Commit SHA: `pending`
+- TDD применялся: `нет, decision-only stage`
 - Проверки:
+  - static product evidence: [computer-use-win-surface.md](docs/architecture/computer-use-win-surface.md) уже фиксирует, что `get_app_state` не является read-only observe tool и может мутировать approval/focus/session state
+  - stage sequencing evidence: после `Stage 4` shipped operator loop остаётся `list_apps -> get_app_state -> click`, а instance-addressable discovery убирает ambiguity без добавления второй state tool boundary
+  - contract proof: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools|McpProtocolSmokeTests.ComputerUseWinGetAppStateRequiresApprovalBeforeReturningState"` -> green, `2/2`
 - Review agents:
+  - `019dc10d-c839-7401-a933-43e2e9580729` (`architecture/contract`) -> `approve_with_minor_notes/approve`
+  - `019dc10d-c9b9-7b92-beca-1644fa662a26` (`tests/failure/docs/generated`) -> `approve`
 - Подтверждённые замечания:
+  - `[confirmed]` текущий public contract уже осознанно держит `get_app_state` как action-ready и side-effecting path; evidence для separate pure observe tool в product docs / roadmap / shipped tests не найдено
+  - `[confirmed]` minor changelog wording drift: decision note должен был явно говорить `readOnlyHint=false`, а не создавать впечатление отсутствующего annotation-поля
 - Отклонённые замечания:
+  - `pure observe split should be implemented now` -> rejected: отдельный observe tool расширит public surface и раздвоит state semantics без подтверждённой client/model need
 - Исправленные root causes:
+  - преждевременное расширение public surface остановлено на decision gate; current operator loop и read/write semantics `get_app_state` оставлены честными без вводимого second tool boundary
+  - changelog wording выровнен на реальный smoke-tested contract: `get_app_state` explicitly публикуется с `readOnlyHint=false`
 - Проверенные соседние paths:
+  - `docs/architecture/computer-use-win-surface.md`
+  - `docs/product/okno-roadmap.md`
+  - `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+  - `docs/CHANGELOG.md`
 - Остаточные риски:
+  - future client/model need для safe automatic observation может переоткрыть эту deferred class позже; тогда понадобится отдельный TDD stage с новым public tool и token gating
 - Разблокировка следующего этапа:
+  - сделать отдельный decision-only commit для `Stage 5`
+  - после появления SHA записать его в этот отчёт и только затем переходить к `Stage 6`
 
 ### Stage 6: Deferred class 3 decision and advisory provider failure policy
 
