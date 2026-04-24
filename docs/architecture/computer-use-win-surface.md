@@ -79,6 +79,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - `computer-use-win` не ищет repo root и не trampoline-ится в checkout;
 - `.tmp/.codex/artifacts/local` и staged bundle preparation остаются verification/dev control plane, но не product install path;
 - install copy должна быть самодостаточным runtime payload для shipped subset.
+- launcher и recovery completion proof должны опираться на полный runtime bundle manifest, а не на hand-written sentinel file list.
 
 ## Safety model
 
@@ -95,6 +96,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - ordinary actions внутри already-approved app должны быть дешевле, чем low-level per-step friction;
 - `get_app_state` разделяет critical observation и advisory enrichment: screenshot + accessibility tree определяют success/failure; expected advisory-unavailable path для playbook hints не имеет права downcast-ить успешный observation result, но unexpected provider/runtime bug всё ещё materialize-ится как truthful `observation_failed` с sanitized audit provenance;
 - `get_app_state` публикует `stateToken` и commit-ит shared state только после полной успешной materialization public result; failed observation не должна оставлять ghost tokens или другие скрытые bounded-state commits;
+- `get_app_state` не является observation-only read-only hint: approved/confirmed path может менять approval store, foreground state и attached/session state, поэтому public metadata не должна рекламировать его как pure read-only tool;
 - malformed request shapes должны отсекаться на public boundary как `invalid_request`: explicit invalid `tool-surface-profile`, nested extra fields и schema-invalid `maxNodes` не должны уходить в widened surface или поздний `observation_failed`;
 - public `click` contract должен совпадать в validator, `tools/list` schema и generated exports: допустимые `button`/`coordinateSpace`, обязательный `stateToken` и selector mode (`elementIndex` xor `point`) публикуются из того же owner-слоя, что и runtime enforcement;
 - public `computer-use-win` action payload обязан emit-ить только product-owned `failureCode` и `reason`; low-level `windows.input` evidence остаётся допустимым в audit/evidence, но не протекает наружу как несанкционированный payload wording;
@@ -103,7 +105,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - semantic click admissibility должна совпадать между public tree и runtime revalidation: runtime не должен dispatch-ить `elementIndex`, если fresh element больше не clickable или semantic fallback свёлся к слишком слабому proof;
 - `stateToken` имеет bounded retention и short-lived stale-state discipline вместо неограниченного in-memory накопления;
 - blocked targets должны отсеиваться на public surface до unsafe dispatch.
-- plugin-local runtime install path должен оставаться integrity-safe: `runtime/win-x64` не используется как repair scratch space, publish/recovery materialize-ят bundle в side directories и handoff-ят canonical path только после completion proof по обязательным runtime files.
+- plugin-local runtime install path должен оставаться integrity-safe: `runtime/win-x64` не используется как repair scratch space, publish/recovery materialize-ят bundle в side directories и handoff-ят canonical path только после completion proof по полному published runtime manifest; second-order repair handoff failure не должен оставлять canonical path пустым, если last-known-good backup всё ещё может быть возвращён.
 
 ## Что не делать дальше
 

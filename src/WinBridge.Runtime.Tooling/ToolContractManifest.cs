@@ -157,7 +157,7 @@ public static class ToolContractManifest
         ToolDescriptor[] implemented =
         [
             new(ToolNames.ComputerUseWinListApps, "computer_use_win.apps", ToolLifecycle.Implemented, ToolSafetyClass.ReadOnly, ToolDescriptions.ComputerUseWinListAppsTool, null, null, true),
-            new(ToolNames.ComputerUseWinGetAppState, "computer_use_win.state", ToolLifecycle.Implemented, ToolSafetyClass.ReadOnly, ToolDescriptions.ComputerUseWinGetAppStateTool, null, null, true),
+            new(ToolNames.ComputerUseWinGetAppState, "computer_use_win.state", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinGetAppStateTool, null, null, true),
             new(ToolNames.ComputerUseWinClick, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinClickTool, null, null, true),
         ];
         ToolDescriptor[] deferred =

@@ -176,8 +176,19 @@ public sealed class McpProtocolSmokeTests
                 .GetProperty("tools")
                 .EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinClick);
+            JsonElement getAppStateDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinGetAppState);
             JsonElement clickProperties = clickDescriptor.GetProperty("inputSchema").GetProperty("properties");
             AssertSchemaRequiredContains(clickDescriptor.GetProperty("inputSchema"), "stateToken");
+
+            JsonElement getAppStateAnnotations = getAppStateDescriptor.GetProperty("annotations");
+            Assert.False(getAppStateAnnotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(getAppStateAnnotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.False(getAppStateAnnotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.True(getAppStateAnnotations.GetProperty("openWorldHint").GetBoolean());
 
             Assert.Equal(
                 [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],

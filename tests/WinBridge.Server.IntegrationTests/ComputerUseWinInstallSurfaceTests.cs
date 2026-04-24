@@ -36,19 +36,11 @@ public sealed class ComputerUseWinInstallSurfaceTests
         string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup", Guid.NewGuid().ToString("N"));
-        string sentinelPath = Path.Combine(runtimeRoot, "keep.txt");
 
         try
         {
-            if (Directory.Exists(runtimeRoot))
-            {
-                CopyDirectory(runtimeRoot, backupRoot, _ => true);
-                DeleteDirectoryIfExists(runtimeRoot);
-            }
-
-            Directory.CreateDirectory(runtimeRoot);
-            File.WriteAllText(Path.Combine(runtimeRoot, "Okno.Server.exe"), "old-runtime");
-            File.WriteAllText(sentinelPath, "keep");
+            EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+            CopyDirectory(runtimeRoot, backupRoot, _ => true);
 
             ScriptInvocationResult result = InvokePowerShellScript(
                 scriptPath,
@@ -56,8 +48,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 startInfo => startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1");
 
             Assert.NotEqual(0, result.ExitCode);
-            Assert.True(File.Exists(sentinelPath));
-            Assert.Equal("keep", File.ReadAllText(sentinelPath));
+            AssertRuntimeBundleMatchesManifest(runtimeRoot);
         }
         finally
         {
@@ -79,7 +70,6 @@ public sealed class ComputerUseWinInstallSurfaceTests
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-restore", Guid.NewGuid().ToString("N"));
-        string sentinelPath = Path.Combine(runtimeRoot, "keep.txt");
 
         try
         {
@@ -92,7 +82,6 @@ public sealed class ComputerUseWinInstallSurfaceTests
             }
 
             CopyDirectory(backupRoot, runtimeRoot, _ => true);
-            File.WriteAllText(sentinelPath, "keep");
 
             ScriptInvocationResult result = InvokePowerShellScript(
                 scriptPath,
@@ -105,8 +94,8 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.True(File.Exists(Path.Combine(runtimeRoot, "Okno.Server.exe")));
-            Assert.True(File.Exists(sentinelPath));
-            Assert.Equal("keep", File.ReadAllText(sentinelPath));
+            Assert.True(File.Exists(Path.Combine(runtimeRoot, "hostfxr.dll")));
+            Assert.True(File.Exists(Path.Combine(runtimeRoot, "okno-runtime-bundle-manifest.json")));
 
         }
         finally
@@ -135,7 +124,6 @@ public sealed class ComputerUseWinInstallSurfaceTests
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
         string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
         string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-repair", Guid.NewGuid().ToString("N"));
-        string sentinelPath = Path.Combine(runtimeRoot, "keep.txt");
 
         try
         {
@@ -148,7 +136,6 @@ public sealed class ComputerUseWinInstallSurfaceTests
             }
 
             CopyDirectory(backupRoot, runtimeRoot, _ => true);
-            File.WriteAllText(sentinelPath, "keep");
 
             ScriptInvocationResult result = InvokePowerShellScript(
                 scriptPath,
@@ -163,6 +150,115 @@ public sealed class ComputerUseWinInstallSurfaceTests
             Assert.NotEqual(0, result.ExitCode);
             Assert.False(Directory.Exists(runtimeRoot));
             Assert.NotEmpty(Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(runtimeRoot);
+            if (Directory.Exists(backupRoot))
+            {
+                CopyDirectory(backupRoot, runtimeRoot, _ => true);
+            }
+
+            DeleteDirectoryIfExists(backupRoot);
+            foreach (string backupCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(backupCandidate);
+            }
+
+            foreach (string repairCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.repair-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(repairCandidate);
+            }
+        }
+    }
+
+    [Fact]
+    public void PublishComputerUseWinPluginRejectsIncompleteBackupRuntimeBundleDuringRepair()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
+        string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
+        string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-corrupt", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+            CopyDirectory(runtimeRoot, backupRoot, _ => true);
+            string dependencyPath = Path.Combine(runtimeRoot, "hostfxr.dll");
+            Assert.True(File.Exists(dependencyPath));
+            File.Delete(dependencyPath);
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                scriptPath,
+                repoRoot,
+                startInfo =>
+                {
+                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
+                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_RESTORE"] = "1";
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.False(Directory.Exists(runtimeRoot));
+            Assert.NotEmpty(Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(runtimeRoot);
+            if (Directory.Exists(backupRoot))
+            {
+                CopyDirectory(backupRoot, runtimeRoot, _ => true);
+            }
+
+            DeleteDirectoryIfExists(backupRoot);
+            foreach (string backupCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.backup-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(backupCandidate);
+            }
+
+            foreach (string repairCandidate in Directory.Exists(runtimeParent)
+                         ? Directory.GetDirectories(runtimeParent, "win-x64.repair-*", SearchOption.TopDirectoryOnly)
+                         : [])
+            {
+                DeleteDirectoryIfExists(repairCandidate);
+            }
+        }
+    }
+
+    [Fact]
+    public void PublishComputerUseWinPluginKeepsCanonicalRuntimeRunnableWhenRepairHandoffFails()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
+        string runtimeParent = Path.GetDirectoryName(runtimeRoot)!;
+        string backupRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-runtime-backup-handoff", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+            CopyDirectory(runtimeRoot, backupRoot, _ => true);
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                scriptPath,
+                repoRoot,
+                startInfo =>
+                {
+                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_AFTER_BACKUP"] = "1";
+                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_RESTORE"] = "1";
+                    startInfo.Environment["COMPUTER_USE_WIN_TEST_FAIL_REPAIR_HANDOFF"] = "1";
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.True(File.Exists(Path.Combine(runtimeRoot, "Okno.Server.exe")));
+            Assert.True(File.Exists(Path.Combine(runtimeRoot, "hostfxr.dll")));
+            Assert.True(File.Exists(Path.Combine(runtimeRoot, "okno-runtime-bundle-manifest.json")));
         }
         finally
         {
@@ -286,7 +382,51 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.False(string.IsNullOrWhiteSpace(result.Stderr));
-            Assert.Contains("win-x64", result.Stderr, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Okno.Server.dll", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(tempPluginRoot);
+        }
+    }
+
+    [Fact]
+    public void ComputerUseWinLauncherFailsFastWhenRuntimeDependencyFileIsMissing()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string publishScriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
+        string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-missing-dependency", Guid.NewGuid().ToString("N"));
+
+        ScriptInvocationResult publishResult = InvokePowerShellScript(
+            publishScriptPath,
+            repoRoot,
+            _ => { });
+        Assert.True(
+            publishResult.ExitCode == 0,
+            $"Publish script failed. ExitCode={publishResult.ExitCode}. stderr='{publishResult.Stderr.Trim()}', stdout='{publishResult.Stdout.Trim()}'.");
+
+        try
+        {
+            CopyDirectory(sourcePluginRoot, tempPluginRoot, _ => true);
+            string dependencyPath = Path.Combine(tempPluginRoot, "runtime", "win-x64", "hostfxr.dll");
+            Assert.True(File.Exists(dependencyPath));
+            File.Delete(dependencyPath);
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                Path.Combine(tempPluginRoot, "run-computer-use-win-mcp.ps1"),
+                tempPluginRoot,
+                startInfo =>
+                {
+                    startInfo.Environment["COMPUTER_USE_WIN_REPO_ROOT"] = string.Empty;
+                    startInfo.Environment["WINBRIDGE_RUN_ID"] = string.Empty;
+                    startInfo.Environment["WINBRIDGE_RUN_ROOT"] = string.Empty;
+                    startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = string.Empty;
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.False(string.IsNullOrWhiteSpace(result.Stderr));
+            Assert.Contains("hostfxr.dll", result.Stderr, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -435,17 +575,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
     private static void EnsurePublishedRuntimeBundle(string repoRoot, string scriptPath, string runtimeRoot)
     {
-        string[] requiredFiles =
-        [
-            "Okno.Server.exe",
-            "Okno.Server.dll",
-            "Okno.Server.deps.json",
-            "Okno.Server.runtimeconfig.json",
-        ];
-
-        bool complete = Directory.Exists(runtimeRoot)
-            && requiredFiles.All(file => File.Exists(Path.Combine(runtimeRoot, file)));
-        if (complete)
+        if (Directory.Exists(runtimeRoot) && RuntimeBundleMatchesManifest(runtimeRoot))
         {
             return;
         }
@@ -457,6 +587,63 @@ public sealed class ComputerUseWinInstallSurfaceTests
         Assert.True(
             result.ExitCode == 0,
             $"Publish script failed while preparing runtime baseline. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
+        AssertRuntimeBundleMatchesManifest(runtimeRoot);
+    }
+
+    private static void AssertRuntimeBundleMatchesManifest(string runtimeRoot)
+    {
+        Assert.True(RuntimeBundleMatchesManifest(runtimeRoot), $"Runtime bundle '{runtimeRoot}' does not match its manifest.");
+    }
+
+    private static bool RuntimeBundleMatchesManifest(string runtimeRoot)
+    {
+        if (!Directory.Exists(runtimeRoot))
+        {
+            return false;
+        }
+
+        string manifestPath = Path.Combine(runtimeRoot, "okno-runtime-bundle-manifest.json");
+        if (!File.Exists(manifestPath))
+        {
+            return false;
+        }
+
+        using JsonDocument manifestDocument = JsonDocument.Parse(File.ReadAllText(manifestPath));
+        if (!manifestDocument.RootElement.TryGetProperty("formatVersion", out JsonElement formatVersionElement)
+            || formatVersionElement.GetInt32() != 1)
+        {
+            return false;
+        }
+
+        Dictionary<string, long> expectedFiles = manifestDocument.RootElement
+            .GetProperty("files")
+            .EnumerateArray()
+            .ToDictionary(
+                static entry => entry.GetProperty("path").GetString() ?? string.Empty,
+                static entry => entry.GetProperty("size").GetInt64(),
+                StringComparer.Ordinal);
+
+        foreach (string filePath in Directory.EnumerateFiles(runtimeRoot, "*", SearchOption.AllDirectories))
+        {
+            string relativePath = Path.GetRelativePath(runtimeRoot, filePath);
+            if (string.Equals(relativePath, "okno-runtime-bundle-manifest.json", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!expectedFiles.Remove(relativePath, out long expectedSize))
+            {
+                return false;
+            }
+
+            long actualSize = new FileInfo(filePath).Length;
+            if (actualSize != expectedSize)
+            {
+                return false;
+            }
+        }
+
+        return expectedFiles.Count == 0;
     }
 
     private static ScriptInvocationResult InvokePowerShellScript(string scriptPath, string workingDirectory, Action<ProcessStartInfo> configure)

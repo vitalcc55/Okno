@@ -43,7 +43,7 @@ internal static class ComputerUseWinToolRegistration
             {
                 Name = ToolNames.ComputerUseWinGetAppState,
                 Description = ToolDescriptions.ComputerUseWinGetAppStateTool,
-                ReadOnly = true,
+                ReadOnly = false,
                 Destructive = false,
                 Idempotent = false,
                 OpenWorld = true,

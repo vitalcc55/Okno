@@ -29,7 +29,7 @@
         "name": "get_app_state",
         "capability": "computer_use_win.state",
         "lifecycle": "implemented",
-        "safety_class": "read_only",
+        "safety_class": "os_side_effect",
         "summary": "\u041D\u0430\u0447\u0438\u043D\u0430\u0435\u0442 \u0438\u043B\u0438 \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u0435\u0442 app use session \u0438 \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 action-ready \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435 app window: screenshot, compact accessibility tree, stateToken, captureReference \u0438 warnings. stateToken \u043F\u0443\u0431\u043B\u0438\u043A\u0443\u0435\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0441\u043B\u0438 capture \u0438 accessibility tree \u043F\u043E\u0441\u0442\u0440\u043E\u0435\u043D\u044B \u0443\u0441\u043F\u0435\u0448\u043D\u043E; observation failure \u043E\u0442\u0432\u0435\u0447\u0430\u0435\u0442 structured \u0060failed\u0060 \u0431\u0435\u0437 session commit.",
         "planned_phase": null,
         "suggested_alternative": null,

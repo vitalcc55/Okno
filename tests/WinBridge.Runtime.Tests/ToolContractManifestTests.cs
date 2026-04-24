@@ -29,6 +29,16 @@ public sealed class ToolContractManifestTests
     }
 
     [Fact]
+    public void ComputerUseWinGetAppStateIsNotPublishedAsReadOnly()
+    {
+        ToolDescriptor descriptor = Assert.Single(
+            ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin).Implemented,
+            item => item.Name == ToolNames.ComputerUseWinGetAppState);
+
+        Assert.Equal(ToolSafetyClass.OsSideEffect, descriptor.SafetyClass);
+    }
+
+    [Fact]
     public void WindowsEngineProfileKeepsCurrentInternalSurface()
     {
         ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.WindowsEngine);
