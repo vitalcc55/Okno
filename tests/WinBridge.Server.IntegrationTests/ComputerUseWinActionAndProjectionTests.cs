@@ -384,6 +384,71 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ClickExecutionCoordinatorDoesNotTreatMinimizedIdentityLossAsMinimizedFailure()
+    {
+        FakeWindowActivationService activationService = new(static _ => new ActivateWindowResult(
+            "failed",
+            "Окно для активации больше не найдено или больше не совпадает с исходной identity.",
+            null,
+            true,
+            false));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.MissingTarget, outcome.FailureDetails?.FailureCode);
+        Assert.NotEqual(ComputerUseWinFailureCodeValues.TargetMinimized, outcome.FailureDetails?.FailureCode);
+        Assert.NotEqual(ComputerUseWinFailureCodeValues.BlockedTarget, outcome.FailureDetails?.FailureCode);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch, outcome.Phase);
+        Assert.Equal(101, activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ClickExecutionCoordinatorMapsTypedActivationIdentityChangedAsStaleState()
+    {
+        FakeWindowActivationService activationService = new(static _ => new ActivateWindowResult(
+            "failed",
+            "Окно для активации больше не совпадает с исходной identity в финальном activation snapshot.",
+            null,
+            true,
+            false,
+            ActivationFailureKindValues.IdentityChanged));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, outcome.FailureDetails?.FailureCode);
+        Assert.NotEqual(ComputerUseWinFailureCodeValues.TargetMinimized, outcome.FailureDetails?.FailureCode);
+        Assert.NotEqual(ComputerUseWinFailureCodeValues.BlockedTarget, outcome.FailureDetails?.FailureCode);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch, outcome.Phase);
+        Assert.Equal(101, activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
     public async Task ClickExecutionCoordinatorMapsForegroundActivationFailureWithoutPolicyBlock()
     {
         FakeWindowActivationService activationService = new(static window => new ActivateWindowResult(

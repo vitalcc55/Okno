@@ -24,6 +24,7 @@ public sealed class WindowActivationServiceTests
         Assert.Equal("done", result.Status);
         Assert.True(result.WasMinimized);
         Assert.True(result.IsForeground);
+        Assert.Null(result.FailureKind);
         Assert.True(platform.RestoreCalled);
     }
 
@@ -46,6 +47,7 @@ public sealed class WindowActivationServiceTests
         Assert.Equal("ambiguous", result.Status);
         Assert.True(result.WasMinimized);
         Assert.False(result.IsForeground);
+        Assert.Equal(ActivationFailureKindValues.ForegroundNotConfirmed, result.FailureKind);
     }
 
     [Fact]
@@ -72,6 +74,7 @@ public sealed class WindowActivationServiceTests
         Assert.False(result.WasMinimized);
         Assert.False(result.IsForeground);
         Assert.NotNull(result.Window);
+        Assert.Equal(ActivationFailureKindValues.ForegroundNotConfirmed, result.FailureKind);
     }
 
     [Fact]
@@ -98,6 +101,7 @@ public sealed class WindowActivationServiceTests
         Assert.True(result.WasMinimized);
         Assert.False(result.IsForeground);
         Assert.NotNull(result.Window);
+        Assert.Equal(ActivationFailureKindValues.RestoreFailedStillMinimized, result.FailureKind);
     }
 
     [Fact]
@@ -130,6 +134,40 @@ public sealed class WindowActivationServiceTests
         Assert.Equal("failed", result.Status);
         Assert.Contains("identity", result.Reason, StringComparison.Ordinal);
         Assert.Null(result.Window);
+        Assert.Equal(ActivationFailureKindValues.IdentityChanged, result.FailureKind);
+    }
+
+    [Fact]
+    public async Task ActivateAsyncKeepsIdentityFailureKindWhenMinimizedWindowIdentityChanges()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 218, isForeground: true);
+        FakeWindowManager windowManager = new(
+            windows: [originalWindow],
+            onFocus: _ => { });
+        FakeWindowActivationPlatform platform = new(
+            windowExists: true,
+            iconic: true,
+            foregroundWindow: 218,
+            snapshotFactory: _ => new ActivatedWindowVerificationSnapshot(
+                Exists: true,
+                ProcessId: 999,
+                ThreadId: 888,
+                ClassName: "ReplacementWindow",
+                IsForeground: true,
+                IsMinimized: false));
+        WindowTargetResolver resolver = new(windowManager);
+        WindowActivationService service = new(
+            windowManager,
+            resolver,
+            platform,
+            new WindowActivationOptions(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero));
+
+        ActivateWindowResult result = await service.ActivateAsync(originalWindow, CancellationToken.None);
+
+        Assert.Equal("failed", result.Status);
+        Assert.True(result.WasMinimized);
+        Assert.Null(result.Window);
+        Assert.Equal(ActivationFailureKindValues.IdentityChanged, result.FailureKind);
     }
 
     [Fact]
@@ -148,6 +186,7 @@ public sealed class WindowActivationServiceTests
 
         Assert.Equal("failed", result.Status);
         Assert.Contains("больше не найдено", result.Reason, StringComparison.Ordinal);
+        Assert.Equal(ActivationFailureKindValues.MissingTarget, result.FailureKind);
     }
 
     private static WindowDescriptor CreateWindow(

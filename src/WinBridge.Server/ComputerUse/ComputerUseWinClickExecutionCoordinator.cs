@@ -128,25 +128,28 @@ internal static class ComputerUseWinActivationFailureMapper
     }
 
     private static string ClassifyFailure(ActivateWindowResult activation)
+        => activation.FailureKind switch
+        {
+            ActivationFailureKindValues.MissingTarget => ComputerUseWinFailureCodeValues.MissingTarget,
+            ActivationFailureKindValues.IdentityChanged => ComputerUseWinFailureCodeValues.StaleState,
+            ActivationFailureKindValues.RestoreFailedStillMinimized => ComputerUseWinFailureCodeValues.TargetMinimized,
+            ActivationFailureKindValues.ForegroundNotConfirmed => ComputerUseWinFailureCodeValues.TargetNotForeground,
+            ActivationFailureKindValues.PreflightFailed => ComputerUseWinFailureCodeValues.TargetPreflightFailed,
+            _ => ClassifyUntypedFailure(activation),
+        };
+
+    private static string ClassifyUntypedFailure(ActivateWindowResult activation)
     {
         if (activation.Window is null)
         {
-            return activation.WasMinimized
-                ? ComputerUseWinFailureCodeValues.TargetMinimized
-                : ComputerUseWinFailureCodeValues.MissingTarget;
+            return ComputerUseWinFailureCodeValues.MissingTarget;
         }
 
-        if (string.Equals(activation.Window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal))
-        {
-            return ComputerUseWinFailureCodeValues.TargetMinimized;
-        }
-
-        if (!activation.IsForeground)
-        {
-            return ComputerUseWinFailureCodeValues.TargetNotForeground;
-        }
-
-        return ComputerUseWinFailureCodeValues.TargetPreflightFailed;
+        return string.Equals(activation.Window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal)
+            ? ComputerUseWinFailureCodeValues.TargetMinimized
+            : !activation.IsForeground
+                ? ComputerUseWinFailureCodeValues.TargetNotForeground
+                : ComputerUseWinFailureCodeValues.TargetPreflightFailed;
     }
 }
 
