@@ -67,7 +67,7 @@
 
 ### 4.1. MCP tool result contract
 
-Source: [MCP Tools spec](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+Source: [MCP Tools spec](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
 Binding facts:
 

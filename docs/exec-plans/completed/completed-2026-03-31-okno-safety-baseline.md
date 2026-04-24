@@ -271,7 +271,7 @@ Safety baseline считается закрытым, когда одноврем
 
 ### MCP tools contract
 
-Source: [MCP Tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools), [MCP Schema](https://modelcontextprotocol.io/specification/2025-06-18/schema)
+Source: [MCP Tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), [MCP Schema](https://modelcontextprotocol.io/specification/2025-11-25/schema)
 
 Binding facts:
 

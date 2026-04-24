@@ -223,7 +223,7 @@ Metadata не смешивает window pixels с более поздней live
 
 Источник:
 
-- [MCP Tools, spec 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+- [MCP Tools, spec 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
 Что взяли:
 
@@ -237,13 +237,13 @@ Metadata не смешивает window pixels с более поздней live
 
 Источник:
 
-- [MCP Transports, spec 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
+- [MCP Transports, spec 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
 
 Что взяли:
 
 - `STDIO` как product-ready transport;
 - требование не писать в `stdout` ничего кроме валидных MCP messages;
-- идею, что обычные логи должны уходить вне transport payload.
+- уточнение, что любые обычные логи могут идти в `stderr`, и клиент не должен трактовать `stderr` как error-only канал.
 
 Именно отсюда следует текущий выбор diagnostics artifacts вместо обычного console logging.
 

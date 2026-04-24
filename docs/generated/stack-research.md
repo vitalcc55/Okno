@@ -39,8 +39,9 @@
 ### Official guidance
 
 - Официальный C# SDK рекомендует `AddMcpServer().WithStdioServerTransport()` и tool registration через SDK builder ([Build servers with the C# SDK](https://modelcontextprotocol.github.io/csharp-sdk/quickstart/quickstart.html?tabs=server)).
-- Спецификация MCP фиксирует для `STDIO`, что `stdout` зарезервирован под protocol messages, а diagnostics допустимы через `stderr` ([STDIO transport spec](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio)).
-- Lifecycle `initialize -> initialized -> requests` должен соблюдаться явно ([Lifecycle spec](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle)).
+- Для чтения официальной MCP spec используем latest revision `2025-11-25`; текущий runtime/export baseline проекта отдельно остаётся `2025-06-18` до явной protocol-migration ветки.
+- Спецификация MCP фиксирует для `STDIO`, что `stdout` зарезервирован под protocol messages, а `stderr` допустим для любого logging, не только для error messages ([STDIO transport spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#stdio)).
+- Lifecycle `initialize -> initialized -> requests` должен соблюдаться явно ([Lifecycle spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)).
 
 ### Где проект соответствует
 

@@ -91,7 +91,7 @@
 - [Process.WaitForInputIdle](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.waitforinputidle?view=net-10.0)
 - [Application manifests](https://learn.microsoft.com/en-us/windows/win32/sbscs/application-manifests)
 - [SetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)
-- [MCP tools spec](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+- [MCP tools spec](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
 ## 5. Public contract proposal
 

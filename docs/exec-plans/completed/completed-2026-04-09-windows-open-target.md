@@ -83,7 +83,7 @@
 - [ProcessStartInfo.Verb](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.processstartinfo.verb?view=net-10.0)
 - [ShellExecuteW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew)
 - [SHELLEXECUTEINFOW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow)
-- [MCP tools spec](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+- [MCP tools spec](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
 ## 5. Public contract proposal
 
