@@ -1,5 +1,15 @@
 # ExecPlan: Computer Use for Windows deferred product work
 
+> **Для agentic workers:** обязательные sub-skills при исполнении: использовать `superpowers:test-driven-development` для поведенческих и кодовых изменений, `superpowers:requesting-code-review` перед каждым commit, `superpowers:receiving-code-review` для каждого review response и `superpowers:systematic-debugging` для каждого подтверждённого дефекта или failed check. План исполняет один implementer-agent, который одновременно оркестрирует review-субагентов. Шаги используют checkbox-синтаксис (`- [ ]`) для durable progress tracking.
+
+**Цель:** выполнить deferred `computer-use-win` work как последовательную серию маленьких, проверяемых commit-пакетов без расширения public surface случайными путями и без сохранения legacy-компромиссов ради инерции.
+
+**Архитектура:** целевая форма — explicit application boundary поверх `WinBridge.Server` transport layer: tool handlers bind requests and call application use cases; policy/result/state semantics живут в явных owner-слоях; runtime capability slices остаются transport-agnostic. DDD применяется только там, где есть настоящие доменные инварианты продукта: discovery identity, action readiness, result semantics, runtime state transitions, MCP publication contract. TDD применяется для поведения, boundary contracts, failure paths, publication matrix и migration deltas; чисто документальные решения фиксируются review/checklist gates без production-code TDD.
+
+**Стек:** C#/.NET 8, MCP C# SDK, xUnit integration/unit tests, PowerShell harness scripts, generated contract docs, local `STDIO` MCP runtime, `ComputerUseWin` public plugin surface.
+
+---
+
 ## Контекст
 
 Ветка `codex/computer-use-win` закрыла hardening public `computer-use-win` surface: request boundary, action lifecycle, failure taxonomy, activation cause, install/publish recovery и runtime bundle integrity. В ходе review loop часть замечаний была подтверждена как bugfix текущей ветки и уже закрыта, но несколько тем были сознательно вынесены за пределы ветки.
@@ -20,6 +30,725 @@
 - Не входит: изменение runtime кода в текущей ветке.
 - Не входит: срочный bugfix уже подтверждённых contract defects; они закрыты отдельными commits в текущей ветке.
 - Не входит: автоматическая миграция клиентов на новый discovery surface.
+
+## Как исполнять этот план
+
+Этот документ является единственным рабочим состоянием для implementer-а при выполнении deferred ветки. Перед переходом к следующему этапу агент обязан отметить чекбоксы текущего этапа, заполнить отчёт этапа и сделать отдельный commit после review/re-review цикла.
+
+### Глобальные правила выполнения
+
+- [ ] Работать строго последовательно: `Stage 0` -> `Stage 1` -> `Stage 2` -> `Stage 3` -> `Stage 4` -> optional `Stage 5/6` -> `Stage 7`.
+- [ ] Не начинать реализацию следующего stage, пока текущий stage не имеет: green verification, review approval, re-review approval после исправлений, commit SHA и заполненный stage report.
+- [ ] Не совмещать product redesign и protocol migration в одном commit-пакете.
+- [ ] Не добавлять новый public tool, пока stage прямо не требует этого и acceptance не фиксирует publication matrix.
+- [ ] Не сохранять legacy path ради совместимости, если plan stage явно переводит систему на новую модель; удалять старый путь в том же commit-пакете, где появляется replacement и tests.
+- [ ] Перед каждым stage перечитать current source of truth: этот файл, `AGENTS.md`, `docs/architecture/computer-use-win-surface.md`, `src/WinBridge.Runtime.Tooling/ToolNames.cs`, `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`, релевантные tests и generated docs.
+- [ ] После каждого stage обновить этот файл: отметить выполненные пункты, заполнить `Отчёт этапа`, записать commit SHA и оставшиеся follow-up только если они не входят в acceptance текущего stage.
+
+### DDD и TDD policy
+
+DDD использовать только для owner-моделей, которые удерживают продуктовые инварианты:
+
+- discovery identity: `appId` как approval/policy key и concrete window identity как execution target;
+- action readiness: state token, approval, activation, observation freshness;
+- result semantics: `ok`, `failed`, `blocked`, `approval_required`, `verify_needed`, `unsupported`;
+- runtime state transitions: `attached`, `observed`, `approved`, `stale`, `blocked`;
+- MCP publication contract: profile, registration, manifest, generated docs, install surface.
+
+DDD не применять к:
+
+- простым DTO shape-правкам без поведения;
+- PowerShell harness plumbing;
+- composition root cleanup, если достаточно явной DI-регистрации;
+- generated docs refresh.
+
+TDD обязателен там, где меняется поведение:
+
+- publication/profile visibility;
+- request binding and validation;
+- result/failure materialization;
+- protocol baseline and MCP handshake expectations;
+- discovery ambiguity and multi-window selection;
+- state transition and token admissibility;
+- audit/evidence redaction and warning semantics.
+
+TDD не нужен для чистого prose-doc update, но такой update должен иметь review checklist и статическую проверку ссылок/упоминаний.
+
+### Обязательный TDD cycle для выбранных задач
+
+- [ ] `RED`: написать один минимальный failing test на конкретный behavior или contract.
+- [ ] `RED proof`: запустить только этот targeted test и убедиться, что он падает по ожидаемой причине.
+- [ ] `GREEN`: реализовать минимальный production change, который закрывает root cause.
+- [ ] `GREEN proof`: запустить targeted test и ближайший affected test slice.
+- [ ] `REFACTOR`: убрать дубли/случайные abstractions только после green.
+- [ ] `FINAL GREEN`: повторить targeted + stage verification перед review.
+
+### Review gate перед каждым commit
+
+Перед каждым commit implementer запускает минимум двух review-субагентов через `spawn_agent` с `model: "gpt-5.5"`. Первый review-фокус: architecture/contract. Второй review-фокус: tests/failure paths/docs/generated surface. В prompt каждому агенту нужно передать stage scope, changed files, base/head diff context and acceptance criteria.
+
+Шаблон prompt для review-субагента:
+
+```md
+Текст должен быть на русском языке.
+
+Ты review-субагент для stage `<STAGE_ID>` плана `docs/exec-plans/active/computer-use-win-deferred-work.md`.
+
+Scope этапа:
+- `<STAGE_SCOPE>`
+
+Acceptance criteria:
+- `<ACCEPTANCE_CRITERIA>`
+
+Изменённые файлы:
+- `<CHANGED_FILES>`
+
+Проверь только изменения текущего stage и соседние failure-path'ы того же класса. Не предлагай расширение product scope за пределы stage.
+
+После каждого пункта добавь отдельный раздел с обоснованием:
+— каким образом была выполнена проверка;
+— почему это классифицировано как баг;
+— является ли это корневой причиной или лишь симптомом.
+
+Если это только симптом, определи и укажи предполагаемую корневую причину проблемы.
+
+Также добавь рекомендации по корректному исправлению без временных или архитектурно слабых решений. При необходимости укажи, где оправдан точечный рефакторинг, если текущая реализация выглядит архитектурно неконсистентной.
+
+Дополнительно, если проблема связана с API, перепроверь официальные источники и внутренние файлы окружения/системы/контура/библиотек, чтобы подкрепить замечание и ссылаться в рекомендациях на источники.
+
+Для каждого замечания обязательно укажи:
+— это локальный единичный дефект или представитель более широкого класса дефектов;
+— какие соседние пути, ветки или failure-path'ы относятся к тому же классу и должны быть перепроверены implementer-агентом;
+— закрывает ли предлагаемое исправление только данный симптом или весь класс проблем.
+
+Если несколько замечаний принадлежат одному классу проблем, явно сформулируй:
+— общую модель или инвариант, который должен быть восстановлен;
+— какой минимальный архитектурный сдвиг или рефакторинг закрывает весь класс проблем;
+— какие следующие локальные замечания перестанут появляться, если implementer исправит именно этот корень.
+
+Формат результата:
+1. Verdict: `approve` / `approve_with_minor_notes` / `changes_requested`.
+2. Findings by severity.
+3. Проверенные соседние paths.
+4. Остаточные риски.
+5. Рекомендация: можно ли commit-ить stage.
+```
+
+### Обработка review feedback
+
+- [ ] Прочитать все feedback items полностью.
+- [ ] Для каждого item записать в stage report статус: `confirmed`, `rejected`, `needs_more_evidence`.
+- [ ] Для каждого `confirmed` item применить `systematic-debugging`: root cause investigation -> pattern analysis -> hypothesis -> TDD fix -> verification.
+- [ ] Не чинить внешний симптом, если item представляет класс дефектов, который можно закрыть общим инвариантом без несоразмерного усложнения.
+- [ ] Для каждого `rejected` item записать доказательство: какие файлы/тесты/официальные docs подтверждают отклонение.
+- [ ] После исправлений отправить тем же review-субагентам re-review с тем же scope и списком изменений.
+- [ ] Повторять fix/re-review до `approve` или `approve_with_minor_notes` без blocking issues.
+
+### Commit gate
+
+Commit допускается только после:
+
+- [ ] stage acceptance criteria выполнены;
+- [ ] stage verification commands выполнены и результат записан;
+- [ ] review-субагенты вернули approval для текущего stage;
+- [ ] все confirmed findings либо исправлены, либо явно вынесены из scope с обоснованием;
+- [ ] `docs/CHANGELOG.md` и generated docs обновлены, если stage менял контракт, docs, generated surface или operating model;
+- [ ] этот файл обновлён stage report-ом и commit checklist.
+
+Рекомендуемый commit format:
+
+```text
+<type>: <stage-id> <short outcome>
+```
+
+Примеры:
+
+```text
+test: c0 freeze computer-use-win public surface
+refactor: a1 extract computer-use-win use cases
+feat: m1 upgrade MCP protocol baseline
+feat: d1 expose instance-addressable discovery
+```
+
+### Шаблон отчёта этапа
+
+Каждый stage ниже содержит собственный report block. Формат заполнения:
+
+```md
+#### Отчёт этапа
+
+- Статус этапа: `not_started` / `in_progress` / `blocked` / `ready_for_review` / `approved` / `committed`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+```
+
+## Линейный план реализации
+
+### Stage 0: Source-of-truth baseline
+
+**Назначение:** подготовить рабочий снимок фактов, чтобы implementer не начал с устаревшего плана.
+
+**Зависит от:** текущий файл и актуальное состояние worktree.
+
+**Файлы для чтения:**
+
+- `docs/exec-plans/active/computer-use-win-deferred-work.md`
+- `AGENTS.md`
+- `docs/architecture/computer-use-win-surface.md`
+- `src/WinBridge.Server/ComputerUse/ComputerUseWinTools.cs`
+- `src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs`
+- `src/WinBridge.Runtime.Tooling/ToolNames.cs`
+- `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
+- `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs`
+- `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+- `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+- `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`
+
+**Шаги:**
+
+- [ ] Read the files above and update this stage report with any drift from the plan.
+- [ ] Confirm current public `computer-use-win` surface is still exactly `list_apps`, `get_app_state`, `click`.
+- [ ] Confirm latent action wave still exists or record if already removed: `type_text`, `press_key`, `scroll`, `drag`.
+- [ ] Confirm current negotiated/exported MCP baseline is still `2025-06-18`.
+- [ ] Confirm `Program.cs` still uses late-bound `hostServices` closure pattern for tool registration.
+- [ ] Confirm generated interface docs still exist and identify which refresh command owns them.
+- [ ] Decide whether any stage below is already obsolete because code changed; if yes, update this plan before implementation.
+
+**TDD:** не применяется. Это этап discovery и обновления planning state.
+
+**Проверка:** только статический поиск/чтение. Рекомендуемые команды:
+
+```powershell
+rg -n "list_apps|get_app_state|click|type_text|press_key|scroll|drag" src/WinBridge.Server/ComputerUse tests/WinBridge.Server.IntegrationTests
+rg -n "2025-06-18|2025-11-25|protocolVersion" src scripts tests docs/generated
+rg -n "hostServices|CreateComputerUseWinTools|AddMcpServer" src/WinBridge.Server/Program.cs src/WinBridge.Server/ComputerUse
+```
+
+**Commit:** не нужен, если файл не обновлялся из-за подтверждённого drift.
+
+#### Отчёт этапа
+
+- Статус этапа: `not_started`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+
+### Stage 1: C0 public surface freeze and initial A3 guard rails
+
+**Назначение:** сделать случайную публикацию latent action wave технически невозможной или test-visible до любого product redesign.
+
+**Зависит от:** Stage 0 completed.
+
+**Файлы:**
+
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs`
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinTools.cs`
+- Modify: `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
+- Test: `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+- Test: `tests/WinBridge.Runtime.Tests/ToolContractManifestTests.cs`
+- Test: `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+- Docs if behavior/contract wording changes: `docs/architecture/computer-use-win-surface.md`, generated interface docs, `docs/CHANGELOG.md`
+
+**Целевая модель:**
+
+- Public implemented surface remains exactly three tools: `list_apps`, `get_app_state`, `click`.
+- `type_text`, `press_key`, `scroll`, `drag` are either removed from callable/public registration construction or moved behind an explicit internal draft boundary with tests proving they are not published.
+- Manifest, registration and public profile cannot disagree silently.
+
+**TDD-решение:** обязательно. Этап защищает public contract и publication invariants.
+
+**Шаги:**
+
+- [ ] Написать failing test: `computer_use_win_profile_publishes_only_three_implemented_tools`.
+- [ ] Запустить targeted test и записать RED proof.
+- [ ] Написать failing test: latent action registration methods cannot appear in public `computer-use-win` profile.
+- [ ] Запустить targeted test и записать RED proof.
+- [ ] Implement minimal registration/manifest change to make accidental publication impossible.
+- [ ] Remove or isolate latent action callable methods only if tests show current form can be published accidentally.
+- [ ] Запустить targeted tests и affected manifest/profile tests.
+- [ ] Refactor only after green: name the owner boundary clearly, without introducing compatibility aliases.
+- [ ] Update generated docs and `docs/CHANGELOG.md` if tool descriptors or generated exports change.
+- [ ] Запустить review gate с двумя `gpt-5.5` subagents.
+- [ ] Обработать review через systematic-debugging и re-review до approval.
+- [ ] Сделать отдельный commit для этого stage.
+
+**Команды проверки:**
+
+```powershell
+dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"
+dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "ToolContractManifest"
+```
+
+**Ожидаемый результат:** tests доказывают, что для `computer-use-win` implemented/published только три намеренных public tools.
+
+#### Отчёт этапа
+
+- Статус этапа: `not_started`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+
+### Stage 2: A1 tool-layer decompression and CR1 composition root stabilization
+
+**Назначение:** вывести `computer-use-win` orchestration из transport-facing handler shape до того, как discovery/protocol redesign увеличит сложность.
+
+**Зависит от:** Stage 1 committed.
+
+**Файлы:**
+
+- Modify/Create under: `src/WinBridge.Server/ComputerUse/`
+- Modify: `src/WinBridge.Server/Program.cs`
+- Modify: `src/WinBridge.Runtime/ServiceCollectionExtensions.cs` only if DI ownership moves there naturally.
+- Test: `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+- Test: `tests/WinBridge.Server.IntegrationTests/ComputerUseWinActionAndProjectionTests.cs`
+- Test: `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+
+**Целевая модель:**
+
+- `ComputerUseWinTools` binds MCP request and delegates.
+- Application owners hold use-case logic: discovery, app-state observation, click orchestration, result finalization.
+- `Program.cs` registers `computer-use-win` tools without fragile late-bound `hostServices` closure pattern for core surface.
+- Transport layer does not become a service locator.
+
+**DDD-решение:** использовать лёгкий application/domain language для use-case owners и policy evaluators. Не создавать aggregates/entities только ради паттерна.
+
+**TDD-решение:** обязательно для каждого extracted behavior. Refactor-only extraction может сначала использовать characterization tests, если поведение уже покрыто.
+
+**Шаги:**
+
+- [ ] Identify the smallest first extraction target: discovery materialization or get-app-state finalization.
+- [ ] Write characterization test that locks current public payload/result shape for that target.
+- [ ] Запустить targeted test и записать RED, если нового инварианта ещё нет, или characterization GREEN, если поведение уже покрыто.
+- [ ] Extract one owner class with a single responsibility.
+- [ ] Replace handler logic with delegation and keep public result unchanged.
+- [ ] Repeat for app-state observation orchestration.
+- [ ] Repeat for click orchestration only after observation path is stable.
+- [ ] Write/adjust DI resolution test proving all new owner classes resolve without service locator usage.
+- [ ] Stabilize `Program.cs` registration after first extraction: registration should compose typed owners, not late-bound closures.
+- [ ] Run affected integration tests.
+- [ ] Запустить review gate и re-review loop.
+- [ ] Сделать отдельный commit для этого stage.
+
+**Команды проверки:**
+
+```powershell
+dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"
+dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "ServiceCollection"
+```
+
+**Ожидаемый результат:** public behavior остаётся стабильным, `ComputerUseWinTools` становится thin adapter, а `Program.cs` больше не владеет core orchestration wiring через late-bound closures.
+
+#### Отчёт этапа
+
+- Статус этапа: `not_started`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+
+### Stage 3: M0-M5 MCP 2025-11-25 protocol migration
+
+**Назначение:** выровнять runtime/export/tests/generated contract с latest MCP `2025-11-25` до расширения product surface.
+
+**Зависит от:** Stage 1 committed; Stage 2 preferred.
+
+**Файлы:**
+
+- Modify: `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs`
+- Modify: `scripts/smoke.ps1`
+- Modify: `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+- Modify: `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`
+- Modify: `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs`
+- Modify generated exports: `docs/generated/project-interfaces.md`, `docs/generated/project-interfaces.json`, `docs/generated/computer-use-win-interfaces.md`, `docs/generated/computer-use-win-interfaces.json`
+- Docs: `docs/architecture/computer-use-win-surface.md`, `docs/architecture/observability.md`, `docs/CHANGELOG.md`
+
+**Целевая модель:**
+
+- Negotiated/exported protocol baseline becomes `2025-11-25`.
+- `stderr` remains valid normal logging path for `STDIO`.
+- `Implementation` optional metadata and `tools/list` optional metadata are either implemented deliberately or explicitly absent.
+- Tool schemas are audited against JSON Schema `2020-12` default assumptions.
+- Input validation errors materialize as tool execution failures where latest spec requires that.
+- HTTP/auth/task changes are documented as out-of-scope for current `STDIO` runtime unless product direction changes.
+
+**DDD-решение:** DDD не полезен для самого protocol version bump. Использовать contract-owner model вокруг MCP publication и error semantics.
+
+**TDD-решение:** обязательно. Этап меняет wire contract expectations.
+
+**Шаги:**
+
+- [ ] `M0`: write a migration inventory in this file or a dedicated architecture doc section: in-scope, out-of-scope, deferred.
+- [ ] Add failing tests expecting `protocolVersion = "2025-11-25"` in integration handshake and exporter output.
+- [ ] Запустить targeted tests и записать RED proof.
+- [ ] Change exporter, smoke and integration handshake expectations to `2025-11-25`.
+- [ ] Запустить targeted tests и записать GREEN proof.
+- [ ] Add tests around `serverInfo`/`Implementation` optional metadata decision.
+- [ ] Add tests around `tools/list` metadata decision: `icons`, `execution.taskSupport`, naming guidance.
+- [ ] Audit manual schemas and add tests for `$schema` presence or documented absence under JSON Schema `2020-12` default.
+- [ ] Add/adjust tests proving malformed tool arguments become tool-level failures where owned by request validation.
+- [ ] Update generated exports and docs.
+- [ ] Запустить review gate с official MCP source references в review prompt.
+- [ ] Обработать review через systematic-debugging и re-review до approval.
+- [ ] Сделать отдельный commit для этого stage.
+
+**Команды проверки:**
+
+```powershell
+dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "McpProtocolSmokeTests|ComputerUseWinInstallSurfaceTests"
+dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "ToolContractExporter|ToolContractManifest"
+scripts/smoke.ps1
+scripts/refresh-generated-docs.ps1
+```
+
+**Ожидаемый результат:** code, tests, smoke harness и generated docs согласованы на MCP `2025-11-25`, а latest-spec deltas, релевантные local `STDIO`, либо реализованы, либо явно out-of-scope.
+
+#### Отчёт этапа
+
+- Статус этапа: `not_started`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+
+### Stage 4: Deferred class 1 instance-addressable discovery with A2/S1/C1
+
+**Назначение:** привести public discovery к window-level execution, сохранив app-level approval/policy.
+
+**Зависит от:** Stage 1 committed, Stage 2 committed, Stage 3 committed.
+
+**Файлы:**
+
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinTools.cs`
+- Modify/Create under: `src/WinBridge.Server/ComputerUse/`
+- Modify: `src/WinBridge.Runtime.Contracts/ComputerUseWinContracts.cs`
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs`
+- Modify: `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
+- Test: `tests/WinBridge.Server.IntegrationTests/*ComputerUseWin*`
+- Test: `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+- Docs/generated: `docs/architecture/computer-use-win-surface.md`, `docs/generated/computer-use-win-interfaces.md`, `docs/generated/computer-use-win-interfaces.json`, `docs/CHANGELOG.md`
+
+**Целевая модель:**
+
+- Public discovery exposes every selectable visible window instance.
+- `appId` remains app-level approval and policy key.
+- Concrete public selector identifies the window instance without making raw `HWND` the only semantic selector.
+- `get_app_state` can target a discovered instance without foreground guessing.
+- Result semantics come from a canonical owner, not per-handler wording.
+- Publication + install matrix remains consistent.
+
+**DDD-решение:** оправдано. Identity boundary нужно смоделировать явно: `AppIdentity`, `WindowInstanceIdentity`, `ApprovalKey`, `ExecutionTarget`. Держать это lightweight records/value objects, если они снимают ambiguity.
+
+**TDD-решение:** обязательно. Это product behavior и public contract redesign.
+
+**Шаги:**
+
+- [ ] Choose DTO shape: per-window entries or grouped `windows[]`. Record decision and rejected alternative in this section before code.
+- [ ] Написать failing multi-window discovery test: two visible windows from same process/app identity both appear as selectable public entries.
+- [ ] Запустить targeted test и записать RED proof.
+- [ ] Написать failing test: `get_app_state` can target each discovered instance without ambiguous fallback.
+- [ ] Запустить targeted test и записать RED proof.
+- [ ] Introduce lightweight identity model for app policy key vs window execution target.
+- [ ] Implement discovery materializer in application owner layer.
+- [ ] Update `list_apps` payload/schema/docs.
+- [ ] Implement selection path in `get_app_state` from new public discovery fields.
+- [ ] Centralize result semantics needed for ambiguity/stale/missing/blocked states.
+- [ ] Update `ToolContractManifest`, registration, generated docs and install/publication acceptance.
+- [ ] Run integration tests and generated docs refresh.
+- [ ] Запустить review gate и re-review loop.
+- [ ] Сделать отдельный commit для этого stage.
+
+**Команды проверки:**
+
+```powershell
+dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"
+dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "McpProtocolSmokeTests"
+scripts/refresh-generated-docs.ps1
+```
+
+**Ожидаемый результат:** `list_apps` discovery data достаточно, чтобы клиент выбрал конкретный visible window instance и затем вызвал `get_app_state` для этого же instance без hidden foreground guessing.
+
+#### Отчёт этапа
+
+- Статус этапа: `not_started`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+
+### Stage 5: Deferred class 2 decision and optional pure observe split
+
+**Назначение:** решить, нужен ли продукту safe automatic observation без action-session side effects; реализовывать только при принятом решении.
+
+**Зависит от:** Stage 4 committed, или явное product decision, что pure observe срочнее discovery redesign.
+
+**Файлы, если решение принято:**
+
+- Modify/Create under: `src/WinBridge.Server/ComputerUse/`
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs`
+- Modify: `src/WinBridge.Runtime.Tooling/ToolNames.cs`
+- Modify: `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
+- Test: `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+- Test: `tests/WinBridge.Server.IntegrationTests/*ComputerUseWin*`
+- Docs/generated: `docs/architecture/computer-use-win-surface.md`, generated interface docs, `docs/CHANGELOG.md`
+
+**Decision gate:**
+
+- [ ] Confirm whether clients/models need safe automatic observation.
+- [ ] If not needed, record decision: current `get_app_state` remains action-ready and side-effecting; close this deferred class as rejected without code.
+- [ ] If needed, choose public model: new observe tool, renamed prepare path, or another explicit split.
+- [ ] Do not mark current `get_app_state` as read-only unless its side effects are removed by design.
+
+**Целевая модель, если решение принято:**
+
+- Pure observe path has no approval store writes, no foreground activation, no attached session mutation, no actionable `stateToken`.
+- Prepare/action-ready path remains explicit and side-effecting.
+- `click` cannot consume a pure observe token by accident.
+
+**DDD-решение:** использовать action-readiness state model, если split принят. Не создавать широкий domain layer для простой DTO publication.
+
+**TDD-решение:** обязательно, если меняется код.
+
+**Шаги, если решение принято:**
+
+- [ ] Написать failing test: pure observe does not activate foreground window.
+- [ ] Написать failing test: pure observe does not write approval/session state.
+- [ ] Написать failing test: pure observe token cannot be used by `click`.
+- [ ] Implement observe owner using shared capture/UIA observation only where side-effect free.
+- [ ] Implement explicit prepare/action-ready path and keep `click` gated on prepare token.
+- [ ] Update annotations: pure observe `readOnlyHint=true`; prepare/action-ready `readOnlyHint=false`.
+- [ ] Update generated docs and smoke assertions.
+- [ ] Запустить review gate и re-review loop.
+- [ ] Сделать отдельный commit для этого stage или decision-only closure commit, если split отклонён.
+
+**Команды проверки, если решение принято:**
+
+```powershell
+dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"
+scripts/refresh-generated-docs.ps1
+```
+
+**Ожидаемый результат:** ни один read-only public tool не мутирует foreground, approval или session state; action-ready state остаётся явным.
+
+#### Отчёт этапа
+
+- Статус этапа: `not_started`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+
+### Stage 6: Deferred class 3 decision and advisory provider failure policy
+
+**Назначение:** решить, сохранять truthful failure semantics или принять stage-aware soft-fail для optional enrichment.
+
+**Зависит от:** Stage 4 committed; Stage 5 decision recorded.
+
+**Файлы, если решение принято:**
+
+- Modify/Create under: `src/WinBridge.Server/ComputerUse/`
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinAppStateObserver.cs`
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateFinalizer.cs`
+- Modify: `src/WinBridge.Server/ComputerUse/ComputerUseWinTools.cs`
+- Test: `tests/WinBridge.Server.IntegrationTests/*ComputerUseWin*`
+- Docs: `docs/architecture/computer-use-win-surface.md`, `docs/architecture/observability.md`, `docs/CHANGELOG.md`
+
+**Decision gate:**
+
+- [ ] Confirm product direction: keep truthful failure semantics or choose availability-first soft-fail for named optional stages.
+- [ ] If keeping current invariant, record decision and close deferred class without code.
+- [ ] If changing policy, write a stage matrix before code.
+
+**Целевая модель, если решение принято:**
+
+| Stage | Expected unavailable | Unexpected provider bug | Public outcome |
+| --- | --- | --- | --- |
+| instruction/advisory optional asset | soft-fail | product decision required | success with warning only if matrix allows |
+| capture proof | fail | fail | `observation_failed` |
+| UIA proof for action-ready state | fail unless explicitly optional | fail | `observation_failed` |
+| decorative metadata | soft-fail | soft-fail with diagnostics if accepted | success + warning |
+
+**DDD-решение:** оправдано только для compact stage policy model. Доменное понятие здесь — required proof vs optional enrichment.
+
+**TDD-решение:** обязательно, если меняется policy.
+
+**Шаги, если решение принято:**
+
+- [ ] Написать failing test: required capture proof failure returns `observation_failed`.
+- [ ] Написать failing test: required UIA proof failure returns `observation_failed`.
+- [ ] Написать failing test: optional enrichment failure returns success with warning only for stages allowed by matrix.
+- [ ] Implement stage-aware materializer with no broad catch-all soft-fail.
+- [ ] Include stage and diagnostic evidence in warnings/failures.
+- [ ] Update docs to state required proof vs optional enrichment.
+- [ ] Запустить review gate и re-review loop.
+- [ ] Сделать отдельный commit для этого stage или decision-only closure commit, если policy change отклонён.
+
+**Команды проверки, если решение принято:**
+
+```powershell
+dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"
+```
+
+**Ожидаемый результат:** required proof failures никогда не скрываются как successful action-ready state; optional failures soft-fail только когда policy явно это разрешает.
+
+#### Отчёт этапа
+
+- Статус этапа: `not_started`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+
+### Stage 7: S2/O1/I1 final hardening and closure
+
+**Назначение:** закрыть оставшийся state/audit/isolation drift после product и protocol work.
+
+**Зависит от:** Stage 4 committed; Stage 5/6 decisions recorded.
+
+**Файлы:**
+
+- Modify/Create under: `src/WinBridge.Server/ComputerUse/`
+- Modify: `src/WinBridge.Runtime.Diagnostics/` only if audit builder belongs below server layer.
+- Modify: `tests/WinBridge.Server.IntegrationTests/*ComputerUseWin*`
+- Modify: `tests/WinBridge.Runtime.Tests/*` if diagnostics or architecture rules move there.
+- Docs: `docs/architecture/computer-use-win-surface.md`, `docs/architecture/observability.md`, generated docs, `docs/CHANGELOG.md`
+
+**Целевая модель:**
+
+- State transitions are explicit: `attached`, `observed`, `approved`, `stale`, `blocked`.
+- Forbidden transitions are tested:
+  - no action from stale state;
+  - approval does not replace fresh observation;
+  - blocked/stale paths cannot become successful action-ready state without new live proof.
+- Audit/event payload construction is centralized and redaction-safe.
+- New process isolation is added only for a confirmed risky capability boundary.
+
+**DDD-решение:** оправдано для state transition model и audit evidence policy. Не оправдано для unrelated diagnostics plumbing.
+
+**TDD-решение:** обязательно для state/audit behavior.
+
+**Шаги:**
+
+- [ ] Написать failing tests для forbidden state transitions.
+- [ ] Implement explicit runtime state model and remove duplicated implicit transition checks.
+- [ ] Написать failing tests для safe audit payload builders: no sensitive fields leak in started/completed events.
+- [ ] Implement safe audit/event builder owner and replace per-handler maps.
+- [ ] Review whether any capability now has confirmed host-risky failure profile.
+- [ ] If yes, design targeted isolation with evidence; if no, record `I1` as intentionally deferred.
+- [ ] Run full relevant verification contour.
+- [ ] Запустить review gate и re-review loop.
+- [ ] Сделать отдельный commit для этого stage.
+
+**Команды проверки:**
+
+```powershell
+dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"
+dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "Audit|Diagnostics|Architecture"
+scripts/codex/verify.ps1
+```
+
+**Ожидаемый результат:** оставшиеся инварианты опираются на явный код/tests, а не на дисциплину handler-ов.
+
+#### Отчёт этапа
+
+- Статус этапа: `not_started`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+
+## Финальный checklist выполнения
+
+- [ ] Все обязательные stages `0-4` выполнены и закоммичены.
+- [ ] Stage `5` либо реализован, либо явно отклонён с product rationale.
+- [ ] Stage `6` либо реализован, либо явно отклонён с product rationale.
+- [ ] Stage `7` выполнен или вынесен в новый active ExecPlan с rationale.
+- [ ] Каждый commit имеет review/re-review evidence от `gpt-5.5` subagents.
+- [ ] Для каждого подтверждённого review finding записаны root cause, закрытый класс случаев и проверенные neighbor paths.
+- [ ] Generated docs и `docs/CHANGELOG.md` синхронизированы с final contract.
+- [ ] Final verification contour записан.
+- [ ] В этом файле есть final status и commit list.
+
+## Финальный отчёт выполнения
+
+- Общий статус: `not_started`
+- Завершённые stages:
+- Commit list:
+- Final verification:
+- Review summary:
+- Deferred decisions:
+- Remaining risks:
+
+## Справочный материал ниже
+
+Разделы ниже сохраняют исходные findings, rationale, target design, acceptance criteria, sequencing и migration context без потерь. При исполнении рабочий статус ведётся в `Линейный план реализации`, `Отчёт этапа`, `Финальный checklist выполнения` и `Финальный отчёт выполнения` выше. Чекбоксы в старых `Task plan` sections ниже считаются детализацией требований для соответствующих stages, а не отдельной параллельной очередью исполнения.
 
 ## Почему это вынесено из текущей ветки
 
