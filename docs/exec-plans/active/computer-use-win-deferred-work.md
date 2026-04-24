@@ -237,9 +237,9 @@ rg -n "hostServices|CreateComputerUseWinTools|AddMcpServer" src/WinBridge.Server
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-deferred-work-implementation`
-- Commit SHA: `pending`
+- Commit SHA: `35777c6`
 - TDD применялся: `нет; discovery-only stage`
 - Проверки:
   - `git branch --show-current` -> `codex/computer-use-win-deferred-work-implementation`
@@ -280,9 +280,8 @@ rg -n "hostServices|CreateComputerUseWinTools|AddMcpServer" src/WinBridge.Server
 - Остаточные риски:
   - Stage 0 подтвердил baseline, но не меняет code invariants; accidental publication и protocol drift остаются задачами `Stage 1-3`
 - Разблокировка следующего этапа:
-  - прогнать review gate для snapshot diff
-  - записать commit SHA этого snapshot stage
-  - только после этого переходить к `Stage 1`
+  - `Stage 0` закрыт snapshot commit `35777c6`
+  - `Stage 1` разблокирован
 
 ### Stage 1: C0 public surface freeze and initial A3 guard rails
 
@@ -310,15 +309,15 @@ rg -n "hostServices|CreateComputerUseWinTools|AddMcpServer" src/WinBridge.Server
 
 **Шаги:**
 
-- [ ] Написать failing test: `computer_use_win_profile_publishes_only_three_implemented_tools`.
-- [ ] Запустить targeted test и записать RED proof.
-- [ ] Написать failing test: latent action registration methods cannot appear in public `computer-use-win` profile.
-- [ ] Запустить targeted test и записать RED proof.
-- [ ] Implement minimal registration/manifest change to make accidental publication impossible.
-- [ ] Remove or isolate latent action callable methods only if tests show current form can be published accidentally.
-- [ ] Запустить targeted tests и affected manifest/profile tests.
-- [ ] Refactor only after green: name the owner boundary clearly, without introducing compatibility aliases.
-- [ ] Update generated docs and `docs/CHANGELOG.md` if tool descriptors or generated exports change.
+- [x] Написать failing test: `computer_use_win_profile_publishes_only_three_implemented_tools`.
+- [x] Запустить targeted test и записать RED proof.
+- [x] Написать failing test: latent action registration methods cannot appear in public `computer-use-win` profile.
+- [x] Запустить targeted test и записать RED proof.
+- [x] Implement minimal registration/manifest change to make accidental publication impossible.
+- [x] Remove or isolate latent action callable methods only if tests show current form can be published accidentally.
+- [x] Запустить targeted tests и affected manifest/profile tests.
+- [x] Refactor only after green: name the owner boundary clearly, without introducing compatibility aliases.
+- [x] Update generated docs if tool descriptors/generated exports change, and update `docs/CHANGELOG.md` for architecture/checks/publication-guardrail deltas.
 - [ ] Запустить review gate с двумя `gpt-5.5` subagents.
 - [ ] Обработать review через systematic-debugging и re-review до approval.
 - [ ] Сделать отдельный commit для этого stage.
@@ -334,18 +333,37 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
 
 #### Отчёт этапа
 
-- Статус этапа: `not_started`
-- Branch:
-- Commit SHA:
-- TDD применялся:
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-deferred-work-implementation`
+- Commit SHA: `pending`
+- TDD применялся: `да`
 - Проверки:
+  - RED proof: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinArchitectureTests.ComputerUseWinProfilePublishesOnlyThreeImplementedTools|ComputerUseWinArchitectureTests.ComputerUseWinToolsExposeOnlyCuratedOperatorEntryPoints"` -> fail, registration всё ещё держал `CreateDragTool/CreatePressKeyTool/CreateScrollTool/CreateTypeTextTool`, а `ComputerUseWinTools` всё ещё публиковал `Drag/PressKey/Scroll/TypeText`
+  - GREEN proof: тот же targeted command -> green, `2/2`
+  - affected runtime contour: `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "ToolContractManifestTests"` -> green, `20/20`
+  - affected integration/profile contour: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinArchitectureTests|McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools"` -> green, `44/44`
+  - exploratory broad filter: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin|McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools"` -> hit unrelated install-surface failure in `ComputerUseWinInstallSurfaceTests.PublishComputerUseWinPluginCreatesSelfContainedRuntimeBundle` (`JsonDocument.Parse` on empty stdout); not caused by Stage 1 diff and not required by stage acceptance
 - Review agents:
+  - `Lovelace (architecture/contract)` -> initial `approve`, re-review `approve_with_minor_notes`
+  - `Mencius (tests/failure/docs/generated)` -> initial `changes_requested`, re-review `approve`
 - Подтверждённые замечания:
-- Отклонённые замечания:
+  - `[confirmed]` `docs/CHANGELOG.md` обязателен даже без generated export drift, потому что stage меняет architecture/checks/publication guardrail
+- Отклонённые замечания: `нет`
 - Исправленные root causes:
+  - latent deferred action wave больше не живёт в public server boundary: из `ComputerUseWinToolRegistration` удалены top-level MCP builders/schema hooks для deferred tools
+  - `ComputerUseWinTools` больше не держит latent callable entrypoints для `type_text`, `press_key`, `scroll`, `drag`
 - Проверенные соседние paths:
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinTools.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+  - `tests/WinBridge.Runtime.Tests/ToolContractManifestTests.cs`
 - Остаточные риски:
+  - full `ComputerUseWin` broad integration filter сейчас не годится как stage gate из-за соседнего install-surface failure path; для Stage 1 использован более узкий accepted contour по registration/profile boundary
 - Разблокировка следующего этапа:
+  - generated exports и tool descriptors не менялись, поэтому generated docs refresh для Stage 1 не требуется
+  - `docs/CHANGELOG.md` обновлён из-за architecture/checks/publication guardrail delta
+  - отправить текущий stage diff на review gate
 
 ### Stage 2: A1 tool-layer decompression and CR1 composition root stabilization
 

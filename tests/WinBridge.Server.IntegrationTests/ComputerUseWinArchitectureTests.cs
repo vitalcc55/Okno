@@ -146,6 +146,50 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ComputerUseWinProfilePublishesOnlyThreeImplementedTools()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
+
+        string[] publishedToolNames = tools
+            .Select(tool => tool.ProtocolTool.Name)
+            .OrderBy(static item => item, StringComparer.Ordinal)
+            .ToArray();
+        string[] factoryMethodNames = typeof(ComputerUseWinToolRegistration)
+            .GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly)
+            .Where(method => method.Name.StartsWith("Create", StringComparison.Ordinal)
+                && method.Name.EndsWith("Tool", StringComparison.Ordinal)
+                && method.GetParameters().Length == 1
+                && method.GetParameters()[0].ParameterType == typeof(Func<ComputerUseWinTools>))
+            .Select(method => method.Name)
+            .OrderBy(static item => item, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            profile.ImplementedNames.OrderBy(static item => item, StringComparer.Ordinal).ToArray(),
+            publishedToolNames);
+        Assert.Equal(
+            ["CreateClickTool", "CreateGetAppStateTool", "CreateListAppsTool"],
+            factoryMethodNames);
+    }
+
+    [Fact]
+    public void ComputerUseWinToolsExposeOnlyCuratedOperatorEntryPoints()
+    {
+        string[] callableMethodNames = typeof(ComputerUseWinTools)
+            .GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.DeclaredOnly)
+            .Where(method => method.ReturnType == typeof(ModelContextProtocol.Protocol.CallToolResult)
+                || method.ReturnType == typeof(Task<ModelContextProtocol.Protocol.CallToolResult>))
+            .Select(method => method.Name)
+            .OrderBy(static item => item, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            ["Click", "GetAppState", "ListApps"],
+            callableMethodNames);
+    }
+
+    [Fact]
     public void ToolRequestBinderTreatsOmittedArgumentsAsEmptyRequestObject()
     {
         bool success = ToolRequestBinder.TryBind(

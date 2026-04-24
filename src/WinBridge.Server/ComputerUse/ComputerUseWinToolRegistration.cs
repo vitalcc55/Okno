@@ -64,50 +64,6 @@ internal static class ComputerUseWinToolRegistration
         return tool;
     }
 
-    private static McpServerTool CreateTypeTextTool(Func<ComputerUseWinTools> getTools)
-    {
-        McpServerTool tool = CreateActionTool(
-            getTools,
-            ToolNames.ComputerUseWinTypeText,
-            ToolDescriptions.ComputerUseWinTypeTextTool,
-            static (tools, requestContext, cancellationToken) => tools.TypeText(requestContext, cancellationToken));
-        tool.ProtocolTool.InputSchema = CreateTypeTextSchema();
-        return tool;
-    }
-
-    private static McpServerTool CreatePressKeyTool(Func<ComputerUseWinTools> getTools)
-    {
-        McpServerTool tool = CreateActionTool(
-            getTools,
-            ToolNames.ComputerUseWinPressKey,
-            ToolDescriptions.ComputerUseWinPressKeyTool,
-            static (tools, requestContext, cancellationToken) => tools.PressKey(requestContext, cancellationToken));
-        tool.ProtocolTool.InputSchema = CreatePressKeySchema();
-        return tool;
-    }
-
-    private static McpServerTool CreateScrollTool(Func<ComputerUseWinTools> getTools)
-    {
-        McpServerTool tool = CreateActionTool(
-            getTools,
-            ToolNames.ComputerUseWinScroll,
-            ToolDescriptions.ComputerUseWinScrollTool,
-            static (tools, requestContext, cancellationToken) => tools.Scroll(requestContext, cancellationToken));
-        tool.ProtocolTool.InputSchema = CreateScrollSchema();
-        return tool;
-    }
-
-    private static McpServerTool CreateDragTool(Func<ComputerUseWinTools> getTools)
-    {
-        McpServerTool tool = CreateActionTool(
-            getTools,
-            ToolNames.ComputerUseWinDrag,
-            ToolDescriptions.ComputerUseWinDragTool,
-            static (tools, requestContext, cancellationToken) => tools.Drag(requestContext, cancellationToken));
-        tool.ProtocolTool.InputSchema = CreateDragSchema();
-        return tool;
-    }
-
     private static McpServerTool CreateActionTool(
         Func<ComputerUseWinTools> getTools,
         string name,
@@ -168,71 +124,6 @@ internal static class ComputerUseWinToolRegistration
                     ["point"] = CreatePointSchema(),
                     ["coordinateSpace"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedCoordinateSpaceValues),
                     ["button"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedButtonValues),
-                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
-                },
-            });
-
-    private static JsonElement CreateTypeTextSchema() =>
-        ParseSchema(
-            new JsonObject
-            {
-                ["type"] = "object",
-                ["additionalProperties"] = false,
-                ["properties"] = new JsonObject
-                {
-                    ["stateToken"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["text"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
-                },
-            });
-
-    private static JsonElement CreatePressKeySchema() =>
-        ParseSchema(
-            new JsonObject
-            {
-                ["type"] = "object",
-                ["additionalProperties"] = false,
-                ["properties"] = new JsonObject
-                {
-                    ["stateToken"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["key"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["repeat"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null"), ["minimum"] = 1 },
-                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
-                },
-            });
-
-    private static JsonElement CreateScrollSchema() =>
-        ParseSchema(
-            new JsonObject
-            {
-                ["type"] = "object",
-                ["additionalProperties"] = false,
-                ["properties"] = new JsonObject
-                {
-                    ["stateToken"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["elementIndex"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
-                    ["point"] = CreatePointSchema(),
-                    ["coordinateSpace"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["direction"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["pages"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null"), ["minimum"] = 1 },
-                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
-                },
-            });
-
-    private static JsonElement CreateDragSchema() =>
-        ParseSchema(
-            new JsonObject
-            {
-                ["type"] = "object",
-                ["additionalProperties"] = false,
-                ["properties"] = new JsonObject
-                {
-                    ["stateToken"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
-                    ["fromElementIndex"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
-                    ["fromPoint"] = CreatePointSchema("fromPoint"),
-                    ["toElementIndex"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
-                    ["toPoint"] = CreatePointSchema("toPoint"),
-                    ["coordinateSpace"] = new JsonObject { ["type"] = CreateTypeSet("string", "null") },
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
                 },
             });
