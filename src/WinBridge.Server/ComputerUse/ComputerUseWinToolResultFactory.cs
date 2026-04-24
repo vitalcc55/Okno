@@ -100,7 +100,7 @@ internal static class ComputerUseWinToolResultFactory
             failureCode,
             targetHwnd,
             auditException,
-            data: ComputerUseWinActionFinalizer.CreateStructuredPhaseAuditData(phase));
+            data: ComputerUseWinAuditDataBuilder.CreateStructuredPhaseData(phase));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -122,7 +122,7 @@ internal static class ComputerUseWinToolResultFactory
             reason,
             ComputerUseWinFailureCodeValues.ApprovalRequired,
             targetHwnd,
-            data: ComputerUseWinActionFinalizer.CreateStructuredPhaseAuditData(phase));
+            data: ComputerUseWinAuditDataBuilder.CreateStructuredPhaseData(phase));
         return CreateToolResult(payload, isError: true);
     }
 

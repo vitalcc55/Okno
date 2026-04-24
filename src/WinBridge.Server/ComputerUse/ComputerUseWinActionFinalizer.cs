@@ -26,7 +26,7 @@ internal static class ComputerUseWinActionFinalizer
             auditOutcome,
             payload.Reason ?? $"Computer Use action '{toolName}' завершён.",
             payload.TargetHwnd,
-            CreateActionAuditData(input));
+            ComputerUseWinAuditDataBuilder.CreateActionCompletionData(input));
         return CreateToolResult(payload, isError: payload.Status == ComputerUseWinStatusValues.Failed);
     }
 
@@ -96,7 +96,7 @@ internal static class ComputerUseWinActionFinalizer
             payload.TargetHwnd,
             exception,
             bestEffort: true,
-            data: CreateUnexpectedFailureAuditData(phase));
+            data: ComputerUseWinAuditDataBuilder.CreateUnexpectedFailureData(phase));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -117,59 +117,9 @@ internal static class ComputerUseWinActionFinalizer
             payload.TargetHwnd,
             exception,
             bestEffort: true,
-            data: CreateActionAuditData(factualFailure, "post_dispatch_factual"));
+            data: ComputerUseWinAuditDataBuilder.CreateActionCompletionData(factualFailure, "post_dispatch_factual"));
         return CreateToolResult(payload, isError: true);
     }
-
-    private static Dictionary<string, string?> CreateActionAuditData(InputResult input, string? failurePhase = null)
-    {
-        ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(input.FailureCode, input.Reason);
-        Dictionary<string, string?> data = new(StringComparer.Ordinal)
-        {
-            ["status"] = input.Status,
-            ["decision"] = input.Decision,
-            ["result_mode"] = input.ResultMode,
-            ["failure_code"] = input.FailureCode,
-            ["public_failure_code"] = failure.FailureCode,
-            ["raw_reason"] = input.Reason,
-            ["public_reason"] = failure.Reason,
-            ["target_hwnd"] = input.TargetHwnd?.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ["target_source"] = input.TargetSource,
-            ["completed_action_count"] = input.CompletedActionCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ["failed_action_index"] = input.FailedActionIndex?.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ["artifact_path"] = input.ArtifactPath,
-        };
-        if (!string.IsNullOrWhiteSpace(failurePhase))
-        {
-            data["failure_phase"] = failurePhase;
-        }
-
-        return data;
-    }
-
-    internal static Dictionary<string, string?> CreateStructuredPhaseAuditData(ComputerUseWinActionLifecyclePhase phase) =>
-        new(StringComparer.Ordinal)
-        {
-            ["failure_phase"] = phase switch
-            {
-                ComputerUseWinActionLifecyclePhase.BeforeActivation => "pre_dispatch_reject",
-                ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch => "pre_dispatch_after_activation",
-                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch => "after_revalidation_before_dispatch",
-                _ => "post_dispatch",
-            },
-        };
-
-    private static Dictionary<string, string?> CreateUnexpectedFailureAuditData(ComputerUseWinActionLifecyclePhase phase) =>
-        new(StringComparer.Ordinal)
-        {
-            ["failure_phase"] = phase switch
-            {
-                ComputerUseWinActionLifecyclePhase.BeforeActivation => "pre_dispatch_internal",
-                ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch => "pre_dispatch_after_activation",
-                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch => "after_revalidation_before_dispatch",
-                _ => "post_dispatch",
-            },
-        };
 
     private static CallToolResult CreateToolResult(ComputerUseWinActionResult payload, bool isError)
     {

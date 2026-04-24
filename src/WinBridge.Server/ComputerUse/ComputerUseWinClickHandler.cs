@@ -19,13 +19,14 @@ internal sealed class ComputerUseWinClickHandler(
                 request.StateToken,
                 invocation,
                 ToolNames.ComputerUseWinClick,
-                out ComputerUseWinStoredState? state,
+                out ComputerUseWinActionReadyState? state,
                 out CallToolResult? failureResult))
         {
             return failureResult!;
         }
 
-        ComputerUseWinStoredState resolvedState = state!;
+        ComputerUseWinActionReadyState actionReadyState = state!;
+        ComputerUseWinStoredState resolvedState = actionReadyState.StoredState;
 
         try
         {

@@ -52,7 +52,7 @@
 
 | Канал | Всегда включён | Что пишет | Anti-noise правило |
 | --- | --- | --- | --- |
-| `tool.invocation.started/completed` | Да | Старт/завершение каждого MCP tool call, sanitized `request_summary`, internal `gate_*` markers и redaction markers при наличии | Не пишем внутренние step-by-step сообщения по `list_windows`/`attach`; public payload-shaped поля и internal gate metadata не должны конфликтовать по именам |
+| `tool.invocation.started/completed` | Да | Старт/завершение каждого MCP tool call, sanitized `request_summary`, internal `gate_*` markers и redaction markers при наличии | Не пишем внутренние step-by-step сообщения по `list_windows`/`attach`; public payload-shaped поля и internal gate metadata не должны конфликтовать по именам. Для `computer-use-win` completion trail теперь идёт через safe builders: допустимы `runtime_state`, `app_id`, `window_id`, `state_token_present`, `public_reason` и artifact hints, но raw `stateToken`, raw low-level `reason` и другие sensitive per-handler fields не должны materialize-иться в `events.jsonl`. |
 | `session.attached` | Да | Только state transition session -> window | Повторное attach к тому же окну не логируется вторично |
 | `display.identity.state_changed` | Да, при смене состояния | Typed diagnostics по `display_config_strong` vs `gdi_fallback` | Логируем только transition, а не каждый повторный вызов |
 | `capture artifacts` | Для `windows.capture` | PNG в diagnostics run directory + metadata в `tool.invocation.completed` | Храним один PNG на один успешный capture call, без отдельного verbose event stream |

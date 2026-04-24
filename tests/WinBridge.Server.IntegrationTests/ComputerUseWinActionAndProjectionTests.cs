@@ -131,6 +131,35 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public void StoredStateResolverMaterializesObservedActionReadyStateForLiveStoredWindow()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-7-action-ready-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinClick,
+            new { stateToken = token, elementIndex = 1 },
+            sessionManager.GetSnapshot());
+        ComputerUseWinStoredStateResolver resolver = new(
+            stateStore,
+            new FakeListAppsWindowManager([CreateWindow()]));
+
+        bool success = resolver.TryResolve(
+            token,
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            out ComputerUseWinActionReadyState? actionReadyState,
+            out ModelContextProtocol.Protocol.CallToolResult? failureResult);
+
+        Assert.True(success);
+        Assert.Null(failureResult);
+        Assert.NotNull(actionReadyState);
+        Assert.Equal(ComputerUseWinRuntimeStateKind.Observed, actionReadyState!.RuntimeState.Kind);
+        Assert.True(ComputerUseWinRuntimeStateModel.CanExecuteAction(actionReadyState.RuntimeState));
+        Assert.Equal(101, actionReadyState.StoredState.Window.Hwnd);
+    }
+
+    [Fact]
     public void AccessibilityProjectorCarriesKeyboardFocusIntoStoredElements()
     {
         UiaElementSnapshot root = new()

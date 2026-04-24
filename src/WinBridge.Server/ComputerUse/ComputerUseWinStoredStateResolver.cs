@@ -13,9 +13,10 @@ internal sealed class ComputerUseWinStoredStateResolver(
         string? stateToken,
         AuditInvocationScope invocation,
         string toolName,
-        out ComputerUseWinStoredState? state,
+        out ComputerUseWinActionReadyState? state,
         out CallToolResult? failureResult)
     {
+        ComputerUseWinRuntimeState staleState = ComputerUseWinRuntimeStateModel.Stale();
         if (string.IsNullOrWhiteSpace(stateToken))
         {
             state = null;
@@ -27,8 +28,14 @@ internal sealed class ComputerUseWinStoredStateResolver(
             return false;
         }
 
-        if (!stateStore.TryGet(stateToken, out state) || state is null)
+        if (!stateStore.TryGet(stateToken, out ComputerUseWinStoredState? storedState) || storedState is null)
         {
+            state = null;
+            if (ComputerUseWinRuntimeStateModel.CanExecuteAction(staleState))
+            {
+                throw new InvalidOperationException("Stale runtime state must not become action-ready.");
+            }
+
             failureResult = ComputerUseWinToolResultFactory.CreateActionFailure(
                 invocation,
                 toolName,
@@ -37,13 +44,18 @@ internal sealed class ComputerUseWinStoredStateResolver(
             return false;
         }
 
-        ComputerUseWinStoredState storedState = state;
         WindowDescriptor expectedWindow = storedState.Window;
         WindowDescriptor? liveWindow = windowManager.ListWindows().SingleOrDefault(item =>
             item.Hwnd == expectedWindow.Hwnd
             && WindowIdentityValidator.MatchesStableIdentity(item, expectedWindow));
         if (liveWindow is null)
         {
+            state = null;
+            if (ComputerUseWinRuntimeStateModel.CanExecuteAction(staleState))
+            {
+                throw new InvalidOperationException("Stale runtime state must not become action-ready.");
+            }
+
             failureResult = ComputerUseWinToolResultFactory.CreateActionFailure(
                 invocation,
                 toolName,
@@ -52,7 +64,7 @@ internal sealed class ComputerUseWinStoredStateResolver(
             return false;
         }
 
-        state = storedState with { Window = liveWindow };
+        state = ComputerUseWinRuntimeStateModel.CreateActionReadyState(storedState with { Window = liveWindow });
         failureResult = null;
         return true;
     }

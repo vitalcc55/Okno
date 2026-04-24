@@ -150,6 +150,39 @@ public sealed class AuditLogTests
     }
 
     [Fact]
+    public void BeginInvocationRedactsComputerUseWinStateTokenFromRequestSummary()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-004b",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-004b"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-004b", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-004b", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-004b", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   ToolNames.ComputerUseWinClick,
+                   new
+                   {
+                       stateToken = "super-secret-state-token",
+                       elementIndex = 1,
+                   },
+                   snapshot))
+        {
+            invocation.Complete("done", "Тестовый computer-use-win click вызов завершён.");
+        }
+
+        string startedEvent = File.ReadAllLines(options.EventsPath)[0];
+        Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RecordRuntimeEventFailsClosedWhenRedactorThrowsOnEventData()
     {
         string root = CreateTempDirectory();

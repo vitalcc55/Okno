@@ -113,6 +113,48 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void FinalizerDoesNotLeakStateTokenInCompletionAudit()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-finalizer-audit-state-token-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-finalizer-audit-state-token-tests"));
+            ComputerUseWinStateStore stateStore = new(TimeProvider.System, TimeSpan.FromSeconds(30), maxEntries: 4);
+            WindowDescriptor selectedWindow = CreateWindow();
+            ComputerUseWinPreparedAppState preparedState = CreatePreparedState(selectedWindow);
+
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinGetAppState,
+                new { hwnd = selectedWindow.Hwnd },
+                sessionManager.GetSnapshot());
+
+            _ = ComputerUseWinGetAppStateFinalizer.FinalizeSuccess(
+                invocation,
+                CreateExecutionTarget(selectedWindow),
+                selectedWindow,
+                preparedState,
+                stateStore,
+                sessionManager);
+
+            string completedEvent = File.ReadLines(options.EventsPath)
+                .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
+            Assert.DoesNotContain("\"state_token\":", completedEvent, StringComparison.Ordinal);
+            Assert.Contains("\"state_token_present\":\"true\"", completedEvent, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ActionFinalizerUsesBestEffortAuditAfterCommittedSideEffect()
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
@@ -193,6 +235,48 @@ public sealed class ComputerUseWinFinalizationTests
             string reason = payload.GetProperty("reason").GetString()!;
             Assert.DoesNotContain("windows.input", reason, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("target_not_foreground", reason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ActionFinalizerDoesNotLeakRawReasonInCompletionAudit()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-action-raw-reason-audit-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1 },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-action-raw-reason-audit-tests")).GetSnapshot());
+
+            _ = ComputerUseWinActionFinalizer.FinalizeResult(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                targetHwnd: 101,
+                elementIndex: 1,
+                new InputResult(
+                    Status: InputStatusValues.Failed,
+                    Decision: InputStatusValues.Failed,
+                    FailureCode: InputFailureCodeValues.TargetNotForeground,
+                    Reason: "windows.input target_not_foreground preflight rejected dispatch.",
+                    TargetHwnd: 101));
+
+            string completedEvent = File.ReadLines(options.EventsPath)
+                .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
+            Assert.DoesNotContain("\"raw_reason\":", completedEvent, StringComparison.Ordinal);
+            Assert.DoesNotContain("windows.input target_not_foreground", completedEvent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("\"public_reason\":", completedEvent, StringComparison.Ordinal);
         }
         finally
         {

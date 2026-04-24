@@ -10,6 +10,9 @@ internal sealed class AuditToolContext
         {
             [ToolNames.WindowsWait] = ToolExecutionRedactionClass.TextPayload,
             [ToolNames.WindowsUiaSnapshot] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinListApps] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinGetAppState] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinClick] = ToolExecutionRedactionClass.TargetMetadata,
         };
 
     private AuditToolContext(

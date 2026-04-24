@@ -870,9 +870,9 @@ dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.Integration
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-deferred-work-implementation`
-- Commit SHA: `pending`
+- Commit SHA: `b8f507f`
 - TDD применялся: `нет, decision-only stage`
 - Проверки:
   - static policy evidence: [computer-use-win-surface.md](docs/architecture/computer-use-win-surface.md) уже фиксирует, что screenshot + accessibility tree остаются required proof, expected advisory instruction unavailability soft-fail-ится только в узком path, а unexpected provider/runtime bug materialize-ится как `observation_failed`
@@ -895,8 +895,8 @@ dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.Integration
 - Остаточные риски:
   - если позже появится named optional enrichment beyond current advisory instruction path, policy matrix придётся переоткрывать отдельным TDD stage с явным required-vs-optional catalog
 - Разблокировка следующего этапа:
-  - сделать отдельный decision-only commit для `Stage 6`
-  - после появления SHA записать его в этот отчёт и только затем переходить к `Stage 7`
+  - `Stage 6` закрыт decision-only commit `b8f507f`
+  - `Stage 7` разблокирован
 
 ### Stage 7: S2/O1/I1 final hardening and closure
 
@@ -928,14 +928,14 @@ dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.Integration
 
 **Шаги:**
 
-- [ ] Написать failing tests для forbidden state transitions.
-- [ ] Implement explicit runtime state model and remove duplicated implicit transition checks.
-- [ ] Написать failing tests для safe audit payload builders: no sensitive fields leak in started/completed events.
-- [ ] Implement safe audit/event builder owner and replace per-handler maps.
-- [ ] Review whether any capability now has confirmed host-risky failure profile.
-- [ ] If yes, design targeted isolation with evidence; if no, record `I1` as intentionally deferred.
-- [ ] Run full relevant verification contour.
-- [ ] Запустить review gate и re-review loop.
+- [x] Написать failing tests для forbidden state transitions.
+- [x] Implement explicit runtime state model and remove duplicated implicit transition checks.
+- [x] Написать failing tests для safe audit payload builders: no sensitive fields leak in started/completed events.
+- [x] Implement safe audit/event builder owner and replace per-handler maps.
+- [x] Review whether any capability now has confirmed host-risky failure profile.
+- [x] If yes, design targeted isolation with evidence; if no, record `I1` as intentionally deferred.
+- [x] Run full relevant verification contour.
+- [x] Запустить review gate и re-review loop.
 - [ ] Сделать отдельный commit для этого stage.
 
 **Команды проверки:**
@@ -950,18 +950,57 @@ scripts/codex/verify.ps1
 
 #### Отчёт этапа
 
-- Статус этапа: `not_started`
-- Branch:
-- Commit SHA:
-- TDD применялся:
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-deferred-work-implementation`
+- Commit SHA: `pending`
+- TDD применялся: `да`
 - Проверки:
+  - RED proof: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinArchitectureTests.RuntimeStateModelRejectsActionFromStaleState|ComputerUseWinArchitectureTests.RuntimeStateModelDoesNotTreatApprovalAsFreshObservationWithoutLiveProof|ComputerUseWinArchitectureTests.RuntimeStateModelDoesNotPromoteBlockedStateWithoutNewLiveProof|ComputerUseWinFinalizationTests.FinalizerDoesNotLeakStateTokenInCompletionAudit|ComputerUseWinFinalizationTests.ActionFinalizerDoesNotLeakRawReasonInCompletionAudit"` -> fail на отсутствии explicit runtime state model types и current audit leak semantics
+  - targeted GREEN: тот же filter -> green, `5/5`
+  - re-review targeted red/green: `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "AuditLogTests.BeginInvocationRedactsComputerUseWinStateTokenFromRequestSummary"` -> red then green, `1/1`; `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinActionAndProjectionTests.StoredStateResolverMaterializesObservedActionReadyStateForLiveStoredWindow"` -> red then green, `1/1`
+  - supporting publish refresh before broad suite: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\publish-computer-use-win-plugin.ps1` -> green
+  - full `ComputerUseWin` contour after re-review fixes: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"` -> green, `122/122`
+  - runtime audit/diagnostics contour after re-review fixes: `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "Audit|Diagnostics|Architecture"` -> green, `36/36`
+  - full repo contour after re-review fixes: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\verify.ps1` -> green; Runtime `638/638`, Server `253/253`, smoke ok, refresh-generated-docs ok
 - Review agents:
+  - `019dc141-b296-7180-b351-57fb3cb7fba3` (`architecture/contract`) -> `changes_requested/approve`
+  - `019dc154-d030-74e3-99c1-0cda9721420b` (`tests/failure/docs/generated`) -> `changes_requested/approve`
 - Подтверждённые замечания:
+  - `[confirmed]` implicit runtime state transitions оставались размазанными по handler-ам и resolver-ам: stale/approved/blocked behavior опирался на scattered checks, а не на explicit state owner
+  - `[confirmed]` `tool.invocation.completed` для `computer-use-win` всё ещё строился ad hoc maps и допускал leak `state_token` / `raw_reason`
+  - `[confirmed]` install-surface freshness helper считал test-generated `plugins/computer-use-win/runtime/*` directories source inputs, что могло re-trigger publish inside `dotnet test` и загрязнять full `ComputerUseWin` suite
+  - `[confirmed]` `tool.invocation.started` для `computer-use-win` всё ещё мог писать raw `stateToken` через `request_summary`, пока redaction class для public tools не был задан явно
+  - `[confirmed]` stage report drift: post-fix verification totals и targeted re-review checks должны были быть синхронизированы с final Stage 7 evidence
 - Отклонённые замечания:
+  - `expand process isolation now` -> rejected: нового подтверждённого host-risky capability boundary сверх уже существующих isolated slices не найдено
 - Исправленные root causes:
+  - explicit runtime state owner `ComputerUseWinRuntimeStateModel` теперь фиксирует `attached` / `approved` / `observed` / `stale` / `blocked` и запрещает action-ready promotion из stale/blocked path без нового live proof
+  - safe audit/event builder owner `ComputerUseWinAuditDataBuilder` заменил per-handler maps для `get_app_state` / `click` completion paths и убрал raw `stateToken` / raw low-level `reason` из completion audit trail
+  - `AuditToolContext` теперь задаёт explicit redaction class для shipped `computer-use-win` tools, поэтому started-event request summary не leak-ит raw `stateToken`
+  - typed owner context `ComputerUseWinActionReadyState` materialize-ит `Observed` только после live stored-state proof; click path больше не опирается на implicit “есть live state => можно действовать”
+  - install-surface freshness enumeration больше не принимает generated runtime subtree за source-of-truth и не провоцирует nested publish contamination внутри full suite
+  - `I1` зафиксирован как intentionally deferred: evidence не показывает новый host-risky capability boundary, требующий отдельного isolation slice
+  - final stage report синхронизирован с post-fix verification contour и больше не держит stale totals/evidence
 - Проверенные соседние paths:
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinRuntimeStateModel.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinAuditDataBuilder.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateHandler.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinStoredStateResolver.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateFinalizer.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinActionFinalizer.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinToolResultFactory.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinFinalizationTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`
+  - `docs/architecture/computer-use-win-surface.md`
+  - `docs/architecture/observability.md`
+  - `docs/CHANGELOG.md`
 - Остаточные риски:
+  - install/publication freshness still requires explicit publish step before broad suite when source code changed; full contour is now stable again, but this remains a harness precondition worth preserving
+  - any future optional enrichment beyond current advisory instruction path may require reopening both state model and policy matrix together, not piecemeal
 - Разблокировка следующего этапа:
+  - сделать отдельный commit для `Stage 7`
+  - затем заполнить final checklist/report и выполнить branch-level review относительно `main`
 
 ## Финальный checklist выполнения
 

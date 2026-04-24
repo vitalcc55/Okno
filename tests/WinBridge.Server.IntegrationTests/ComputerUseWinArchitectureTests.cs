@@ -607,6 +607,36 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void RuntimeStateModelRejectsActionFromStaleState()
+    {
+        ComputerUseWinRuntimeState state = ComputerUseWinRuntimeStateModel.Stale();
+
+        Assert.Equal(ComputerUseWinRuntimeStateKind.Stale, state.Kind);
+        Assert.False(ComputerUseWinRuntimeStateModel.CanExecuteAction(state));
+    }
+
+    [Fact]
+    public void RuntimeStateModelDoesNotTreatApprovalAsFreshObservationWithoutLiveProof()
+    {
+        ComputerUseWinRuntimeState state = ComputerUseWinRuntimeStateModel.Approved();
+
+        Assert.Equal(ComputerUseWinRuntimeStateKind.Approved, state.Kind);
+        Assert.False(ComputerUseWinRuntimeStateModel.CanPromoteToObserved(state, hasFreshObservation: false));
+        Assert.True(ComputerUseWinRuntimeStateModel.CanPromoteToObserved(state, hasFreshObservation: true));
+    }
+
+    [Fact]
+    public void RuntimeStateModelDoesNotPromoteBlockedStateWithoutNewLiveProof()
+    {
+        ComputerUseWinRuntimeState state = ComputerUseWinRuntimeStateModel.Blocked();
+
+        Assert.Equal(ComputerUseWinRuntimeStateKind.Blocked, state.Kind);
+        Assert.False(ComputerUseWinRuntimeStateModel.CanExecuteAction(state));
+        Assert.False(ComputerUseWinRuntimeStateModel.CanPromoteToObserved(state, hasFreshObservation: false));
+        Assert.False(ComputerUseWinRuntimeStateModel.CanPromoteToObserved(state, hasFreshObservation: true));
+    }
+
+    [Fact]
     public void GetAppStateTargetResolverPreservesIdentityProofUnavailableForAttachedFallback()
     {
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-target-resolution-tests"));

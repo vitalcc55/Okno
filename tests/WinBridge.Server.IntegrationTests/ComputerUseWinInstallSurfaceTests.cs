@@ -887,11 +887,13 @@ public sealed class ComputerUseWinInstallSurfaceTests
         }
 
         string pluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
+        string generatedRuntimeRoot = Path.Combine(pluginRoot, "runtime") + Path.DirectorySeparatorChar;
         if (Directory.Exists(pluginRoot))
         {
             foreach (string path in EnumerateFilesRecursively(pluginRoot))
             {
-                if (path.Contains($"{Path.DirectorySeparatorChar}runtime{Path.DirectorySeparatorChar}win-x64{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+                string normalizedPath = Path.GetFullPath(path);
+                if (normalizedPath.StartsWith(generatedRuntimeRoot, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }

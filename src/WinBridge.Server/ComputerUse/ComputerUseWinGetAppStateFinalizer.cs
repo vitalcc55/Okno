@@ -78,14 +78,7 @@ internal static class ComputerUseWinGetAppStateFinalizer
             "done",
             "Возвращено актуальное состояние приложения для Computer Use for Windows.",
             selectedWindow.Hwnd,
-            new Dictionary<string, string?>
-            {
-                ["app_id"] = target.ApprovalKey.Value,
-                ["window_id"] = target.WindowId.Value,
-                ["state_token"] = payload.StateToken,
-                ["element_count"] = payload.AccessibilityTree!.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["capture_artifact_path"] = payload.Capture!.ArtifactPath,
-            });
+            ComputerUseWinAuditDataBuilder.CreateObservedStateCompletionData(target, payload));
 
         return result;
     }

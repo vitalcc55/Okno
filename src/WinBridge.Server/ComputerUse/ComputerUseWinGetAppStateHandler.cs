@@ -38,11 +38,20 @@ internal sealed class ComputerUseWinGetAppStateHandler(
         WindowDescriptor selectedWindow = selectedTarget.Window;
         if (ComputerUseWinTargetPolicy.TryGetBlockedReason(selectedWindow, out string? blockReason))
         {
+            ComputerUseWinRuntimeState blockedState = ComputerUseWinRuntimeStateModel.Blocked();
+            if (ComputerUseWinRuntimeStateModel.CanPromoteToObserved(blockedState, hasFreshObservation: false))
+            {
+                throw new InvalidOperationException("Blocked runtime state must not become observed without new live proof.");
+            }
+
             return ComputerUseWinToolResultFactory.CreateStateBlocked(invocation, selectedWindow, blockReason!);
         }
 
         string appId = selectedTarget.ApprovalKey.Value;
         string windowId = selectedTarget.WindowId.Value;
+        ComputerUseWinRuntimeState preObservationState = approvalStore.IsApproved(appId)
+            ? ComputerUseWinRuntimeStateModel.Approved()
+            : ComputerUseWinRuntimeStateModel.Attached();
         if (!approvalStore.IsApproved(appId))
         {
             if (!request.Confirm)
@@ -51,6 +60,7 @@ internal sealed class ComputerUseWinGetAppStateHandler(
             }
 
             approvalStore.Approve(appId);
+            preObservationState = ComputerUseWinRuntimeStateModel.Approved();
         }
 
         List<string> warnings = [];
@@ -77,6 +87,15 @@ internal sealed class ComputerUseWinGetAppStateHandler(
             return ComputerUseWinToolResultFactory.CreateStateFailure(
                 invocation,
                 observation.FailureDetails!,
+                selectedWindow.Hwnd);
+        }
+
+        if (!ComputerUseWinRuntimeStateModel.CanPromoteToObserved(preObservationState, hasFreshObservation: true))
+        {
+            return ComputerUseWinToolResultFactory.CreateStateFailure(
+                invocation,
+                ComputerUseWinFailureCodeValues.ObservationFailed,
+                "Computer Use for Windows не смог подтвердить explicit observed state transition после live proof.",
                 selectedWindow.Hwnd);
         }
 
