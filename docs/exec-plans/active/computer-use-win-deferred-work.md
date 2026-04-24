@@ -950,9 +950,9 @@ scripts/codex/verify.ps1
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-deferred-work-implementation`
-- Commit SHA: `pending`
+- Commit SHA: `ea9a3e8`
 - TDD применялся: `да`
 - Проверки:
   - RED proof: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinArchitectureTests.RuntimeStateModelRejectsActionFromStaleState|ComputerUseWinArchitectureTests.RuntimeStateModelDoesNotTreatApprovalAsFreshObservationWithoutLiveProof|ComputerUseWinArchitectureTests.RuntimeStateModelDoesNotPromoteBlockedStateWithoutNewLiveProof|ComputerUseWinFinalizationTests.FinalizerDoesNotLeakStateTokenInCompletionAudit|ComputerUseWinFinalizationTests.ActionFinalizerDoesNotLeakRawReasonInCompletionAudit"` -> fail на отсутствии explicit runtime state model types и current audit leak semantics
@@ -999,30 +999,60 @@ scripts/codex/verify.ps1
   - install/publication freshness still requires explicit publish step before broad suite when source code changed; full contour is now stable again, but this remains a harness precondition worth preserving
   - any future optional enrichment beyond current advisory instruction path may require reopening both state model and policy matrix together, not piecemeal
 - Разблокировка следующего этапа:
-  - сделать отдельный commit для `Stage 7`
-  - затем заполнить final checklist/report и выполнить branch-level review относительно `main`
+  - `Stage 7` закрыт commit `ea9a3e8`
+  - заполнить final checklist/report и выполнить branch-level review относительно `main`
 
 ## Финальный checklist выполнения
 
-- [ ] Все обязательные stages `0-4` выполнены и закоммичены.
-- [ ] Stage `5` либо реализован, либо явно отклонён с product rationale.
-- [ ] Stage `6` либо реализован, либо явно отклонён с product rationale.
-- [ ] Stage `7` выполнен или вынесен в новый active ExecPlan с rationale.
-- [ ] Каждый commit имеет review/re-review evidence от `gpt-5.5` subagents.
-- [ ] Для каждого подтверждённого review finding записаны root cause, закрытый класс случаев и проверенные neighbor paths.
-- [ ] Generated docs и `docs/CHANGELOG.md` синхронизированы с final contract.
-- [ ] Final verification contour записан.
-- [ ] В этом файле есть final status и commit list.
+- [x] Все обязательные stages `0-4` выполнены и закоммичены.
+- [x] Stage `5` либо реализован, либо явно отклонён с product rationale.
+- [x] Stage `6` либо реализован, либо явно отклонён с product rationale.
+- [x] Stage `7` выполнен или вынесен в новый active ExecPlan с rationale.
+- [x] Каждый commit имеет review/re-review evidence от `gpt-5.5` subagents.
+- [x] Для каждого подтверждённого review finding записаны root cause, закрытый класс случаев и проверенные neighbor paths.
+- [x] Generated docs и `docs/CHANGELOG.md` синхронизированы с final contract.
+- [x] Final verification contour записан.
+- [x] В этом файле есть final status и commit list.
 
 ## Финальный отчёт выполнения
 
-- Общий статус: `not_started`
+- Общий статус: `completed`
 - Завершённые stages:
+  - `Stage 0` baseline snapshot -> commit `35777c6`
+  - `Stage 1` public surface freeze -> commit `2e7dc4b`
+  - `Stage 2` tool-layer decomposition + composition root stabilization -> commit `b31a9a1`
+  - `Stage 3` MCP `2025-11-25` migration -> commit `623390d`
+  - `Stage 4` instance-addressable discovery -> commit `41acfbf`
+  - `Stage 5` pure observe split decision -> rejected without code, commit `6b0197c`
+  - `Stage 6` advisory failure policy decision -> broad soft-fail rejected without code, commit `b8f507f`
+  - `Stage 7` state/audit hardening + `I1` intentionally deferred -> commit `ea9a3e8`
 - Commit list:
+  - `35777c6` `docs: snapshot computer-use-win stage 0 baseline`
+  - `2e7dc4b` `refactor: freeze computer-use-win public boundary`
+  - `b31a9a1` `refactor: decompose computer-use-win tool layer`
+  - `623390d` `feat: migrate computer-use-win MCP baseline to 2025-11-25`
+  - `41acfbf` `feat: add instance-addressable computer-use-win discovery`
+  - `6b0197c` `docs: close computer-use-win pure observe decision gate`
+  - `b8f507f` `docs: close computer-use-win advisory policy gate`
+  - `ea9a3e8` `refactor: harden computer-use-win state and audit semantics`
 - Final verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWin"` -> green, `122/122`
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "McpProtocolSmokeTests"` -> green, `22/22`
+  - `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "Audit|Diagnostics|Architecture"` -> green, `36/36`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\publish-computer-use-win-plugin.ps1` -> green
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\verify.ps1` -> green; Runtime `638/638`, Server `253/253`, smoke ok, refresh-generated-docs ok
 - Review summary:
+  - Перед каждым stage commit выполнен обязательный `gpt-5.5` review/re-review gate по architecture/contract и tests/docs/generated surface.
+  - Подтверждённые findings обрабатывались через root-cause fix, neighbor-path checks и повторный review до `approve` / `approve_with_minor_notes`.
+  - После `Stage 7` выполнен branch-level review относительно `main`: cumulative closure-layer после синхронизации final exec-plan evidence получил `approve_with_minor_notes` / `approve_with_minor_notes`; blocking issues на ветке не осталось.
 - Deferred decisions:
+  - `Stage 5`: отдельный public pure observe tool не вводится; `get_app_state` остаётся action-ready и side-effecting.
+  - `Stage 6`: broad availability-first soft-fail policy не вводится; сохраняется truthful failure semantics с narrow advisory instruction soft-fail path.
+  - `Stage 7 / I1`: targeted isolation expansion intentionally deferred; нового подтверждённого host-risky capability boundary не найдено.
 - Remaining risks:
+  - `windowId` остаётся discovery-scoped selector и не должен считаться durable beyond window churn.
+  - future optional enrichment beyond current advisory instruction path потребует reopening state/policy matrix отдельным TDD stage.
+  - install/publication contour остаётся стабилен при external publish refresh; этот pre-step следует сохранять перед broad suite, если source code changed.
 
 ## Справочный материал ниже
 
