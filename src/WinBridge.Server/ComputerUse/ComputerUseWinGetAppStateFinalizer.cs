@@ -52,7 +52,7 @@ internal static class ComputerUseWinGetAppStateFinalizer
 
         string stateToken = ComputerUseWinStateStore.CreateToken();
         ComputerUseWinGetAppStateResult payload = preparedState.CreatePayload(stateToken);
-        JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, ComputerUseWinTools.PayloadJsonOptions);
+        JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions);
         CallToolResult result = new()
         {
             IsError = false,
@@ -61,7 +61,7 @@ internal static class ComputerUseWinGetAppStateFinalizer
             [
                 new TextContentBlock
                 {
-                    Text = JsonSerializer.Serialize(payload, ComputerUseWinTools.PayloadJsonOptions),
+                    Text = JsonSerializer.Serialize(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions),
                 },
                 new ImageContentBlock
                 {

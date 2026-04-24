@@ -333,9 +333,9 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-deferred-work-implementation`
-- Commit SHA: `pending`
+- Commit SHA: `2e7dc4b`
 - TDD применялся: `да`
 - Проверки:
   - RED proof: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinArchitectureTests.ComputerUseWinProfilePublishesOnlyThreeImplementedTools|ComputerUseWinArchitectureTests.ComputerUseWinToolsExposeOnlyCuratedOperatorEntryPoints"` -> fail, registration всё ещё держал `CreateDragTool/CreatePressKeyTool/CreateScrollTool/CreateTypeTextTool`, а `ComputerUseWinTools` всё ещё публиковал `Drag/PressKey/Scroll/TypeText`
@@ -363,7 +363,8 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
 - Разблокировка следующего этапа:
   - generated exports и tool descriptors не менялись, поэтому generated docs refresh для Stage 1 не требуется
   - `docs/CHANGELOG.md` обновлён из-за architecture/checks/publication guardrail delta
-  - отправить текущий stage diff на review gate
+  - `Stage 1` закрыт commit `2e7dc4b`
+  - `Stage 2` разблокирован
 
 ### Stage 2: A1 tool-layer decompression and CR1 composition root stabilization
 
@@ -393,16 +394,16 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
 
 **Шаги:**
 
-- [ ] Identify the smallest first extraction target: discovery materialization or get-app-state finalization.
-- [ ] Write characterization test that locks current public payload/result shape for that target.
-- [ ] Запустить targeted test и записать RED, если нового инварианта ещё нет, или characterization GREEN, если поведение уже покрыто.
-- [ ] Extract one owner class with a single responsibility.
-- [ ] Replace handler logic with delegation and keep public result unchanged.
-- [ ] Repeat for app-state observation orchestration.
-- [ ] Repeat for click orchestration only after observation path is stable.
-- [ ] Write/adjust DI resolution test proving all new owner classes resolve without service locator usage.
-- [ ] Stabilize `Program.cs` registration after first extraction: registration should compose typed owners, not late-bound closures.
-- [ ] Run affected integration tests.
+- [x] Identify the smallest first extraction target: discovery materialization or get-app-state finalization.
+- [x] Write characterization test that locks current public payload/result shape for that target.
+- [x] Запустить targeted test и записать RED, если нового инварианта ещё нет, или characterization GREEN, если поведение уже покрыто.
+- [x] Extract one owner class with a single responsibility.
+- [x] Replace handler logic with delegation and keep public result unchanged.
+- [x] Repeat for app-state observation orchestration.
+- [x] Repeat for click orchestration only after observation path is stable.
+- [x] Write/adjust DI resolution test proving all new owner classes resolve without service locator usage.
+- [x] Stabilize `Program.cs` registration after first extraction: registration should compose typed owners, not late-bound closures.
+- [x] Run affected integration tests.
 - [ ] Запустить review gate и re-review loop.
 - [ ] Сделать отдельный commit для этого stage.
 
@@ -417,18 +418,47 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
 
 #### Отчёт этапа
 
-- Статус этапа: `not_started`
-- Branch:
-- Commit SHA:
-- TDD применялся:
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-deferred-work-implementation`
+- Commit SHA: `pending`
+- TDD применялся: `characterization-first + targeted green`
 - Проверки:
+  - characterization GREEN: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinActionAndProjectionTests.ListAppsGroupsVisibleWindowsByStableAppIdAndPrefersForegroundRepresentative"` -> green, `1/1`
+  - architecture + profile contour: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinArchitectureTests|ComputerUseWinActionAndProjectionTests.ListAppsGroupsVisibleWindowsByStableAppIdAndPrefersForegroundRepresentative|McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools|McpProtocolSmokeTests.ComputerUseWinGetAppStateRequiresApprovalBeforeReturningState|ComputerUseWinObservationTests"` -> green, `54/54`
+  - architecture lock only: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinArchitectureTests"` -> green, `45/45`
 - Review agents:
+  - `Dewey (architecture/contract)` -> `approve_with_minor_notes` (`54/54` evidence drift fixed before commit)
+  - `McClintock (tests/failure/docs/generated)` -> `approve`
 - Подтверждённые замечания:
-- Отклонённые замечания:
+  - `[confirmed]` stage report должен фиксировать exact contour count `54/54`, а не устаревшее `53/53`
+- Отклонённые замечания: `нет`
 - Исправленные root causes:
+  - `ComputerUseWinTools` перестал совмещать discovery materialization, get-app-state orchestration, click orchestration и payload/result helpers в одном transport-facing type
+  - discovery materialization вынесена в `ComputerUseWinAppDiscoveryService`, а transport list path — в `ComputerUseWinListAppsHandler`
+  - get-app-state orchestration вынесена в `ComputerUseWinGetAppStateHandler`
+  - click orchestration boundary вынесена в `ComputerUseWinClickHandler` + `ComputerUseWinStoredStateResolver`
+  - shared payload/result materialization вынесена в `ComputerUseWinToolResultFactory`
+  - `Program.cs` больше не держит per-tool `computer-use-win` registration closures; core surface публикуется через typed `ComputerUseWinRegisteredTools` wrapper с post-build bind
 - Проверенные соседние paths:
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinAppDiscoveryService.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinListAppsHandler.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateHandler.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinClickHandler.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinStoredStateResolver.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinToolResultFactory.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinRegisteredTools.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinTools.cs`
+  - `src/WinBridge.Server/Program.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinActionAndProjectionTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinObservationTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+  - `docs/CHANGELOG.md`
 - Остаточные риски:
+  - windows-engine side (`launch/open_target/windows.input`) по-прежнему живёт на старом `hostServices` closure pattern; Stage 2 intentionally stabilizes only `computer-use-win` core surface
 - Разблокировка следующего этапа:
+  - прогнать review gate для Stage 2 extraction package
+  - после approval сделать отдельный commit и записать SHA
 
 ### Stage 3: M0-M5 MCP 2025-11-25 protocol migration
 

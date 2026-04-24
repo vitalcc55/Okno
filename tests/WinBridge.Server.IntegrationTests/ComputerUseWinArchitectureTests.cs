@@ -1,7 +1,13 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
+using WinBridge.Runtime.Windows.Capture;
+using WinBridge.Runtime.Windows.Input;
+using WinBridge.Runtime.Windows.Shell;
+using WinBridge.Runtime.Windows.UIA;
 using WinBridge.Server.ComputerUse;
 
 namespace WinBridge.Server.IntegrationTests;
@@ -187,6 +193,72 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Equal(
             ["Click", "GetAppState", "ListApps"],
             callableMethodNames);
+    }
+
+    [Fact]
+    public void ComputerUseWinHandlersResolveFromServiceCollection()
+    {
+        using TempDirectoryScope temp = new();
+        ServiceCollection services = new();
+
+        services.AddSingleton(CreateAuditLog(temp.Root));
+        services.AddSingleton<ISessionManager>(new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-stage-2-service-graph")));
+        services.AddSingleton<IWindowManager>(new ServiceGraphWindowManager());
+        services.AddSingleton<IWindowActivationService>(new FakeWindowActivationService(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true)));
+        services.AddSingleton<ICaptureService>(new NoopCaptureService());
+        services.AddSingleton<IUiAutomationService>(new FakeUiAutomationService());
+        services.AddSingleton<IInputService>(new FakeInputService());
+        services.AddSingleton(new ComputerUseWinOptions(
+            PluginRoot: temp.Root,
+            AppInstructionsRoot: Path.Combine(temp.Root, "references", "AppInstructions"),
+            ApprovalStorePath: Path.Combine(temp.Root, "AppApprovals.json")));
+        services.AddSingleton<ComputerUseWinApprovalStore>();
+        services.AddSingleton<ComputerUseWinAppDiscoveryService>();
+        services.AddSingleton<IComputerUseWinInstructionProvider, EmptyInstructionProvider>();
+        services.AddSingleton(static provider => new ComputerUseWinAppStateObserver(
+            provider.GetRequiredService<ICaptureService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IComputerUseWinInstructionProvider>()));
+        services.AddSingleton(static provider => new ComputerUseWinClickExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            new ComputerUseWinClickTargetResolver(provider.GetRequiredService<IUiAutomationService>()),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton<ComputerUseWinStateStore>();
+        services.AddSingleton<ComputerUseWinStoredStateResolver>();
+        services.AddSingleton<ComputerUseWinListAppsHandler>();
+        services.AddSingleton<ComputerUseWinGetAppStateHandler>();
+        services.AddSingleton<ComputerUseWinClickHandler>();
+        services.AddSingleton<ComputerUseWinTools>();
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.IsType<ComputerUseWinListAppsHandler>(provider.GetRequiredService<ComputerUseWinListAppsHandler>());
+        Assert.IsType<ComputerUseWinGetAppStateHandler>(provider.GetRequiredService<ComputerUseWinGetAppStateHandler>());
+        Assert.IsType<ComputerUseWinClickHandler>(provider.GetRequiredService<ComputerUseWinClickHandler>());
+        Assert.IsType<ComputerUseWinTools>(provider.GetRequiredService<ComputerUseWinTools>());
+    }
+
+    [Fact]
+    public void ProgramUsesTypedComputerUseWinToolCatalogInsteadOfHostServicesClosure()
+    {
+        string program = File.ReadAllText(ResolveRepoPath(@"src\WinBridge.Server\Program.cs"));
+
+        Assert.DoesNotContain(
+            "ComputerUseWinToolRegistration.Create(\r\n    () => hostServices?.GetRequiredService<ComputerUseWinTools>()",
+            program,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ComputerUseWinRegisteredTools computerUseWinTools = new();",
+            program,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "computerUseWinTools.BindToolHost(host.Services.GetRequiredService<ComputerUseWinTools>());",
+            program,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "serverBuilder.WithTools<ComputerUseWinRegisteredTools>(computerUseWinTools);",
+            program,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -857,11 +929,62 @@ public sealed class ComputerUseWinArchitectureTests
         throw new DirectoryNotFoundException($"Не удалось найти '{relativePath}' от AppContext.BaseDirectory.");
     }
 
+    private static AuditLog CreateAuditLog(string root)
+    {
+        string runDirectory = Path.Combine(root, "artifacts", "diagnostics", "computer-use-win-stage-2-service-graph");
+        return new AuditLog(
+            new AuditLogOptions(
+                ContentRootPath: root,
+                EnvironmentName: "tests",
+                RunId: "computer-use-win-stage-2-service-graph",
+                DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+                RunDirectory: runDirectory,
+                EventsPath: Path.Combine(runDirectory, "events.jsonl"),
+                SummaryPath: Path.Combine(runDirectory, "summary.md")),
+            TimeProvider.System);
+    }
+
     private static void DeleteDirectoryIfExists(string path)
     {
         if (Directory.Exists(path))
         {
             Directory.Delete(path, recursive: true);
+        }
+    }
+
+    private sealed class ServiceGraphWindowManager : IWindowManager
+    {
+        public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible = false) => [];
+
+        public WindowDescriptor? FindWindow(WindowSelector selector) => null;
+
+        public bool TryFocus(long hwnd) => false;
+    }
+
+    private sealed class NoopCaptureService : ICaptureService
+    {
+        public Task<CaptureResult> CaptureAsync(CaptureTarget target, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Capture не должен вызываться в DI resolution test.");
+    }
+
+    private sealed class EmptyInstructionProvider : IComputerUseWinInstructionProvider
+    {
+        public IReadOnlyList<string> GetInstructions(string? processName) => [];
+    }
+
+    private sealed class TempDirectoryScope : IDisposable
+    {
+        public TempDirectoryScope()
+        {
+            Root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Root);
+        }
+
+        public string Root { get; }
+
+        public void Dispose()
+        {
+            DeleteDirectoryIfExists(Root);
         }
     }
 

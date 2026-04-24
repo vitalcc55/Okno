@@ -1,12 +1,63 @@
+using System.Text.Json;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Capture;
+using WinBridge.Runtime.Windows.Shell;
 using WinBridge.Server.ComputerUse;
 
 namespace WinBridge.Server.IntegrationTests;
 
 public sealed class ComputerUseWinActionAndProjectionTests
 {
+    [Fact]
+    public void ListAppsGroupsVisibleWindowsByStableAppIdAndPrefersForegroundRepresentative()
+    {
+        using TempDirectoryScope temp = new();
+        ComputerUseWinApprovalStore approvalStore = new(
+            new ComputerUseWinOptions(
+                PluginRoot: temp.Root,
+                AppInstructionsRoot: Path.Combine(temp.Root, "references", "AppInstructions"),
+                ApprovalStorePath: Path.Combine(temp.Root, "AppApprovals.json")));
+        approvalStore.Approve("explorer");
+
+        ComputerUseWinTools tools = CreateComputerUseWinTools(
+            new FakeListAppsWindowManager(
+            [
+                CreateWindow(hwnd: 101, title: "Explorer A", processName: "explorer", processId: 1001, isForeground: false),
+                CreateWindow(hwnd: 202, title: "Explorer B", processName: "explorer", processId: 1001, isForeground: true),
+                CreateWindow(hwnd: 303, title: "Admin Console", processName: "powershell", processId: 2002, isForeground: false),
+                CreateWindow(hwnd: 404, title: "Hidden Helper", processName: "notepad", processId: 3003, isForeground: false, isVisible: false),
+            ]),
+            approvalStore);
+
+        ModelContextProtocol.Protocol.CallToolResult result = tools.ListApps();
+
+        Assert.False(result.IsError);
+        ComputerUseWinListAppsResult payload = JsonSerializer.Deserialize<ComputerUseWinListAppsResult>(
+            result.StructuredContent!.Value.GetRawText(),
+            ComputerUseWinToolResultFactory.PayloadJsonOptions)!;
+        Assert.Equal(ComputerUseWinStatusValues.Ok, payload.Status);
+        Assert.Equal(2, payload.Count);
+        Assert.Equal(2, payload.Apps.Count);
+
+        ComputerUseWinAppDescriptor foregroundExplorer = payload.Apps[0];
+        Assert.Equal("explorer", foregroundExplorer.AppId);
+        Assert.Equal(202, foregroundExplorer.Hwnd);
+        Assert.Equal("Explorer B", foregroundExplorer.Title);
+        Assert.True(foregroundExplorer.IsForeground);
+        Assert.True(foregroundExplorer.IsApproved);
+        Assert.False(foregroundExplorer.IsBlocked);
+
+        ComputerUseWinAppDescriptor blockedConsole = payload.Apps[1];
+        Assert.Equal("powershell", blockedConsole.AppId);
+        Assert.Equal(303, blockedConsole.Hwnd);
+        Assert.False(blockedConsole.IsApproved);
+        Assert.True(blockedConsole.IsBlocked);
+        Assert.Contains("powershell", blockedConsole.BlockReason, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void AccessibilityProjectorCarriesKeyboardFocusIntoStoredElements()
     {
@@ -739,6 +790,55 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal(2, snapshotCall);
     }
 
+    private static ComputerUseWinTools CreateComputerUseWinTools(
+        IWindowManager windowManager,
+        ComputerUseWinApprovalStore approvalStore)
+    {
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-2-test"));
+        ComputerUseWinStateStore stateStore = new();
+        FakeUiAutomationService uiAutomationService = new();
+        FakeWindowActivationService activationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinAppStateObserver appStateObserver = new(
+            new NoopCaptureService(),
+            uiAutomationService,
+            new EmptyInstructionProvider());
+        ComputerUseWinClickExecutionCoordinator clickExecutionCoordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(uiAutomationService),
+            inputService);
+
+        return new(
+            CreateAuditLog(),
+            sessionManager,
+            new ComputerUseWinListAppsHandler(new ComputerUseWinAppDiscoveryService(windowManager, approvalStore)),
+            new ComputerUseWinGetAppStateHandler(
+                windowManager,
+                sessionManager,
+                approvalStore,
+                stateStore,
+                activationService,
+                appStateObserver),
+            new ComputerUseWinClickHandler(
+                new ComputerUseWinStoredStateResolver(stateStore, windowManager),
+                clickExecutionCoordinator));
+    }
+
+    private static AuditLog CreateAuditLog()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "tests",
+            RunId: "computer-use-win-stage-2-test",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "computer-use-win-stage-2-test"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "computer-use-win-stage-2-test", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "computer-use-win-stage-2-test", "summary.md"));
+        return new AuditLog(options, TimeProvider.System);
+    }
+
     private static ComputerUseWinStoredState CreateStoredState() =>
         new(
             new ComputerUseWinAppSession("explorer", 101, "Explorer", "explorer", 1001),
@@ -848,17 +948,23 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
             CapturedAtUtc: DateTimeOffset.UtcNow);
 
-    private static WindowDescriptor CreateWindow() =>
+    private static WindowDescriptor CreateWindow(
+        long hwnd = 101,
+        string title = "Test window",
+        string processName = "explorer",
+        int processId = 1001,
+        bool isForeground = true,
+        bool isVisible = true) =>
         new(
-            Hwnd: 101,
-            Title: "Test window",
-            ProcessName: "explorer",
-            ProcessId: 1001,
+            Hwnd: hwnd,
+            Title: title,
+            ProcessName: processName,
+            ProcessId: processId,
             ThreadId: 2002,
             ClassName: "TestWindow",
             Bounds: new Bounds(0, 0, 640, 480),
-            IsForeground: true,
-            IsVisible: true);
+            IsForeground: isForeground,
+            IsVisible: isVisible);
 
     private static ObservedWindowDescriptor CreateObservedWindow(WindowDescriptor window) =>
         new(
@@ -886,4 +992,46 @@ public sealed class ComputerUseWinActionAndProjectionTests
             capturedAtUtc: DateTimeOffset.UtcNow,
             frameBounds: new InputBounds(0, 0, 640, 480),
             targetIdentity: new InputTargetIdentity(101, 1001, 2002, "TestWindow"));
+
+    private sealed class FakeListAppsWindowManager(IReadOnlyList<WindowDescriptor> windows) : IWindowManager
+    {
+        public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible = false) =>
+            includeInvisible ? windows : windows.Where(static window => window.IsVisible).ToArray();
+
+        public WindowDescriptor? FindWindow(WindowSelector selector) =>
+            throw new NotSupportedException("FindWindow не должен вызываться в list_apps characterization test.");
+
+        public bool TryFocus(long hwnd) =>
+            throw new NotSupportedException("TryFocus не должен вызываться в list_apps characterization test.");
+    }
+
+    private sealed class NoopCaptureService : ICaptureService
+    {
+        public Task<CaptureResult> CaptureAsync(CaptureTarget target, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Capture не должен вызываться в list_apps characterization test.");
+    }
+
+    private sealed class EmptyInstructionProvider : IComputerUseWinInstructionProvider
+    {
+        public IReadOnlyList<string> GetInstructions(string? processName) => [];
+    }
+
+    private sealed class TempDirectoryScope : IDisposable
+    {
+        public TempDirectoryScope()
+        {
+            Root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Root);
+        }
+
+        public string Root { get; }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Root))
+            {
+                Directory.Delete(Root, recursive: true);
+            }
+        }
+    }
 }

@@ -173,7 +173,7 @@ internal static class ComputerUseWinActionFinalizer
 
     private static CallToolResult CreateToolResult(ComputerUseWinActionResult payload, bool isError)
     {
-        JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, ComputerUseWinTools.PayloadJsonOptions);
+        JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions);
 
         return new CallToolResult
         {
@@ -183,7 +183,7 @@ internal static class ComputerUseWinActionFinalizer
             [
                 new TextContentBlock
                 {
-                    Text = JsonSerializer.Serialize(payload, ComputerUseWinTools.PayloadJsonOptions),
+                    Text = JsonSerializer.Serialize(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions),
                 },
             ],
         };

@@ -36,16 +36,27 @@ McpServerTool openTargetTool = WindowsOpenTargetToolRegistration.Create(
 McpServerTool inputTool = WindowsInputToolRegistration.Create(
     () => hostServices?.GetRequiredService<WindowTools>()
         ?? throw new InvalidOperationException("WindowTools service is not available yet."));
-IReadOnlyList<McpServerTool> computerUseWinTools = ComputerUseWinToolRegistration.Create(
-    () => hostServices?.GetRequiredService<ComputerUseWinTools>()
-        ?? throw new InvalidOperationException("ComputerUseWinTools service is not available yet."));
+ComputerUseWinRegisteredTools computerUseWinTools = new();
 builder.Logging.ClearProviders();
 builder.Services.AddWinBridgeRuntime(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);
 builder.Services.AddWinBridgeRuntimeWindowsUia(builder.Environment.ContentRootPath, builder.Environment.EnvironmentName);
 builder.Services.AddSingleton(static services =>
     ComputerUseWinOptions.Resolve(services.GetRequiredService<IHostEnvironment>().ContentRootPath));
 builder.Services.AddSingleton<ComputerUseWinApprovalStore>();
+builder.Services.AddSingleton<ComputerUseWinAppDiscoveryService>();
+builder.Services.AddSingleton(static services => new ComputerUseWinAppStateObserver(
+    services.GetRequiredService<ICaptureService>(),
+    services.GetRequiredService<IUiAutomationService>(),
+    services.GetRequiredService<IComputerUseWinInstructionProvider>()));
+builder.Services.AddSingleton(static services => new ComputerUseWinClickExecutionCoordinator(
+    services.GetRequiredService<IWindowActivationService>(),
+    new ComputerUseWinClickTargetResolver(services.GetRequiredService<IUiAutomationService>()),
+    services.GetRequiredService<IInputService>()));
 builder.Services.AddSingleton<ComputerUseWinStateStore>();
+builder.Services.AddSingleton<ComputerUseWinStoredStateResolver>();
+builder.Services.AddSingleton<ComputerUseWinListAppsHandler>();
+builder.Services.AddSingleton<ComputerUseWinGetAppStateHandler>();
+builder.Services.AddSingleton<ComputerUseWinClickHandler>();
 builder.Services.AddSingleton<IComputerUseWinInstructionProvider, ComputerUseWinPlaybookProvider>();
 builder.Services.AddSingleton<AdminTools>();
 builder.Services.AddSingleton(static services => new WindowTools(
@@ -71,7 +82,7 @@ IMcpServerBuilder serverBuilder = builder.Services
 
 if (string.Equals(toolSurfaceProfile, ToolSurfaceProfileValues.ComputerUseWin, StringComparison.Ordinal))
 {
-    serverBuilder.WithTools(computerUseWinTools);
+    serverBuilder.WithTools<ComputerUseWinRegisteredTools>(computerUseWinTools);
 }
 else
 {
@@ -82,6 +93,7 @@ else
 
 using IHost host = builder.Build();
 hostServices = host.Services;
+computerUseWinTools.BindToolHost(host.Services.GetRequiredService<ComputerUseWinTools>());
 await host.RunAsync();
 
 static bool TryRunExportMode(string[] args, string toolSurfaceProfile)
