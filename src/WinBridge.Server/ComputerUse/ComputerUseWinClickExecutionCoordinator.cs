@@ -27,9 +27,7 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
             && !string.Equals(activation.Status, "already_active", StringComparison.Ordinal))
         {
             return ComputerUseWinClickExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(
-                    ComputerUseWinFailureCodeValues.BlockedTarget,
-                    activation.Reason ?? "Computer Use for Windows не смог подготовить окно к клику."),
+                ComputerUseWinActivationFailureMapper.Map(activation),
                 ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch);
         }
 
@@ -113,6 +111,43 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
         string.Equals(input.Status, InputStatusValues.Failed, StringComparison.Ordinal)
         && (string.Equals(input.FailureCode, InputFailureCodeValues.TargetNotForeground, StringComparison.Ordinal)
             || string.Equals(input.FailureCode, InputFailureCodeValues.TargetPreflightFailed, StringComparison.Ordinal));
+}
+
+internal static class ComputerUseWinActivationFailureMapper
+{
+    public static ComputerUseWinFailureDetails Map(ActivateWindowResult activation)
+    {
+        string failureCode = ClassifyFailure(activation);
+        ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(
+            failureCode,
+            activation.Reason);
+
+        return ComputerUseWinFailureDetails.Expected(
+            failure.FailureCode ?? ComputerUseWinFailureCodeValues.TargetPreflightFailed,
+            failure.Reason ?? "Computer Use for Windows не смог подготовить окно к клику; заново вызови get_app_state перед retry.");
+    }
+
+    private static string ClassifyFailure(ActivateWindowResult activation)
+    {
+        if (activation.Window is null)
+        {
+            return activation.WasMinimized
+                ? ComputerUseWinFailureCodeValues.TargetMinimized
+                : ComputerUseWinFailureCodeValues.MissingTarget;
+        }
+
+        if (string.Equals(activation.Window.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal))
+        {
+            return ComputerUseWinFailureCodeValues.TargetMinimized;
+        }
+
+        if (!activation.IsForeground)
+        {
+            return ComputerUseWinFailureCodeValues.TargetNotForeground;
+        }
+
+        return ComputerUseWinFailureCodeValues.TargetPreflightFailed;
+    }
 }
 
 internal sealed record ComputerUseWinClickExecutionOutcome(

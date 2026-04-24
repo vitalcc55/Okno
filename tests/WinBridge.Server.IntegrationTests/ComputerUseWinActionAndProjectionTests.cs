@@ -322,6 +322,99 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ClickExecutionCoordinatorMapsMissingActivationTargetWithoutPolicyBlock()
+    {
+        FakeWindowActivationService activationService = new(static _ => new ActivateWindowResult(
+            "failed",
+            "Окно для активации больше не найдено.",
+            null,
+            false,
+            false));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.MissingTarget, outcome.FailureDetails?.FailureCode);
+        Assert.NotEqual(ComputerUseWinFailureCodeValues.BlockedTarget, outcome.FailureDetails?.FailureCode);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch, outcome.Phase);
+        Assert.Equal(101, activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ClickExecutionCoordinatorMapsMinimizedActivationFailureWithoutPolicyBlock()
+    {
+        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult(
+            "ambiguous",
+            "Окно снова оказалось свернутым до завершения активации.",
+            window with { WindowState = WindowStateValues.Minimized },
+            true,
+            false));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.TargetMinimized, outcome.FailureDetails?.FailureCode);
+        Assert.NotEqual(ComputerUseWinFailureCodeValues.BlockedTarget, outcome.FailureDetails?.FailureCode);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch, outcome.Phase);
+        Assert.Equal(101, activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ClickExecutionCoordinatorMapsForegroundActivationFailureWithoutPolicyBlock()
+    {
+        FakeWindowActivationService activationService = new(static window => new ActivateWindowResult(
+            "failed",
+            "Windows отказалась перевести окно в foreground.",
+            window,
+            false,
+            false));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickExecutionCoordinator coordinator = new(
+            activationService,
+            new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+            inputService);
+
+        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+            CreateStoredState(),
+            new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
+            CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.TargetNotForeground, outcome.FailureDetails?.FailureCode);
+        Assert.NotEqual(ComputerUseWinFailureCodeValues.BlockedTarget, outcome.FailureDetails?.FailureCode);
+        Assert.Equal(ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch, outcome.Phase);
+        Assert.Equal(101, activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
     public async Task ClickTargetResolverReturnsStaleStateWhenFreshElementLosesClickAffordance()
     {
         FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
