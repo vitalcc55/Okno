@@ -776,9 +776,9 @@ scripts/refresh-generated-docs.ps1
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-deferred-work-implementation`
-- Commit SHA: `pending`
+- Commit SHA: `6b0197c`
 - TDD применялся: `нет, decision-only stage`
 - Проверки:
   - static product evidence: [computer-use-win-surface.md](docs/architecture/computer-use-win-surface.md) уже фиксирует, что `get_app_state` не является read-only observe tool и может мутировать approval/focus/session state
@@ -803,8 +803,8 @@ scripts/refresh-generated-docs.ps1
 - Остаточные риски:
   - future client/model need для safe automatic observation может переоткрыть эту deferred class позже; тогда понадобится отдельный TDD stage с новым public tool и token gating
 - Разблокировка следующего этапа:
-  - сделать отдельный decision-only commit для `Stage 5`
-  - после появления SHA записать его в этот отчёт и только затем переходить к `Stage 6`
+  - `Stage 5` закрыт decision-only commit `6b0197c`
+  - `Stage 6` decision gate разблокирован
 
 ### Stage 6: Deferred class 3 decision and advisory provider failure policy
 
@@ -823,9 +823,18 @@ scripts/refresh-generated-docs.ps1
 
 **Decision gate:**
 
-- [ ] Confirm product direction: keep truthful failure semantics or choose availability-first soft-fail for named optional stages.
-- [ ] If keeping current invariant, record decision and close deferred class without code.
-- [ ] If changing policy, write a stage matrix before code.
+**Decision outcome (зафиксировано до кода):**
+
+- Текущее product direction — сохранить truthful failure semantics без нового broad soft-fail matrix.
+- Подтверждения:
+  - [computer-use-win-surface.md](docs/architecture/computer-use-win-surface.md) уже фиксирует boundary: screenshot + accessibility tree определяют success/failure, advisory instructions soft-fail-ятся только на expected unavailable path, а unexpected provider/runtime bug остаётся `observation_failed`;
+  - текущие observation tests уже доказывают нужную матрицу: capture failure -> `observation_failed`, UIA failure -> `observation_failed`, expected advisory instruction unavailability -> success + warning, unexpected provider bug -> `observation_failed`;
+  - product docs и roadmap не содержат strong evidence, что availability-first soft-fail нужен шире уже существующего advisory instruction exception path.
+- Decision: сохранить текущий invariant и закрыть `Stage 6` decision-only без code changes.
+
+- [x] Confirm product direction: keep truthful failure semantics or choose availability-first soft-fail for named optional stages.
+- [x] If keeping current invariant, record decision and close deferred class without code.
+- [x] If changing policy, write a stage matrix before code. Decision: policy change rejected; новый matrix не нужен.
 
 **Целевая модель, если решение принято:**
 
@@ -861,18 +870,33 @@ dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.Integration
 
 #### Отчёт этапа
 
-- Статус этапа: `not_started`
-- Branch:
-- Commit SHA:
-- TDD применялся:
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-deferred-work-implementation`
+- Commit SHA: `pending`
+- TDD применялся: `нет, decision-only stage`
 - Проверки:
+  - static policy evidence: [computer-use-win-surface.md](docs/architecture/computer-use-win-surface.md) уже фиксирует, что screenshot + accessibility tree остаются required proof, expected advisory instruction unavailability soft-fail-ится только в узком path, а unexpected provider/runtime bug materialize-ится как `observation_failed`
+  - product evidence: в current docs/roadmap нет strong signal, что availability-first soft-fail нужен шире уже существующего advisory instruction exception path
+  - policy proof: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinObservationTests.AppStateObserverReturnsStructuredFailureWhenCaptureThrows|ComputerUseWinObservationTests.AppStateObserverReturnsStructuredFailureWhenSnapshotDoesNotComplete|ComputerUseWinObservationTests.AppStateObserverTreatsAdvisoryInstructionFailureAsWarningWithoutStateCommit|ComputerUseWinObservationTests.AppStateObserverTreatsUnexpectedInstructionProviderBugAsStructuredFailure"` -> green, `4/4`
 - Review agents:
+  - `019dc115-a65c-72f3-99b5-be5092086185` (`architecture/contract`) -> `approve`
+  - `019dc115-aa97-7be3-9599-58869a676ace` (`tests/failure/docs/generated`) -> `approve`
 - Подтверждённые замечания:
+  - `[confirmed]` broad availability-first soft-fail policy не подтверждён product/client evidence; current narrow advisory exception path уже покрывает justified optional enrichment case без ослабления required proof semantics
 - Отклонённые замечания:
+  - `expand soft-fail matrix now` -> rejected: это ослабит truthful action-ready semantics без подтверждённой need и смешает expected advisory-unavailable path с unexpected provider/runtime failures
 - Исправленные root causes:
+  - преждевременное policy expansion остановлено на decision gate; required proof vs optional enrichment остаются разведены текущим narrow invariant без нового matrix complexity
 - Проверенные соседние paths:
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinAppStateObserver.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinObservationTests.cs`
+  - `docs/architecture/computer-use-win-surface.md`
+  - `docs/CHANGELOG.md`
 - Остаточные риски:
+  - если позже появится named optional enrichment beyond current advisory instruction path, policy matrix придётся переоткрывать отдельным TDD stage с явным required-vs-optional catalog
 - Разблокировка следующего этапа:
+  - сделать отдельный decision-only commit для `Stage 6`
+  - после появления SHA записать его в этот отчёт и только затем переходить к `Stage 7`
 
 ### Stage 7: S2/O1/I1 final hardening and closure
 
