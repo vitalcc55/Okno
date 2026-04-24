@@ -696,7 +696,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
                     "initialize",
                     new
                     {
-                        protocolVersion = "2025-06-18",
+                        protocolVersion = "2025-11-25",
                         capabilities = new { },
                         clientInfo = new
                         {

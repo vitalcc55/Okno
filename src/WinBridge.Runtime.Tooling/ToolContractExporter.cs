@@ -18,7 +18,7 @@ public static class ToolContractExporter
     {
         ToolContractProfile profile = ToolContractManifest.GetProfile(toolSurfaceProfile);
         return new(
-            Transport: new ToolTransportDescriptor("stdio", "2025-06-18", "src/WinBridge.Server/Program.cs", "product-ready target"),
+            Transport: new ToolTransportDescriptor("stdio", "2025-11-25", "src/WinBridge.Server/Program.cs", "product-ready target"),
             FutureTransports:
             [
                 new FutureTransportDescriptor("http", "not implemented", "after stable stdio only"),

@@ -49,6 +49,15 @@ public sealed class ToolContractExporterTests
     }
 
     [Fact]
+    public void ExporterPublishesCurrentMcp20251125TransportBaseline()
+    {
+        ToolContractExportDocument document = ToolContractExporter.CreateDocument();
+
+        Assert.Equal("stdio", document.Transport.Kind);
+        Assert.Equal("2025-11-25", document.Transport.ProtocolVersion);
+    }
+
+    [Fact]
     public void ExportMarkdownContainsImplementedAndDeferredSections()
     {
         ToolContractExportDocument document = ToolContractExporter.CreateDocument();

@@ -2032,7 +2032,7 @@ try {
     $requiredTools = Get-RequiredToolNames -Manifest $manifest
 
     $initializeCall = Invoke-McpRequest -Process $process -Method 'initialize' -Params @{
-        protocolVersion = '2025-06-18'
+        protocolVersion = '2025-11-25'
         capabilities = @{}
         clientInfo = @{
             name = 'Okno.Smoke'
@@ -2596,7 +2596,7 @@ try {
     $freshProcess = Start-StagedMcpHost -ServerDll $serverDll -WorkingDirectory $repoRoot
     try {
         $freshInitializeCall = Invoke-McpRequest -Process $freshProcess -Method 'initialize' -Params @{
-            protocolVersion = '2025-06-18'
+            protocolVersion = '2025-11-25'
             capabilities = @{}
             clientInfo = @{
                 name = 'Okno.Smoke.FreshHost'

@@ -5,7 +5,7 @@
 ### MCP over STDIO
 
 - transport: `STDIO`
-- protocol baseline: MCP `2025-06-18`
+- protocol baseline: MCP `2025-11-25`
 - server entry point: `src/WinBridge.Server/Program.cs`
 - delivery status: `product-ready target`
 - smoke-validated methods:

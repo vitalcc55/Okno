@@ -418,9 +418,9 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-deferred-work-implementation`
-- Commit SHA: `pending`
+- Commit SHA: `b31a9a1`
 - TDD применялся: `characterization-first + targeted green`
 - Проверки:
   - characterization GREEN: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinActionAndProjectionTests.ListAppsGroupsVisibleWindowsByStableAppIdAndPrefersForegroundRepresentative"` -> green, `1/1`
@@ -458,7 +458,8 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
   - windows-engine side (`launch/open_target/windows.input`) по-прежнему живёт на старом `hostServices` closure pattern; Stage 2 intentionally stabilizes only `computer-use-win` core surface
 - Разблокировка следующего этапа:
   - прогнать review gate для Stage 2 extraction package
-  - после approval сделать отдельный commit и записать SHA
+  - `Stage 2` закрыт commit `b31a9a1`
+  - `Stage 3` разблокирован
 
 ### Stage 3: M0-M5 MCP 2025-11-25 protocol migration
 
@@ -490,20 +491,38 @@ dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filte
 
 **TDD-решение:** обязательно. Этап меняет wire contract expectations.
 
+**M0 inventory (зафиксировано до кода):**
+
+- In scope:
+  - `STDIO initialize` negotiated/exported baseline -> `2025-11-25`
+  - exporter transport baseline и generated interface exports
+  - smoke/integration handshake expectations
+  - deliberate decision по optional `serverInfo` / `tools/list` metadata для текущего `STDIO` продукта
+  - audit manual schema assumptions against JSON Schema `2020-12`
+  - tool-level request validation failures там, где validation уже владеет shape semantics
+- Out of scope:
+  - HTTP transport, auth, streamable HTTP rollout
+  - prompts/resources/completions expansion
+  - icons asset pipeline и `execution.taskSupport` rollout без отдельной product need
+  - любые product redesign changes для discovery/observe split/advisory policy
+- Deferred:
+  - draft-only MCP deltas после current stable `2025-11-25`
+  - broader install-surface hardening, не требуемый самим protocol bump
+
 **Шаги:**
 
-- [ ] `M0`: write a migration inventory in this file or a dedicated architecture doc section: in-scope, out-of-scope, deferred.
-- [ ] Add failing tests expecting `protocolVersion = "2025-11-25"` in integration handshake and exporter output.
-- [ ] Запустить targeted tests и записать RED proof.
-- [ ] Change exporter, smoke and integration handshake expectations to `2025-11-25`.
-- [ ] Запустить targeted tests и записать GREEN proof.
-- [ ] Add tests around `serverInfo`/`Implementation` optional metadata decision.
-- [ ] Add tests around `tools/list` metadata decision: `icons`, `execution.taskSupport`, naming guidance.
-- [ ] Audit manual schemas and add tests for `$schema` presence or documented absence under JSON Schema `2020-12` default.
-- [ ] Add/adjust tests proving malformed tool arguments become tool-level failures where owned by request validation.
-- [ ] Update generated exports and docs.
-- [ ] Запустить review gate с official MCP source references в review prompt.
-- [ ] Обработать review через systematic-debugging и re-review до approval.
+- [x] `M0`: write a migration inventory in this file or a dedicated architecture doc section: in-scope, out-of-scope, deferred.
+- [x] Add failing tests expecting `protocolVersion = "2025-11-25"` in integration handshake and exporter output.
+- [x] Запустить targeted tests и записать RED proof.
+- [x] Change exporter, smoke and integration handshake expectations to `2025-11-25`.
+- [x] Запустить targeted tests и записать GREEN proof.
+- [x] Add tests around `serverInfo`/`Implementation` optional metadata decision.
+- [x] Add tests around `tools/list` metadata decision: `icons`, `execution.taskSupport`, naming guidance.
+- [x] Audit manual schemas and add tests for `$schema` presence or documented absence under JSON Schema `2020-12` default.
+- [x] Add/adjust tests proving malformed tool arguments become tool-level failures where owned by request validation.
+- [x] Update generated exports and docs.
+- [x] Запустить review gate с official MCP source references в review prompt.
+- [x] Обработать review через systematic-debugging и re-review до approval.
 - [ ] Сделать отдельный commit для этого stage.
 
 **Команды проверки:**
@@ -519,18 +538,52 @@ scripts/refresh-generated-docs.ps1
 
 #### Отчёт этапа
 
-- Статус этапа: `not_started`
-- Branch:
-- Commit SHA:
-- TDD применялся:
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-deferred-work-implementation`
+- Commit SHA: `pending`
+- TDD применялся: `да`
 - Проверки:
+  - `M0` inventory зафиксирован в этой секции; live MCP stable подтверждён по official docs как `2025-11-25`
+  - RED proof: `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "ToolContractExporterTests.ExporterPublishesCurrentMcp20251125TransportBaseline"` -> fail (`expected 2025-11-25`, `actual 2025-06-18`)
+  - handshake characterization: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "McpProtocolSmokeTests.InitializeNegotiatesMcp20251125ProtocolVersion"` -> green already before code; live MCP layer negotiated `2025-11-25` through current library/runtime
+  - protocol metadata contour: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "McpProtocolSmokeTests.InitializeNegotiatesMcp20251125ProtocolVersion|McpProtocolSmokeTests.InitializePublishesMinimalServerInfoWithoutDescription|McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools|ComputerUseWinArchitectureTests.ComputerUseWinManualSchemasRelyOnJsonSchema202012DefaultWithoutExplicitSchemaKeyword"` -> green, `4/4`
+  - invalid-request contour: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "McpProtocolSmokeTests.WindowsInputCallMaterializesMalformedActionElementAsToolLevelFailedResult|McpProtocolSmokeTests.ComputerUseWinGetAppStateDoesNotAttachWindowWhenRequestIsInvalid"` -> green, `2/2`
+  - install-surface protocol contour: `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "ComputerUseWinInstallSurfaceTests.ComputerUseWinLauncherFromTempPluginCopyPublishesPublicSurfaceWithoutRepoHints"` -> green, `1/1`
+  - runtime/export contour after refresh: `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --filter "ToolContractExporterTests|ToolContractManifestTests"` -> green, `30/30`
+  - `scripts/smoke.ps1` -> green; smoke summary reports `protocol: 2025-11-25`
+  - `scripts/refresh-generated-docs.ps1` -> green
 - Review agents:
+  - `019dc0cc-a350-71e1-acc7-41cc9d1f4312` (`architecture/contract`) -> `approve` after re-review
+  - `019dc0cc-a4fd-7292-8ec7-28234b3083b6` (`tests/failure/docs/generated`) -> `approve`
 - Подтверждённые замечания:
-- Отклонённые замечания:
+  - `[confirmed]` stage drift: live MCP handshake уже был на `2025-11-25`, поэтому real migration scope сузился до exporter/tests/scripts/generated docs
+  - `[confirmed]` exec-plan sequencing drift: нижние `migration track` / `Current recommendation` были обновлены раньше, чем `Iteration 2` и `Suggested branch split`, из-за чего active roadmap ещё планировал уже закрытую protocol migration как future work
+- Отклонённые замечания: `нет`
 - Исправленные root causes:
+  - exporter baseline в `ToolContractExporter` больше не расходится с live MCP stable revision
+  - stdio/request literals в smoke и stage-owned integration tests синхронизированы на `2025-11-25`
+  - protocol decisions зафиксированы тестами: `serverInfo` остаётся минимальным, `icons` не публикуются, `execution.taskSupport=optional` materialize-ится у `get_app_state` и `click`, manual `computer-use-win` schemas продолжают использовать default JSON Schema `2020-12` без `$schema`
+  - generated interface exports и `stack-research` narrative выровнены на новый stable baseline
+  - весь `Stage 3` sequencing narrative в active ExecPlan теперь описывает migration как уже закрытый инженерный слой и больше не планирует отдельную future MCP branch перед `Stage 4`
 - Проверенные соседние paths:
+  - `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs`
+  - `tests/WinBridge.Runtime.Tests/ToolContractExporterTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+  - `scripts/smoke.ps1`
+  - `docs/generated/project-interfaces.md`
+  - `docs/generated/project-interfaces.json`
+  - `docs/generated/computer-use-win-interfaces.md`
+  - `docs/generated/computer-use-win-interfaces.json`
+  - `docs/generated/stack-research.md`
+  - `docs/CHANGELOG.md`
+  - `docs/exec-plans/active/computer-use-win-deferred-work.md`
 - Остаточные риски:
+  - broader MCP feature set beyond current `STDIO` product (`HTTP`, auth, prompts/resources/completions expansion, icons asset pipeline) остаётся out-of-scope и сознательно не реализуется этим stage
 - Разблокировка следующего этапа:
+  - сделать отдельный commit для `Stage 3`
+  - после появления SHA записать его в этот отчёт и только затем переходить к `Stage 4`
 
 ### Stage 4: Deferred class 1 instance-addressable discovery with A2/S1/C1
 
@@ -1152,13 +1205,11 @@ No implementation should use broad catch-all soft-fail without stage classificat
 
 ## MCP 2025-11-25 migration track
 
-Документационные ссылки проекта нужно уже сейчас держать на latest MCP revision `2025-11-25`, но это **не означает**, что runtime уже мигрирован. На текущий момент фактический negotiated/exported baseline по коду и tests всё ещё `2025-06-18`, что видно как минимум в:
+До закрытия `Stage 3` этот migration block действительно описывал gap между latest MCP revision `2025-11-25` и repo-local baseline `2025-06-18`. По итогам `Stage 3` для текущего `STDIO` продукта этот gap закрыт:
 
-- `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs`;
-- `scripts/smoke.ps1`;
-- `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`;
-- `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`;
-- generated interface exports.
+- `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs` теперь публикует `protocolVersion = 2025-11-25`;
+- `scripts/smoke.ps1` и stage-owned integration/install tests синхронизированы на `2025-11-25`;
+- generated interface exports после refresh больше не расходятся с live handshake expectations.
 
 Primary official sources for this migration block:
 
@@ -1181,7 +1232,7 @@ Primary official sources for this migration block:
 | Track | Почему это нужно до/вместе с миграцией | Основной scope | Критерий завершения | Priority |
 | --- | --- | --- | --- | --- |
 | `M0. Spec delta inventory freeze` | Нельзя поднимать `protocolVersion` механически, пока не зафиксировано, какие дельты latest spec реально относятся к текущему `STDIO`-only продукту, а какие сознательно откладываются. | Official MCP delta inventory, repo-local source-of-truth mapping, in-scope vs out-of-scope decisions. | Есть принятый список migration deltas с явным разделением `must implement now` / `explicitly defer`. | `P1` |
-| `M1. Negotiated protocol baseline upgrade` | Сейчас smoke/tests/exporter/generated docs жёстко несут `2025-06-18`. Пока это не выровнено, docs и runtime будут расходиться. | `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs`, `scripts/smoke.ps1`, `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`, `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`, generated interface exports. | Все protocolVersion literals/exported baselines синхронизированы на `2025-11-25`, а generated docs не расходятся с live handshake expectations. | `P1` |
+| `M1. Negotiated protocol baseline upgrade` | До `Stage 3` smoke/tests/exporter/generated docs жёстко несли `2025-06-18`, из-за чего docs и runtime расходились. | `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs`, `scripts/smoke.ps1`, `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`, `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`, generated interface exports. | Все protocolVersion literals/exported baselines синхронизированы на `2025-11-25`, а generated docs не расходятся с live handshake expectations. | `P1` |
 | `M2. Initialize metadata and capability audit` | Latest lifecycle расширяет `Implementation` и capability negotiation; это нужно осознанно принять или осознанно не публиковать. | `initialize` request/response expectations, `serverInfo`, docs, smoke assertions, capability negotiation around `tasks`. | Решено и зафиксировано, что сервер публикует или сознательно не публикует из новых optional fields/capabilities; tests отражают это решение. | `P1` |
 | `M3. Tool metadata and schema audit` | Latest tools spec добавляет `icons`, `execution.taskSupport`, tool naming guidance и JSON Schema `2020-12` defaults. Это касается contract export, public descriptors и manual schemas. | `ToolContractManifest`, MCP registration, exporter output, tool naming inventory, manual `inputSchema` / `outputSchema` owners. | Public tool metadata и schemas либо поддерживают новые optional fields корректно, либо явно фиксируют отсутствие; имена tools и schema assumptions проверены против latest guidance. | `P1` |
 | `M4. Validation and error semantics alignment` | В latest spec input validation errors должны идти как tool execution errors. Для `Okno` это особенно важно из-за честной safety/contract semantics. | Request binders, validators, tool handlers/finalizers, smoke/integration tests across public and deferred surfaces. | Malformed tool arguments materialize-ятся как canonical tool-level failures там, где latest spec требует input-validation semantics; unknown tool и protocol-shape failures остаются protocol-owned. | `P1` |
@@ -1234,10 +1285,10 @@ Primary official sources for this migration block:
 
 ### Iteration 2
 
-1. Запустить отдельную MCP migration branch для `M0-M5`.
-   - Не смешивать её с instance discovery redesign.
-   - Внутри migration branch сначала выровнять `protocolVersion`, потом `initialize`/capabilities, затем tool metadata/schema/error semantics.
-2. После этого запускать deferred class 1 как первую product-facing redesign branch.
+1. Запустить deferred class 1 как первую product-facing redesign branch поверх уже закрытого `Stage 3` / MCP `2025-11-25` baseline.
+   - Не переоткрывать отдельную MCP migration branch для `M0-M5`: этот инженерный слой уже закрыт текущим plan execution.
+   - Использовать уже зафиксированные `serverInfo` / `tools/list` / schema decisions как стабильный protocol floor для discovery redesign.
+2. После этого использовать branch для реального instance-addressable discovery, а не для повторной protocol migration.
 3. Использовать эту branch, чтобы сделать `A2` реальным для discovery/app-state path.
 4. Довести `S1`, пока branch ещё затрагивает все релевантные public statuses и retry semantics.
 5. Закрывать `C1` только после того, как DTO shape, publication semantics и launcher/install model уже согласованы.
@@ -1255,17 +1306,19 @@ Primary official sources for this migration block:
 
 ## Suggested branch split
 
+Ниже сохранён branch sketch для всего плана, но ветки `2-3` уже больше не являются pending queue: их scope фактически закрыт текущим `Stage 3` и оставлен здесь только как historical decomposition reference.
+
 1. `codex/computer-use-win-surface-freeze`
    - Владеет `C0`.
    - Может включать минимальные `A3` assertions, нужные для фиксации текущего public surface.
 
-2. `codex/mcp-2025-11-25-baseline`
-   - Владеет `M0`, `M1` и `M5`.
-   - Поднимает negotiated/exported protocol baseline и синхронизирует generated contract surface.
+2. `codex/mcp-2025-11-25-baseline` (`historical`, scope закрыт `Stage 3`)
+   - Владел `M0`, `M1` и `M5`.
+   - Поднял negotiated/exported protocol baseline и синхронизировал generated contract surface.
 
-3. `codex/mcp-2025-11-25-tool-semantics`
-   - Владеет `M2`, `M3` и `M4`, если эти изменения не помещаются в baseline branch.
-   - Должна явно маркировать `STDIO` in-scope и HTTP/auth/task items out-of-scope, если они не реализуются.
+3. `codex/mcp-2025-11-25-tool-semantics` (`historical`, scope закрыт `Stage 3`)
+   - Владела `M2`, `M3` и `M4`, если эти изменения не помещались в baseline branch.
+   - Зафиксировала `STDIO` in-scope и HTTP/auth/task items out-of-scope для текущего продукта.
 
 4. `codex/computer-use-win-instance-discovery`
    - Владеет deferred class 1.
@@ -1280,12 +1333,11 @@ Primary official sources for this migration block:
 
 ## Current recommendation
 
-Следующей product-facing branch всё ещё должна стать instance-addressable discovery, но теперь перед ней появился ещё один обязательный инженерный слой: protocol migration branch на MCP `2025-11-25`. Рекомендуемая последовательность такая:
+Следующей product-facing branch всё ещё должна стать instance-addressable discovery. Обязательный инженерный слой protocol migration branch на MCP `2025-11-25` уже закрыт в `Stage 3`, поэтому актуальная последовательность теперь такая:
 
 1. сначала заморозить deferred action wave (`C0`);
 2. сделать narrow decomposition `ComputerUseWinTools` плюс initial dependency rules (`A1` + `A3`);
 3. стабилизировать composition root (`CR1`) после появления первого extraction seam;
-4. затем провести отдельную MCP migration branch (`M0-M5`), не смешивая её с product redesign;
-5. только после этого запускать `instance-addressable discovery` branch как первую redesign branch, используя её для формирования explicit application boundary у `computer-use-win`.
+4. затем запускать `instance-addressable discovery` branch как первую redesign branch, используя её для формирования explicit application boundary у `computer-use-win`.
 
-Держать `get_app_state` observe/prepare split и advisory policy redesign parked до появления явной product/client need. Это всё ещё валидные deferred classes, но они не должны конкурировать ни с discovery branch, ни с ранним hardening, ни с protocol migration branch, которая нужна, чтобы дальнейшие public changes уже приземлялись на latest MCP baseline.
+Держать `get_app_state` observe/prepare split и advisory policy redesign parked до появления явной product/client need. Это всё ещё валидные deferred classes, но они не должны конкурировать ни с discovery branch, ни с ранним hardening, ни с уже закрытым protocol migration stage, который теперь больше не блокирует дальнейшие public changes на latest MCP baseline.

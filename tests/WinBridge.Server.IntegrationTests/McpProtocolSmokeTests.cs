@@ -59,6 +59,79 @@ public sealed class McpProtocolSmokeTests
     private const int SwMinimize = 6;
 
     [Fact]
+    public async Task InitializeNegotiatesMcp20251125ProtocolVersion()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            JsonElement initializeResult = initializeResponse.RootElement.GetProperty("result");
+            Assert.Equal("2025-11-25", initializeResult.GetProperty("protocolVersion").GetString());
+            Assert.Equal("Okno.Server", initializeResult.GetProperty("serverInfo").GetProperty("name").GetString());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
+    public async Task InitializePublishesMinimalServerInfoWithoutDescription()
+    {
+        using Process process = StartServer();
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            JsonElement serverInfo = initializeResponse.RootElement.GetProperty("result").GetProperty("serverInfo");
+            Assert.Equal("Okno.Server", serverInfo.GetProperty("name").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(serverInfo.GetProperty("version").GetString()));
+            Assert.False(serverInfo.TryGetProperty("description", out _));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+        }
+    }
+
+    [Fact]
     public async Task ToolsListPublishesWindowsWaitWithFinalSchemaAndAnnotations()
     {
         using Process process = StartServer();
@@ -73,7 +146,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -138,7 +211,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -201,6 +274,11 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal(2, selectorModes.Length);
             Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
             Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
+
+            Assert.False(clickDescriptor.TryGetProperty("icons", out _));
+            Assert.False(getAppStateDescriptor.TryGetProperty("icons", out _));
+            Assert.Equal("optional", clickDescriptor.GetProperty("execution").GetProperty("taskSupport").GetString());
+            Assert.Equal("optional", getAppStateDescriptor.GetProperty("execution").GetProperty("taskSupport").GetString());
         }
         finally
         {
@@ -229,7 +307,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -281,7 +359,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -356,7 +434,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -420,7 +498,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -478,7 +556,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -527,7 +605,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -589,7 +667,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -648,7 +726,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -777,7 +855,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -828,7 +906,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -881,7 +959,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -931,7 +1009,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -977,7 +1055,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -1027,7 +1105,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -1101,7 +1179,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -1165,7 +1243,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -1220,7 +1298,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {
@@ -1278,7 +1356,7 @@ public sealed class McpProtocolSmokeTests
                 "initialize",
                 new
                 {
-                    protocolVersion = "2025-06-18",
+                    protocolVersion = "2025-11-25",
                     capabilities = new { },
                     clientInfo = new
                     {

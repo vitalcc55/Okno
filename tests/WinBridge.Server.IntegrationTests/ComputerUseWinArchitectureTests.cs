@@ -239,6 +239,18 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ComputerUseWinManualSchemasRelyOnJsonSchema202012DefaultWithoutExplicitSchemaKeyword()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+
+        JsonElement getAppStateSchema = tools.Single(tool => tool.ProtocolTool.Name == ToolNames.ComputerUseWinGetAppState).ProtocolTool.InputSchema;
+        JsonElement clickSchema = tools.Single(tool => tool.ProtocolTool.Name == ToolNames.ComputerUseWinClick).ProtocolTool.InputSchema;
+
+        Assert.False(getAppStateSchema.TryGetProperty("$schema", out _));
+        Assert.False(clickSchema.TryGetProperty("$schema", out _));
+    }
+
+    [Fact]
     public void ProgramUsesTypedComputerUseWinToolCatalogInsteadOfHostServicesClosure()
     {
         string program = File.ReadAllText(ResolveRepoPath(@"src\WinBridge.Server\Program.cs"));
