@@ -215,13 +215,13 @@ feat: d1 expose instance-addressable discovery
 
 **Шаги:**
 
-- [ ] Read the files above and update this stage report with any drift from the plan.
-- [ ] Confirm current public `computer-use-win` surface is still exactly `list_apps`, `get_app_state`, `click`.
-- [ ] Confirm latent action wave still exists or record if already removed: `type_text`, `press_key`, `scroll`, `drag`.
-- [ ] Confirm current negotiated/exported MCP baseline is still `2025-06-18`.
-- [ ] Confirm `Program.cs` still uses late-bound `hostServices` closure pattern for tool registration.
-- [ ] Confirm generated interface docs still exist and identify which refresh command owns them.
-- [ ] Decide whether any stage below is already obsolete because code changed; if yes, update this plan before implementation.
+- [x] Read the files above and update this stage report with any drift from the plan.
+- [x] Confirm current public `computer-use-win` surface is still exactly `list_apps`, `get_app_state`, `click`.
+- [x] Confirm latent action wave still exists or record if already removed: `type_text`, `press_key`, `scroll`, `drag`.
+- [x] Confirm current negotiated/exported MCP baseline is still `2025-06-18`.
+- [x] Confirm `Program.cs` still uses late-bound `hostServices` closure pattern for tool registration.
+- [x] Confirm generated interface docs still exist and identify which refresh command owns them.
+- [x] Decide whether any stage below is already obsolete because code changed; if yes, update this plan before implementation.
 
 **TDD:** не применяется. Это этап discovery и обновления planning state.
 
@@ -233,22 +233,56 @@ rg -n "2025-06-18|2025-11-25|protocolVersion" src scripts tests docs/generated
 rg -n "hostServices|CreateComputerUseWinTools|AddMcpServer" src/WinBridge.Server/Program.cs src/WinBridge.Server/ComputerUse
 ```
 
-**Commit:** не нужен, если файл не обновлялся из-за подтверждённого drift.
+**Commit:** отдельный snapshot commit обязателен, потому что пользовательский workflow требует немедленно фиксировать planning state внутри этого файла.
 
 #### Отчёт этапа
 
-- Статус этапа: `not_started`
-- Branch:
-- Commit SHA:
-- TDD применялся:
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-deferred-work-implementation`
+- Commit SHA: `pending`
+- TDD применялся: `нет; discovery-only stage`
 - Проверки:
+  - `git branch --show-current` -> `codex/computer-use-win-deferred-work-implementation`
+  - `git status --short` -> `M docs/exec-plans/active/computer-use-win-deferred-work.md` (ожидаемый snapshot diff текущего stage; unrelated tracked changes absent)
+  - статическое чтение и поиск по stage-listed source/tests/docs подтвердили: public surface = `list_apps`, `get_app_state`, `click`
+  - статическое чтение и поиск подтвердили latent action wave: `type_text`, `press_key`, `scroll`, `drag` по-прежнему существуют в code + manifest
+  - статическое чтение [ToolContractExporter.cs](src/WinBridge.Runtime.Tooling/ToolContractExporter.cs) и integration tests подтвердило negotiated/exported MCP baseline `2025-06-18`
+  - статическое чтение [Program.cs](src/WinBridge.Server/Program.cs) подтвердило late-bound `hostServices` closure pattern
+  - generated interface docs присутствуют; canonical refresh path: `scripts/refresh-generated-docs.ps1`
+  - `scripts/codex/bootstrap.ps1` -> green
+  - `scripts/codex/verify.ps1` -> green (`WinBridge.Runtime.Tests` 636/636, `WinBridge.Server.IntegrationTests` 238/238, smoke ok, generated docs refresh ok)
 - Review agents:
+  - `Huygens (architecture/contract)` -> initial `changes_requested`, re-review `approve_with_minor_notes`
+  - `Epicurus (tests/failure/docs/generated)` -> initial `changes_requested`, re-review `approve_with_minor_notes`
 - Подтверждённые замечания:
-- Отклонённые замечания:
+  - `[confirmed]` pre-commit evidence было завышено: строка `git status --short -> clean worktree` противоречила snapshot diff
+  - `[confirmed]` использован status вне собственного lifecycle contract: `review_pending` вместо допустимого enum
+  - `[confirmed]` generated docs surface был отмечен слишком общо и не перечислял конкретные checked artifacts
+- Отклонённые замечания: `нет`
 - Исправленные root causes:
+  - stage report теперь различает pre-commit snapshot state и post-commit clean state
+  - stage lifecycle wording приведён к допустимому status contract этого exec-plan
+  - inventory checked paths разделён с общим фактом существования generated docs
 - Проверенные соседние paths:
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinTools.cs`
+  - `src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs`
+  - `src/WinBridge.Runtime.Tooling/ToolNames.cs`
+  - `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`
+  - `src/WinBridge.Runtime.Tooling/ToolContractExporter.cs`
+  - `docs/generated/project-interfaces.md`
+  - `docs/generated/project-interfaces.json`
+  - `docs/generated/computer-use-win-interfaces.md`
+  - `docs/generated/computer-use-win-interfaces.json`
+  - `scripts/refresh-generated-docs.ps1`
+  - `tests/WinBridge.Server.IntegrationTests/McpProtocolSmokeTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinArchitectureTests.cs`
+  - `tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs`
 - Остаточные риски:
+  - Stage 0 подтвердил baseline, но не меняет code invariants; accidental publication и protocol drift остаются задачами `Stage 1-3`
 - Разблокировка следующего этапа:
+  - прогнать review gate для snapshot diff
+  - записать commit SHA этого snapshot stage
+  - только после этого переходить к `Stage 1`
 
 ### Stage 1: C0 public surface freeze and initial A3 guard rails
 
