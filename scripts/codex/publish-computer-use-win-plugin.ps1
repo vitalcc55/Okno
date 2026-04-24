@@ -162,6 +162,15 @@ function Read-RuntimeBundleManifest {
     Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
 }
 
+function Test-RuntimeBundleManifestExists {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RootPath
+    )
+
+    Test-Path (Get-RuntimeBundleManifestPath -RootPath $RootPath) -PathType Leaf
+}
+
 function Assert-RuntimeBundleMatchesManifest {
     param(
         [Parameter(Mandatory)]
@@ -205,7 +214,91 @@ function Assert-RuntimeBundleMatchesManifest {
     }
 }
 
-function Move-RuntimeBundleToCanonicalPath {
+function Assert-LegacyRuntimeBundleCanBeMigrated {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RootPath,
+        [Parameter(Mandatory)]
+        [string] $Description
+    )
+
+    $requiredFiles = @(
+        'Okno.Server.exe',
+        'Okno.Server.dll',
+        'Okno.Server.deps.json',
+        'Okno.Server.runtimeconfig.json',
+        'hostfxr.dll',
+        'hostpolicy.dll',
+        'coreclr.dll'
+    )
+
+    $missing = @(
+        $requiredFiles | Where-Object {
+            -not (Test-Path (Join-Path $RootPath $_) -PathType Leaf)
+        }
+    )
+
+    if ($missing.Count -gt 0) {
+        throw "$Description cannot be migrated to manifest-owned runtime bundle. Missing: $($missing -join ', ')."
+    }
+}
+
+function Assert-OrCreateRuntimeBundleManifest {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RootPath,
+        [Parameter(Mandatory)]
+        [string] $Description
+    )
+
+    if (Test-RuntimeBundleManifestExists -RootPath $RootPath) {
+        Assert-RuntimeBundleMatchesManifest -RootPath $RootPath -Description $Description
+        return
+    }
+
+    Assert-LegacyRuntimeBundleCanBeMigrated -RootPath $RootPath -Description $Description
+    Write-RuntimeBundleManifest -RootPath $RootPath
+    Assert-RuntimeBundleMatchesManifest -RootPath $RootPath -Description $Description
+}
+
+function Stage-RuntimeBundleFromBackup {
+    param(
+        [Parameter(Mandatory)]
+        [string] $DestinationRoot,
+        [Parameter(Mandatory)]
+        [string] $Description
+    )
+
+    Remove-DirectoryIfExists -Path $DestinationRoot
+    Copy-DirectoryContents -SourceRoot $backupRoot -DestinationRoot $DestinationRoot
+    Assert-OrCreateRuntimeBundleManifest -RootPath $DestinationRoot -Description $Description
+}
+
+function Publish-RuntimeBundleToStaging {
+    if (-not [string]::IsNullOrWhiteSpace($env:COMPUTER_USE_WIN_TEST_PUBLISH_SOURCE_ROOT)) {
+        $publishSourceRoot = $env:COMPUTER_USE_WIN_TEST_PUBLISH_SOURCE_ROOT
+        Assert-RuntimeBundleMatchesManifest -RootPath $publishSourceRoot -Description "Test publish source runtime bundle '$publishSourceRoot'"
+        Copy-DirectoryContents -SourceRoot $publishSourceRoot -DestinationRoot $stagingRoot
+        Assert-RuntimeBundleMatchesManifest -RootPath $stagingRoot -Description "Published computer-use-win runtime bundle '$stagingRoot'"
+        return
+    }
+
+    Invoke-NativeCommandToStderr -FailureMessage "dotnet publish failed for computer-use-win runtime bundle." -Command {
+        & dotnet publish $serverProjectPath `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:UseAppHost=true `
+            -p:PublishSingleFile=false `
+            -p:PublishTrimmed=false `
+            --output $stagingRoot
+    }
+
+    Write-RuntimeBundleManifest -RootPath $stagingRoot
+    Assert-RuntimeBundleMatchesManifest -RootPath $stagingRoot -Description "Published computer-use-win runtime bundle '$stagingRoot'"
+}
+
+function Promote-ValidatedRuntimeBundle {
     param(
         [Parameter(Mandatory)]
         [string] $SourceRoot,
@@ -214,6 +307,8 @@ function Move-RuntimeBundleToCanonicalPath {
         [Parameter(Mandatory)]
         [string] $Description
     )
+
+    Assert-RuntimeBundleMatchesManifest -RootPath $SourceRoot -Description $Description
 
     if (Test-Path $DestinationRoot -PathType Container) {
         Remove-DirectoryIfExists -Path $DestinationRoot
@@ -235,7 +330,8 @@ function Restore-CanonicalRuntimeFromBackup {
     )
 
     try {
-        Move-RuntimeBundleToCanonicalPath -SourceRoot $backupRoot -DestinationRoot $runtimeRoot -Description $Description
+        Stage-RuntimeBundleFromBackup -DestinationRoot $repairRoot -Description "Staged runtime repair directory '$repairRoot'"
+        Promote-ValidatedRuntimeBundle -SourceRoot $repairRoot -DestinationRoot $runtimeRoot -Description $Description
     }
     catch {
         if (Test-Path $runtimeRoot -PathType Container) {
@@ -243,8 +339,7 @@ function Restore-CanonicalRuntimeFromBackup {
         }
 
         try {
-            Copy-DirectoryContents -SourceRoot $backupRoot -DestinationRoot $runtimeRoot
-            Assert-RuntimeBundleMatchesManifest -RootPath $runtimeRoot -Description $Description
+            Stage-RuntimeBundleFromBackup -DestinationRoot $runtimeRoot -Description $Description
         }
         catch {
             if (Test-Path $runtimeRoot -PathType Container) {
@@ -267,20 +362,7 @@ $restoreCompleted = $false
 $terminalState = 'publishing'
 
 try {
-    Invoke-NativeCommandToStderr -FailureMessage "dotnet publish failed for computer-use-win runtime bundle." -Command {
-        & dotnet publish $serverProjectPath `
-            --configuration Release `
-            --runtime win-x64 `
-            --self-contained true `
-            -p:UseAppHost=true `
-            -p:PublishSingleFile=false `
-            -p:PublishTrimmed=false `
-            --output $stagingRoot
-    }
-
-    Write-RuntimeBundleManifest -RootPath $stagingRoot
-    Assert-RuntimeBundleMatchesManifest -RootPath $stagingRoot -Description "Published computer-use-win runtime bundle '$stagingRoot'"
-
+    Publish-RuntimeBundleToStaging
     Copy-DirectoryContents -SourceRoot $stagingRoot -DestinationRoot $swapRoot
 
     Assert-RuntimeBundleMatchesManifest -RootPath $swapRoot -Description "Plugin runtime swap directory '$swapRoot'"
@@ -300,24 +382,21 @@ try {
     }
     catch {
         if (-not (Test-Path $runtimeRoot -PathType Container) -and (Test-Path $backupRoot -PathType Container)) {
+            $restoreStarted = $false
             try {
                 if ($env:COMPUTER_USE_WIN_TEST_FAIL_RESTORE -eq '1') {
                     throw "Synthetic publish restore failure after promote error."
                 }
 
-                Move-RuntimeBundleToCanonicalPath -SourceRoot $backupRoot -DestinationRoot $runtimeRoot -Description "Canonical runtime path '$runtimeRoot' after restore"
+                $restoreStarted = $true
+                Restore-CanonicalRuntimeFromBackup -Description "Canonical runtime path '$runtimeRoot' after restore"
             }
             catch {
-                Remove-DirectoryIfExists -Path $repairRoot
-                Copy-DirectoryContents -SourceRoot $backupRoot -DestinationRoot $repairRoot
-                Assert-RuntimeBundleMatchesManifest -RootPath $repairRoot -Description "Staged runtime repair directory '$repairRoot'"
-                try {
-                    Move-RuntimeBundleToCanonicalPath -SourceRoot $repairRoot -DestinationRoot $runtimeRoot -Description "Canonical runtime path '$runtimeRoot' after restore repair"
-                }
-                catch {
-                    Restore-CanonicalRuntimeFromBackup -Description "Canonical runtime path '$runtimeRoot' after failed repair handoff fallback"
+                if ($restoreStarted) {
                     throw
                 }
+
+                Restore-CanonicalRuntimeFromBackup -Description "Canonical runtime path '$runtimeRoot' after restore repair"
             }
 
             $restoreCompleted = $true
