@@ -3,6 +3,13 @@ using WinBridge.Runtime.Windows.Shell;
 
 namespace WinBridge.Server.ComputerUse;
 
+internal enum ComputerUseWinStoredStateValidationMode
+{
+    SemanticElementAction,
+    CoordinateScreenAction,
+    CoordinateCapturePixelsAction,
+}
+
 internal static class ComputerUseWinWindowContinuityProof
 {
     // Windows does not expose a non-reusable public instance id for top-level HWNDs here.
@@ -37,16 +44,36 @@ internal static class ComputerUseWinWindowContinuityProof
         return MatchesInstanceContinuity(liveWindow, attachedWindow);
     }
 
-    public static bool MatchesObservedState(WindowDescriptor liveWindow, WindowDescriptor observedWindow)
+    public static bool MatchesObservedState(
+        WindowDescriptor liveWindow,
+        ComputerUseWinStoredState observedState,
+        ComputerUseWinStoredStateValidationMode validationMode)
     {
         ArgumentNullException.ThrowIfNull(liveWindow);
-        ArgumentNullException.ThrowIfNull(observedWindow);
+        ArgumentNullException.ThrowIfNull(observedState);
 
-        return MatchesInstanceContinuity(liveWindow, observedWindow);
+        return validationMode switch
+        {
+            ComputerUseWinStoredStateValidationMode.SemanticElementAction =>
+                MatchesInstanceContinuity(liveWindow, observedState.Window),
+            ComputerUseWinStoredStateValidationMode.CoordinateScreenAction =>
+                MatchesObservedCoordinateAction(liveWindow, observedState.Window),
+            ComputerUseWinStoredStateValidationMode.CoordinateCapturePixelsAction =>
+                MatchesObservedCoordinateAction(liveWindow, observedState.Window)
+                && observedState.CaptureReference is not null
+                && CaptureReferenceGeometryPolicy.MatchesCaptureReferenceWindowProof(observedState.CaptureReference, liveWindow),
+            _ => throw new ArgumentOutOfRangeException(nameof(validationMode), validationMode, "Неизвестный validation mode для observed state."),
+        };
     }
 
     private static bool MatchesInstanceContinuity(WindowDescriptor liveWindow, WindowDescriptor expectedWindow) =>
         liveWindow.Hwnd == expectedWindow.Hwnd
         && WindowIdentityValidator.MatchesStableIdentity(liveWindow, expectedWindow)
         && string.Equals(liveWindow.ProcessName, expectedWindow.ProcessName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool MatchesObservedCoordinateAction(WindowDescriptor liveWindow, WindowDescriptor observedWindow) =>
+        MatchesInstanceContinuity(liveWindow, observedWindow)
+        && CaptureReferenceGeometryPolicy.BoundsMatchWithinDrift(observedWindow.Bounds, liveWindow.Bounds)
+        && liveWindow.EffectiveDpi == observedWindow.EffectiveDpi
+        && string.Equals(liveWindow.MonitorId, observedWindow.MonitorId, StringComparison.Ordinal);
 }

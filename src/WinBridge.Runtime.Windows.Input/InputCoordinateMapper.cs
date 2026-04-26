@@ -130,7 +130,7 @@ internal static class InputCoordinateMapper
         Bounds liveBounds = targetWindow.Bounds;
         if (!CaptureReferenceGeometryPolicy.TryCreateGeometryBasis(captureReference, out CaptureReferenceGeometryBasis? basis)
             || basis is null
-            || !CaptureReferenceMatchesLiveGeometry(basis, liveBounds, targetWindow.EffectiveDpi))
+            || !CaptureReferenceGeometryPolicy.MatchesLiveWindowGeometry(captureReference, targetWindow))
         {
             screenPoint = null;
             failureCode = InputFailureCodeValues.CaptureReferenceStale;
@@ -225,24 +225,6 @@ internal static class InputCoordinateMapper
         && point.X < bounds.Right
         && point.Y >= bounds.Top
         && point.Y < bounds.Bottom;
-
-    private static bool CaptureReferenceMatchesLiveGeometry(
-        CaptureReferenceGeometryBasis basis,
-        Bounds liveBounds,
-        int liveEffectiveDpi)
-    {
-        if (!CaptureReferenceGeometryPolicy.BoundsMatchWithinDrift(basis.FrameBounds, liveBounds))
-        {
-            return false;
-        }
-
-        return ValidateCaptureDpiStillMatches(basis, liveEffectiveDpi);
-    }
-
-    private static bool ValidateCaptureDpiStillMatches(
-        CaptureReferenceGeometryBasis basis,
-        int liveEffectiveDpi) =>
-        basis.EffectiveDpi is not int captureDpi || captureDpi == liveEffectiveDpi;
 
     private static bool TryGetExtent(int startEdge, int endEdge, out long extent)
     {

@@ -180,6 +180,25 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ComputerUseWinListAppsMetadataReflectsStatefulSelectorIssuance()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
+        JsonElement listAppsDescriptor = JsonSerializer.SerializeToElement(
+            ToolContractExporter.CreateDocument(ToolSurfaceProfileValues.ComputerUseWin)
+                .Tools
+                .Implemented
+                .Single(tool => tool.Name == ToolNames.ComputerUseWinListApps));
+        ToolDescriptor listAppsContract = profile.Implemented.Single(tool => tool.Name == ToolNames.ComputerUseWinListApps);
+        var listAppsTool = tools.Single(tool => tool.ProtocolTool.Name == ToolNames.ComputerUseWinListApps);
+
+        Assert.Equal(ToolSafetyClass.SessionMutation, listAppsContract.SafetyClass);
+        Assert.False(listAppsTool.ProtocolTool.Annotations!.ReadOnlyHint!.Value);
+        Assert.False(listAppsTool.ProtocolTool.Annotations.IdempotentHint!.Value);
+        Assert.Equal("session_mutation", listAppsDescriptor.GetProperty("safety_class").GetString());
+    }
+
+    [Fact]
     public void ComputerUseWinToolsExposeOnlyCuratedOperatorEntryPoints()
     {
         string[] callableMethodNames = typeof(ComputerUseWinTools)

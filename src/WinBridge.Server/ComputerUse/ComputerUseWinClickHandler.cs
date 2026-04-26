@@ -19,6 +19,7 @@ internal sealed class ComputerUseWinClickHandler(
                 request.StateToken,
                 invocation,
                 ToolNames.ComputerUseWinClick,
+                DetermineValidationMode(request),
                 out ComputerUseWinActionReadyState? state,
                 out CallToolResult? failureResult))
         {
@@ -88,5 +89,20 @@ internal sealed class ComputerUseWinClickHandler(
                 exception,
                 preDispatchStateMutationPossible: true);
         }
+    }
+
+    private static ComputerUseWinStoredStateValidationMode DetermineValidationMode(ComputerUseWinClickRequest request)
+    {
+        if (request.ElementIndex is not null)
+        {
+            return ComputerUseWinStoredStateValidationMode.SemanticElementAction;
+        }
+
+        string coordinateSpace = request.CoordinateSpace is null
+            ? InputCoordinateSpaceValues.CapturePixels
+            : request.CoordinateSpace!;
+        return string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
+            ? ComputerUseWinStoredStateValidationMode.CoordinateCapturePixelsAction
+            : ComputerUseWinStoredStateValidationMode.CoordinateScreenAction;
     }
 }

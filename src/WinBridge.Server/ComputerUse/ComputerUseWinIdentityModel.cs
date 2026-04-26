@@ -32,6 +32,7 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
     private readonly int maxEntries;
     private readonly object gate = new();
     private long nextGeneration = 1;
+    private long? latestPublishedDiscoveryGeneration;
     private readonly Dictionary<string, CatalogEntry> entries = new(StringComparer.Ordinal);
 
     public ComputerUseWinExecutionTargetCatalog()
@@ -59,7 +60,7 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             .Where(static target => target is not null)
             .Cast<PendingTarget>()
             .ToArray();
-        return CommitBatch(pendingTargets);
+        return CommitBatch(pendingTargets, protectAsPublishedDiscoverySnapshot: true);
     }
 
     public bool TryIssue(WindowDescriptor window, out ComputerUseWinExecutionTarget? target)
@@ -72,7 +73,7 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             return false;
         }
 
-        target = CommitBatch([pendingTarget])[0];
+        target = CommitBatch([pendingTarget], protectAsPublishedDiscoverySnapshot: false)[0];
         return true;
     }
 
@@ -141,10 +142,22 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         return true;
     }
 
-    private ComputerUseWinExecutionTarget[] CommitBatch(IReadOnlyList<PendingTarget> pendingTargets)
+    private ComputerUseWinExecutionTarget[] CommitBatch(
+        IReadOnlyList<PendingTarget> pendingTargets,
+        bool protectAsPublishedDiscoverySnapshot)
     {
         if (pendingTargets.Count == 0)
         {
+            if (protectAsPublishedDiscoverySnapshot)
+            {
+                lock (gate)
+                {
+                    EvictExpired_NoLock();
+                    latestPublishedDiscoveryGeneration = null;
+                    EvictOverflowPreservingLifetimes_NoLock(currentGeneration: null);
+                }
+            }
+
             return [];
         }
 
@@ -169,7 +182,12 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
                     issuedAtUtc);
             }
 
-            EvictOverflowPreservingGeneration_NoLock(generation);
+            if (protectAsPublishedDiscoverySnapshot)
+            {
+                latestPublishedDiscoveryGeneration = generation;
+            }
+
+            EvictOverflowPreservingLifetimes_NoLock(generation);
         }
 
         return issuedTargets;
@@ -192,14 +210,16 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         }
     }
 
-    private void EvictOverflowPreservingGeneration_NoLock(long protectedGeneration)
+    private void EvictOverflowPreservingLifetimes_NoLock(long? currentGeneration)
     {
         if (entries.Count <= maxEntries)
         {
             return;
         }
 
-        int protectedCount = entries.Count(entry => entry.Value.Generation == protectedGeneration);
+        int protectedCount = entries.Count(entry =>
+            (currentGeneration is long generation && entry.Value.Generation == generation)
+            || (latestPublishedDiscoveryGeneration is long latestPublished && entry.Value.Generation == latestPublished));
         int allowedCount = Math.Max(maxEntries, protectedCount);
         int removeCount = entries.Count - allowedCount;
         if (removeCount <= 0)
@@ -208,7 +228,9 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         }
 
         string[] windowIdsToRemove = entries
-            .Where(entry => entry.Value.Generation != protectedGeneration)
+            .Where(entry =>
+                (currentGeneration is not long generation || entry.Value.Generation != generation)
+                && (latestPublishedDiscoveryGeneration is not long latestPublished || entry.Value.Generation != latestPublished))
             .OrderBy(static entry => entry.Value.Generation)
             .ThenBy(static entry => entry.Value.IssuedAtUtc)
             .ThenBy(static entry => entry.Key, StringComparer.Ordinal)

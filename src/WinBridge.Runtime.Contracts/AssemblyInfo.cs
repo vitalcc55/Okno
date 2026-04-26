@@ -4,3 +4,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WinBridge.Runtime.Windows.Capture")]
 [assembly: InternalsVisibleTo("WinBridge.Runtime.Windows.Input")]
 [assembly: InternalsVisibleTo("WinBridge.Runtime.Tests")]
+[assembly: InternalsVisibleTo("Okno.Server")]

@@ -138,6 +138,17 @@ internal static class CaptureReferenceGeometryPolicy
         && liveTargetWindow.ThreadId == targetIdentity.ThreadId
         && string.Equals(liveTargetWindow.ClassName, targetIdentity.ClassName, StringComparison.Ordinal);
 
+    public static bool MatchesCaptureReferenceWindowProof(InputCaptureReference? captureReference, WindowDescriptor liveTargetWindow) =>
+        captureReference?.TargetIdentity is InputTargetIdentity targetIdentity
+        && MatchesTargetIdentity(targetIdentity, liveTargetWindow)
+        && MatchesLiveWindowGeometry(captureReference, liveTargetWindow);
+
+    public static bool MatchesLiveWindowGeometry(InputCaptureReference captureReference, WindowDescriptor liveTargetWindow) =>
+        TryCreateGeometryBasis(captureReference, out CaptureReferenceGeometryBasis? basis)
+        && basis is not null
+        && BoundsMatchWithinDrift(basis.FrameBounds, liveTargetWindow.Bounds)
+        && (basis.EffectiveDpi is not int captureDpi || captureDpi == liveTargetWindow.EffectiveDpi);
+
     public static bool MatchesStableTargetIdentity(WindowDescriptor expectedWindow, WindowDescriptor liveTargetWindow) =>
         TryCreateTargetIdentity(expectedWindow, out InputTargetIdentity? targetIdentity)
         && targetIdentity is not null

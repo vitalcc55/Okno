@@ -249,6 +249,11 @@ public sealed class McpProtocolSmokeTests
                 .GetProperty("tools")
                 .EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinClick);
+            JsonElement listAppsDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinListApps);
             JsonElement getAppStateDescriptor = toolsResponse.RootElement
                 .GetProperty("result")
                 .GetProperty("tools")
@@ -260,6 +265,11 @@ public sealed class McpProtocolSmokeTests
             AssertSchemaRequiredContains(clickDescriptor.GetProperty("inputSchema"), "stateToken");
 
             JsonElement getAppStateAnnotations = getAppStateDescriptor.GetProperty("annotations");
+            JsonElement listAppsAnnotations = listAppsDescriptor.GetProperty("annotations");
+            Assert.False(listAppsAnnotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(listAppsAnnotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.False(listAppsAnnotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.True(listAppsAnnotations.GetProperty("openWorldHint").GetBoolean());
             Assert.False(getAppStateAnnotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.False(getAppStateAnnotations.GetProperty("destructiveHint").GetBoolean());
             Assert.False(getAppStateAnnotations.GetProperty("idempotentHint").GetBoolean());

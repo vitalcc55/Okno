@@ -231,6 +231,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             token,
             invocation,
             ToolNames.ComputerUseWinClick,
+            ComputerUseWinStoredStateValidationMode.SemanticElementAction,
             out ComputerUseWinActionReadyState? actionReadyState,
             out ModelContextProtocol.Protocol.CallToolResult? failureResult);
 
@@ -272,6 +273,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             token,
             invocation,
             ToolNames.ComputerUseWinClick,
+            ComputerUseWinStoredStateValidationMode.SemanticElementAction,
             out ComputerUseWinActionReadyState? actionReadyState,
             out ModelContextProtocol.Protocol.CallToolResult? failureResult);
 
@@ -311,6 +313,47 @@ public sealed class ComputerUseWinActionAndProjectionTests
             token,
             invocation,
             ToolNames.ComputerUseWinClick,
+            ComputerUseWinStoredStateValidationMode.SemanticElementAction,
+            out ComputerUseWinActionReadyState? actionReadyState,
+            out ModelContextProtocol.Protocol.CallToolResult? failureResult);
+
+        Assert.False(success);
+        Assert.Null(actionReadyState);
+        Assert.NotNull(failureResult);
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, failureResult!.StructuredContent!.Value.GetProperty("failureCode").GetString());
+    }
+
+    [Fact]
+    public void StoredStateResolverRejectsCoordinateActionWhenObservedWindowGeometryDrifts()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor driftedWindow = CreateWindow(
+            hwnd: 101,
+            title: "Original (updated)",
+            processName: "explorer",
+            processId: 1001,
+            isForeground: true,
+            bounds: new Bounds(40, 50, 800, 620));
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredState() with
+        {
+            Session = new ComputerUseWinAppSession("explorer", "cw_test_window", 101, originalWindow.Title, originalWindow.ProcessName, originalWindow.ProcessId),
+            Window = originalWindow,
+        });
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-7-coordinate-window-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinClick,
+            new { stateToken = token, point = new { x = 20, y = 30 }, confirm = true },
+            sessionManager.GetSnapshot());
+        ComputerUseWinStoredStateResolver resolver = new(
+            stateStore,
+            new FakeListAppsWindowManager([driftedWindow]));
+
+        bool success = resolver.TryResolve(
+            token,
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            ComputerUseWinStoredStateValidationMode.CoordinateCapturePixelsAction,
             out ComputerUseWinActionReadyState? actionReadyState,
             out ModelContextProtocol.Protocol.CallToolResult? failureResult);
 
@@ -387,6 +430,87 @@ public sealed class ComputerUseWinActionAndProjectionTests
                 out ComputerUseWinExecutionTarget? _,
                 out WindowDescriptor? _,
                 out bool _));
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogPreservesLatestDiscoveryBatchAcrossFollowUpIssuance()
+    {
+        IReadOnlyList<WindowDescriptor> discoveryBatch =
+        [
+            CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false),
+            CreateWindow(hwnd: 202, title: "Window B", processName: "explorer", processId: 1001, isForeground: true),
+        ];
+        WindowDescriptor followUpWindow = CreateWindow(
+            hwnd: 303,
+            title: "Window C",
+            processName: "notepad",
+            processId: 2002,
+            threadId: 3003,
+            className: "OtherWindow",
+            isForeground: false);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 2);
+
+        IReadOnlyList<ComputerUseWinExecutionTarget> discoveryTargets = executionTargetCatalog.Materialize(discoveryBatch);
+        bool followUpIssued = executionTargetCatalog.TryIssue(followUpWindow, out ComputerUseWinExecutionTarget? followUpTarget);
+
+        Assert.True(followUpIssued);
+        Assert.NotNull(followUpTarget);
+        Assert.All(discoveryTargets, target =>
+        {
+            bool resolved = executionTargetCatalog.TryResolveWindowId(
+                target.WindowId.Value,
+                discoveryBatch,
+                out ComputerUseWinExecutionTarget? _,
+                out WindowDescriptor? _,
+                out bool continuityFailed);
+
+            Assert.True(resolved);
+            Assert.False(continuityFailed);
+        });
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogClearsPublishedDiscoveryProtectionWhenNextPublicationIsEmpty()
+    {
+        IReadOnlyList<WindowDescriptor> discoveryBatch =
+        [
+            CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false),
+            CreateWindow(hwnd: 202, title: "Window B", processName: "explorer", processId: 1001, isForeground: true),
+        ];
+        WindowDescriptor followUpWindowA = CreateWindow(
+            hwnd: 303,
+            title: "Window C",
+            processName: "notepad",
+            processId: 2002,
+            threadId: 3003,
+            className: "OtherWindow",
+            isForeground: false);
+        WindowDescriptor followUpWindowB = CreateWindow(
+            hwnd: 404,
+            title: "Window D",
+            processName: "calc",
+            processId: 4004,
+            threadId: 5005,
+            className: "CalcWindow",
+            isForeground: true);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 2);
+
+        IReadOnlyList<ComputerUseWinExecutionTarget> discoveryTargets = executionTargetCatalog.Materialize(discoveryBatch);
+        IReadOnlyList<ComputerUseWinExecutionTarget> emptyPublication = executionTargetCatalog.Materialize([]);
+        bool firstIssued = executionTargetCatalog.TryIssue(followUpWindowA, out ComputerUseWinExecutionTarget? _);
+        bool secondIssued = executionTargetCatalog.TryIssue(followUpWindowB, out ComputerUseWinExecutionTarget? _);
+
+        Assert.Empty(emptyPublication);
+        Assert.True(firstIssued);
+        Assert.True(secondIssued);
+        Assert.All(discoveryTargets, target =>
+            Assert.False(
+                executionTargetCatalog.TryResolveWindowId(
+                    target.WindowId.Value,
+                    discoveryBatch,
+                    out ComputerUseWinExecutionTarget? _,
+                    out WindowDescriptor? _,
+                    out bool _)));
     }
 
     [Fact]

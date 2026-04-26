@@ -13,6 +13,7 @@ internal sealed class ComputerUseWinStoredStateResolver(
         string? stateToken,
         AuditInvocationScope invocation,
         string toolName,
+        ComputerUseWinStoredStateValidationMode validationMode,
         out ComputerUseWinActionReadyState? state,
         out CallToolResult? failureResult)
     {
@@ -46,7 +47,7 @@ internal sealed class ComputerUseWinStoredStateResolver(
 
         WindowDescriptor expectedWindow = storedState.Window;
         WindowDescriptor? liveWindow = windowManager.ListWindows().SingleOrDefault(item =>
-            ComputerUseWinWindowContinuityProof.MatchesObservedState(item, expectedWindow));
+            ComputerUseWinWindowContinuityProof.MatchesObservedState(item, storedState, validationMode));
         if (liveWindow is null)
         {
             state = null;
