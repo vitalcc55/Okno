@@ -764,6 +764,40 @@ public sealed class ComputerUseWinInstallSurfaceTests
         }
     }
 
+    [Theory]
+    [InlineData("Directory.Build.props")]
+    [InlineData("Directory.Packages.props")]
+    [InlineData("global.json")]
+    [InlineData("WinBridge.sln")]
+    [InlineData("NuGet.Config")]
+    [InlineData("Repo.Custom.props")]
+    [InlineData("Repo.Custom.targets")]
+    public void PublishedRuntimeBundleIsFreshReturnsFalseWhenRepoLevelBuildInputIsNewerThanManifest(string repoLevelInputName)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        string runtimeRoot = Path.Combine(root, "plugins", "computer-use-win", "runtime", "win-x64");
+        string manifestPath = Path.Combine(runtimeRoot, "okno-runtime-bundle-manifest.json");
+        string repoLevelInputPath = Path.Combine(root, repoLevelInputName);
+
+        try
+        {
+            Directory.CreateDirectory(runtimeRoot);
+            File.WriteAllText(manifestPath, """{"formatVersion":1,"files":[]}""");
+            File.WriteAllText(repoLevelInputPath, "<Project />");
+
+            DateTime manifestWriteUtc = DateTime.UtcNow.AddMinutes(-2);
+            DateTime inputWriteUtc = DateTime.UtcNow.AddMinutes(-1);
+            File.SetLastWriteTimeUtc(manifestPath, manifestWriteUtc);
+            File.SetLastWriteTimeUtc(repoLevelInputPath, inputWriteUtc);
+
+            Assert.False(PublishedRuntimeBundleIsFresh(root, runtimeRoot));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(root);
+        }
+    }
+
     private static Process StartPluginLauncher(string pluginRoot)
     {
         ProcessStartInfo startInfo = new()
@@ -877,12 +911,25 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
     private static IEnumerable<string> EnumeratePublishInputs(string repoRoot)
     {
+        HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string path in EnumerateRepoRootBuildInputs(repoRoot))
+        {
+            if (yielded.Add(Path.GetFullPath(path)))
+            {
+                yield return path;
+            }
+        }
+
         string srcRoot = Path.Combine(repoRoot, "src");
         if (Directory.Exists(srcRoot))
         {
             foreach (string path in EnumerateFilesRecursively(srcRoot))
             {
-                yield return path;
+                if (yielded.Add(Path.GetFullPath(path)))
+                {
+                    yield return path;
+                }
             }
         }
 
@@ -898,7 +945,10 @@ public sealed class ComputerUseWinInstallSurfaceTests
                     continue;
                 }
 
-                yield return path;
+                if (yielded.Add(normalizedPath))
+                {
+                    yield return path;
+                }
             }
         }
 
@@ -907,8 +957,43 @@ public sealed class ComputerUseWinInstallSurfaceTests
         {
             foreach (string path in EnumerateFilesRecursively(scriptsRoot))
             {
-                yield return path;
+                if (yielded.Add(Path.GetFullPath(path)))
+                {
+                    yield return path;
+                }
             }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateRepoRootBuildInputs(string repoRoot)
+    {
+        string[] canonicalFiles =
+        [
+            "global.json",
+            "Directory.Build.props",
+            "Directory.Packages.props",
+            "WinBridge.sln",
+            "NuGet.Config",
+            "nuget.config",
+        ];
+
+        foreach (string fileName in canonicalFiles)
+        {
+            string candidate = Path.Combine(repoRoot, fileName);
+            if (File.Exists(candidate))
+            {
+                yield return candidate;
+            }
+        }
+
+        foreach (string path in Directory.EnumerateFiles(repoRoot, "*.props", SearchOption.TopDirectoryOnly))
+        {
+            yield return path;
+        }
+
+        foreach (string path in Directory.EnumerateFiles(repoRoot, "*.targets", SearchOption.TopDirectoryOnly))
+        {
+            yield return path;
         }
     }
 

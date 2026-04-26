@@ -43,6 +43,7 @@ builder.Services.AddWinBridgeRuntimeWindowsUia(builder.Environment.ContentRootPa
 builder.Services.AddSingleton(static services =>
     ComputerUseWinOptions.Resolve(services.GetRequiredService<IHostEnvironment>().ContentRootPath));
 builder.Services.AddSingleton<ComputerUseWinApprovalStore>();
+builder.Services.AddSingleton<ComputerUseWinExecutionTargetCatalog>();
 builder.Services.AddSingleton<ComputerUseWinAppDiscoveryService>();
 builder.Services.AddSingleton(static services => new ComputerUseWinAppStateObserver(
     services.GetRequiredService<ICaptureService>(),

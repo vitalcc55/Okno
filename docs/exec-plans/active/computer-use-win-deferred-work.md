@@ -1045,12 +1045,16 @@ scripts/codex/verify.ps1
   - Перед каждым stage commit выполнен обязательный `gpt-5.5` review/re-review gate по architecture/contract и tests/docs/generated surface.
   - Подтверждённые findings обрабатывались через root-cause fix, neighbor-path checks и повторный review до `approve` / `approve_with_minor_notes`.
   - После `Stage 7` выполнен branch-level review относительно `main`: cumulative closure-layer после синхронизации final exec-plan evidence получил `approve_with_minor_notes` / `approve_with_minor_notes`; blocking issues на ветке не осталось.
+- Post-final review follow-up (`2026-04-26`):
+  - `[confirmed]` external branch review нашёл реальный identity gap: `windowId` Stage 4 был discovery-scoped по формулировке, но фактически выводился из reusable live fingerprint. Closure fix перевёл `windowId` на runtime-owned opaque catalog selector и добавил fail-closed continuity proof для `windowId`, attached fallback и `stateToken` paths.
+  - `[confirmed]` external branch review нашёл неполный install freshness gate: `PublishedRuntimeBundleIsFresh` не учитывал repo-root build inputs. Closure fix расширил input inventory на `global.json`, `Directory.Build.props`, `Directory.Packages.props`, `WinBridge.sln` и root `*.props` / `*.targets` (плюс `NuGet.Config`, если он появится).
+  - post-review verification: `ComputerUseWinActionAndProjectionTests|ComputerUseWinArchitectureTests` -> green `77/77`; `ComputerUseWinInstallSurfaceTests.PublishedRuntimeBundleIsFreshReturnsFalseWhenRepoLevelBuildInputIsNewerThanManifest|ComputerUseWinInstallSurfaceTests.ComputerUseWinLauncherFromTempPluginCopyPublishesPublicSurfaceWithoutRepoHints` -> green `8/8`; broad `ComputerUseWin` contour -> green `130/130`; `McpProtocolSmokeTests` -> green `22/22`.
 - Deferred decisions:
   - `Stage 5`: отдельный public pure observe tool не вводится; `get_app_state` остаётся action-ready и side-effecting.
   - `Stage 6`: broad availability-first soft-fail policy не вводится; сохраняется truthful failure semantics с narrow advisory instruction soft-fail path.
   - `Stage 7 / I1`: targeted isolation expansion intentionally deferred; нового подтверждённого host-risky capability boundary не найдено.
 - Remaining risks:
-  - `windowId` остаётся discovery-scoped selector и не должен считаться durable beyond window churn.
+  - `windowId` остаётся discovery-scoped selector и не должен считаться durable beyond сохранённый discovery snapshot; при drift/recreation runtime теперь намеренно fail-close-ится вместо silent retarget.
   - future optional enrichment beyond current advisory instruction path потребует reopening state/policy matrix отдельным TDD stage.
   - install/publication contour остаётся стабилен при external publish refresh; этот pre-step следует сохранять перед broad suite, если source code changed.
 

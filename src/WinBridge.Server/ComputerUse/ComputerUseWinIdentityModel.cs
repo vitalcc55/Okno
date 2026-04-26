@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Windows.Shell;
 
@@ -27,21 +25,42 @@ internal sealed record ComputerUseWinDiscoveredApp(
     bool IsBlocked,
     string? BlockReason);
 
-internal static class ComputerUseWinExecutionTargetCatalog
+internal sealed class ComputerUseWinExecutionTargetCatalog
 {
-    public static IReadOnlyList<ComputerUseWinExecutionTarget> Materialize(IReadOnlyList<WindowDescriptor> windows)
+    private readonly TimeProvider timeProvider;
+    private readonly TimeSpan entryTtl;
+    private readonly int maxEntries;
+    private readonly object gate = new();
+    private readonly Dictionary<string, CatalogEntry> entries = new(StringComparer.Ordinal);
+
+    public ComputerUseWinExecutionTargetCatalog()
+        : this(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 128)
+    {
+    }
+
+    internal ComputerUseWinExecutionTargetCatalog(TimeProvider timeProvider, TimeSpan entryTtl, int maxEntries)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEntries, 0);
+
+        this.timeProvider = timeProvider;
+        this.entryTtl = entryTtl;
+        this.maxEntries = maxEntries;
+    }
+
+    public IReadOnlyList<ComputerUseWinExecutionTarget> Materialize(IReadOnlyList<WindowDescriptor> windows)
     {
         ArgumentNullException.ThrowIfNull(windows);
 
         return windows
             .Where(static window => window.IsVisible)
-            .Select(static window => TryCreate(window, out ComputerUseWinExecutionTarget? target) ? target : null)
+            .Select(window => TryIssue(window, out ComputerUseWinExecutionTarget? target) ? target : null)
             .Where(static target => target is not null)
             .Cast<ComputerUseWinExecutionTarget>()
             .ToArray();
     }
 
-    public static bool TryCreate(WindowDescriptor window, out ComputerUseWinExecutionTarget? target)
+    public bool TryIssue(WindowDescriptor window, out ComputerUseWinExecutionTarget? target)
     {
         ArgumentNullException.ThrowIfNull(window);
 
@@ -62,22 +81,100 @@ internal static class ComputerUseWinExecutionTargetCatalog
         }
 
         ComputerUseWinApprovalKey approvalKey = new(appId!);
-        target = new(
+        ComputerUseWinExecutionTarget issuedTarget = new(
             approvalKey,
-            CreateWindowId(approvalKey, window),
+            CreateWindowId(),
             window);
+
+        lock (gate)
+        {
+            EvictExpired_NoLock();
+            entries[issuedTarget.WindowId.Value] = new CatalogEntry(issuedTarget.ApprovalKey, issuedTarget.WindowId, issuedTarget.Window, timeProvider.GetUtcNow());
+            EvictOverflow_NoLock();
+        }
+
+        target = issuedTarget;
         return true;
     }
 
-    public static ComputerUseWinWindowInstanceIdentity CreateWindowId(ComputerUseWinApprovalKey approvalKey, WindowDescriptor window)
+    public bool TryResolveWindowId(
+        string windowId,
+        IReadOnlyList<WindowDescriptor> liveWindows,
+        out ComputerUseWinExecutionTarget? target,
+        out WindowDescriptor? failureWindow,
+        out bool continuityFailed)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(approvalKey.Value);
-        ArgumentNullException.ThrowIfNull(window);
+        ArgumentException.ThrowIfNullOrWhiteSpace(windowId);
+        ArgumentNullException.ThrowIfNull(liveWindows);
 
-        string source = string.Create(
-            System.Globalization.CultureInfo.InvariantCulture,
-            $"cw1|{approvalKey.Value}|{window.Hwnd}|{window.ProcessId}|{window.ThreadId}|{window.ClassName}");
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(source));
-        return new ComputerUseWinWindowInstanceIdentity($"cw_{Convert.ToHexString(hash[..12]).ToLowerInvariant()}");
+        target = null;
+        failureWindow = null;
+        continuityFailed = false;
+
+        CatalogEntry? entry;
+        lock (gate)
+        {
+            EvictExpired_NoLock();
+            if (!entries.TryGetValue(windowId, out entry))
+            {
+                return false;
+            }
+        }
+
+        WindowDescriptor discoveredWindow = entry!.Window;
+        WindowDescriptor? liveWindow = liveWindows.SingleOrDefault(item =>
+            ComputerUseWinWindowContinuityProof.MatchesDiscoverySnapshot(item, discoveredWindow));
+        if (liveWindow is null)
+        {
+            failureWindow = liveWindows.SingleOrDefault(item => item.Hwnd == discoveredWindow.Hwnd);
+            continuityFailed = failureWindow is not null;
+            return false;
+        }
+
+        target = new ComputerUseWinExecutionTarget(entry.ApprovalKey, entry.WindowId, liveWindow);
+        return true;
     }
+
+    private static ComputerUseWinWindowInstanceIdentity CreateWindowId() =>
+        new($"cw_{Guid.NewGuid():N}");
+
+    private void EvictExpired_NoLock()
+    {
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        string[] expiredWindowIds = entries
+            .Where(entry => now - entry.Value.IssuedAtUtc > entryTtl)
+            .Select(static entry => entry.Key)
+            .ToArray();
+
+        foreach (string windowId in expiredWindowIds)
+        {
+            entries.Remove(windowId);
+        }
+    }
+
+    private void EvictOverflow_NoLock()
+    {
+        if (entries.Count <= maxEntries)
+        {
+            return;
+        }
+
+        string[] windowIdsToRemove = entries
+            .OrderBy(static entry => entry.Value.IssuedAtUtc)
+            .ThenBy(static entry => entry.Key, StringComparer.Ordinal)
+            .Take(entries.Count - maxEntries)
+            .Select(static entry => entry.Key)
+            .ToArray();
+
+        foreach (string windowId in windowIdsToRemove)
+        {
+            entries.Remove(windowId);
+        }
+    }
+
+    private sealed record CatalogEntry(
+        ComputerUseWinApprovalKey ApprovalKey,
+        ComputerUseWinWindowInstanceIdentity WindowId,
+        WindowDescriptor Window,
+        DateTimeOffset IssuedAtUtc);
 }

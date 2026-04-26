@@ -80,35 +80,35 @@ public sealed class ComputerUseWinActionAndProjectionTests
                 PluginRoot: temp.Root,
                 AppInstructionsRoot: Path.Combine(temp.Root, "references", "AppInstructions"),
                 ApprovalStorePath: Path.Combine(temp.Root, "AppApprovals.json")));
-        ComputerUseWinAppDiscoveryService discoveryService = new(new FakeListAppsWindowManager(windows), approvalStore);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new();
+        ComputerUseWinAppDiscoveryService discoveryService = new(new FakeListAppsWindowManager(windows), approvalStore, executionTargetCatalog);
         ComputerUseWinDiscoveredApp explorer = Assert.Single(discoveryService.ListVisibleApps());
         string firstWindowId = explorer.Windows.Single(window => window.Window.Hwnd == 101).WindowId.Value;
         string secondWindowId = explorer.Windows.Single(window => window.Window.Hwnd == 202).WindowId.Value;
-        IReadOnlyList<ComputerUseWinExecutionTarget> executionTargets = ComputerUseWinExecutionTargetCatalog.Materialize(windows);
 
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-4-target-resolution-tests"));
         ComputerUseWinGetAppStateTargetResolution firstResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
             windows,
-            executionTargets,
+            executionTargetCatalog,
             sessionManager,
             windowId: firstWindowId,
             hwnd: null);
         ComputerUseWinGetAppStateTargetResolution secondResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
             windows,
-            executionTargets,
+            executionTargetCatalog,
             sessionManager,
             windowId: secondWindowId,
             hwnd: null);
         ComputerUseWinGetAppStateTargetResolution explicitResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
             windows,
-            executionTargets,
+            executionTargetCatalog,
             sessionManager,
             windowId: null,
             hwnd: 202);
         sessionManager.Attach(CreateWindow(hwnd: 101, title: "Explorer A", processName: "explorer", processId: 1001, isForeground: false), "computer-use-win");
         ComputerUseWinGetAppStateTargetResolution attachedResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
             windows,
-            executionTargets,
+            executionTargetCatalog,
             sessionManager,
             windowId: null,
             hwnd: null);
@@ -124,10 +124,53 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal(secondWindowId, secondResolution.Target!.WindowId.Value);
         Assert.True(explicitResolution.IsSuccess);
         Assert.NotNull(explicitResolution.Target);
-        Assert.Equal(secondWindowId, explicitResolution.Target!.WindowId.Value);
+        Assert.Equal(202, explicitResolution.Target!.Window.Hwnd);
+        Assert.False(string.IsNullOrWhiteSpace(explicitResolution.Target.WindowId.Value));
         Assert.True(attachedResolution.IsSuccess);
         Assert.NotNull(attachedResolution.Target);
-        Assert.Equal(firstWindowId, attachedResolution.Target!.WindowId.Value);
+        Assert.Equal(101, attachedResolution.Target!.Window.Hwnd);
+        Assert.False(string.IsNullOrWhiteSpace(attachedResolution.Target.WindowId.Value));
+    }
+
+    [Fact]
+    public void GetAppStateTargetResolverRejectsWindowIdWhenReplacementWindowReusesStableIdentitySignals()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor replacementWindow = CreateWindow(hwnd: 101, title: "Replacement", processName: "explorer", processId: 1001, isForeground: true);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+        string windowId = Assert.Single(executionTargetCatalog.Materialize([originalWindow])).WindowId.Value;
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-window-id-reuse-tests"));
+
+        ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            [replacementWindow],
+            executionTargetCatalog,
+            sessionManager,
+            windowId,
+            hwnd: null);
+
+        Assert.False(resolution.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.IdentityProofUnavailable, resolution.FailureCode);
+    }
+
+    [Fact]
+    public void GetAppStateTargetResolverRejectsAttachedFallbackWhenLiveWindowDriftsFromAttachedSnapshot()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor replacementWindow = CreateWindow(hwnd: 101, title: "Replacement", processName: "explorer", processId: 1001, isForeground: true);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+        _ = executionTargetCatalog.Materialize([attachedWindow]);
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-attached-reuse-tests"));
+        sessionManager.Attach(attachedWindow, "computer-use-win");
+
+        ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            [replacementWindow],
+            executionTargetCatalog,
+            sessionManager,
+            windowId: null,
+            hwnd: null);
+
+        Assert.False(resolution.IsSuccess);
+        Assert.Equal(ComputerUseWinFailureCodeValues.IdentityProofUnavailable, resolution.FailureCode);
     }
 
     [Fact]
@@ -157,6 +200,39 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal(ComputerUseWinRuntimeStateKind.Observed, actionReadyState!.RuntimeState.Kind);
         Assert.True(ComputerUseWinRuntimeStateModel.CanExecuteAction(actionReadyState.RuntimeState));
         Assert.Equal(101, actionReadyState.StoredState.Window.Hwnd);
+    }
+
+    [Fact]
+    public void StoredStateResolverRejectsReplacementWindowWhenObservedSnapshotContinuityCannotBeProved()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor replacementWindow = CreateWindow(hwnd: 101, title: "Replacement", processName: "explorer", processId: 1001, isForeground: true);
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredState() with
+        {
+            Session = new ComputerUseWinAppSession("explorer", "cw_test_window", 101, originalWindow.Title, originalWindow.ProcessName, originalWindow.ProcessId),
+            Window = originalWindow,
+        });
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-7-stale-window-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinClick,
+            new { stateToken = token, elementIndex = 1 },
+            sessionManager.GetSnapshot());
+        ComputerUseWinStoredStateResolver resolver = new(
+            stateStore,
+            new FakeListAppsWindowManager([replacementWindow]));
+
+        bool success = resolver.TryResolve(
+            token,
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            out ComputerUseWinActionReadyState? actionReadyState,
+            out ModelContextProtocol.Protocol.CallToolResult? failureResult);
+
+        Assert.False(success);
+        Assert.Null(actionReadyState);
+        Assert.NotNull(failureResult);
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, failureResult!.StructuredContent!.Value.GetProperty("failureCode").GetString());
     }
 
     [Fact]
@@ -895,6 +971,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         IWindowManager windowManager,
         ComputerUseWinApprovalStore approvalStore)
     {
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new();
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-2-test"));
         ComputerUseWinStateStore stateStore = new();
         FakeUiAutomationService uiAutomationService = new();
@@ -912,11 +989,12 @@ public sealed class ComputerUseWinActionAndProjectionTests
         return new(
             CreateAuditLog(),
             sessionManager,
-            new ComputerUseWinListAppsHandler(new ComputerUseWinAppDiscoveryService(windowManager, approvalStore)),
+            new ComputerUseWinListAppsHandler(new ComputerUseWinAppDiscoveryService(windowManager, approvalStore, executionTargetCatalog)),
             new ComputerUseWinGetAppStateHandler(
                 windowManager,
                 sessionManager,
                 approvalStore,
+                executionTargetCatalog,
                 stateStore,
                 activationService,
                 appStateObserver),

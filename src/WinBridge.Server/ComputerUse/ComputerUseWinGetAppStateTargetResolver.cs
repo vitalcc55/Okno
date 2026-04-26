@@ -46,13 +46,13 @@ internal static class ComputerUseWinGetAppStateTargetResolver
 {
     public static ComputerUseWinGetAppStateTargetResolution Resolve(
         IReadOnlyList<WindowDescriptor> windows,
-        IReadOnlyList<ComputerUseWinExecutionTarget> executionTargets,
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog,
         ISessionManager sessionManager,
         string? windowId,
         long? hwnd)
     {
         ArgumentNullException.ThrowIfNull(windows);
-        ArgumentNullException.ThrowIfNull(executionTargets);
+        ArgumentNullException.ThrowIfNull(executionTargetCatalog);
         ArgumentNullException.ThrowIfNull(sessionManager);
 
         if (hwnd is not null)
@@ -63,7 +63,7 @@ internal static class ComputerUseWinGetAppStateTargetResolver
                 return ComputerUseWinGetAppStateTargetResolution.MissingExplicitHwnd();
             }
 
-            ComputerUseWinExecutionTarget? explicitTarget = FindExecutionTarget(executionTargets, explicitWindow);
+            _ = executionTargetCatalog.TryIssue(explicitWindow, out ComputerUseWinExecutionTarget? explicitTarget);
             return explicitTarget is null
                 ? ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(explicitWindow)
                 : ComputerUseWinGetAppStateTargetResolution.Success(explicitTarget);
@@ -71,14 +71,20 @@ internal static class ComputerUseWinGetAppStateTargetResolver
 
         if (!string.IsNullOrWhiteSpace(windowId))
         {
-            ComputerUseWinExecutionTarget? selectedTarget = executionTargets.SingleOrDefault(item =>
-                string.Equals(item.WindowId.Value, windowId, StringComparison.Ordinal));
-            if (selectedTarget is null)
+            bool resolved = executionTargetCatalog.TryResolveWindowId(
+                windowId,
+                windows,
+                out ComputerUseWinExecutionTarget? selectedTarget,
+                out WindowDescriptor? failureWindow,
+                out bool continuityFailed);
+            if (!resolved)
             {
-                return ComputerUseWinGetAppStateTargetResolution.MissingWindowId();
+                return continuityFailed
+                    ? ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(failureWindow!)
+                    : ComputerUseWinGetAppStateTargetResolution.MissingWindowId();
             }
 
-            return ComputerUseWinGetAppStateTargetResolution.Success(selectedTarget);
+            return ComputerUseWinGetAppStateTargetResolution.Success(selectedTarget!);
         }
 
         AttachedWindow? attached = sessionManager.GetAttachedWindow();
@@ -94,23 +100,18 @@ internal static class ComputerUseWinGetAppStateTargetResolver
                     return ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached);
                 }
 
-                if (WindowIdentityValidator.MatchesStableIdentity(liveAttached, attachedWindow))
+                if (ComputerUseWinWindowContinuityProof.MatchesDiscoverySnapshot(liveAttached, attachedWindow))
                 {
-                    ComputerUseWinExecutionTarget? attachedTarget = FindExecutionTarget(executionTargets, liveAttached);
+                    _ = executionTargetCatalog.TryIssue(liveAttached, out ComputerUseWinExecutionTarget? attachedTarget);
                     return attachedTarget is null
                         ? ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached)
                         : ComputerUseWinGetAppStateTargetResolution.Success(attachedTarget);
                 }
+
+                return ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached);
             }
         }
 
         return ComputerUseWinGetAppStateTargetResolution.MissingSelector();
     }
-
-    private static ComputerUseWinExecutionTarget? FindExecutionTarget(
-        IReadOnlyList<ComputerUseWinExecutionTarget> executionTargets,
-        WindowDescriptor window) =>
-        executionTargets.SingleOrDefault(item =>
-            item.Window.Hwnd == window.Hwnd
-            && WindowIdentityValidator.MatchesStableIdentity(item.Window, window));
 }

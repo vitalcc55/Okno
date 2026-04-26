@@ -213,6 +213,7 @@ public sealed class ComputerUseWinArchitectureTests
             AppInstructionsRoot: Path.Combine(temp.Root, "references", "AppInstructions"),
             ApprovalStorePath: Path.Combine(temp.Root, "AppApprovals.json")));
         services.AddSingleton<ComputerUseWinApprovalStore>();
+        services.AddSingleton<ComputerUseWinExecutionTargetCatalog>();
         services.AddSingleton<ComputerUseWinAppDiscoveryService>();
         services.AddSingleton<IComputerUseWinInstructionProvider, EmptyInstructionProvider>();
         services.AddSingleton(static provider => new ComputerUseWinAppStateObserver(
@@ -235,6 +236,7 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.IsType<ComputerUseWinListAppsHandler>(provider.GetRequiredService<ComputerUseWinListAppsHandler>());
         Assert.IsType<ComputerUseWinGetAppStateHandler>(provider.GetRequiredService<ComputerUseWinGetAppStateHandler>());
         Assert.IsType<ComputerUseWinClickHandler>(provider.GetRequiredService<ComputerUseWinClickHandler>());
+        Assert.IsType<ComputerUseWinExecutionTargetCatalog>(provider.GetRequiredService<ComputerUseWinExecutionTargetCatalog>());
         Assert.IsType<ComputerUseWinTools>(provider.GetRequiredService<ComputerUseWinTools>());
     }
 
@@ -650,7 +652,7 @@ public sealed class ComputerUseWinArchitectureTests
 
         ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
             [liveWindowWithoutStableIdentity],
-            [],
+            new ComputerUseWinExecutionTargetCatalog(),
             sessionManager,
             windowId: null,
             hwnd: null);

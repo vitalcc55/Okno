@@ -10,6 +10,7 @@ internal sealed class ComputerUseWinGetAppStateHandler(
     IWindowManager windowManager,
     ISessionManager sessionManager,
     ComputerUseWinApprovalStore approvalStore,
+    ComputerUseWinExecutionTargetCatalog executionTargetCatalog,
     ComputerUseWinStateStore stateStore,
     IWindowActivationService windowActivationService,
     ComputerUseWinAppStateObserver appStateObserver)
@@ -20,10 +21,9 @@ internal sealed class ComputerUseWinGetAppStateHandler(
         CancellationToken cancellationToken)
     {
         IReadOnlyList<WindowDescriptor> windows = windowManager.ListWindows();
-        IReadOnlyList<ComputerUseWinExecutionTarget> executionTargets = ComputerUseWinExecutionTargetCatalog.Materialize(windows);
         ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
             windows,
-            executionTargets,
+            executionTargetCatalog,
             sessionManager,
             request.WindowId,
             request.Hwnd);

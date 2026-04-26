@@ -47,9 +47,10 @@ list_apps -> get_app_state -> click -> get_app_state
 
 - `list_apps` сохраняет top-level `apps[]` как app-level approval/policy groups;
 - каждый app entry публикует `windows[]` со всеми selectable visible window instances;
-- primary public selector для instance targeting — opaque `windowId`;
+- primary public selector для instance targeting — runtime-owned opaque `windowId`, а не детерминированный хэш live HWND signals;
 - `hwnd` остаётся explicit low-level/debug selector и не является единственным публичным semantic selector;
 - `appId` остаётся approval/session identity и не используется как ambiguous execution selector для `get_app_state`.
+- `windowId` намеренно discovery-scoped: если runtime не может доказать continuity с исходным discovery snapshot, `get_app_state` fail-close-ится и требует свежий `list_apps`.
 
 `type_text`, `press_key`, `scroll` и `drag` закреплены как следующий глобальный action wave, но пока не считаются shipped public implementation.
 
@@ -97,6 +98,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - canonical app/process identity нормализуется к одному bare process name без `.exe`, чтобы block policy, playbooks и appId не drift-или между собой;
 - approval/block policy и `list_apps` app grouping допускаются только при доказанной stable process identity; окна без канонического process identity или без достаточной live instance identity не должны получать public app/window selectors и fail-close-ятся до approval/observation path;
 - public discovery обязан различать app-level approval key и window-level execution target: `appId` группирует policy, а `windowId` выбирает конкретный visible instance без foreground guessing;
+- `windowId` не должен silently retarget-ить replacement window: selector разрешается только через runtime-owned discovery catalog, а не через повторное вычисление из текущих live свойств окна;
 - risky action confirmation — отдельный product-facing шаг;
 - risky action confirmation не должна зависеть только от английской UI: policy использует и multilingual label signals, и более стабильные `AutomationId`/process-family markers там, где они доступны;
 - coordinate click считается low-confidence target path и требует explicit confirm, если target не доказан через semantic element из последнего `get_app_state`;
@@ -104,6 +106,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - explicit runtime state model для public loop остаётся компактным, но жёстким: `attached`, `approved`, `observed`, `stale`, `blocked`;
 - approval не заменяет fresh observation: без нового live proof state не становится action-ready только потому, что app уже одобрена;
 - stale/blocked path не может быть silently promoted в successful action-ready state без нового live proof;
+- `stateToken` не должен quietly переживать replacement/drift того же HWND: если continuity observed window больше не доказуема по сохранённому snapshot, downstream action path materialize-ится как `stale_state`, а не retarget-ится на новый live window;
 - `elementIndex` click не должен слепо доверять сохранённым bounds: перед dispatch runtime заново разрешает target через свежий UIA snapshot с тем же observation budget и fail-close-ит как `stale_state`, только если semantic match больше не доказуем;
 - ordinary actions внутри already-approved app должны быть дешевле, чем low-level per-step friction;
 - `get_app_state` разделяет critical observation и advisory enrichment: screenshot + accessibility tree определяют success/failure; expected advisory-unavailable path для playbook hints не имеет права downcast-ить успешный observation result, но unexpected provider/runtime bug всё ещё materialize-ится как truthful `observation_failed` с sanitized audit provenance;

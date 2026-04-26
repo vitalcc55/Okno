@@ -5,10 +5,11 @@ namespace WinBridge.Server.ComputerUse;
 
 internal sealed class ComputerUseWinAppDiscoveryService(
     IWindowManager windowManager,
-    ComputerUseWinApprovalStore approvalStore)
+    ComputerUseWinApprovalStore approvalStore,
+    ComputerUseWinExecutionTargetCatalog executionTargetCatalog)
 {
     public IReadOnlyList<ComputerUseWinDiscoveredApp> ListVisibleApps() =>
-        ComputerUseWinExecutionTargetCatalog.Materialize(windowManager.ListWindows())
+        executionTargetCatalog.Materialize(windowManager.ListWindows())
             .GroupBy(static item => item.ApprovalKey.Value, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
