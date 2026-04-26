@@ -50,7 +50,8 @@ list_apps -> get_app_state -> click -> get_app_state
 - primary public selector для instance targeting — runtime-owned opaque `windowId`, а не детерминированный хэш live HWND signals;
 - `hwnd` остаётся explicit low-level/debug selector и не является единственным публичным semantic selector;
 - `appId` остаётся approval/session identity и не используется как ambiguous execution selector для `get_app_state`.
-- `windowId` намеренно discovery-scoped: если runtime не может доказать continuity с исходным discovery snapshot, `get_app_state` fail-close-ится и требует свежий `list_apps`.
+- `windowId` намеренно discovery-scoped: если runtime не может доказать continuity с исходным discovery snapshot, `get_app_state(windowId)` fail-close-ится и требует свежий `list_apps`.
+- attached refresh path намеренно слабее `windowId`: `get_app_state` без explicit selector должен выдерживать обычный post-action title/layout drift того же окна, пока instance continuity всё ещё доказуема.
 
 `type_text`, `press_key`, `scroll` и `drag` закреплены как следующий глобальный action wave, но пока не считаются shipped public implementation.
 
@@ -98,7 +99,8 @@ list_apps -> get_app_state -> click -> get_app_state
 - canonical app/process identity нормализуется к одному bare process name без `.exe`, чтобы block policy, playbooks и appId не drift-или между собой;
 - approval/block policy и `list_apps` app grouping допускаются только при доказанной stable process identity; окна без канонического process identity или без достаточной live instance identity не должны получать public app/window selectors и fail-close-ятся до approval/observation path;
 - public discovery обязан различать app-level approval key и window-level execution target: `appId` группирует policy, а `windowId` выбирает конкретный visible instance без foreground guessing;
-- `windowId` не должен silently retarget-ить replacement window: selector разрешается только через runtime-owned discovery catalog, а не через повторное вычисление из текущих live свойств окна;
+- `windowId` не должен silently retarget-ить replacement window: selector разрешается только через runtime-owned discovery catalog и strict discovery proof, а не через повторное вычисление из текущих live свойств окна;
+- continuity proof для attached refresh не совпадает с `windowId` proof: session refresh допускает обычный post-action drift (`Title`, `Bounds`, `WindowState`, monitor metadata), но не должен пропускать stable-identity replacement;
 - risky action confirmation — отдельный product-facing шаг;
 - risky action confirmation не должна зависеть только от английской UI: policy использует и multilingual label signals, и более стабильные `AutomationId`/process-family markers там, где они доступны;
 - coordinate click считается low-confidence target path и требует explicit confirm, если target не доказан через semantic element из последнего `get_app_state`;
@@ -106,7 +108,8 @@ list_apps -> get_app_state -> click -> get_app_state
 - explicit runtime state model для public loop остаётся компактным, но жёстким: `attached`, `approved`, `observed`, `stale`, `blocked`;
 - approval не заменяет fresh observation: без нового live proof state не становится action-ready только потому, что app уже одобрена;
 - stale/blocked path не может быть silently promoted в successful action-ready state без нового live proof;
-- `stateToken` не должен quietly переживать replacement/drift того же HWND: если continuity observed window больше не доказуема по сохранённому snapshot, downstream action path materialize-ится как `stale_state`, а не retarget-ится на новый live window;
+- `stateToken` не должен quietly переживать replacement того же HWND: если continuity observed window больше не доказуема по observed-state proof, downstream action path materialize-ится как `stale_state`, а не retarget-ится на новый live window;
+- observed-state proof намеренно отделён от strict discovery proof: ordinary title/layout drift того же окна не должен заранее убивать `stateToken`, потому что semantic target всё равно повторно валидируется через fresh UIA snapshot перед dispatch;
 - `elementIndex` click не должен слепо доверять сохранённым bounds: перед dispatch runtime заново разрешает target через свежий UIA snapshot с тем же observation budget и fail-close-ит как `stale_state`, только если semantic match больше не доказуем;
 - ordinary actions внутри already-approved app должны быть дешевле, чем low-level per-step friction;
 - `get_app_state` разделяет critical observation и advisory enrichment: screenshot + accessibility tree определяют success/failure; expected advisory-unavailable path для playbook hints не имеет права downcast-ить успешный observation result, но unexpected provider/runtime bug всё ещё materialize-ится как truthful `observation_failed` с sanitized audit provenance;
@@ -123,6 +126,8 @@ list_apps -> get_app_state -> click -> get_app_state
 - `stateToken` имеет bounded retention и short-lived stale-state discipline вместо неограниченного in-memory накопления;
 - blocked targets должны отсеиваться на public surface до unsafe dispatch.
 - plugin-local runtime install path должен оставаться integrity-safe: `runtime/win-x64` не используется как repair scratch space, publish/recovery materialize-ят bundle в side directories и handoff-ят canonical path только после completion proof по полному published runtime manifest; rollback source (`win-x64.backup-*`) не потребляется destructive move-ом до validated terminal state, а legacy/pre-manifest runtime без existing manifest fail-close-ится вместо генерации manifest из неподтверждённого partial state; second-order repair handoff failure не должен оставлять canonical path пустым, если last-known-good backup всё ещё может быть возвращён.
+- runtime-owned selector catalog не должен публиковать `windowId`, которые уже неразрешимы на ожидаемый следующий шаг loop: весь `list_apps` batch обязан пережить overflow eviction как единый generation, даже если batch больше nominal `maxEntries`.
+- install-surface freshness gate должен учитывать не только project/src tree, но и repo-root build/analyzer config inputs вроде `.editorconfig`, `.globalconfig`, `*.globalconfig`, `Directory.Build.rsp`, `Directory.Build.props`, `Directory.Packages.props` и `global.json`.
 
 ## Что не делать дальше
 

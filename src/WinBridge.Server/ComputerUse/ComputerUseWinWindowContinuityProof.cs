@@ -5,16 +5,19 @@ namespace WinBridge.Server.ComputerUse;
 
 internal static class ComputerUseWinWindowContinuityProof
 {
-    // Windows does not expose a non-reusable public instance id for top-level HWNDs here,
-    // so computer-use-win treats windowId as a discovery-scoped opaque handle and fails
-    // closed on any snapshot drift instead of silently retargeting a replacement window.
-    public static bool MatchesDiscoverySnapshot(WindowDescriptor liveWindow, WindowDescriptor discoveredWindow)
+    // Windows does not expose a non-reusable public instance id for top-level HWNDs here.
+    // The product therefore uses different proof strengths for different paths:
+    // - discovery selector (`windowId`) is strict and discovery-scoped;
+    // - attached session refresh tolerates ordinary post-action UI drift;
+    // - observed state revalidation currently follows the same instance continuity
+    //   model as attached refresh, while keeping a separate seam for stricter future
+    //   observed-state proof rules.
+    public static bool MatchesDiscoverySelector(WindowDescriptor liveWindow, WindowDescriptor discoveredWindow)
     {
         ArgumentNullException.ThrowIfNull(liveWindow);
         ArgumentNullException.ThrowIfNull(discoveredWindow);
 
-        return liveWindow.Hwnd == discoveredWindow.Hwnd
-            && WindowIdentityValidator.MatchesStableIdentity(liveWindow, discoveredWindow)
+        return MatchesInstanceContinuity(liveWindow, discoveredWindow)
             && string.Equals(liveWindow.ProcessName, discoveredWindow.ProcessName, StringComparison.OrdinalIgnoreCase)
             && string.Equals(liveWindow.Title, discoveredWindow.Title, StringComparison.Ordinal)
             && Equals(liveWindow.Bounds, discoveredWindow.Bounds)
@@ -25,4 +28,25 @@ internal static class ComputerUseWinWindowContinuityProof
             && string.Equals(liveWindow.MonitorId, discoveredWindow.MonitorId, StringComparison.Ordinal)
             && string.Equals(liveWindow.MonitorFriendlyName, discoveredWindow.MonitorFriendlyName, StringComparison.Ordinal);
     }
+
+    public static bool MatchesAttachedSession(WindowDescriptor liveWindow, WindowDescriptor attachedWindow)
+    {
+        ArgumentNullException.ThrowIfNull(liveWindow);
+        ArgumentNullException.ThrowIfNull(attachedWindow);
+
+        return MatchesInstanceContinuity(liveWindow, attachedWindow);
+    }
+
+    public static bool MatchesObservedState(WindowDescriptor liveWindow, WindowDescriptor observedWindow)
+    {
+        ArgumentNullException.ThrowIfNull(liveWindow);
+        ArgumentNullException.ThrowIfNull(observedWindow);
+
+        return MatchesInstanceContinuity(liveWindow, observedWindow);
+    }
+
+    private static bool MatchesInstanceContinuity(WindowDescriptor liveWindow, WindowDescriptor expectedWindow) =>
+        liveWindow.Hwnd == expectedWindow.Hwnd
+        && WindowIdentityValidator.MatchesStableIdentity(liveWindow, expectedWindow)
+        && string.Equals(liveWindow.ProcessName, expectedWindow.ProcessName, StringComparison.OrdinalIgnoreCase);
 }

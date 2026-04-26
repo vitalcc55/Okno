@@ -31,6 +31,7 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
     private readonly TimeSpan entryTtl;
     private readonly int maxEntries;
     private readonly object gate = new();
+    private long nextGeneration = 1;
     private readonly Dictionary<string, CatalogEntry> entries = new(StringComparer.Ordinal);
 
     public ComputerUseWinExecutionTargetCatalog()
@@ -52,12 +53,13 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
     {
         ArgumentNullException.ThrowIfNull(windows);
 
-        return windows
+        PendingTarget[] pendingTargets = windows
             .Where(static window => window.IsVisible)
-            .Select(window => TryIssue(window, out ComputerUseWinExecutionTarget? target) ? target : null)
+            .Select(static window => TryCreatePendingTarget(window, out PendingTarget? target) ? target : null)
             .Where(static target => target is not null)
-            .Cast<ComputerUseWinExecutionTarget>()
+            .Cast<PendingTarget>()
             .ToArray();
+        return CommitBatch(pendingTargets);
     }
 
     public bool TryIssue(WindowDescriptor window, out ComputerUseWinExecutionTarget? target)
@@ -65,35 +67,12 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         ArgumentNullException.ThrowIfNull(window);
 
         target = null;
-        if (!window.IsVisible)
+        if (!TryCreatePendingTarget(window, out PendingTarget? pendingTarget) || pendingTarget is null)
         {
             return false;
         }
 
-        if (!ComputerUseWinAppIdentity.TryCreateStableAppId(window, out string? appId))
-        {
-            return false;
-        }
-
-        if (!WindowIdentityValidator.TryValidateStableIdentity(window, out _))
-        {
-            return false;
-        }
-
-        ComputerUseWinApprovalKey approvalKey = new(appId!);
-        ComputerUseWinExecutionTarget issuedTarget = new(
-            approvalKey,
-            CreateWindowId(),
-            window);
-
-        lock (gate)
-        {
-            EvictExpired_NoLock();
-            entries[issuedTarget.WindowId.Value] = new CatalogEntry(issuedTarget.ApprovalKey, issuedTarget.WindowId, issuedTarget.Window, timeProvider.GetUtcNow());
-            EvictOverflow_NoLock();
-        }
-
-        target = issuedTarget;
+        target = CommitBatch([pendingTarget])[0];
         return true;
     }
 
@@ -123,7 +102,7 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
 
         WindowDescriptor discoveredWindow = entry!.Window;
         WindowDescriptor? liveWindow = liveWindows.SingleOrDefault(item =>
-            ComputerUseWinWindowContinuityProof.MatchesDiscoverySnapshot(item, discoveredWindow));
+            ComputerUseWinWindowContinuityProof.MatchesDiscoverySelector(item, discoveredWindow));
         if (liveWindow is null)
         {
             failureWindow = liveWindows.SingleOrDefault(item => item.Hwnd == discoveredWindow.Hwnd);
@@ -133,6 +112,67 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
 
         target = new ComputerUseWinExecutionTarget(entry.ApprovalKey, entry.WindowId, liveWindow);
         return true;
+    }
+
+    private static bool TryCreatePendingTarget(WindowDescriptor window, out PendingTarget? target)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        target = null;
+        if (!window.IsVisible)
+        {
+            return false;
+        }
+
+        if (!ComputerUseWinAppIdentity.TryCreateStableAppId(window, out string? appId))
+        {
+            return false;
+        }
+
+        if (!WindowIdentityValidator.TryValidateStableIdentity(window, out _))
+        {
+            return false;
+        }
+
+        target = new PendingTarget(
+            new ComputerUseWinApprovalKey(appId!),
+            CreateWindowId(),
+            window);
+        return true;
+    }
+
+    private ComputerUseWinExecutionTarget[] CommitBatch(IReadOnlyList<PendingTarget> pendingTargets)
+    {
+        if (pendingTargets.Count == 0)
+        {
+            return [];
+        }
+
+        ComputerUseWinExecutionTarget[] issuedTargets = pendingTargets
+            .Select(static pending => new ComputerUseWinExecutionTarget(
+                pending.ApprovalKey,
+                pending.WindowId,
+                pending.Window))
+            .ToArray();
+        lock (gate)
+        {
+            EvictExpired_NoLock();
+            long generation = nextGeneration++;
+            DateTimeOffset issuedAtUtc = timeProvider.GetUtcNow();
+            foreach (ComputerUseWinExecutionTarget issuedTarget in issuedTargets)
+            {
+                entries[issuedTarget.WindowId.Value] = new CatalogEntry(
+                    issuedTarget.ApprovalKey,
+                    issuedTarget.WindowId,
+                    issuedTarget.Window,
+                    generation,
+                    issuedAtUtc);
+            }
+
+            EvictOverflowPreservingGeneration_NoLock(generation);
+        }
+
+        return issuedTargets;
     }
 
     private static ComputerUseWinWindowInstanceIdentity CreateWindowId() =>
@@ -152,17 +192,27 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         }
     }
 
-    private void EvictOverflow_NoLock()
+    private void EvictOverflowPreservingGeneration_NoLock(long protectedGeneration)
     {
         if (entries.Count <= maxEntries)
         {
             return;
         }
 
+        int protectedCount = entries.Count(entry => entry.Value.Generation == protectedGeneration);
+        int allowedCount = Math.Max(maxEntries, protectedCount);
+        int removeCount = entries.Count - allowedCount;
+        if (removeCount <= 0)
+        {
+            return;
+        }
+
         string[] windowIdsToRemove = entries
-            .OrderBy(static entry => entry.Value.IssuedAtUtc)
+            .Where(entry => entry.Value.Generation != protectedGeneration)
+            .OrderBy(static entry => entry.Value.Generation)
+            .ThenBy(static entry => entry.Value.IssuedAtUtc)
             .ThenBy(static entry => entry.Key, StringComparer.Ordinal)
-            .Take(entries.Count - maxEntries)
+            .Take(removeCount)
             .Select(static entry => entry.Key)
             .ToArray();
 
@@ -172,9 +222,15 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         }
     }
 
+    private sealed record PendingTarget(
+        ComputerUseWinApprovalKey ApprovalKey,
+        ComputerUseWinWindowInstanceIdentity WindowId,
+        WindowDescriptor Window);
+
     private sealed record CatalogEntry(
         ComputerUseWinApprovalKey ApprovalKey,
         ComputerUseWinWindowInstanceIdentity WindowId,
         WindowDescriptor Window,
+        long Generation,
         DateTimeOffset IssuedAtUtc);
 }

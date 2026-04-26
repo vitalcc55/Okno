@@ -133,16 +133,22 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
-    public void GetAppStateTargetResolverRejectsWindowIdWhenReplacementWindowReusesStableIdentitySignals()
+    public void GetAppStateTargetResolverRejectsWindowIdWhenLiveWindowSnapshotDrifts()
     {
         WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
-        WindowDescriptor replacementWindow = CreateWindow(hwnd: 101, title: "Replacement", processName: "explorer", processId: 1001, isForeground: true);
+        WindowDescriptor driftedWindow = CreateWindow(
+            hwnd: 101,
+            title: "Original (updated)",
+            processName: "explorer",
+            processId: 1001,
+            isForeground: true,
+            bounds: new Bounds(40, 50, 800, 620));
         ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
         string windowId = Assert.Single(executionTargetCatalog.Materialize([originalWindow])).WindowId.Value;
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-window-id-reuse-tests"));
 
         ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
-            [replacementWindow],
+            [driftedWindow],
             executionTargetCatalog,
             sessionManager,
             windowId,
@@ -153,13 +159,47 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
-    public void GetAppStateTargetResolverRejectsAttachedFallbackWhenLiveWindowDriftsFromAttachedSnapshot()
+    public void GetAppStateTargetResolverAllowsAttachedFallbackWhenLiveWindowTitleAndBoundsDrift()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
-        WindowDescriptor replacementWindow = CreateWindow(hwnd: 101, title: "Replacement", processName: "explorer", processId: 1001, isForeground: true);
+        WindowDescriptor driftedWindow = CreateWindow(
+            hwnd: 101,
+            title: "Original (updated)",
+            processName: "explorer",
+            processId: 1001,
+            isForeground: true,
+            bounds: new Bounds(40, 50, 800, 620));
         ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
         _ = executionTargetCatalog.Materialize([attachedWindow]);
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-attached-reuse-tests"));
+        sessionManager.Attach(attachedWindow, "computer-use-win");
+
+        ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
+            [driftedWindow],
+            executionTargetCatalog,
+            sessionManager,
+            windowId: null,
+            hwnd: null);
+
+        Assert.True(resolution.IsSuccess);
+        Assert.NotNull(resolution.Target);
+        Assert.Equal(101, resolution.Target!.Window.Hwnd);
+    }
+
+    [Fact]
+    public void GetAppStateTargetResolverRejectsAttachedFallbackWhenStableIdentityDiffers()
+    {
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor replacementWindow = CreateWindow(
+            hwnd: 101,
+            title: "Original",
+            processName: "explorer",
+            processId: 1001,
+            threadId: 9999,
+            isForeground: true);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+        _ = executionTargetCatalog.Materialize([attachedWindow]);
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-attached-replacement-tests"));
         sessionManager.Attach(attachedWindow, "computer-use-win");
 
         ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
@@ -203,10 +243,16 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
-    public void StoredStateResolverRejectsReplacementWindowWhenObservedSnapshotContinuityCannotBeProved()
+    public void StoredStateResolverAllowsObservedWindowDriftWhenStableInstanceRemains()
     {
         WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
-        WindowDescriptor replacementWindow = CreateWindow(hwnd: 101, title: "Replacement", processName: "explorer", processId: 1001, isForeground: true);
+        WindowDescriptor driftedWindow = CreateWindow(
+            hwnd: 101,
+            title: "Original (updated)",
+            processName: "explorer",
+            processId: 1001,
+            isForeground: true,
+            bounds: new Bounds(40, 50, 800, 620));
         ComputerUseWinStateStore stateStore = new();
         string token = stateStore.Create(CreateStoredState() with
         {
@@ -214,6 +260,45 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Window = originalWindow,
         });
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-7-stale-window-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinClick,
+            new { stateToken = token, elementIndex = 1 },
+            sessionManager.GetSnapshot());
+        ComputerUseWinStoredStateResolver resolver = new(
+            stateStore,
+            new FakeListAppsWindowManager([driftedWindow]));
+
+        bool success = resolver.TryResolve(
+            token,
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            out ComputerUseWinActionReadyState? actionReadyState,
+            out ModelContextProtocol.Protocol.CallToolResult? failureResult);
+
+        Assert.True(success);
+        Assert.NotNull(actionReadyState);
+        Assert.Null(failureResult);
+        Assert.Equal("Original (updated)", actionReadyState!.StoredState.Window.Title);
+    }
+
+    [Fact]
+    public void StoredStateResolverRejectsReplacementWindowWhenObservedStableIdentityDiffers()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor replacementWindow = CreateWindow(
+            hwnd: 101,
+            title: "Original",
+            processName: "explorer",
+            processId: 1001,
+            threadId: 9999,
+            isForeground: true);
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredState() with
+        {
+            Session = new ComputerUseWinAppSession("explorer", "cw_test_window", 101, originalWindow.Title, originalWindow.ProcessName, originalWindow.ProcessId),
+            Window = originalWindow,
+        });
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-7-replacement-window-tests"));
         using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
             ToolNames.ComputerUseWinClick,
             new { stateToken = token, elementIndex = 1 },
@@ -233,6 +318,75 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Null(actionReadyState);
         Assert.NotNull(failureResult);
         Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, failureResult!.StructuredContent!.Value.GetProperty("failureCode").GetString());
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogKeepsCurrentBatchResolvableWhenVisibleWindowsExceedCapacity()
+    {
+        IReadOnlyList<WindowDescriptor> windows =
+        [
+            CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false),
+            CreateWindow(hwnd: 202, title: "Window B", processName: "explorer", processId: 1001, isForeground: true),
+            CreateWindow(hwnd: 303, title: "Window C", processName: "notepad", processId: 2002, threadId: 3003, className: "OtherWindow", isForeground: false),
+        ];
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 2);
+
+        IReadOnlyList<ComputerUseWinExecutionTarget> targets = executionTargetCatalog.Materialize(windows);
+
+        Assert.Equal(3, targets.Count);
+        foreach (ComputerUseWinExecutionTarget target in targets)
+        {
+            bool resolved = executionTargetCatalog.TryResolveWindowId(
+                target.WindowId.Value,
+                windows,
+                out ComputerUseWinExecutionTarget? resolvedTarget,
+                out WindowDescriptor? _,
+                out bool continuityFailed);
+
+            Assert.True(resolved);
+            Assert.NotNull(resolvedTarget);
+            Assert.False(continuityFailed);
+        }
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogPreservesLatestBatchWhenOverflowEvictsOlderGeneration()
+    {
+        IReadOnlyList<WindowDescriptor> firstBatch =
+        [
+            CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false),
+            CreateWindow(hwnd: 202, title: "Window B", processName: "explorer", processId: 1001, isForeground: true),
+        ];
+        IReadOnlyList<WindowDescriptor> secondBatch =
+        [
+            CreateWindow(hwnd: 303, title: "Window C", processName: "notepad", processId: 2002, threadId: 3003, className: "OtherWindow", isForeground: false),
+            CreateWindow(hwnd: 404, title: "Window D", processName: "calc", processId: 4004, threadId: 5005, className: "CalcWindow", isForeground: true),
+        ];
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 2);
+
+        IReadOnlyList<ComputerUseWinExecutionTarget> firstTargets = executionTargetCatalog.Materialize(firstBatch);
+        IReadOnlyList<ComputerUseWinExecutionTarget> secondTargets = executionTargetCatalog.Materialize(secondBatch);
+
+        Assert.All(secondTargets, target =>
+        {
+            bool resolved = executionTargetCatalog.TryResolveWindowId(
+                target.WindowId.Value,
+                secondBatch,
+                out ComputerUseWinExecutionTarget? _,
+                out WindowDescriptor? _,
+                out bool continuityFailed);
+
+            Assert.True(resolved);
+            Assert.False(continuityFailed);
+        });
+
+        Assert.Contains(firstTargets, target =>
+            !executionTargetCatalog.TryResolveWindowId(
+                target.WindowId.Value,
+                firstBatch,
+                out ComputerUseWinExecutionTarget? _,
+                out WindowDescriptor? _,
+                out bool _));
     }
 
     [Fact]
@@ -1135,6 +1289,12 @@ public sealed class ComputerUseWinActionAndProjectionTests
         string title = "Test window",
         string processName = "explorer",
         int processId = 1001,
+        int threadId = 2002,
+        string className = "TestWindow",
+        Bounds? bounds = null,
+        string windowState = WindowStateValues.Normal,
+        string? monitorId = "display-source:0000000100000000:1",
+        string? monitorFriendlyName = "Primary monitor",
         bool isForeground = true,
         bool isVisible = true) =>
         new(
@@ -1142,11 +1302,14 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Title: title,
             ProcessName: processName,
             ProcessId: processId,
-            ThreadId: 2002,
-            ClassName: "TestWindow",
-            Bounds: new Bounds(0, 0, 640, 480),
+            ThreadId: threadId,
+            ClassName: className,
+            Bounds: bounds ?? new Bounds(0, 0, 640, 480),
             IsForeground: isForeground,
-            IsVisible: isVisible);
+            IsVisible: isVisible,
+            WindowState: windowState,
+            MonitorId: monitorId,
+            MonitorFriendlyName: monitorFriendlyName);
 
     private static ObservedWindowDescriptor CreateObservedWindow(WindowDescriptor window) =>
         new(

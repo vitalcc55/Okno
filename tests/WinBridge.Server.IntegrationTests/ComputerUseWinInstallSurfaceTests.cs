@@ -767,9 +767,13 @@ public sealed class ComputerUseWinInstallSurfaceTests
     [Theory]
     [InlineData("Directory.Build.props")]
     [InlineData("Directory.Packages.props")]
+    [InlineData("Directory.Build.rsp")]
     [InlineData("global.json")]
     [InlineData("WinBridge.sln")]
     [InlineData("NuGet.Config")]
+    [InlineData(".editorconfig")]
+    [InlineData(".globalconfig")]
+    [InlineData("Repo.Custom.globalconfig")]
     [InlineData("Repo.Custom.props")]
     [InlineData("Repo.Custom.targets")]
     public void PublishedRuntimeBundleIsFreshReturnsFalseWhenRepoLevelBuildInputIsNewerThanManifest(string repoLevelInputName)
@@ -969,6 +973,9 @@ public sealed class ComputerUseWinInstallSurfaceTests
     {
         string[] canonicalFiles =
         [
+            ".editorconfig",
+            ".globalconfig",
+            "Directory.Build.rsp",
             "global.json",
             "Directory.Build.props",
             "Directory.Packages.props",
@@ -992,6 +999,11 @@ public sealed class ComputerUseWinInstallSurfaceTests
         }
 
         foreach (string path in Directory.EnumerateFiles(repoRoot, "*.targets", SearchOption.TopDirectoryOnly))
+        {
+            yield return path;
+        }
+
+        foreach (string path in Directory.EnumerateFiles(repoRoot, "*.globalconfig", SearchOption.TopDirectoryOnly))
         {
             yield return path;
         }

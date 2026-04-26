@@ -46,7 +46,7 @@ internal sealed class ComputerUseWinStoredStateResolver(
 
         WindowDescriptor expectedWindow = storedState.Window;
         WindowDescriptor? liveWindow = windowManager.ListWindows().SingleOrDefault(item =>
-            ComputerUseWinWindowContinuityProof.MatchesDiscoverySnapshot(item, expectedWindow));
+            ComputerUseWinWindowContinuityProof.MatchesObservedState(item, expectedWindow));
         if (liveWindow is null)
         {
             state = null;

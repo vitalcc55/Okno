@@ -100,7 +100,7 @@ internal static class ComputerUseWinGetAppStateTargetResolver
                     return ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached);
                 }
 
-                if (ComputerUseWinWindowContinuityProof.MatchesDiscoverySnapshot(liveAttached, attachedWindow))
+                if (ComputerUseWinWindowContinuityProof.MatchesAttachedSession(liveAttached, attachedWindow))
                 {
                     _ = executionTargetCatalog.TryIssue(liveAttached, out ComputerUseWinExecutionTarget? attachedTarget);
                     return attachedTarget is null
