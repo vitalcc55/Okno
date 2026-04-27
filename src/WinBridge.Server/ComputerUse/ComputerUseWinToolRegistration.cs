@@ -28,7 +28,7 @@ internal static class ComputerUseWinToolRegistration
                 Name = ToolNames.ComputerUseWinListApps,
                 Description = ToolDescriptions.ComputerUseWinListAppsTool,
                 ReadOnly = false,
-                Destructive = false,
+                Destructive = true,
                 Idempotent = false,
                 OpenWorld = true,
                 UseStructuredContent = true,

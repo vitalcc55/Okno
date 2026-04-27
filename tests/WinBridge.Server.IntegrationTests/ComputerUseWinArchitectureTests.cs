@@ -194,6 +194,7 @@ public sealed class ComputerUseWinArchitectureTests
 
         Assert.Equal(ToolSafetyClass.SessionMutation, listAppsContract.SafetyClass);
         Assert.False(listAppsTool.ProtocolTool.Annotations!.ReadOnlyHint!.Value);
+        Assert.True(listAppsTool.ProtocolTool.Annotations.DestructiveHint!.Value);
         Assert.False(listAppsTool.ProtocolTool.Annotations.IdempotentHint!.Value);
         Assert.Equal("session_mutation", listAppsDescriptor.GetProperty("safety_class").GetString());
     }

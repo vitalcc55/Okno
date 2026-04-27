@@ -364,6 +364,41 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ClickHandlerReportsCaptureReferenceRequiredWhenLiveStateLacksCaptureProof()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-capture-proof-taxonomy-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinClick,
+            new { stateToken = token, point = new { x = 20, y = 30 }, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinClickHandler handler = new(
+            new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()])),
+            new ComputerUseWinClickExecutionCoordinator(
+                activationService,
+                new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinClickRequest(StateToken: token, Point: new InputPoint(20, 30), Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.CaptureReferenceRequired, payload.GetProperty("failureCode").GetString());
+        Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
     public void ExecutionTargetCatalogKeepsCurrentBatchResolvableWhenVisibleWindowsExceedCapacity()
     {
         IReadOnlyList<WindowDescriptor> windows =

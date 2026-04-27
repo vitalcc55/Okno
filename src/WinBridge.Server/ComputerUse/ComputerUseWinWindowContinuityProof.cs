@@ -16,9 +16,8 @@ internal static class ComputerUseWinWindowContinuityProof
     // The product therefore uses different proof strengths for different paths:
     // - discovery selector (`windowId`) is strict and discovery-scoped;
     // - attached session refresh tolerates ordinary post-action UI drift;
-    // - observed state revalidation currently follows the same instance continuity
-    //   model as attached refresh, while keeping a separate seam for stricter future
-    //   observed-state proof rules.
+    // - observed state revalidation is path-specific: semantic actions can rely on
+    //   fresh UIA revalidation, while coordinate actions require stable live geometry.
     public static bool MatchesDiscoverySelector(WindowDescriptor liveWindow, WindowDescriptor discoveredWindow)
     {
         ArgumentNullException.ThrowIfNull(liveWindow);
@@ -60,8 +59,8 @@ internal static class ComputerUseWinWindowContinuityProof
                 MatchesObservedCoordinateAction(liveWindow, observedState.Window),
             ComputerUseWinStoredStateValidationMode.CoordinateCapturePixelsAction =>
                 MatchesObservedCoordinateAction(liveWindow, observedState.Window)
-                && observedState.CaptureReference is not null
-                && CaptureReferenceGeometryPolicy.MatchesCaptureReferenceWindowProof(observedState.CaptureReference, liveWindow),
+                && (observedState.CaptureReference is null
+                    || CaptureReferenceGeometryPolicy.MatchesCaptureReferenceWindowProof(observedState.CaptureReference, liveWindow)),
             _ => throw new ArgumentOutOfRangeException(nameof(validationMode), validationMode, "Неизвестный validation mode для observed state."),
         };
     }

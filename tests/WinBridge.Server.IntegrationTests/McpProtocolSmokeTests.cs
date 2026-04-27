@@ -267,7 +267,7 @@ public sealed class McpProtocolSmokeTests
             JsonElement getAppStateAnnotations = getAppStateDescriptor.GetProperty("annotations");
             JsonElement listAppsAnnotations = listAppsDescriptor.GetProperty("annotations");
             Assert.False(listAppsAnnotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(listAppsAnnotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.True(listAppsAnnotations.GetProperty("destructiveHint").GetBoolean());
             Assert.False(listAppsAnnotations.GetProperty("idempotentHint").GetBoolean());
             Assert.True(listAppsAnnotations.GetProperty("openWorldHint").GetBoolean());
             Assert.False(getAppStateAnnotations.GetProperty("readOnlyHint").GetBoolean());
