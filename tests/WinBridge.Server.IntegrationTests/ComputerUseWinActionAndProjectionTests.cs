@@ -468,6 +468,39 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public void ExecutionTargetCatalogInvalidatesPreviousDiscoveryBatchWhenNewSnapshotIsPublished()
+    {
+        IReadOnlyList<WindowDescriptor> firstBatch =
+        [
+            CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false),
+        ];
+        IReadOnlyList<WindowDescriptor> secondBatch =
+        [
+            CreateWindow(hwnd: 202, title: "Window B", processName: "notepad", processId: 2002, threadId: 3003, className: "OtherWindow", isForeground: true),
+        ];
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+
+        ComputerUseWinExecutionTarget firstTarget = Assert.Single(executionTargetCatalog.Materialize(firstBatch));
+        ComputerUseWinExecutionTarget secondTarget = Assert.Single(executionTargetCatalog.Materialize(secondBatch));
+
+        Assert.True(executionTargetCatalog.TryResolveWindowId(
+            secondTarget.WindowId.Value,
+            secondBatch,
+            out ComputerUseWinExecutionTarget? resolvedSecondTarget,
+            out WindowDescriptor? _,
+            out bool secondContinuityFailed));
+        Assert.NotNull(resolvedSecondTarget);
+        Assert.False(secondContinuityFailed);
+        Assert.False(executionTargetCatalog.TryResolveWindowId(
+            firstTarget.WindowId.Value,
+            firstBatch,
+            out ComputerUseWinExecutionTarget? _,
+            out WindowDescriptor? _,
+            out bool firstContinuityFailed));
+        Assert.False(firstContinuityFailed);
+    }
+
+    [Fact]
     public void ExecutionTargetCatalogPreservesLatestDiscoveryBatchAcrossFollowUpIssuance()
     {
         IReadOnlyList<WindowDescriptor> discoveryBatch =
@@ -502,6 +535,31 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Assert.True(resolved);
             Assert.False(continuityFailed);
         });
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogInvalidatesPreviousDiscoveryBatchWhenNextPublicationIsEmpty()
+    {
+        IReadOnlyList<WindowDescriptor> discoveryBatch =
+        [
+            CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false),
+            CreateWindow(hwnd: 202, title: "Window B", processName: "explorer", processId: 1001, isForeground: true),
+        ];
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+
+        IReadOnlyList<ComputerUseWinExecutionTarget> discoveryTargets = executionTargetCatalog.Materialize(discoveryBatch);
+        IReadOnlyList<ComputerUseWinExecutionTarget> emptyPublication = executionTargetCatalog.Materialize([]);
+
+        Assert.Empty(emptyPublication);
+        Assert.All(discoveryTargets, target =>
+            Assert.False(
+                executionTargetCatalog.TryResolveWindowId(
+                    target.WindowId.Value,
+                    discoveryBatch,
+                    out ComputerUseWinExecutionTarget? _,
+                    out WindowDescriptor? _,
+                    out bool continuityFailed)
+                || continuityFailed));
     }
 
     [Fact]

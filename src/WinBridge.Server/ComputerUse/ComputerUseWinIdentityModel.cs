@@ -99,6 +99,11 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             {
                 return false;
             }
+
+            if (!IsCurrentPublishedDiscoveryEntry_NoLock(entry))
+            {
+                return false;
+            }
         }
 
         WindowDescriptor discoveredWindow = entry!.Window;
@@ -109,6 +114,16 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             failureWindow = liveWindows.SingleOrDefault(item => item.Hwnd == discoveredWindow.Hwnd);
             continuityFailed = failureWindow is not null;
             return false;
+        }
+
+        lock (gate)
+        {
+            if (!entries.TryGetValue(windowId, out CatalogEntry? currentEntry)
+                || currentEntry.Generation != entry.Generation
+                || !IsCurrentPublishedDiscoveryEntry_NoLock(currentEntry))
+            {
+                return false;
+            }
         }
 
         target = new ComputerUseWinExecutionTarget(entry.ApprovalKey, entry.WindowId, liveWindow);
@@ -243,6 +258,10 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             entries.Remove(windowId);
         }
     }
+
+    private bool IsCurrentPublishedDiscoveryEntry_NoLock(CatalogEntry entry) =>
+        latestPublishedDiscoveryGeneration is long latestPublished
+        && entry.Generation == latestPublished;
 
     private sealed record PendingTarget(
         ComputerUseWinApprovalKey ApprovalKey,

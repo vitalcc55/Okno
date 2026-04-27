@@ -53,6 +53,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - `windowId` намеренно discovery-scoped: если runtime не может доказать continuity с исходным discovery snapshot, `get_app_state(windowId)` fail-close-ится и требует свежий `list_apps`.
 - attached refresh path намеренно слабее `windowId`: `get_app_state` без explicit selector должен выдерживать обычный post-action title/layout drift того же окна, пока instance continuity всё ещё доказуема.
 - `list_apps` больше не является pure read-only observation hint: вызов выдаёт новые runtime-owned selectors, заменяет latest published selector snapshot и обновляет bounded server-side catalog, от которого зависит следующий `get_app_state(windowId)`.
+- replacement snapshot invalidates previous discovery selectors immediately: старые `windowId` больше не являются product-valid selectors после нового `list_apps`, включая empty publication, даже если storage entry ещё живёт до TTL/overflow cleanup.
 
 `type_text`, `press_key`, `scroll` и `drag` закреплены как следующий глобальный action wave, но пока не считаются shipped public implementation.
 
@@ -132,6 +133,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - plugin-local runtime install path должен оставаться integrity-safe: `runtime/win-x64` не используется как repair scratch space, publish/recovery materialize-ят bundle в side directories и handoff-ят canonical path только после completion proof по полному published runtime manifest; rollback source (`win-x64.backup-*`) не потребляется destructive move-ом до validated terminal state, а legacy/pre-manifest runtime без existing manifest fail-close-ится вместо генерации manifest из неподтверждённого partial state; second-order repair handoff failure не должен оставлять canonical path пустым, если last-known-good backup всё ещё может быть возвращён.
 - runtime-owned selector catalog не должен публиковать `windowId`, которые уже неразрешимы на ожидаемый следующий шаг loop: весь `list_apps` batch обязан пережить overflow eviction как единый generation, даже если batch больше nominal `maxEntries`.
 - latest published discovery batch должен переживать не только собственный `Materialize(...)`, но и следующий follow-up issuance (`TryIssue` из explicit `hwnd` / attached fallback), пока новый `list_apps` snapshot не заменил предыдущий published batch.
+- selector product-validity определяется current published discovery snapshot, а не физическим наличием entry в bounded catalog storage; TTL/overflow остаются retention mechanics и не должны решать, можно ли использовать selector прошлого snapshot.
 - install-surface freshness gate должен учитывать не только project/src tree, но и repo-root build/analyzer config inputs вроде `.editorconfig`, `.globalconfig`, `*.globalconfig`, `Directory.Build.rsp`, `Directory.Build.props`, `Directory.Packages.props` и `global.json`.
 
 ## Что не делать дальше
