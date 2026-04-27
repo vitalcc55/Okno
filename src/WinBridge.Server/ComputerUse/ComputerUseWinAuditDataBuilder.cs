@@ -8,16 +8,24 @@ internal static class ComputerUseWinAuditDataBuilder
 {
     public static Dictionary<string, string?> CreateObservedStateCompletionData(
         ComputerUseWinExecutionTarget target,
-        ComputerUseWinGetAppStateResult payload) =>
-        new(StringComparer.Ordinal)
+        ComputerUseWinGetAppStateResult payload)
+    {
+        Dictionary<string, string?> data = new(StringComparer.Ordinal)
         {
             ["runtime_state"] = ComputerUseWinRuntimeStateKind.Observed.ToString().ToLowerInvariant(),
             ["app_id"] = target.ApprovalKey.Value,
-            ["window_id"] = target.WindowId.Value,
+            ["execution_target_id"] = target.ExecutionTargetId.Value,
             ["state_token_present"] = (!string.IsNullOrWhiteSpace(payload.StateToken)).ToString().ToLowerInvariant(),
             ["element_count"] = payload.AccessibilityTree!.Count.ToString(CultureInfo.InvariantCulture),
             ["capture_artifact_path"] = payload.Capture!.ArtifactPath,
         };
+        if (!string.IsNullOrWhiteSpace(target.PublicWindowId))
+        {
+            data["window_id"] = target.PublicWindowId;
+        }
+
+        return data;
+    }
 
     public static Dictionary<string, string?> CreateActionCompletionData(InputResult input, string? failurePhase = null)
     {

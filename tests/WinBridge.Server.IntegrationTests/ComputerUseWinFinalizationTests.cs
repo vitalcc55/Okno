@@ -155,6 +155,46 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void ObservedStateAuditOmitsWindowIdWhenNoPublicSelectorWasPublished()
+    {
+        WindowDescriptor selectedWindow = CreateWindow();
+        ComputerUseWinGetAppStateResult payload = CreatePreparedState(
+            selectedWindow,
+            windowId: null).CreatePayload("state-token-1");
+        ComputerUseWinExecutionTarget target = new(
+            new ComputerUseWinApprovalKey("explorer"),
+            new ComputerUseWinWindowInstanceIdentity("cw_execution_target_only"),
+            PublicWindowId: null,
+            selectedWindow);
+
+        Dictionary<string, string?> data = ComputerUseWinAuditDataBuilder.CreateObservedStateCompletionData(target, payload);
+
+        Assert.False(data.ContainsKey("window_id"));
+        Assert.Equal("cw_execution_target_only", data["execution_target_id"]);
+        Assert.Equal("true", data["state_token_present"]);
+    }
+
+    [Fact]
+    public void ObservedStateAuditIncludesWindowIdOnlyForPublishedSelector()
+    {
+        WindowDescriptor selectedWindow = CreateWindow();
+        ComputerUseWinGetAppStateResult payload = CreatePreparedState(
+            selectedWindow,
+            windowId: "cw_public_selector").CreatePayload("state-token-1");
+        ComputerUseWinExecutionTarget target = new(
+            new ComputerUseWinApprovalKey("explorer"),
+            new ComputerUseWinWindowInstanceIdentity("cw_execution_target"),
+            "cw_public_selector",
+            selectedWindow);
+
+        Dictionary<string, string?> data = ComputerUseWinAuditDataBuilder.CreateObservedStateCompletionData(target, payload);
+
+        Assert.Equal("cw_public_selector", data["window_id"]);
+        Assert.Equal("cw_execution_target", data["execution_target_id"]);
+        Assert.Equal("true", data["state_token_present"]);
+    }
+
+    [Fact]
     public void ActionFinalizerUsesBestEffortAuditAfterCommittedSideEffect()
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
@@ -692,9 +732,11 @@ public sealed class ComputerUseWinFinalizationTests
             IsForeground: true,
             IsVisible: true);
 
-    private static ComputerUseWinPreparedAppState CreatePreparedState(WindowDescriptor selectedWindow)
+    private static ComputerUseWinPreparedAppState CreatePreparedState(
+        WindowDescriptor selectedWindow,
+        string? windowId = "cw_explorer_101")
     {
-        ComputerUseWinAppSession session = new("explorer", "cw_explorer_101", selectedWindow.Hwnd, selectedWindow.Title, selectedWindow.ProcessName, selectedWindow.ProcessId);
+        ComputerUseWinAppSession session = new("explorer", windowId, selectedWindow.Hwnd, selectedWindow.Title, selectedWindow.ProcessName, selectedWindow.ProcessId);
         ComputerUseWinStoredState storedState = new(
             session,
             selectedWindow,
@@ -735,5 +777,6 @@ public sealed class ComputerUseWinFinalizationTests
         new(
             new ComputerUseWinApprovalKey("explorer"),
             new ComputerUseWinWindowInstanceIdentity("cw_explorer_101"),
+            "cw_explorer_101",
             selectedWindow);
 }

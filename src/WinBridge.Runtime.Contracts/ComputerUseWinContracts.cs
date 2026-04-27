@@ -64,7 +64,7 @@ public sealed record ComputerUseWinGetAppStateRequest(
 
 public sealed record ComputerUseWinAppSession(
     string AppId,
-    string WindowId,
+    string? WindowId,
     long Hwnd,
     string Title,
     string? ProcessName,

@@ -12,7 +12,7 @@ internal sealed class ComputerUseWinAppStateObserver(
     public async Task<ComputerUseWinAppStateObservationOutcome> ObserveAsync(
         WindowDescriptor selectedWindow,
         string appId,
-        string windowId,
+        string? windowId,
         int maxNodes,
         IReadOnlyList<string> warnings,
         CancellationToken cancellationToken)

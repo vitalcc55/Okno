@@ -26,7 +26,7 @@
 | Tool | Safety class | Policy | Notes |
 | --- | --- | --- | --- |
 | `list_apps` | `session_mutation` | — | Возвращает running Windows apps для Computer Use for Windows. Публичный operator surface группирует visible window instances по app approval identity, публикует selectable `windows[]` с runtime-owned opaque `windowId` и заменяет latest published selector snapshot для следующего `get_app_state`. |
-| `get_app_state` | `os_side_effect` | — | Начинает или продолжает app use session и возвращает action-ready состояние конкретного discovered window instance: screenshot, compact accessibility tree, stateToken, captureReference и warnings. Primary selector — `windowId`; `hwnd` остаётся explicit low-level/debug path. stateToken публикуется только если capture и accessibility tree построены успешно; observation failure отвечает structured `failed` без session commit. |
+| `get_app_state` | `os_side_effect` | — | Начинает или продолжает app use session и возвращает action-ready состояние конкретного window target: screenshot, compact accessibility tree, stateToken, captureReference и warnings. Primary reusable selector — `windowId` из latest `list_apps`; `hwnd` остаётся explicit low-level/debug path и не минтит новый public selector, если target не совпал с current published snapshot. stateToken публикуется только если capture и accessibility tree построены успешно; observation failure отвечает structured `failed` без session commit. |
 | `click` | `os_side_effect` | — | Кликает по elementIndex или pixel coordinates из последнего app state. При наличии elementIndex runtime сначала пере-подтверждает target через свежий UIA snapshot; coordinate click остаётся low-confidence path и требует explicit confirm. |
 
 ### Deferred but declared

@@ -12,7 +12,8 @@ internal sealed class ComputerUseWinListAppsHandler(ComputerUseWinAppDiscoverySe
             .Select(static app => new ComputerUseWinAppDescriptor(
                 AppId: app.ApprovalKey.Value,
                 Windows: app.Windows.Select(static window => new ComputerUseWinWindowDescriptor(
-                    WindowId: window.WindowId.Value,
+                    WindowId: window.PublicWindowId
+                        ?? throw new InvalidOperationException("Published discovery windows must carry a public windowId."),
                     Hwnd: window.Window.Hwnd,
                     Title: window.Window.Title,
                     ProcessName: window.Window.ProcessName,

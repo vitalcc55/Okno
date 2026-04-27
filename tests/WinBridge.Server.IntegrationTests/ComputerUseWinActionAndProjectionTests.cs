@@ -83,8 +83,8 @@ public sealed class ComputerUseWinActionAndProjectionTests
         ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new();
         ComputerUseWinAppDiscoveryService discoveryService = new(new FakeListAppsWindowManager(windows), approvalStore, executionTargetCatalog);
         ComputerUseWinDiscoveredApp explorer = Assert.Single(discoveryService.ListVisibleApps());
-        string firstWindowId = explorer.Windows.Single(window => window.Window.Hwnd == 101).WindowId.Value;
-        string secondWindowId = explorer.Windows.Single(window => window.Window.Hwnd == 202).WindowId.Value;
+        string firstWindowId = explorer.Windows.Single(window => window.Window.Hwnd == 101).PublicWindowId!;
+        string secondWindowId = explorer.Windows.Single(window => window.Window.Hwnd == 202).PublicWindowId!;
 
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-4-target-resolution-tests"));
         ComputerUseWinGetAppStateTargetResolution firstResolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
@@ -116,20 +116,77 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.True(firstResolution.IsSuccess);
         Assert.NotNull(firstResolution.Target);
         Assert.Equal(101, firstResolution.Window!.Hwnd);
-        Assert.Equal(firstWindowId, firstResolution.Target!.WindowId.Value);
+        Assert.Equal(firstWindowId, firstResolution.Target!.PublicWindowId);
         Assert.Equal("explorer", firstResolution.Target.ApprovalKey.Value);
         Assert.True(secondResolution.IsSuccess);
         Assert.NotNull(secondResolution.Target);
         Assert.Equal(202, secondResolution.Window!.Hwnd);
-        Assert.Equal(secondWindowId, secondResolution.Target!.WindowId.Value);
+        Assert.Equal(secondWindowId, secondResolution.Target!.PublicWindowId);
         Assert.True(explicitResolution.IsSuccess);
         Assert.NotNull(explicitResolution.Target);
         Assert.Equal(202, explicitResolution.Target!.Window.Hwnd);
-        Assert.False(string.IsNullOrWhiteSpace(explicitResolution.Target.WindowId.Value));
+        Assert.Equal(secondWindowId, explicitResolution.Target.PublicWindowId);
         Assert.True(attachedResolution.IsSuccess);
         Assert.NotNull(attachedResolution.Target);
         Assert.Equal(101, attachedResolution.Target!.Window.Hwnd);
-        Assert.False(string.IsNullOrWhiteSpace(attachedResolution.Target.WindowId.Value));
+        Assert.Equal(firstWindowId, attachedResolution.Target.PublicWindowId);
+    }
+
+    [Fact]
+    public async Task GetAppStateApprovalRequiredForExplicitHwndWithoutDiscoveryDoesNotPublishWindowId()
+    {
+        WindowDescriptor window = CreateWindow(hwnd: 101, title: "Explorer A", processName: "explorer", processId: 1001);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-explicit-hwnd-public-selector-tests"));
+        using TempDirectoryScope temp = new();
+        ComputerUseWinApprovalStore approvalStore = CreateApprovalStore(temp);
+        ComputerUseWinGetAppStateHandler handler = CreateGetAppStateHandler(
+            new FakeListAppsWindowManager([window]),
+            sessionManager,
+            approvalStore,
+            executionTargetCatalog);
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinGetAppState,
+            new { hwnd = 101 },
+            sessionManager.GetSnapshot());
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinGetAppStateRequest(Hwnd: 101),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
+        AssertWindowIdNotPublished(payload.GetProperty("session"));
+    }
+
+    [Fact]
+    public async Task GetAppStateApprovalRequiredForAttachedFallbackWithoutDiscoveryDoesNotPublishWindowId()
+    {
+        WindowDescriptor window = CreateWindow(hwnd: 101, title: "Explorer A", processName: "explorer", processId: 1001);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-attached-public-selector-tests"));
+        sessionManager.Attach(window, "computer-use-win");
+        using TempDirectoryScope temp = new();
+        ComputerUseWinApprovalStore approvalStore = CreateApprovalStore(temp);
+        ComputerUseWinGetAppStateHandler handler = CreateGetAppStateHandler(
+            new FakeListAppsWindowManager([window]),
+            sessionManager,
+            approvalStore,
+            executionTargetCatalog);
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinGetAppState,
+            new { },
+            sessionManager.GetSnapshot());
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinGetAppStateRequest(),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
+        AssertWindowIdNotPublished(payload.GetProperty("session"));
     }
 
     [Fact]
@@ -144,7 +201,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             isForeground: true,
             bounds: new Bounds(40, 50, 800, 620));
         ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
-        string windowId = Assert.Single(executionTargetCatalog.Materialize([originalWindow])).WindowId.Value;
+        string windowId = Assert.Single(executionTargetCatalog.Materialize([originalWindow])).PublicWindowId!;
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-window-id-reuse-tests"));
 
         ComputerUseWinGetAppStateTargetResolution resolution = ComputerUseWinGetAppStateTargetResolver.Resolve(
@@ -415,7 +472,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         foreach (ComputerUseWinExecutionTarget target in targets)
         {
             bool resolved = executionTargetCatalog.TryResolveWindowId(
-                target.WindowId.Value,
+                target.PublicWindowId!,
                 windows,
                 out ComputerUseWinExecutionTarget? resolvedTarget,
                 out WindowDescriptor? _,
@@ -448,7 +505,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.All(secondTargets, target =>
         {
             bool resolved = executionTargetCatalog.TryResolveWindowId(
-                target.WindowId.Value,
+                target.PublicWindowId!,
                 secondBatch,
                 out ComputerUseWinExecutionTarget? _,
                 out WindowDescriptor? _,
@@ -460,7 +517,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         Assert.Contains(firstTargets, target =>
             !executionTargetCatalog.TryResolveWindowId(
-                target.WindowId.Value,
+                target.PublicWindowId!,
                 firstBatch,
                 out ComputerUseWinExecutionTarget? _,
                 out WindowDescriptor? _,
@@ -484,7 +541,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         ComputerUseWinExecutionTarget secondTarget = Assert.Single(executionTargetCatalog.Materialize(secondBatch));
 
         Assert.True(executionTargetCatalog.TryResolveWindowId(
-            secondTarget.WindowId.Value,
+            secondTarget.PublicWindowId!,
             secondBatch,
             out ComputerUseWinExecutionTarget? resolvedSecondTarget,
             out WindowDescriptor? _,
@@ -492,7 +549,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.NotNull(resolvedSecondTarget);
         Assert.False(secondContinuityFailed);
         Assert.False(executionTargetCatalog.TryResolveWindowId(
-            firstTarget.WindowId.Value,
+            firstTarget.PublicWindowId!,
             firstBatch,
             out ComputerUseWinExecutionTarget? _,
             out WindowDescriptor? _,
@@ -526,7 +583,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.All(discoveryTargets, target =>
         {
             bool resolved = executionTargetCatalog.TryResolveWindowId(
-                target.WindowId.Value,
+                target.PublicWindowId!,
                 discoveryBatch,
                 out ComputerUseWinExecutionTarget? _,
                 out WindowDescriptor? _,
@@ -554,7 +611,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.All(discoveryTargets, target =>
             Assert.False(
                 executionTargetCatalog.TryResolveWindowId(
-                    target.WindowId.Value,
+                    target.PublicWindowId!,
                     discoveryBatch,
                     out ComputerUseWinExecutionTarget? _,
                     out WindowDescriptor? _,
@@ -599,7 +656,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.All(discoveryTargets, target =>
             Assert.False(
                 executionTargetCatalog.TryResolveWindowId(
-                    target.WindowId.Value,
+                    target.PublicWindowId!,
                     discoveryBatch,
                     out ComputerUseWinExecutionTarget? _,
                     out WindowDescriptor? _,
@@ -1374,6 +1431,30 @@ public sealed class ComputerUseWinActionAndProjectionTests
                 clickExecutionCoordinator));
     }
 
+    private static ComputerUseWinGetAppStateHandler CreateGetAppStateHandler(
+        IWindowManager windowManager,
+        ISessionManager sessionManager,
+        ComputerUseWinApprovalStore approvalStore,
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog) =>
+        new(
+            windowManager,
+            sessionManager,
+            approvalStore,
+            executionTargetCatalog,
+            new ComputerUseWinStateStore(),
+            new FakeWindowActivationService(),
+            new ComputerUseWinAppStateObserver(
+                new NoopCaptureService(),
+                new FakeUiAutomationService(),
+                new EmptyInstructionProvider()));
+
+    private static ComputerUseWinApprovalStore CreateApprovalStore(TempDirectoryScope temp) =>
+        new(
+            new ComputerUseWinOptions(
+                PluginRoot: temp.Root,
+                AppInstructionsRoot: Path.Combine(temp.Root, "references", "AppInstructions"),
+                ApprovalStorePath: Path.Combine(temp.Root, "AppApprovals.json")));
+
     private static AuditLog CreateAuditLog()
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
@@ -1391,6 +1472,16 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
     private static ComputerUseWinAppSession CreateSession() =>
         new("explorer", "cw_explorer_101", 101, "Explorer", "explorer", 1001);
+
+    private static void AssertWindowIdNotPublished(JsonElement session)
+    {
+        if (!session.TryGetProperty("windowId", out JsonElement windowId))
+        {
+            return;
+        }
+
+        Assert.Equal(JsonValueKind.Null, windowId.ValueKind);
+    }
 
     private static ComputerUseWinStoredState CreateStoredState() =>
         new(

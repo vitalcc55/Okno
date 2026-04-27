@@ -48,7 +48,7 @@ internal sealed class ComputerUseWinGetAppStateHandler(
         }
 
         string appId = selectedTarget.ApprovalKey.Value;
-        string windowId = selectedTarget.WindowId.Value;
+        string? windowId = selectedTarget.PublicWindowId;
         ComputerUseWinRuntimeState preObservationState = approvalStore.IsApproved(appId)
             ? ComputerUseWinRuntimeStateModel.Approved()
             : ComputerUseWinRuntimeStateModel.Attached();

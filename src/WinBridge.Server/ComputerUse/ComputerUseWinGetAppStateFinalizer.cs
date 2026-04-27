@@ -21,7 +21,7 @@ internal static class ComputerUseWinGetAppStateFinalizer
             FailureCode: ComputerUseWinFailureCodeValues.BlockedTarget,
             Reason: reason);
 
-    internal static ComputerUseWinGetAppStateResult CreateApprovalRequiredPayload(WindowDescriptor window, string appId, string windowId) =>
+    internal static ComputerUseWinGetAppStateResult CreateApprovalRequiredPayload(WindowDescriptor window, string appId, string? windowId) =>
         new(
             Status: ComputerUseWinStatusValues.ApprovalRequired,
             Session: new ComputerUseWinAppSession(appId, windowId, window.Hwnd, window.Title, window.ProcessName, window.ProcessId),

@@ -15,7 +15,8 @@ internal readonly record struct ComputerUseWinWindowInstanceIdentity(string Valu
 
 internal sealed record ComputerUseWinExecutionTarget(
     ComputerUseWinApprovalKey ApprovalKey,
-    ComputerUseWinWindowInstanceIdentity WindowId,
+    ComputerUseWinWindowInstanceIdentity ExecutionTargetId,
+    string? PublicWindowId,
     WindowDescriptor Window);
 
 internal sealed record ComputerUseWinDiscoveredApp(
@@ -68,12 +69,21 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         ArgumentNullException.ThrowIfNull(window);
 
         target = null;
+        if (TryResolveCurrentPublishedWindow_NoMutation(window, out target))
+        {
+            return true;
+        }
+
         if (!TryCreatePendingTarget(window, out PendingTarget? pendingTarget) || pendingTarget is null)
         {
             return false;
         }
 
-        target = CommitBatch([pendingTarget], protectAsPublishedDiscoverySnapshot: false)[0];
+        target = new ComputerUseWinExecutionTarget(
+            pendingTarget.ApprovalKey,
+            pendingTarget.ExecutionTargetId,
+            PublicWindowId: null,
+            pendingTarget.Window);
         return true;
     }
 
@@ -126,7 +136,11 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             }
         }
 
-        target = new ComputerUseWinExecutionTarget(entry.ApprovalKey, entry.WindowId, liveWindow);
+        target = new ComputerUseWinExecutionTarget(
+            entry.ApprovalKey,
+            entry.ExecutionTargetId,
+            entry.WindowId,
+            liveWindow);
         return true;
     }
 
@@ -152,7 +166,7 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
 
         target = new PendingTarget(
             new ComputerUseWinApprovalKey(appId!),
-            CreateWindowId(),
+            CreateExecutionTargetId(),
             window);
         return true;
     }
@@ -179,7 +193,8 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         ComputerUseWinExecutionTarget[] issuedTargets = pendingTargets
             .Select(static pending => new ComputerUseWinExecutionTarget(
                 pending.ApprovalKey,
-                pending.WindowId,
+                pending.ExecutionTargetId,
+                pending.ExecutionTargetId.Value,
                 pending.Window))
             .ToArray();
         lock (gate)
@@ -189,9 +204,12 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             DateTimeOffset issuedAtUtc = timeProvider.GetUtcNow();
             foreach (ComputerUseWinExecutionTarget issuedTarget in issuedTargets)
             {
-                entries[issuedTarget.WindowId.Value] = new CatalogEntry(
+                string windowId = issuedTarget.PublicWindowId
+                    ?? throw new InvalidOperationException("Published discovery targets must carry a public windowId.");
+                entries[windowId] = new CatalogEntry(
                     issuedTarget.ApprovalKey,
-                    issuedTarget.WindowId,
+                    issuedTarget.ExecutionTargetId,
+                    windowId,
                     issuedTarget.Window,
                     generation,
                     issuedAtUtc);
@@ -208,7 +226,40 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         return issuedTargets;
     }
 
-    private static ComputerUseWinWindowInstanceIdentity CreateWindowId() =>
+    private bool TryResolveCurrentPublishedWindow_NoMutation(
+        WindowDescriptor liveWindow,
+        out ComputerUseWinExecutionTarget? target)
+    {
+        target = null;
+        lock (gate)
+        {
+            EvictExpired_NoLock();
+            if (latestPublishedDiscoveryGeneration is not long latestPublished)
+            {
+                return false;
+            }
+
+            CatalogEntry[] matches = entries.Values
+                .Where(entry => entry.Generation == latestPublished)
+                .Where(entry => ComputerUseWinWindowContinuityProof.MatchesDiscoverySelector(liveWindow, entry.Window))
+                .Take(2)
+                .ToArray();
+            if (matches.Length != 1)
+            {
+                return false;
+            }
+
+            CatalogEntry entry = matches[0];
+            target = new ComputerUseWinExecutionTarget(
+                entry.ApprovalKey,
+                entry.ExecutionTargetId,
+                entry.WindowId,
+                liveWindow);
+            return true;
+        }
+    }
+
+    private static ComputerUseWinWindowInstanceIdentity CreateExecutionTargetId() =>
         new($"cw_{Guid.NewGuid():N}");
 
     private void EvictExpired_NoLock()
@@ -265,12 +316,13 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
 
     private sealed record PendingTarget(
         ComputerUseWinApprovalKey ApprovalKey,
-        ComputerUseWinWindowInstanceIdentity WindowId,
+        ComputerUseWinWindowInstanceIdentity ExecutionTargetId,
         WindowDescriptor Window);
 
     private sealed record CatalogEntry(
         ComputerUseWinApprovalKey ApprovalKey,
-        ComputerUseWinWindowInstanceIdentity WindowId,
+        ComputerUseWinWindowInstanceIdentity ExecutionTargetId,
+        string WindowId,
         WindowDescriptor Window,
         long Generation,
         DateTimeOffset IssuedAtUtc);

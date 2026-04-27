@@ -55,7 +55,7 @@ internal static class ComputerUseWinToolResultFactory
         return CreateToolResult(payload, isError: true);
     }
 
-    public static CallToolResult CreateStateApprovalRequired(AuditInvocationScope invocation, WindowDescriptor window, string appId, string windowId)
+    public static CallToolResult CreateStateApprovalRequired(AuditInvocationScope invocation, WindowDescriptor window, string appId, string? windowId)
     {
         ComputerUseWinGetAppStateResult payload = ComputerUseWinGetAppStateFinalizer.CreateApprovalRequiredPayload(window, appId, windowId);
         ComputerUseWinFailureCompletion.CompleteFailure(invocation, payload.Reason!, ComputerUseWinFailureCodeValues.ApprovalRequired, window.Hwnd);
