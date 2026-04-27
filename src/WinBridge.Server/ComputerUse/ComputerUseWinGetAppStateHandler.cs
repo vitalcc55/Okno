@@ -65,12 +65,23 @@ internal sealed class ComputerUseWinGetAppStateHandler(
 
         List<string> warnings = [];
         ActivateWindowResult activation = await windowActivationService.ActivateAsync(selectedWindow, cancellationToken).ConfigureAwait(false);
-        if (string.Equals(activation.Status, "done", StringComparison.Ordinal)
-            || string.Equals(activation.Status, "already_active", StringComparison.Ordinal))
+        if (activation.Window is not null)
         {
-            selectedWindow = activation.Window ?? selectedWindow;
+            selectedWindow = activation.Window;
+            selectedTarget = executionTargetCatalog.RevalidatePublicSelectorAfterSideEffect(selectedTarget, selectedWindow);
+            windowId = selectedTarget.PublicWindowId;
         }
-        else if (!string.IsNullOrWhiteSpace(activation.Reason))
+        else if (!string.Equals(activation.Status, "done", StringComparison.Ordinal)
+            && !string.Equals(activation.Status, "already_active", StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(windowId))
+        {
+            selectedTarget = selectedTarget with { PublicWindowId = null };
+            windowId = null;
+        }
+
+        bool activationSucceeded = string.Equals(activation.Status, "done", StringComparison.Ordinal)
+            || string.Equals(activation.Status, "already_active", StringComparison.Ordinal);
+        if (!activationSucceeded && !string.IsNullOrWhiteSpace(activation.Reason))
         {
             warnings.Add(activation.Reason);
         }

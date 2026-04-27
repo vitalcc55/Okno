@@ -144,6 +144,40 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         return true;
     }
 
+    public ComputerUseWinExecutionTarget RevalidatePublicSelectorAfterSideEffect(
+        ComputerUseWinExecutionTarget target,
+        WindowDescriptor liveWindow)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(liveWindow);
+
+        if (string.IsNullOrWhiteSpace(target.PublicWindowId))
+        {
+            return target with { Window = liveWindow };
+        }
+
+        lock (gate)
+        {
+            EvictExpired_NoLock();
+            if (!entries.TryGetValue(target.PublicWindowId, out CatalogEntry? entry)
+                || !IsCurrentPublishedDiscoveryEntry_NoLock(entry)
+                || !ComputerUseWinWindowContinuityProof.MatchesDiscoverySelector(liveWindow, entry.Window))
+            {
+                return target with
+                {
+                    PublicWindowId = null,
+                    Window = liveWindow,
+                };
+            }
+
+            return new ComputerUseWinExecutionTarget(
+                entry.ApprovalKey,
+                entry.ExecutionTargetId,
+                entry.WindowId,
+                liveWindow);
+        }
+    }
+
     private static bool TryCreatePendingTarget(WindowDescriptor window, out PendingTarget? target)
     {
         ArgumentNullException.ThrowIfNull(window);

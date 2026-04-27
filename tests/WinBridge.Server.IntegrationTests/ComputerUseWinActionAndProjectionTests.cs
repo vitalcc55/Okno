@@ -190,6 +190,149 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task GetAppStateOmitsPublishedWindowIdWhenActivationDriftsDiscoverySnapshot()
+    {
+        WindowDescriptor discoveredWindow = CreateWindow(
+            hwnd: 101,
+            title: "Explorer A",
+            processName: "explorer",
+            processId: 1001,
+            windowState: WindowStateValues.Minimized,
+            isForeground: false);
+        WindowDescriptor activatedWindow = discoveredWindow with
+        {
+            WindowState = WindowStateValues.Normal,
+            IsForeground = true,
+        };
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+        string windowId = Assert.Single(executionTargetCatalog.Materialize([discoveredWindow])).PublicWindowId!;
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-activation-selector-revalidation-tests"));
+        ComputerUseWinStateStore stateStore = new();
+        using TempDirectoryScope temp = new();
+        ComputerUseWinApprovalStore approvalStore = CreateApprovalStore(temp);
+        approvalStore.Approve("explorer");
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Done,
+                Window: CreateObservedWindow(window),
+                Root: new UiaElementSnapshot
+                {
+                    ElementId = "root",
+                    ControlType = "window",
+                    BoundingRectangle = window.Bounds,
+                },
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        ComputerUseWinGetAppStateHandler handler = new(
+            new FakeListAppsWindowManager([discoveredWindow]),
+            sessionManager,
+            approvalStore,
+            executionTargetCatalog,
+            stateStore,
+            new FakeWindowActivationService(_ => ActivateWindowResult.Done(activatedWindow, wasMinimized: true, isForeground: true)),
+            new ComputerUseWinAppStateObserver(
+                new SuccessfulComputerUseWinCaptureService(),
+                uiAutomationService,
+                new EmptyInstructionProvider()));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinGetAppState,
+            new { windowId },
+            sessionManager.GetSnapshot());
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinGetAppStateRequest(WindowId: windowId),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.False(result.IsError);
+        Assert.Equal(ComputerUseWinStatusValues.Ok, payload.GetProperty("status").GetString());
+        AssertWindowIdNotPublished(payload.GetProperty("session"));
+        string stateToken = payload.GetProperty("stateToken").GetString()!;
+        Assert.True(stateStore.TryGet(stateToken, out ComputerUseWinStoredState? storedState));
+        Assert.NotNull(storedState);
+        Assert.Null(storedState!.Session.WindowId);
+        Assert.Equal(WindowStateValues.Normal, storedState.Window.WindowState);
+    }
+
+    [Theory]
+    [InlineData(ActivateWindowStatusValues.Ambiguous)]
+    [InlineData(ActivateWindowStatusValues.Failed)]
+    public async Task GetAppStateOmitsPublishedWindowIdWhenActivationWarningPathDriftsDiscoverySnapshot(string activationStatus)
+    {
+        WindowDescriptor discoveredWindow = CreateWindow(
+            hwnd: 101,
+            title: "Explorer A",
+            processName: "explorer",
+            processId: 1001,
+            windowState: WindowStateValues.Minimized,
+            isForeground: false);
+        WindowDescriptor activatedWindow = discoveredWindow with
+        {
+            WindowState = WindowStateValues.Normal,
+            IsForeground = false,
+        };
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+        string windowId = Assert.Single(executionTargetCatalog.Materialize([discoveredWindow])).PublicWindowId!;
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-activation-warning-selector-revalidation-tests"));
+        ComputerUseWinStateStore stateStore = new();
+        using TempDirectoryScope temp = new();
+        ComputerUseWinApprovalStore approvalStore = CreateApprovalStore(temp);
+        approvalStore.Approve("explorer");
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Done,
+                Window: CreateObservedWindow(window),
+                Root: new UiaElementSnapshot
+                {
+                    ElementId = "root",
+                    ControlType = "window",
+                    BoundingRectangle = window.Bounds,
+                },
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        ComputerUseWinGetAppStateHandler handler = new(
+            new FakeListAppsWindowManager([discoveredWindow]),
+            sessionManager,
+            approvalStore,
+            executionTargetCatalog,
+            stateStore,
+            new FakeWindowActivationService(_ => CreateWarningActivationResult(activationStatus, activatedWindow)),
+            new ComputerUseWinAppStateObserver(
+                new SuccessfulComputerUseWinCaptureService(),
+                uiAutomationService,
+                new EmptyInstructionProvider()));
+        AuditLogOptions auditOptions = CreateAuditOptions(temp.Root, $"computer-use-win-activation-warning-{activationStatus}-tests");
+        AuditLog auditLog = new(auditOptions, TimeProvider.System);
+        using AuditInvocationScope invocation = auditLog.BeginInvocation(
+            ToolNames.ComputerUseWinGetAppState,
+            new { windowId },
+            sessionManager.GetSnapshot());
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinGetAppStateRequest(WindowId: windowId),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.False(result.IsError);
+        Assert.Equal(ComputerUseWinStatusValues.Ok, payload.GetProperty("status").GetString());
+        AssertWindowIdNotPublished(payload.GetProperty("session"));
+        Assert.Contains(payload.GetProperty("warnings").EnumerateArray(), item => item.GetString() == "activation warning");
+        string stateToken = payload.GetProperty("stateToken").GetString()!;
+        Assert.True(stateStore.TryGet(stateToken, out ComputerUseWinStoredState? storedState));
+        Assert.NotNull(storedState);
+        Assert.Null(storedState!.Session.WindowId);
+        Assert.Equal(WindowStateValues.Normal, storedState.Window.WindowState);
+        string completedEvent = File.ReadLines(auditOptions.EventsPath)
+            .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
+        Assert.DoesNotContain("\"window_id\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"execution_target_id\"", completedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GetAppStateTargetResolverRejectsWindowIdWhenLiveWindowSnapshotDrifts()
     {
         WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Original", processName: "explorer", processId: 1001, isForeground: false);
@@ -1459,19 +1602,39 @@ public sealed class ComputerUseWinActionAndProjectionTests
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        AuditLogOptions options = new(
+        return new AuditLog(CreateAuditOptions(root, "computer-use-win-stage-2-test"), TimeProvider.System);
+    }
+
+    private static AuditLogOptions CreateAuditOptions(string root, string runId) =>
+        new(
             ContentRootPath: root,
             EnvironmentName: "tests",
-            RunId: "computer-use-win-stage-2-test",
+            RunId: runId,
             DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
-            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "computer-use-win-stage-2-test"),
-            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "computer-use-win-stage-2-test", "events.jsonl"),
-            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "computer-use-win-stage-2-test", "summary.md"));
-        return new AuditLog(options, TimeProvider.System);
-    }
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", runId),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", runId, "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", runId, "summary.md"));
 
     private static ComputerUseWinAppSession CreateSession() =>
         new("explorer", "cw_explorer_101", 101, "Explorer", "explorer", 1001);
+
+    private static ActivateWindowResult CreateWarningActivationResult(string activationStatus, WindowDescriptor window) =>
+        activationStatus switch
+        {
+            ActivateWindowStatusValues.Ambiguous => ActivateWindowResult.Ambiguous(
+                "activation warning",
+                window,
+                wasMinimized: true,
+                isForeground: false,
+                failureKind: ActivationFailureKindValues.ForegroundNotConfirmed),
+            ActivateWindowStatusValues.Failed => ActivateWindowResult.Failed(
+                "activation warning",
+                window,
+                wasMinimized: true,
+                isForeground: false,
+                failureKind: ActivationFailureKindValues.ForegroundNotConfirmed),
+            _ => throw new ArgumentOutOfRangeException(nameof(activationStatus), activationStatus, "Неизвестный activation status для warning-path теста."),
+        };
 
     private static void AssertWindowIdNotPublished(JsonElement session)
     {
@@ -1662,6 +1825,38 @@ public sealed class ComputerUseWinActionAndProjectionTests
     {
         public Task<CaptureResult> CaptureAsync(CaptureTarget target, CancellationToken cancellationToken) =>
             throw new NotSupportedException("Capture не должен вызываться в list_apps characterization test.");
+    }
+
+    private sealed class SuccessfulComputerUseWinCaptureService : ICaptureService
+    {
+        public Task<CaptureResult> CaptureAsync(CaptureTarget target, CancellationToken cancellationToken)
+        {
+            WindowDescriptor window = target.Window
+                ?? throw new InvalidOperationException("Тест computer-use-win capture ожидает window target.");
+            return Task.FromResult(
+                new CaptureResult(
+                    new CaptureMetadata(
+                        Scope: "window",
+                        TargetKind: "window",
+                        Hwnd: window.Hwnd,
+                        Title: window.Title,
+                        ProcessName: window.ProcessName,
+                        Bounds: window.Bounds,
+                        CoordinateSpace: "physical_pixels",
+                        PixelWidth: window.Bounds.Width,
+                        PixelHeight: window.Bounds.Height,
+                        CapturedAtUtc: DateTimeOffset.UtcNow,
+                        ArtifactPath: Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.png"),
+                        MimeType: "image/png",
+                        ByteSize: 3,
+                        SessionRunId: "tests",
+                        EffectiveDpi: window.EffectiveDpi,
+                        DpiScale: window.DpiScale,
+                        MonitorId: window.MonitorId,
+                        MonitorFriendlyName: window.MonitorFriendlyName,
+                        CaptureReference: null),
+                    [1, 2, 3]));
+        }
     }
 
     private sealed class EmptyInstructionProvider : IComputerUseWinInstructionProvider

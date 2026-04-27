@@ -55,6 +55,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - `list_apps` больше не является pure read-only observation hint: вызов выдаёт новые runtime-owned selectors, заменяет latest published selector snapshot и обновляет bounded server-side catalog, от которого зависит следующий `get_app_state(windowId)`.
 - replacement snapshot invalidates previous discovery selectors immediately: старые `windowId` больше не являются product-valid selectors после нового `list_apps`, включая empty publication, даже если storage entry ещё живёт до TTL/overflow cleanup.
 - explicit `hwnd` и attached fallback не минтят новый reusable `windowId`: они переиспользуют selector из current published snapshot при strict match, иначе public `session.windowId` отсутствует/null и следующий refresh должен идти через `hwnd`, attached session или свежий `list_apps`.
+- `get_app_state` не публикует pre-activation `windowId` после side-effecting activation без повторного strict proof. Если activation изменила `WindowState`, bounds, monitor metadata или другие discovery-snapshot поля, success payload и stored state оставляют `session.windowId` absent/null вместо возврата selector, который следующий `get_app_state(windowId)` сразу reject-нет.
 
 `type_text`, `press_key`, `scroll` и `drag` закреплены как следующий глобальный action wave, но пока не считаются shipped public implementation.
 
@@ -136,6 +137,7 @@ list_apps -> get_app_state -> click -> get_app_state
 - latest published discovery batch должен переживать не только собственный `Materialize(...)`, но и следующий follow-up issuance (`TryIssue` из explicit `hwnd` / attached fallback), пока новый `list_apps` snapshot не заменил предыдущий published batch.
 - selector product-validity определяется current published discovery snapshot, а не физическим наличием entry в bounded catalog storage; TTL/overflow остаются retention mechanics и не должны решать, можно ли использовать selector прошлого snapshot.
 - public `session.windowId` не должен смешивать selector и ephemeral execution identity: если target был выбран через `hwnd` / attached fallback без current published selector, payload не публикует `windowId`, а observability может нести отдельный internal `execution_target_id`.
+- любой public `windowId`, публикуемый после activation/focus side effect, должен быть заново revalidated против current published discovery snapshot; pre-side-effect selector нельзя переносить в success payload, stored state или audit, если post-activation live window уже не проходит тот же strict proof, которым `TryResolveWindowId` принимает selector.
 - install-surface freshness gate должен учитывать не только project/src tree, но и repo-root build/analyzer config inputs вроде `.editorconfig`, `.globalconfig`, `*.globalconfig`, `Directory.Build.rsp`, `Directory.Build.props`, `Directory.Packages.props` и `global.json`.
 
 ## Что не делать дальше
