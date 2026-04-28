@@ -793,6 +793,37 @@ public sealed class ComputerUseWinInstallSurfaceTests
         Assert.DoesNotContain("следующий глобальный action wave", readme, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ComputerUseWinPluginManifestDocumentsCurrentShippedToolSurface()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string manifestPath = Path.Combine(repoRoot, "plugins", "computer-use-win", ".codex-plugin", "plugin.json");
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
+
+        string longDescription = manifest.RootElement
+            .GetProperty("interface")
+            .GetProperty("longDescription")
+            .GetString() ?? string.Empty;
+
+        string[] shippedTools =
+        [
+            ToolNames.ComputerUseWinListApps,
+            ToolNames.ComputerUseWinGetAppState,
+            ToolNames.ComputerUseWinClick,
+            ToolNames.ComputerUseWinPressKey,
+            ToolNames.ComputerUseWinSetValue,
+            ToolNames.ComputerUseWinTypeText,
+            ToolNames.ComputerUseWinScroll,
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            ToolNames.ComputerUseWinDrag,
+        ];
+
+        foreach (string toolName in shippedTools)
+        {
+            Assert.Contains(toolName, longDescription, StringComparison.Ordinal);
+        }
+    }
+
     [Theory]
     [InlineData("Directory.Build.props")]
     [InlineData("Directory.Packages.props")]
