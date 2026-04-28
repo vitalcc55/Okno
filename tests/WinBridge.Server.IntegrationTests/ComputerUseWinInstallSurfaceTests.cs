@@ -31,6 +31,37 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
+    public void PublishComputerUseWinPluginCreatesRunnableSelfContainedUiaWorker()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string scriptPath = GetPublishScriptPath(repoRoot);
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
+        string workerExecutablePath = Path.Combine(runtimeRoot, "WinBridge.Runtime.Windows.UIA.Worker.exe");
+        string workerRuntimeConfigPath = Path.Combine(runtimeRoot, "WinBridge.Runtime.Windows.UIA.Worker.runtimeconfig.json");
+
+        EnsurePublishedRuntimeBundle(repoRoot, scriptPath, runtimeRoot);
+
+        using JsonDocument runtimeConfig = JsonDocument.Parse(File.ReadAllText(workerRuntimeConfigPath));
+        JsonElement runtimeOptions = runtimeConfig.RootElement.GetProperty("runtimeOptions");
+        Assert.True(
+            runtimeOptions.TryGetProperty("includedFrameworks", out JsonElement includedFrameworks),
+            "The cache-installed computer-use-win plugin launches the UIA worker from the plugin-local runtime bundle; the worker must be self-contained and cannot depend on a machine-wide .NET runtime.");
+
+        string[] frameworkNames = includedFrameworks
+            .EnumerateArray()
+            .Select(framework => framework.GetProperty("name").GetString() ?? string.Empty)
+            .ToArray();
+        Assert.Contains("Microsoft.NETCore.App", frameworkNames);
+        Assert.Contains("Microsoft.WindowsDesktop.App", frameworkNames);
+
+        WorkerProbeResult workerProbe = InvokeUiaWorkerSnapshotAgainstMissingWindow(workerExecutablePath);
+        Assert.Equal(0, workerProbe.ExitCode);
+        Assert.DoesNotContain("You must install or update .NET", workerProbe.Stderr, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Could not load file or assembly", workerProbe.Stderr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"success\":false", workerProbe.Stdout, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void PublishComputerUseWinPluginRestoresPreviousRuntimeWhenPromoteFails()
     {
         string repoRoot = GetRepositoryRoot();
@@ -1254,6 +1285,66 @@ public sealed class ComputerUseWinInstallSurfaceTests
         throw new InvalidOperationException("Не удалось определить корень репозитория WinBridge.");
     }
 
+    private static WorkerProbeResult InvokeUiaWorkerSnapshotAgainstMissingWindow(string workerExecutablePath)
+    {
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = workerExecutablePath,
+            WorkingDirectory = Path.GetDirectoryName(workerExecutablePath)!,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+
+        using Process process = new() { StartInfo = startInfo };
+        process.Start();
+        string payload = JsonSerializer.Serialize(new
+        {
+            operation = "snapshot",
+            targetWindow = new
+            {
+                hwnd = 1,
+                title = "Missing window",
+                processName = "missing",
+                processId = (int?)null,
+                threadId = (int?)null,
+                className = string.Empty,
+                bounds = new
+                {
+                    left = 0,
+                    top = 0,
+                    right = 10,
+                    bottom = 10,
+                },
+                isForeground = true,
+                isVisible = true,
+            },
+            snapshotRequest = new
+            {
+                depth = 1,
+                maxNodes = 5,
+            },
+        });
+
+        process.StandardInput.Write(payload);
+        process.StandardInput.Close();
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(TimeSpan.FromSeconds(15)))
+        {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit();
+            Task.WaitAll(stdoutTask, stderrTask);
+            return new WorkerProbeResult(-1, stdoutTask.Result, stderrTask.Result);
+        }
+
+        Task.WaitAll(stdoutTask, stderrTask);
+        return new WorkerProbeResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
+    }
+
     private sealed class PluginMcpSession(StreamReader reader, StreamWriter writer)
     {
         private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
@@ -1317,4 +1408,6 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     private sealed record ScriptInvocationResult(int ExitCode, string Stdout, string Stderr);
+
+    private sealed record WorkerProbeResult(int ExitCode, string Stdout, string Stderr);
 }

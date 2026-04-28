@@ -268,6 +268,7 @@ function Publish-RuntimeBundleToStaging {
             --runtime win-x64 `
             --self-contained true `
             -p:UseAppHost=true `
+            -p:UiaWorkerPublishSelfContained=true `
             -p:PublishSingleFile=false `
             -p:PublishTrimmed=false `
             --output $stagingRoot

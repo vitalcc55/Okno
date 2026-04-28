@@ -22,6 +22,26 @@
     <AssemblyName>Okno.Server</AssemblyName>
     <OutputType>Exe</OutputType>
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <UiaHostingProjectPath>$(MSBuildThisFileDirectory)..\WinBridge.Runtime.Windows.UIA.Hosting\WinBridge.Runtime.Windows.UIA.Hosting.csproj</UiaHostingProjectPath>
+    <UiaWorkerServerPublishSelfContained Condition="'$(UiaWorkerServerPublishSelfContained)' == '' and '$(PublishSelfContained)' != ''">$(PublishSelfContained)</UiaWorkerServerPublishSelfContained>
+    <UiaWorkerServerPublishSelfContained Condition="'$(UiaWorkerServerPublishSelfContained)' == '' and '$(SelfContained)' != ''">$(SelfContained)</UiaWorkerServerPublishSelfContained>
+    <UiaWorkerServerPublishSelfContained Condition="'$(UiaWorkerServerPublishSelfContained)' == ''">false</UiaWorkerServerPublishSelfContained>
+    <UiaWorkerServerPublishProperties>Configuration=$(Configuration);TargetFramework=$(TargetFramework);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(UiaWorkerServerPublishSelfContained);PublishSelfContained=$(UiaWorkerServerPublishSelfContained);UseAppHost=true;PublishSingleFile=$(PublishSingleFile);PublishTrimmed=$(PublishTrimmed);PublishReadyToRun=$(PublishReadyToRun)</UiaWorkerServerPublishProperties>
   </PropertyGroup>
+
+  <Target Name="StageUiaWorkerArtifactsIntoServerPublishOutput"
+          AfterTargets="Publish"
+          Condition="'$(RuntimeIdentifier)' != '' and '$(PublishDir)' != ''">
+    <MSBuild Projects="$(UiaHostingProjectPath)"
+             Targets="CollectPublishedUiaWorkerArtifacts"
+             BuildInParallel="false"
+             Properties="$(UiaWorkerServerPublishProperties)">
+      <Output TaskParameter="TargetOutputs" ItemName="_PublishedUiaWorkerArtifact" />
+    </MSBuild>
+
+    <Copy SourceFiles="@(_PublishedUiaWorkerArtifact)"
+          DestinationFiles="@(_PublishedUiaWorkerArtifact->'$(PublishDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

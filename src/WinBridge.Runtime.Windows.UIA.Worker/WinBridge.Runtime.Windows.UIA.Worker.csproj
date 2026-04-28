@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Text.Json" />
     <ProjectReference Include="..\WinBridge.Runtime.Windows.UIA\WinBridge.Runtime.Windows.UIA.csproj" />
   </ItemGroup>
 
@@ -20,11 +21,16 @@
   </Target>
 
   <Target Name="GetPublishedUiaWorkerArtifacts" DependsOnTargets="Restore;Publish" Returns="@(UiaWorkerArtifact)">
+    <PropertyGroup>
+      <_UiaWorkerPublishDir Condition="$([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$(PublishDir)</_UiaWorkerPublishDir>
+      <_UiaWorkerPublishDir Condition="'$(_UiaWorkerPublishDir)' == ''">$(MSBuildProjectDirectory)\$(PublishDir)</_UiaWorkerPublishDir>
+    </PropertyGroup>
+
     <ItemGroup>
-      <UiaWorkerArtifact Include="$(PublishDir)$(AssemblyName).exe" Condition="Exists('$(PublishDir)$(AssemblyName).exe')" />
-      <UiaWorkerArtifact Include="$(PublishDir)$(AssemblyName).dll" Condition="Exists('$(PublishDir)$(AssemblyName).dll')" />
-      <UiaWorkerArtifact Include="$(PublishDir)$(AssemblyName).runtimeconfig.json" Condition="Exists('$(PublishDir)$(AssemblyName).runtimeconfig.json')" />
-      <UiaWorkerArtifact Include="$(PublishDir)$(AssemblyName).deps.json" Condition="Exists('$(PublishDir)$(AssemblyName).deps.json')" />
+      <UiaWorkerArtifact Include="$(_UiaWorkerPublishDir)$(AssemblyName).exe" Condition="Exists('$(_UiaWorkerPublishDir)$(AssemblyName).exe')" />
+      <UiaWorkerArtifact Include="$(_UiaWorkerPublishDir)$(AssemblyName).dll" Condition="Exists('$(_UiaWorkerPublishDir)$(AssemblyName).dll')" />
+      <UiaWorkerArtifact Include="$(_UiaWorkerPublishDir)$(AssemblyName).runtimeconfig.json" Condition="Exists('$(_UiaWorkerPublishDir)$(AssemblyName).runtimeconfig.json')" />
+      <UiaWorkerArtifact Include="$(_UiaWorkerPublishDir)$(AssemblyName).deps.json" Condition="Exists('$(_UiaWorkerPublishDir)$(AssemblyName).deps.json')" />
     </ItemGroup>
   </Target>
 

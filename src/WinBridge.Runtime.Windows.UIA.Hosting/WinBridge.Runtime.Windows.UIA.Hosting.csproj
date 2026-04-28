@@ -4,7 +4,10 @@
     <UiaWorkerProjectPath>$(MSBuildThisFileDirectory)..\WinBridge.Runtime.Windows.UIA.Worker\WinBridge.Runtime.Windows.UIA.Worker.csproj</UiaWorkerProjectPath>
     <UiaWorkerBuildProperties>Configuration=$(Configuration);TargetFramework=$(TargetFramework);Platform=$(Platform)</UiaWorkerBuildProperties>
     <UiaWorkerPublishUseAppHost>true</UiaWorkerPublishUseAppHost>
-    <UiaWorkerPublishProperties>Configuration=$(Configuration);TargetFramework=$(TargetFramework);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishSelfContained=$(PublishSelfContained);UseAppHost=$(UiaWorkerPublishUseAppHost);PublishSingleFile=$(PublishSingleFile);PublishTrimmed=$(PublishTrimmed);PublishReadyToRun=$(PublishReadyToRun)</UiaWorkerPublishProperties>
+    <UiaWorkerPublishSelfContained Condition="'$(UiaWorkerPublishSelfContained)' == '' and '$(PublishSelfContained)' != ''">$(PublishSelfContained)</UiaWorkerPublishSelfContained>
+    <UiaWorkerPublishSelfContained Condition="'$(UiaWorkerPublishSelfContained)' == '' and '$(SelfContained)' != ''">$(SelfContained)</UiaWorkerPublishSelfContained>
+    <UiaWorkerPublishSelfContained Condition="'$(UiaWorkerPublishSelfContained)' == ''">false</UiaWorkerPublishSelfContained>
+    <UiaWorkerPublishProperties>Configuration=$(Configuration);TargetFramework=$(TargetFramework);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(UiaWorkerPublishSelfContained);PublishSelfContained=$(UiaWorkerPublishSelfContained);UseAppHost=$(UiaWorkerPublishUseAppHost);PublishSingleFile=$(PublishSingleFile);PublishTrimmed=$(PublishTrimmed);PublishReadyToRun=$(PublishReadyToRun)</UiaWorkerPublishProperties>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,18 +45,24 @@
       <ContentWithTargetPath Include="@(_BuiltUiaWorkerArtifact)" KeepDuplicates="false">
         <TargetPath>%(Filename)%(Extension)</TargetPath>
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>Never</CopyToPublishDirectory>
       </ContentWithTargetPath>
     </ItemGroup>
   </Target>
 
   <Target Name="ExposePublishedUiaWorkerArtifacts"
           DependsOnTargets="CollectPublishedUiaWorkerArtifacts"
-          BeforeTargets="ComputeFilesToPublish">
+          BeforeTargets="ComputeFilesToPublish"
+          Condition="'$(RuntimeIdentifier)' != ''">
     <ItemGroup>
       <ContentWithTargetPath Include="@(_PublishedUiaWorkerArtifact)" KeepDuplicates="false">
         <TargetPath>%(Filename)%(Extension)</TargetPath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       </ContentWithTargetPath>
+      <ResolvedFileToPublish Include="@(_PublishedUiaWorkerArtifact)" KeepDuplicates="false">
+        <RelativePath>%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
     </ItemGroup>
   </Target>
 
