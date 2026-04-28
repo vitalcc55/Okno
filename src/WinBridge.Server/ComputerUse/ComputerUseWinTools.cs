@@ -12,8 +12,14 @@ internal sealed class ComputerUseWinTools
 {
     private readonly AuditLog auditLog;
     private readonly ComputerUseWinClickHandler clickHandler;
+    private readonly ComputerUseWinDragHandler dragHandler;
     private readonly ComputerUseWinGetAppStateHandler getAppStateHandler;
     private readonly ComputerUseWinListAppsHandler listAppsHandler;
+    private readonly ComputerUseWinPerformSecondaryActionHandler performSecondaryActionHandler;
+    private readonly ComputerUseWinPressKeyHandler pressKeyHandler;
+    private readonly ComputerUseWinScrollHandler scrollHandler;
+    private readonly ComputerUseWinSetValueHandler setValueHandler;
+    private readonly ComputerUseWinTypeTextHandler typeTextHandler;
     private readonly ISessionManager sessionManager;
 
     public ComputerUseWinTools(
@@ -21,13 +27,25 @@ internal sealed class ComputerUseWinTools
         ISessionManager sessionManager,
         ComputerUseWinListAppsHandler listAppsHandler,
         ComputerUseWinGetAppStateHandler getAppStateHandler,
-        ComputerUseWinClickHandler clickHandler)
+        ComputerUseWinClickHandler clickHandler,
+        ComputerUseWinDragHandler dragHandler,
+        ComputerUseWinPerformSecondaryActionHandler performSecondaryActionHandler,
+        ComputerUseWinPressKeyHandler pressKeyHandler,
+        ComputerUseWinScrollHandler scrollHandler,
+        ComputerUseWinSetValueHandler setValueHandler,
+        ComputerUseWinTypeTextHandler typeTextHandler)
     {
         this.auditLog = auditLog;
         this.sessionManager = sessionManager;
         this.listAppsHandler = listAppsHandler;
         this.getAppStateHandler = getAppStateHandler;
         this.clickHandler = clickHandler;
+        this.dragHandler = dragHandler;
+        this.performSecondaryActionHandler = performSecondaryActionHandler;
+        this.pressKeyHandler = pressKeyHandler;
+        this.scrollHandler = scrollHandler;
+        this.setValueHandler = setValueHandler;
+        this.typeTextHandler = typeTextHandler;
     }
 
     public CallToolResult ListApps()
@@ -66,6 +84,96 @@ internal sealed class ComputerUseWinTools
             invocation => binding.IsSuccess
                 ? clickHandler.ExecuteAsync(invocation, binding.Request, cancellationToken)
                 : Task.FromResult(ComputerUseWinToolResultFactory.CreateActionFailure(invocation, ToolNames.ComputerUseWinClick, binding.FailureCode!, binding.Reason!)));
+    }
+
+    public Task<CallToolResult> Drag(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken)
+    {
+        Binding<ComputerUseWinDragRequest> binding = BindRequest(requestContext, new ComputerUseWinDragRequest());
+        return RuntimeToolExecution.RunAsync(
+            auditLog,
+            sessionManager.GetSnapshot(),
+            ToolNames.ComputerUseWinDrag,
+            binding.Request,
+            invocation => binding.IsSuccess
+                ? dragHandler.ExecuteAsync(invocation, binding.Request, cancellationToken)
+                : Task.FromResult(ComputerUseWinToolResultFactory.CreateActionFailure(invocation, ToolNames.ComputerUseWinDrag, binding.FailureCode!, binding.Reason!)));
+    }
+
+    public Task<CallToolResult> PressKey(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken)
+    {
+        Binding<ComputerUseWinPressKeyRequest> binding = BindRequest(requestContext, new ComputerUseWinPressKeyRequest());
+        return RuntimeToolExecution.RunAsync(
+            auditLog,
+            sessionManager.GetSnapshot(),
+            ToolNames.ComputerUseWinPressKey,
+            binding.Request,
+            invocation => binding.IsSuccess
+                ? pressKeyHandler.ExecuteAsync(invocation, binding.Request, cancellationToken)
+                : Task.FromResult(ComputerUseWinToolResultFactory.CreateActionFailure(invocation, ToolNames.ComputerUseWinPressKey, binding.FailureCode!, binding.Reason!)));
+    }
+
+    public Task<CallToolResult> PerformSecondaryAction(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken)
+    {
+        Binding<ComputerUseWinPerformSecondaryActionRequest> binding = BindRequest(requestContext, new ComputerUseWinPerformSecondaryActionRequest());
+        return RuntimeToolExecution.RunAsync(
+            auditLog,
+            sessionManager.GetSnapshot(),
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            binding.Request,
+            invocation => binding.IsSuccess
+                ? performSecondaryActionHandler.ExecuteAsync(invocation, binding.Request, cancellationToken)
+                : Task.FromResult(ComputerUseWinToolResultFactory.CreateActionFailure(invocation, ToolNames.ComputerUseWinPerformSecondaryAction, binding.FailureCode!, binding.Reason!)));
+    }
+
+    public Task<CallToolResult> SetValue(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken)
+    {
+        Binding<ComputerUseWinSetValueRequest> binding = BindRequest(requestContext, new ComputerUseWinSetValueRequest());
+        return RuntimeToolExecution.RunAsync(
+            auditLog,
+            sessionManager.GetSnapshot(),
+            ToolNames.ComputerUseWinSetValue,
+            binding.Request,
+            invocation => binding.IsSuccess
+                ? setValueHandler.ExecuteAsync(invocation, binding.Request, cancellationToken)
+                : Task.FromResult(ComputerUseWinToolResultFactory.CreateActionFailure(invocation, ToolNames.ComputerUseWinSetValue, binding.FailureCode!, binding.Reason!)));
+    }
+
+    public Task<CallToolResult> Scroll(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken)
+    {
+        Binding<ComputerUseWinScrollRequest> binding = BindRequest(requestContext, new ComputerUseWinScrollRequest());
+        return RuntimeToolExecution.RunAsync(
+            auditLog,
+            sessionManager.GetSnapshot(),
+            ToolNames.ComputerUseWinScroll,
+            binding.Request,
+            invocation => binding.IsSuccess
+                ? scrollHandler.ExecuteAsync(invocation, binding.Request, cancellationToken)
+                : Task.FromResult(ComputerUseWinToolResultFactory.CreateActionFailure(invocation, ToolNames.ComputerUseWinScroll, binding.FailureCode!, binding.Reason!)));
+    }
+
+    public Task<CallToolResult> TypeText(
+        RequestContext<CallToolRequestParams> requestContext,
+        CancellationToken cancellationToken)
+    {
+        Binding<ComputerUseWinTypeTextRequest> binding = BindRequest(requestContext, new ComputerUseWinTypeTextRequest());
+        return RuntimeToolExecution.RunAsync(
+            auditLog,
+            sessionManager.GetSnapshot(),
+            ToolNames.ComputerUseWinTypeText,
+            binding.Request,
+            invocation => binding.IsSuccess
+                ? typeTextHandler.ExecuteAsync(invocation, binding.Request, cancellationToken)
+                : Task.FromResult(ComputerUseWinToolResultFactory.CreateActionFailure(invocation, ToolNames.ComputerUseWinTypeText, binding.FailureCode!, binding.Reason!)));
     }
 
     private static Binding<T> BindRequest<T>(RequestContext<CallToolRequestParams> requestContext, T fallbackRequest)

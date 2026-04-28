@@ -719,7 +719,17 @@ public sealed class ComputerUseWinInstallSurfaceTests
                     .ToArray();
 
                 Assert.Equal(
-                    [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinGetAppState, ToolNames.ComputerUseWinListApps],
+                    [
+                        ToolNames.ComputerUseWinClick,
+                        ToolNames.ComputerUseWinDrag,
+                        ToolNames.ComputerUseWinGetAppState,
+                        ToolNames.ComputerUseWinListApps,
+                        ToolNames.ComputerUseWinPerformSecondaryAction,
+                        ToolNames.ComputerUseWinPressKey,
+                        ToolNames.ComputerUseWinScroll,
+                        ToolNames.ComputerUseWinSetValue,
+                        ToolNames.ComputerUseWinTypeText,
+                    ],
                     toolNames);
 
                 JsonElement getAppStateDescriptor = toolsResponse.RootElement
@@ -762,6 +772,25 @@ public sealed class ComputerUseWinInstallSurfaceTests
         {
             DeleteDirectoryIfExists(tempPluginRoot);
         }
+    }
+
+    [Fact]
+    public void ComputerUseWinPluginReadmeDocumentsCurrentShippedToolSurface()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string readmePath = Path.Combine(repoRoot, "plugins", "computer-use-win", "README.md");
+        string readme = File.ReadAllText(readmePath);
+
+        Assert.Contains("`list_apps`", readme, StringComparison.Ordinal);
+        Assert.Contains("`get_app_state`", readme, StringComparison.Ordinal);
+        Assert.Contains("`click`", readme, StringComparison.Ordinal);
+        Assert.Contains("`press_key`", readme, StringComparison.Ordinal);
+        Assert.Contains("`set_value`", readme, StringComparison.Ordinal);
+        Assert.Contains("`type_text`", readme, StringComparison.Ordinal);
+        Assert.Contains("`scroll`", readme, StringComparison.Ordinal);
+        Assert.Contains("`perform_secondary_action`", readme, StringComparison.Ordinal);
+        Assert.Contains("`drag`", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("следующий глобальный action wave", readme, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -875,6 +904,8 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
     private static void EnsurePublishedRuntimeBundle(string repoRoot, string scriptPath, string runtimeRoot)
     {
+        StopRepoOwnedTestBundleServers(repoRoot);
+
         if (Directory.Exists(runtimeRoot)
             && RuntimeBundleMatchesManifest(runtimeRoot)
             && PublishedRuntimeBundleIsFresh(repoRoot, runtimeRoot))
@@ -890,6 +921,42 @@ public sealed class ComputerUseWinInstallSurfaceTests
             result.ExitCode == 0,
             $"Publish script failed while preparing runtime baseline. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
         AssertRuntimeBundleMatchesManifest(runtimeRoot);
+    }
+
+    private static void StopRepoOwnedTestBundleServers(string repoRoot)
+    {
+        string ownedPrefix = Path.GetFullPath(Path.Combine(repoRoot, ".tmp", ".codex", "runs", "local", "test-bundle"))
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        foreach (Process process in Process.GetProcessesByName("Okno.Server"))
+        {
+            try
+            {
+                string? executablePath = process.MainModule?.FileName;
+                if (string.IsNullOrWhiteSpace(executablePath))
+                {
+                    continue;
+                }
+
+                string normalizedPath = Path.GetFullPath(executablePath);
+                if (!normalizedPath.StartsWith(ownedPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+            catch (Exception)
+            {
+                // Best effort cleanup for repo-owned stale test-bundle servers.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
     }
 
     private static void AssertRuntimeBundleMatchesManifest(string runtimeRoot)

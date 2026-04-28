@@ -249,7 +249,11 @@ Win32 input primitives (`SendInput`-style модель) как fallback-слой
 - `double_click`
 - `click(button=right)`
 
-Этот subset уже является shipped public surface: он проходит L1/L2 coverage, real smoke на `SmokeWindowHost` и fresh-host MCP acceptance. Broad actions ниже остаются structural/future slots, а не shipped behavior.
+Этот subset уже является shipped public `windows.input` surface: он проходит
+L1/L2 coverage, real smoke на `SmokeWindowHost` и fresh-host MCP acceptance.
+Broad actions ниже не публикуются как `windows.input` public behavior, но
+внутренний input runtime теперь также materialize-ит factual `drag` path для
+public `computer-use-win`.
 
 ### Что важно
 
@@ -462,7 +466,7 @@ Later additive extensions:
 - double_click;
 - `click(button=right)`.
 
-Этот subset доказан smoke/fresh-host acceptance через explicit `attach -> activate -> capture -> uia_snapshot -> windows.input -> wait(focus_is)` loop. `drag`, `scroll`, `type`, `keypress`, `hotkey` и `paste` не входят в текущий shipped input surface.
+Этот subset доказан smoke/fresh-host acceptance через explicit `attach -> activate -> capture -> uia_snapshot -> windows.input -> wait(focus_is)` loop. `drag`, `scroll`, `type`, `keypress`, `hotkey` и `paste` не входят в текущий shipped `windows.input` public surface, хотя внутренний input runtime уже использует factual `drag` dispatch как substrate для `computer-use-win`.
 
 Инварианты:
 - это один tool, а не набор отдельных action tools;

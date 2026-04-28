@@ -76,12 +76,29 @@ public sealed class ToolContractExporterTests
     }
 
     [Fact]
+    public void ComputerUseWinExportDocumentPromotesDragAndClearsDeferredWave()
+    {
+        ToolContractExportDocument document = ToolContractExporter.CreateDocument(ToolSurfaceProfileValues.ComputerUseWin);
+
+        Assert.Contains(
+            document.Tools.Implemented,
+            descriptor => descriptor.Name == ToolNames.ComputerUseWinDrag);
+        Assert.Empty(document.Tools.Deferred);
+    }
+
+    [Fact]
     public void ExportJsonIncludesArtifactPathsForShippedToolEvidence()
     {
         ToolContractExportDocument document = ToolContractExporter.CreateDocument();
 
         Assert.Contains(
+            "artifacts/diagnostics/<run_id>/computer-use-win/action-*.json",
+            document.Artifacts);
+        Assert.Contains(
             "artifacts/diagnostics/<run_id>/captures/<capture_id>.png",
+            document.Artifacts);
+        Assert.Contains(
+            "artifacts/diagnostics/<run_id>/input/input-*.json",
             document.Artifacts);
         Assert.Contains(
             "artifacts/diagnostics/<run_id>/launch/<launch_id>.json",
@@ -92,9 +109,7 @@ public sealed class ToolContractExporterTests
         Assert.Contains(
             "artifacts/diagnostics/<run_id>/wait/<wait_id>.json",
             document.Artifacts);
-        Assert.Contains(
-            "artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png",
-            document.Artifacts);
+        Assert.Contains("artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png", document.Artifacts);
     }
 
     [Fact]

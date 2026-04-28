@@ -5,6 +5,8 @@ public static class InputFailureCodeValues
     public const string InvalidRequest = "invalid_request";
     public const string UnsupportedActionType = "unsupported_action_type";
     public const string UnsupportedCoordinateSpace = "unsupported_coordinate_space";
+    public const string UnsupportedKey = "unsupported_key";
+    public const string UnsupportedKeyboardLayout = "unsupported_keyboard_layout";
     public const string MissingTarget = "missing_target";
     public const string TargetPreflightFailed = "target_preflight_failed";
     public const string StaleExplicitTarget = "stale_explicit_target";

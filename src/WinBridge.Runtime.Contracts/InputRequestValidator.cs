@@ -488,10 +488,12 @@ public static class InputRequestValidator
         }
 
         if (action.HasRepeat
-            && (action.Repeat is null || action.Repeat.Value < InputActionScalarConstraints.MinimumRepeat))
+            && (action.Repeat is null
+                || action.Repeat.Value < InputActionScalarConstraints.MinimumRepeat
+                || action.Repeat.Value > InputActionScalarConstraints.MaximumKeypressRepeat))
         {
             failureCode = InputFailureCodeValues.InvalidRequest;
-            reason = $"Действие actions[{index}] с type '{InputActionTypeValues.Keypress}' должно содержать repeat > 0, если repeat передан.";
+            reason = $"Действие actions[{index}] с type '{InputActionTypeValues.Keypress}' должно содержать repeat в диапазоне {InputActionScalarConstraints.MinimumRepeat}..{InputActionScalarConstraints.MaximumKeypressRepeat}, если repeat передан.";
             return false;
         }
 

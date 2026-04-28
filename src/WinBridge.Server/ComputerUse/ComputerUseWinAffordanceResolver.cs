@@ -21,8 +21,31 @@ internal static class ComputerUseWinAffordanceResolver
             actions.Add(ToolNames.ComputerUseWinClick);
         }
 
-        if ((string.Equals(node.ControlType, "edit", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(node.ControlType, "document", StringComparison.OrdinalIgnoreCase))
+        if (ComputerUseWinActionability.IsDragEndpointActionable(node)
+            && ImplementedToolNames.Contains(ToolNames.ComputerUseWinDrag))
+        {
+            actions.Add(ToolNames.ComputerUseWinDrag);
+        }
+
+        if (ComputerUseWinActionability.IsSetValueActionable(node)
+            && ImplementedToolNames.Contains(ToolNames.ComputerUseWinSetValue))
+        {
+            actions.Add(ToolNames.ComputerUseWinSetValue);
+        }
+
+        if (ComputerUseWinActionability.IsPerformSecondaryActionActionable(node)
+            && ImplementedToolNames.Contains(ToolNames.ComputerUseWinPerformSecondaryAction))
+        {
+            actions.Add(ToolNames.ComputerUseWinPerformSecondaryAction);
+        }
+
+        if (ComputerUseWinActionability.IsScrollActionable(node)
+            && ImplementedToolNames.Contains(ToolNames.ComputerUseWinScroll))
+        {
+            actions.Add(ToolNames.ComputerUseWinScroll);
+        }
+
+        if (ComputerUseWinActionability.IsTypeTextActionable(node)
             && ImplementedToolNames.Contains(ToolNames.ComputerUseWinTypeText))
         {
             actions.Add(ToolNames.ComputerUseWinTypeText);

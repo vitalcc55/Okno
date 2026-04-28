@@ -5,6 +5,7 @@ using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Shell;
+using WinBridge.Runtime.Windows.UIA;
 using WinBridge.Server.ComputerUse;
 
 namespace WinBridge.Server.IntegrationTests;
@@ -579,7 +580,8 @@ public sealed class ComputerUseWinActionAndProjectionTests
                 Status: InputStatusValues.Done,
                 Decision: InputStatusValues.Done)));
         ComputerUseWinClickHandler handler = new(
-            new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()])),
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
             new ComputerUseWinClickExecutionCoordinator(
                 activationService,
                 new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
@@ -596,6 +598,1746 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
         Assert.Null(activationService.LastHwnd);
         Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task PressKeyHandlerRequiresConfirmationForDangerousCombo()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-press-key-confirmation-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPressKey,
+            new { stateToken = token, key = "alt+f4", confirm = false },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeInputService inputService = new((_, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Done,
+                Decision: InputStatusValues.Done)));
+        ComputerUseWinPressKeyHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPressKeyExecutionCoordinator(
+                activationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPressKeyRequest(StateToken: token, Key: "alt+f4", Repeat: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
+        Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.Equal(0, inputService.Calls);
+        Assert.Null(activationService.LastHwnd);
+    }
+
+    [Fact]
+    public async Task PressKeyHandlerDispatchesNormalizedShortcutThroughInputService()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-press-key-success-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPressKey,
+            new { stateToken = token, key = "CTRL+S", repeat = 2, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeInputService inputService = new((request, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.VerifyNeeded,
+                Decision: InputStatusValues.VerifyNeeded,
+                ResultMode: InputResultModeValues.DispatchOnly,
+                TargetHwnd: request.Hwnd,
+                CompletedActionCount: 1)));
+        ComputerUseWinPressKeyHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPressKeyExecutionCoordinator(
+                activationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPressKeyRequest(StateToken: token, Key: "CTRL+S", Repeat: 2, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.NotNull(inputService.LastRequest);
+        InputAction action = Assert.Single(inputService.LastRequest!.Actions);
+        Assert.Equal(InputActionTypeValues.Keypress, action.Type);
+        Assert.Equal("ctrl+s", action.Key);
+        Assert.Equal(2, action.Repeat);
+        Assert.Equal(1, inputService.Calls);
+        Assert.Equal(101, activationService.LastHwnd);
+    }
+
+    [Fact]
+    public async Task PressKeyHandlerReturnsStructuredFailureWhenRuntimeLosesForeground()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-press-key-foreground-failure-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPressKey,
+            new { stateToken = token, key = "CTRL+S", repeat = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeInputService inputService = new((request, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Failed,
+                Decision: InputStatusValues.Failed,
+                FailureCode: InputFailureCodeValues.TargetNotForeground,
+                Reason: "target not foreground",
+                TargetHwnd: request.Hwnd,
+                FailedActionIndex: 0)));
+        ComputerUseWinPressKeyHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPressKeyExecutionCoordinator(
+                activationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPressKeyRequest(StateToken: token, Key: "CTRL+S", Repeat: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.TargetNotForeground, payload.GetProperty("failureCode").GetString());
+        Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PressKeyHandlerReturnsStructuredFailureWhenRuntimeDispatchFails()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-press-key-dispatch-failure-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPressKey,
+            new { stateToken = token, key = "CTRL+S", repeat = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeInputService inputService = new((request, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.Failed,
+                Decision: InputStatusValues.Failed,
+                FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                Reason: "keypress dispatch failed",
+                TargetHwnd: request.Hwnd,
+                FailedActionIndex: 0)));
+        ComputerUseWinPressKeyHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPressKeyExecutionCoordinator(
+                activationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPressKeyRequest(StateToken: token, Key: "CTRL+S", Repeat: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InputDispatchFailed, payload.GetProperty("failureCode").GetString());
+        Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SetValueHandlerReturnsUnsupportedActionForNonSettableStoredElement()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateNonActionableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-set-value-unsupported-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinSetValue,
+            new { stateToken = token, elementIndex = 1, valueKind = "text", textValue = "value" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSetValueService setValueService = new();
+        ComputerUseWinSetValueHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinSetValueExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                setValueService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinSetValueRequest(StateToken: token, ElementIndex: 1, ValueKind: "text", TextValue: "value", NumberValue: null, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, setValueService.Calls);
+    }
+
+    [Fact]
+    public async Task SetValueHandlerReturnsStaleStateWhenFreshElementCannotBeMatched()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSettableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-set-value-stale-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinSetValue,
+            new { stateToken = token, elementIndex = 1, valueKind = "text", textValue = "value" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:other",
+                                ControlType = "edit",
+                                Name = "Other input",
+                                AutomationId = "OtherTextBox",
+                                BoundingRectangle = new Bounds(10, 20, 50, 60),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                IsReadOnly = false,
+                                Patterns = ["value"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSetValueService setValueService = new();
+        ComputerUseWinSetValueHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinSetValueExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                setValueService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinSetValueRequest(StateToken: token, ElementIndex: 1, ValueKind: "text", TextValue: "value", NumberValue: null, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, setValueService.Calls);
+    }
+
+    [Fact]
+    public async Task SetValueHandlerAppliesTextValueViaSemanticService()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSettableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-set-value-success-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinSetValue,
+            new { stateToken = token, elementIndex = 1, valueKind = "text", textValue = "updated semantic text" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "edit",
+                                Name = "Smoke query input",
+                                AutomationId = "SmokeQueryInputTextBox",
+                                BoundingRectangle = new Bounds(10, 20, 50, 60),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                IsReadOnly = false,
+                                Patterns = ["value"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSetValueService setValueService = new((window, request, _) =>
+            Task.FromResult(UiaSetValueResult.SuccessResult("value_pattern")));
+        ComputerUseWinSetValueHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinSetValueExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                setValueService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinSetValueRequest(StateToken: token, ElementIndex: 1, ValueKind: "text", TextValue: "updated semantic text", NumberValue: null, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Done, payload.GetProperty("status").GetString());
+        Assert.NotNull(setValueService.LastRequest);
+        Assert.Equal("text", setValueService.LastRequest!.ValueKind);
+        Assert.Equal("updated semantic text", setValueService.LastRequest.TextValue);
+        Assert.Equal(101, payload.GetProperty("targetHwnd").GetInt64());
+        Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
+    }
+
+    [Fact]
+    public async Task SetValueHandlerReturnsInvalidRequestWhenSemanticServiceRejectsValueFormat()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSettableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-set-value-invalid-value-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinSetValue,
+            new { stateToken = token, elementIndex = 1, valueKind = "number", numberValue = 12.5 },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "edit",
+                                Name = "Smoke range input",
+                                AutomationId = "SmokeRangeInputUpDown",
+                                BoundingRectangle = new Bounds(10, 20, 50, 60),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                IsReadOnly = false,
+                                Patterns = ["value"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSetValueService setValueService = new((window, request, _) =>
+            Task.FromResult(UiaSetValueResult.FailureResult(UiaSetValueFailureKindValues.InvalidValue, "invalid numeric semantic value", "value_pattern")));
+        ComputerUseWinSetValueHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinSetValueExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                setValueService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinSetValueRequest(StateToken: token, ElementIndex: 1, ValueKind: "number", TextValue: null, NumberValue: 12.5, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerReturnsUnsupportedActionWithoutFocusedEditableProof()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateEditableStoredStateWithoutFocus());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-missing-focus-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, text = "typed text" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(StateToken: token, ElementIndex: null, Text: "typed text", Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerReturnsUnsupportedActionWhenFocusedElementWasNotPublishedAsTypeTextTarget()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedEditableStoredStateWithoutTypeTextAction());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-missing-affordance-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, elementIndex = 1, text = "typed text" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(StateToken: token, ElementIndex: 1, Text: "typed text", Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerReturnsUnsupportedActionForNonEditableElementTarget()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateNonActionableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-unsupported-target-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, elementIndex = 1, text = "typed text" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(StateToken: token, ElementIndex: 1, Text: "typed text", Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerReturnsStaleStateWhenFocusedEditableLosesFreshFocus()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedEditableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-stale-focus-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, elementIndex = 1, text = "typed text" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "edit",
+                                Name = "Smoke query input",
+                                AutomationId = "SmokeQueryInputTextBox",
+                                BoundingRectangle = new Bounds(10, 20, 50, 60),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                HasKeyboardFocus = false,
+                                IsReadOnly = false,
+                                Patterns = ["value"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(StateToken: token, ElementIndex: 1, Text: "typed text", Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerDispatchesTextForFocusedEditableElement()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedEditableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-element-success-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, elementIndex = 1, text = "typed text" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "edit",
+                                Name = "Smoke query input",
+                                AutomationId = "SmokeQueryInputTextBox",
+                                BoundingRectangle = new Bounds(10, 20, 50, 60),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                HasKeyboardFocus = true,
+                                IsReadOnly = false,
+                                Patterns = ["value"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.VerifyNeeded,
+                    Decision: InputStatusValues.VerifyNeeded,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 1)));
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(StateToken: token, ElementIndex: 1, Text: "typed text", Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.NotNull(inputService.LastRequest);
+        InputAction action = Assert.Single(inputService.LastRequest!.Actions);
+        Assert.Equal(InputActionTypeValues.Type, action.Type);
+        Assert.Equal("typed text", action.Text);
+        Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
+        Assert.Equal(101, payload.GetProperty("targetHwnd").GetInt64());
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerUsesFocusedEditableFallbackWhenElementIndexIsOmitted()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedEditableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-focused-fallback-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, text = "typed text" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "edit",
+                                Name = "Smoke query input",
+                                AutomationId = "SmokeQueryInputTextBox",
+                                BoundingRectangle = new Bounds(10, 20, 50, 60),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                HasKeyboardFocus = true,
+                                IsReadOnly = false,
+                                Patterns = ["value"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.VerifyNeeded,
+                    Decision: InputStatusValues.VerifyNeeded,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 1)));
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(StateToken: token, ElementIndex: null, Text: "typed text", Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.NotNull(inputService.LastRequest);
+        InputAction action = Assert.Single(inputService.LastRequest!.Actions);
+        Assert.Equal(InputActionTypeValues.Type, action.Type);
+        Assert.Equal("typed text", action.Text);
+        Assert.False(payload.TryGetProperty("elementIndex", out JsonElement elementIndex) && elementIndex.ValueKind != JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerReturnsUnsupportedActionForNonScrollableStoredElement()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateNonActionableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-unsupported-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, elementIndex = 1, direction = "down", pages = 1 },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationScrollService scrollService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, ElementIndex: 1, Direction: "down", Pages: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, scrollService.Calls);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerAppliesSemanticScrollForScrollableElement()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateScrollableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-semantic-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, elementIndex = 1, direction = "down", pages = 1 },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "list",
+                                Name = "Smoke scroll list",
+                                AutomationId = "SmokeScrollListBox",
+                                BoundingRectangle = new Bounds(10, 20, 220, 180),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["scroll"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationScrollService scrollService = new((window, request, _) =>
+            Task.FromResult(UiaScrollResult.SuccessResult("scroll_pattern", movementObserved: true)));
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, ElementIndex: 1, Direction: "down", Pages: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Done, payload.GetProperty("status").GetString());
+        Assert.NotNull(scrollService.LastRequest);
+        Assert.Equal("down", scrollService.LastRequest!.Direction);
+        Assert.Equal(1, scrollService.LastRequest.Pages);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerReturnsFailedWhenSemanticScrollReportsNoMovement()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateScrollableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-no-movement-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, elementIndex = 1, direction = "down", pages = 1 },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "list",
+                                Name = "Smoke scroll list",
+                                AutomationId = "SmokeScrollListBox",
+                                BoundingRectangle = new Bounds(10, 20, 220, 180),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["scroll"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationScrollService scrollService = new((window, request, _) =>
+            Task.FromResult(UiaScrollResult.FailureResult(UiaScrollFailureKindValues.NoMovement, "semantic scroll did not move", "scroll_pattern")));
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, ElementIndex: 1, Direction: "down", Pages: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InputDispatchFailed, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerUsesCoordinateFallbackOnlyWithExplicitConfirmation()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateScrollableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-point-confirm-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, point = new { x = 20, y = 30 }, direction = "down", pages = 1 },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationScrollService scrollService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, Point: new InputPoint(20, 30), CoordinateSpace: InputCoordinateSpaceValues.CapturePixels, Direction: "down", Pages: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+        Assert.Equal(0, scrollService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerTreatsTrimmedScreenCoordinateSpaceAsScreenPath()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-trimmed-screen-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, point = new { x = 20, y = 30 }, coordinateSpace = " screen ", direction = "down", pages = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationScrollService scrollService = new();
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.VerifyNeeded,
+                    Decision: InputStatusValues.VerifyNeeded,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 1)));
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, Point: new InputPoint(20, 30), CoordinateSpace: " screen ", Direction: "down", Pages: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.NotNull(inputService.LastRequest);
+        InputAction action = Assert.Single(inputService.LastRequest!.Actions);
+        Assert.Equal(InputCoordinateSpaceValues.Screen, action.CoordinateSpace);
+        Assert.Null(action.CaptureReference);
+        Assert.Equal(0, scrollService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerRejectsMissingCaptureProofBeforeActivation()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-missing-capture-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, point = new { x = 20, y = 30 }, coordinateSpace = "capture_pixels", direction = "down", pages = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationScrollService scrollService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, Point: new InputPoint(20, 30), CoordinateSpace: InputCoordinateSpaceValues.CapturePixels, Direction: "down", Pages: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.CaptureReferenceRequired, payload.GetProperty("failureCode").GetString());
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+        Assert.Equal(0, scrollService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerRejectsMalformedPointBeforeActivation()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateScrollableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-invalid-point-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, point = new { x = 20, y = "oops" }, direction = "down", pages = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationScrollService scrollService = new();
+        FakeInputService inputService = new();
+        InputPoint invalidPoint = JsonSerializer.Deserialize<InputPoint>("""{"x":20,"y":"oops"}""")!;
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, Point: invalidPoint, CoordinateSpace: InputCoordinateSpaceValues.CapturePixels, Direction: "down", Pages: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, inputService.Calls);
+        Assert.Equal(0, scrollService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerResolvesSemanticTargetAfterActivation()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateScrollableStoredState());
+        WindowDescriptor activatedWindow = CreateWindow(hwnd: 202, title: "Activated scroll window");
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-post-activation-fresh-proof-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, elementIndex = 1, direction = "down", pages = 1, confirm = false },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(_ => ActivateWindowResult.Done(activatedWindow, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "list",
+                                Name = "Smoke scroll list",
+                                AutomationId = "SmokeScrollListBox",
+                                BoundingRectangle = new Bounds(10, 20, 220, 180),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["scroll"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationScrollService scrollService = new((window, _, _) =>
+            Task.FromResult(UiaScrollResult.SuccessResult("scroll_pattern", movementObserved: true)));
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow(), activatedWindow]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, ElementIndex: 1, Direction: "down", Pages: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Done, payload.GetProperty("status").GetString());
+        Assert.Equal(activatedWindow.Hwnd, uiAutomationService.LastWindow!.Hwnd);
+        Assert.Equal(activatedWindow.Hwnd, scrollService.LastWindow!.Hwnd);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerUsesCoordinateFallbackWithConfirmationAndReturnsVerifyNeeded()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateScrollableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-point-success-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, point = new { x = 20, y = 30 }, direction = "down", pages = 2, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationScrollService scrollService = new();
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.VerifyNeeded,
+                    Decision: InputStatusValues.VerifyNeeded,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 1)));
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, Point: new InputPoint(20, 30), CoordinateSpace: InputCoordinateSpaceValues.CapturePixels, Direction: "down", Pages: 2, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.NotNull(inputService.LastRequest);
+        InputAction action = Assert.Single(inputService.LastRequest!.Actions);
+        Assert.Equal(InputActionTypeValues.Scroll, action.Type);
+        Assert.Equal(-240, action.Delta);
+        Assert.Equal(InputCoordinateSpaceValues.CapturePixels, action.CoordinateSpace);
+        Assert.Equal(0, scrollService.Calls);
+    }
+
+    [Fact]
+    public async Task ScrollHandlerReturnsStructuredFailureWhenSemanticScrollServiceThrowsArgumentException()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateScrollableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-scroll-argument-exception-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinScroll,
+            new { stateToken = token, elementIndex = 1, direction = "down", pages = 1 },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:0",
+                                ControlType = "list",
+                                Name = "Smoke scroll list",
+                                AutomationId = "SmokeScrollListBox",
+                                BoundingRectangle = new Bounds(10, 20, 220, 180),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["scroll"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationScrollService scrollService = new((_, _, _) => throw new ArgumentException("provider rejected scroll"));
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                scrollService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(StateToken: token, ElementIndex: 1, Direction: "down", Pages: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InputDispatchFailed, payload.GetProperty("failureCode").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("reason").GetString()));
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task DragHandlerRequiresConfirmationForCoordinatePath()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateDragStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-drag-point-confirm-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinDrag,
+            new { stateToken = token, fromPoint = new { x = 20, y = 30 }, toPoint = new { x = 40, y = 60 }, confirm = false },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinDragHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinDragExecutionCoordinator(
+                activationService,
+                new ComputerUseWinDragTargetResolver(uiAutomationService),
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinDragRequest(StateToken: token, FromPoint: new InputPoint(20, 30), ToPoint: new InputPoint(40, 60), CoordinateSpace: InputCoordinateSpaceValues.CapturePixels, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.ApprovalRequired, payload.GetProperty("failureCode").GetString());
+        Assert.Null(activationService.LastHwnd);
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task DragHandlerRejectsMalformedPointBeforeActivation()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateDragStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-drag-invalid-point-tests"));
+        InputPoint invalidPoint = CreatePointWithAdditionalProperties(20, 30, ["unexpected"]);
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinDrag,
+            new { stateToken = token, fromPoint = new { x = 20, y = 30, unexpected = 1 }, toPoint = new { x = 40, y = 60 }, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinDragHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinDragExecutionCoordinator(
+                activationService,
+                new ComputerUseWinDragTargetResolver(uiAutomationService),
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinDragRequest(StateToken: token, FromPoint: invalidPoint, ToPoint: new InputPoint(40, 60), CoordinateSpace: InputCoordinateSpaceValues.CapturePixels, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        Assert.Contains("fromPoint", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task DragHandlerDispatchesElementToElementPathThroughInputService()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateDragStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-drag-element-to-element-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinDrag,
+            new { stateToken = token, fromElementIndex = 1, toElementIndex = 2, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Done,
+                Window: CreateObservedWindow(window),
+                Root: CreateDragSnapshotRoot(),
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new((request, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.VerifyNeeded,
+                Decision: InputStatusValues.VerifyNeeded,
+                ResultMode: InputResultModeValues.DispatchOnly,
+                TargetHwnd: CreateWindow().Hwnd,
+                CompletedActionCount: 1,
+                Actions:
+                [
+                    new InputActionResult(
+                        Type: InputActionTypeValues.Drag,
+                        Status: InputStatusValues.VerifyNeeded,
+                        ResultMode: InputResultModeValues.DispatchOnly,
+                        CoordinateSpace: InputCoordinateSpaceValues.Screen,
+                        ResolvedScreenPoint: new InputPoint(270, 90)),
+                ])));
+        ComputerUseWinDragHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinDragExecutionCoordinator(
+                activationService,
+                new ComputerUseWinDragTargetResolver(uiAutomationService),
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinDragRequest(StateToken: token, FromElementIndex: 1, ToElementIndex: 2, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.NotNull(inputService.LastRequest);
+        InputAction action = Assert.Single(inputService.LastRequest!.Actions);
+        Assert.Equal(InputActionTypeValues.Drag, action.Type);
+        Assert.Equal(InputCoordinateSpaceValues.Screen, action.CoordinateSpace);
+        Assert.Equal([new InputPoint(50, 50), new InputPoint(270, 90)], action.Path!.ToArray());
+    }
+
+    [Fact]
+    public async Task DragHandlerReturnsStaleStateWhenFreshSourceCannotBeMatched()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateDragStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-drag-stale-source-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinDrag,
+            new { stateToken = token, fromElementIndex = 1, toElementIndex = 2, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Done,
+                Window: CreateObservedWindow(window),
+                Root: CreateDestinationOnlyDragSnapshotRoot(),
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new();
+        ComputerUseWinDragHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinDragExecutionCoordinator(
+                activationService,
+                new ComputerUseWinDragTargetResolver(uiAutomationService),
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinDragRequest(StateToken: token, FromElementIndex: 1, ToElementIndex: 2, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, payload.GetProperty("failureCode").GetString());
+        Assert.Contains("source", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task DragHandlerReturnsStaleStateWhenFreshDestinationCannotBeMatched()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateDragStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-drag-stale-destination-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinDrag,
+            new { stateToken = token, fromElementIndex = 1, toElementIndex = 2, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) => Task.FromResult(
+            new UiaSnapshotResult(
+                Status: UiaSnapshotStatusValues.Done,
+                Window: CreateObservedWindow(window),
+                Root: CreateSourceOnlyDragSnapshotRoot(),
+                RequestedDepth: request.Depth,
+                RequestedMaxNodes: request.MaxNodes,
+                CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new();
+        ComputerUseWinDragHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinDragExecutionCoordinator(
+                activationService,
+                new ComputerUseWinDragTargetResolver(uiAutomationService),
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinDragRequest(StateToken: token, FromElementIndex: 1, ToElementIndex: 2, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, payload.GetProperty("failureCode").GetString());
+        Assert.Contains("destination", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerReturnsUnsupportedActionForNonSecondaryStoredElement()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateNonActionableStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-secondary-unsupported-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new { stateToken = token, elementIndex = 1 },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSecondaryActionService secondaryActionService = new();
+        ComputerUseWinPerformSecondaryActionHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                secondaryActionService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(StateToken: token, ElementIndex: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, secondaryActionService.Calls);
+        Assert.Null(activationService.LastHwnd);
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerReturnsApprovalRequiredForRiskySemanticTarget()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSecondaryStoredState(name: "Delete archived item"));
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-secondary-approval-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new { stateToken = token, elementIndex = 1 },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:toggle",
+                                ControlType = "check_box",
+                                Name = "Delete archived item",
+                                AutomationId = "RememberSemanticSelectionCheckBox",
+                                BoundingRectangle = new Bounds(24, 104, 244, 128),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["toggle"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSecondaryActionService secondaryActionService = new();
+        ComputerUseWinPerformSecondaryActionHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                secondaryActionService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(StateToken: token, ElementIndex: 1, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.ApprovalRequired, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, secondaryActionService.Calls);
+        Assert.Null(activationService.LastHwnd);
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerReturnsStaleStateWhenFreshTargetCannotBeMatched()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSecondaryStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-secondary-stale-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new { stateToken = token, elementIndex = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:different",
+                                ControlType = "check_box",
+                                Name = "Different toggle",
+                                AutomationId = "OtherToggle",
+                                BoundingRectangle = new Bounds(24, 104, 244, 128),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["toggle"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSecondaryActionService secondaryActionService = new();
+        ComputerUseWinPerformSecondaryActionHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                secondaryActionService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(StateToken: token, ElementIndex: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, secondaryActionService.Calls);
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerReturnsUnsupportedActionWhenFreshTargetLosesSecondarySignal()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSecondaryStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-secondary-fresh-unsupported-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new { stateToken = token, elementIndex = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:toggle",
+                                ControlType = "check_box",
+                                Name = "Remember semantic selection: on",
+                                AutomationId = "RememberSemanticSelectionCheckBox",
+                                BoundingRectangle = new Bounds(24, 104, 244, 128),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = [],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSecondaryActionService secondaryActionService = new();
+        ComputerUseWinPerformSecondaryActionHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                secondaryActionService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(StateToken: token, ElementIndex: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, secondaryActionService.Calls);
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerAppliesToggleViaSemanticService()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSecondaryStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-secondary-toggle-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new { stateToken = token, elementIndex = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:toggle",
+                                ControlType = "check_box",
+                                Name = "Remember semantic selection: on",
+                                AutomationId = "RememberSemanticSelectionCheckBox",
+                                BoundingRectangle = new Bounds(24, 104, 244, 128),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["toggle"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSecondaryActionService secondaryActionService = new((window, request, _) =>
+            Task.FromResult(UiaSecondaryActionResult.SuccessResult(UiaSecondaryActionKindValues.Toggle, "toggle_pattern")));
+        ComputerUseWinPerformSecondaryActionHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                secondaryActionService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(StateToken: token, ElementIndex: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Done, payload.GetProperty("status").GetString());
+        Assert.NotNull(secondaryActionService.LastRequest);
+        Assert.Equal(UiaSecondaryActionKindValues.Toggle, secondaryActionService.LastRequest!.ActionKind);
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerResolvesFreshTargetAfterActivationAndKeepsRiskMarkerWhenConfirmed()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-secondary-risky-confirmed-tests");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSecondaryStoredState(name: "Delete archived item"));
+        WindowDescriptor activatedWindow = CreateWindow(hwnd: 202, title: "Activated secondary window");
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-secondary-risky-confirmed-tests"));
+        using AuditInvocationScope invocation = auditLog.BeginInvocation(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new { stateToken = token, elementIndex = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(_ => ActivateWindowResult.Done(activatedWindow, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:toggle",
+                                ControlType = "check_box",
+                                Name = "Delete archived item",
+                                AutomationId = "RememberSemanticSelectionCheckBox",
+                                BoundingRectangle = new Bounds(24, 104, 244, 128),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["toggle"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSecondaryActionService secondaryActionService = new((window, request, _) =>
+            Task.FromResult(UiaSecondaryActionResult.SuccessResult(UiaSecondaryActionKindValues.Toggle, "toggle_pattern")));
+        ComputerUseWinPerformSecondaryActionHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow(), activatedWindow]))),
+            new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                secondaryActionService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(StateToken: token, ElementIndex: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Done, payload.GetProperty("status").GetString());
+        Assert.Equal(activatedWindow.Hwnd, uiAutomationService.LastWindow!.Hwnd);
+        Assert.Equal(activatedWindow.Hwnd, secondaryActionService.LastWindow!.Hwnd);
+
+        string actionEvent = File.ReadAllLines(options.EventsPath)
+            .Single(line => line.Contains("\"event_name\":\"computer_use_win.action.completed\"", StringComparison.Ordinal));
+        Assert.Contains("\"risk_class\":\"secondary_semantic_risky\"", actionEvent, StringComparison.Ordinal);
+        Assert.Contains("\"confirmation_required\":\"true\"", actionEvent, StringComparison.Ordinal);
+        Assert.Contains("\"confirmed\":\"true\"", actionEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerReturnsStructuredFailureWhenSemanticServiceThrowsArgumentException()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSecondaryStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-secondary-argument-exception-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new { stateToken = token, elementIndex = 1, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: new UiaElementSnapshot
+                    {
+                        ElementId = "root",
+                        ControlType = "window",
+                        Children =
+                        [
+                            new UiaElementSnapshot
+                            {
+                                ElementId = "path:toggle",
+                                ControlType = "check_box",
+                                Name = "Remember semantic selection: on",
+                                AutomationId = "RememberSemanticSelectionCheckBox",
+                                BoundingRectangle = new Bounds(24, 104, 244, 128),
+                                IsEnabled = true,
+                                IsOffscreen = false,
+                                Patterns = ["toggle"],
+                            },
+                        ],
+                    },
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeUiAutomationSecondaryActionService secondaryActionService = new((_, _, _) => throw new ArgumentException("provider rejected secondary action"));
+        ComputerUseWinPerformSecondaryActionHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                secondaryActionService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(StateToken: token, ElementIndex: 1, Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InputDispatchFailed, payload.GetProperty("failureCode").GetString());
     }
 
     [Fact]
@@ -985,7 +2727,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: false),
             CancellationToken.None);
@@ -1009,7 +2751,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(Confirm: true),
             CancellationToken.None);
@@ -1034,7 +2776,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(ElementIndex: 1, Confirm: false),
             CancellationToken.None);
@@ -1057,7 +2799,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateNonActionableStoredState(),
             new ComputerUseWinClickRequest(ElementIndex: 1, Confirm: true),
             CancellationToken.None);
@@ -1081,7 +2823,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredStateWithoutCaptureReference(),
             new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
             CancellationToken.None);
@@ -1107,7 +2849,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(Point: new InputPoint(9999, 30), Confirm: true),
             CancellationToken.None);
@@ -1136,7 +2878,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
             CancellationToken.None);
@@ -1167,7 +2909,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
             CancellationToken.None);
@@ -1196,7 +2938,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
             CancellationToken.None);
@@ -1226,7 +2968,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
             CancellationToken.None);
@@ -1258,7 +3000,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(new FakeUiAutomationService()),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(Point: new InputPoint(20, 30), Confirm: true),
             CancellationToken.None);
@@ -1452,7 +3194,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(uiAutomationService),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateStoredState(),
             new ComputerUseWinClickRequest(ElementIndex: 1, Confirm: true),
             CancellationToken.None);
@@ -1526,7 +3268,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
             new ComputerUseWinClickTargetResolver(uiAutomationService),
             inputService);
 
-        ComputerUseWinClickExecutionOutcome outcome = await coordinator.ExecuteAsync(
+        ComputerUseWinActionExecutionOutcome outcome = await coordinator.ExecuteAsync(
             CreateSafeStoredState(),
             new ComputerUseWinClickRequest(ElementIndex: 1, Confirm: false),
             CancellationToken.None);
@@ -1546,6 +3288,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-stage-2-test"));
         ComputerUseWinStateStore stateStore = new();
         FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSetValueService setValueService = new();
         FakeWindowActivationService activationService = new();
         FakeInputService inputService = new();
         ComputerUseWinAppStateObserver appStateObserver = new(
@@ -1556,6 +3299,32 @@ public sealed class ComputerUseWinActionAndProjectionTests
             activationService,
             new ComputerUseWinClickTargetResolver(uiAutomationService),
             inputService);
+        ComputerUseWinDragExecutionCoordinator dragExecutionCoordinator = new(
+            activationService,
+            new ComputerUseWinDragTargetResolver(uiAutomationService),
+            inputService);
+        ComputerUseWinPressKeyExecutionCoordinator pressKeyExecutionCoordinator = new(
+            activationService,
+            inputService);
+        ComputerUseWinSetValueExecutionCoordinator setValueExecutionCoordinator = new(
+            activationService,
+            uiAutomationService,
+            setValueService);
+        ComputerUseWinTypeTextExecutionCoordinator typeTextExecutionCoordinator = new(
+            activationService,
+            uiAutomationService,
+            inputService);
+        FakeUiAutomationScrollService scrollService = new();
+        ComputerUseWinScrollExecutionCoordinator scrollExecutionCoordinator = new(
+            activationService,
+            uiAutomationService,
+            scrollService,
+            inputService);
+        FakeUiAutomationSecondaryActionService secondaryActionService = new();
+        ComputerUseWinPerformSecondaryActionExecutionCoordinator performSecondaryActionExecutionCoordinator = new(
+            activationService,
+            uiAutomationService,
+            secondaryActionService);
 
         return new(
             CreateAuditLog(),
@@ -1570,8 +3339,33 @@ public sealed class ComputerUseWinActionAndProjectionTests
                 activationService,
                 appStateObserver),
             new ComputerUseWinClickHandler(
-                new ComputerUseWinStoredStateResolver(stateStore, windowManager),
-                clickExecutionCoordinator));
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, windowManager)),
+                clickExecutionCoordinator),
+            new ComputerUseWinDragHandler(
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, windowManager)),
+                dragExecutionCoordinator),
+            new ComputerUseWinPerformSecondaryActionHandler(
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, windowManager)),
+                performSecondaryActionExecutionCoordinator),
+            new ComputerUseWinPressKeyHandler(
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, windowManager)),
+                pressKeyExecutionCoordinator),
+            new ComputerUseWinScrollHandler(
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, windowManager)),
+                scrollExecutionCoordinator),
+            new ComputerUseWinSetValueHandler(
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, windowManager)),
+                setValueExecutionCoordinator),
+            new ComputerUseWinTypeTextHandler(
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, windowManager)),
+                typeTextExecutionCoordinator));
     }
 
     private static ComputerUseWinGetAppStateHandler CreateGetAppStateHandler(
@@ -1694,6 +3488,245 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Elements: new Dictionary<int, ComputerUseWinStoredElement>(),
             Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
             CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateSettableStoredState() =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:0",
+                    Name: "Smoke query input",
+                    AutomationId: "SmokeQueryInputTextBox",
+                    ControlType: "edit",
+                    Bounds: new Bounds(10, 20, 50, 60),
+                    HasKeyboardFocus: true,
+                    Actions: [ToolNames.ComputerUseWinSetValue]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateFocusedEditableStoredState() =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:0",
+                    Name: "Smoke query input",
+                    AutomationId: "SmokeQueryInputTextBox",
+                    ControlType: "edit",
+                    Bounds: new Bounds(10, 20, 50, 60),
+                    HasKeyboardFocus: true,
+                    Actions: [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinSetValue, ToolNames.ComputerUseWinTypeText],
+                    Patterns: ["value"]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateEditableStoredStateWithoutFocus() =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:0",
+                    Name: "Smoke query input",
+                    AutomationId: "SmokeQueryInputTextBox",
+                    ControlType: "edit",
+                    Bounds: new Bounds(10, 20, 50, 60),
+                    HasKeyboardFocus: false,
+                    Actions: [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinSetValue],
+                    Patterns: ["value"]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateFocusedEditableStoredStateWithoutTypeTextAction() =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:0",
+                    Name: "Smoke query input",
+                    AutomationId: "SmokeQueryInputTextBox",
+                    ControlType: "edit",
+                    Bounds: new Bounds(10, 20, 50, 60),
+                    HasKeyboardFocus: true,
+                    Actions: [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinSetValue],
+                    Patterns: ["value"]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateScrollableStoredState() =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:0",
+                    Name: "Smoke scroll list",
+                    AutomationId: "SmokeScrollListBox",
+                    ControlType: "list",
+                    Bounds: new Bounds(10, 20, 220, 180),
+                    HasKeyboardFocus: false,
+                    Actions: [ToolNames.ComputerUseWinScroll],
+                    Patterns: ["scroll"]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateSecondaryStoredState(string name = "Remember semantic selection: on") =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:toggle",
+                    Name: name,
+                    AutomationId: "RememberSemanticSelectionCheckBox",
+                    ControlType: "check_box",
+                    Bounds: new Bounds(24, 104, 244, 128),
+                    HasKeyboardFocus: false,
+                    Actions: [ToolNames.ComputerUseWinPerformSecondaryAction],
+                    Patterns: ["toggle"]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateDragStoredState() =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:drag-source",
+                    Name: "Drag source token",
+                    AutomationId: "DragSourceToken",
+                    ControlType: "button",
+                    Bounds: new Bounds(24, 24, 76, 76),
+                    HasKeyboardFocus: false,
+                    Actions: [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinDrag]),
+                [2] = new(
+                    Index: 2,
+                    ElementId: "path:drag-target",
+                    Name: "Drag destination target",
+                    AutomationId: "DragDestinationTarget",
+                    ControlType: "panel",
+                    Bounds: new Bounds(220, 40, 320, 140),
+                    HasKeyboardFocus: false,
+                    Actions: [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinDrag]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static UiaElementSnapshot CreateDragSnapshotRoot() =>
+        new()
+        {
+            ElementId = "root",
+            ControlType = "window",
+            Children =
+            [
+                new UiaElementSnapshot
+                {
+                    ElementId = "path:drag-source",
+                    Name = "Drag source token",
+                    AutomationId = "DragSourceToken",
+                    ControlType = "button",
+                    BoundingRectangle = new Bounds(24, 24, 76, 76),
+                    IsEnabled = true,
+                    IsOffscreen = false,
+                },
+                new UiaElementSnapshot
+                {
+                    ElementId = "path:drag-target",
+                    Name = "Drag destination target",
+                    AutomationId = "DragDestinationTarget",
+                    ControlType = "panel",
+                    BoundingRectangle = new Bounds(220, 40, 320, 140),
+                    IsEnabled = true,
+                    IsOffscreen = false,
+                },
+            ],
+        };
+
+    private static UiaElementSnapshot CreateDestinationOnlyDragSnapshotRoot() =>
+        new()
+        {
+            ElementId = "root",
+            ControlType = "window",
+            Children =
+            [
+                new UiaElementSnapshot
+                {
+                    ElementId = "path:drag-target",
+                    Name = "Drag destination target",
+                    AutomationId = "DragDestinationTarget",
+                    ControlType = "panel",
+                    BoundingRectangle = new Bounds(220, 40, 320, 140),
+                    IsEnabled = true,
+                    IsOffscreen = false,
+                },
+            ],
+        };
+
+    private static UiaElementSnapshot CreateSourceOnlyDragSnapshotRoot() =>
+        new()
+        {
+            ElementId = "root",
+            ControlType = "window",
+            Children =
+            [
+                new UiaElementSnapshot
+                {
+                    ElementId = "path:drag-source",
+                    Name = "Drag source token",
+                    AutomationId = "DragSourceToken",
+                    ControlType = "button",
+                    BoundingRectangle = new Bounds(24, 24, 76, 76),
+                    IsEnabled = true,
+                    IsOffscreen = false,
+                },
+            ],
+        };
+
+    private static InputPoint CreatePointWithAdditionalProperties(int x, int y, IReadOnlyList<string> additionalPropertyNames)
+    {
+        Dictionary<string, JsonElement> additionalProperties = new(StringComparer.Ordinal);
+        foreach (string propertyName in additionalPropertyNames)
+        {
+            using JsonDocument document = JsonDocument.Parse("1");
+            additionalProperties[propertyName] = document.RootElement.Clone();
+        }
+
+        return new InputPoint(x, y)
+        {
+            AdditionalProperties = additionalProperties,
+        };
+    }
 
     private static ComputerUseWinStoredState CreateNonActionableStoredState() =>
         new(

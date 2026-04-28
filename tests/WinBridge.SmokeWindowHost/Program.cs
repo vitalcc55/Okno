@@ -72,41 +72,83 @@ internal static class Program
 
         private readonly Button _runButton;
         private readonly Button _transientWaitButton;
+        private readonly CheckBox _rememberCheckBox;
         private readonly TextBox _queryTextBox;
+        private readonly Label _queryMirrorLabel;
+        private readonly NumericUpDown _rangeInput;
+        private readonly Label _rangeMirrorLabel;
+        private readonly MirrorScrollListBox _scrollListBox;
+        private readonly Label _scrollMirrorLabel;
+        private readonly Button _dragSourceButton;
+        private readonly Panel _dragDestinationPanel;
+        private readonly Label _dragMirrorLabel;
         private readonly Panel _visualHeartbeatPanel;
         private readonly Label _visualHeartbeatLabel;
+        private readonly System.Windows.Forms.Timer _dragPollTimer;
         private readonly System.Windows.Forms.Timer _visualHeartbeatTimer;
         private readonly System.Windows.Forms.Timer _autoCloseTimer;
         private readonly System.Windows.Forms.Timer _transientHideTimer;
         private readonly int _visualBurstTransitionCount;
+        private readonly Point _dragSourceOrigin;
+        private Point _dragPointerOffset;
         private int _remainingVisualTransitions;
         private bool _visualPhase;
+        private bool _dragInProgress;
 
         public SmokeWindowForm(string title, int lifetimeMs, int visualBurstMs)
         {
             Text = title;
             StartPosition = FormStartPosition.Manual;
-            Bounds = new Rectangle(120, 120, 520, 360);
+            Bounds = new Rectangle(120, 120, 520, 560);
             ShowInTaskbar = true;
             _runButton = CreateRunButton();
             _transientWaitButton = CreateTransientWaitButton();
+            _rememberCheckBox = CreateRememberCheckBox();
             _queryTextBox = CreateQueryTextBox();
+            _queryMirrorLabel = CreateQueryMirrorLabel(_queryTextBox.Text);
+            _rangeInput = CreateRangeInput();
+            _rangeMirrorLabel = CreateRangeMirrorLabel(_rangeInput.Value);
+            _scrollListBox = CreateScrollListBox();
+            _scrollMirrorLabel = CreateScrollMirrorLabel(_scrollListBox.TopVisibleItemText);
+            _dragSourceButton = CreateDragSourceButton();
+            _dragDestinationPanel = CreateDragDestinationPanel();
+            _dragMirrorLabel = CreateDragMirrorLabel();
+            _dragSourceOrigin = _dragSourceButton.Location;
             _visualHeartbeatPanel = CreateVisualHeartbeatPanel();
             _visualHeartbeatLabel = CreateVisualHeartbeatLabel();
+            _dragPollTimer = CreateDragPollTimer();
             _visualHeartbeatTimer = CreateVisualHeartbeatTimer();
             _autoCloseTimer = CreateAutoCloseTimer(lifetimeMs);
             _transientHideTimer = CreateTransientHideTimer();
             _visualBurstTransitionCount = Math.Max(1, (int)Math.Ceiling((double)visualBurstMs / VisualHeartbeatIntervalMs));
+            _queryTextBox.TextChanged += (_, _) => UpdateQueryMirror();
+            _queryTextBox.Enter += (_, _) => QueueSelectAllInQueryTextBox();
+            _queryTextBox.MouseUp += (_, _) => QueueSelectAllInQueryTextBox();
+            _rememberCheckBox.CheckedChanged += (_, _) => UpdateRememberSemanticSelectionName();
+            _rangeInput.ValueChanged += (_, _) => UpdateRangeMirror();
+            _scrollListBox.TopVisibleItemChanged += (_, _) => UpdateScrollMirror();
+            _dragSourceButton.MouseDown += DragSourceButtonOnMouseDown;
             Controls.Add(_runButton);
             Controls.Add(_transientWaitButton);
-            Controls.Add(CreateRememberCheckBox());
+            Controls.Add(_rememberCheckBox);
             Controls.Add(_queryTextBox);
+            Controls.Add(_queryMirrorLabel);
+            Controls.Add(_rangeInput);
+            Controls.Add(_rangeMirrorLabel);
             Controls.Add(CreateTreeView());
             Controls.Add(_visualHeartbeatPanel);
             Controls.Add(_visualHeartbeatLabel);
+            Controls.Add(_scrollListBox);
+            Controls.Add(_scrollMirrorLabel);
+            Controls.Add(_dragSourceButton);
+            Controls.Add(_dragDestinationPanel);
+            Controls.Add(_dragMirrorLabel);
             Shown += (_, _) =>
             {
-                QueueCanonicalFocusTarget();
+                UpdateRememberSemanticSelectionName();
+                UpdateScrollMirror();
+                ResetDragSurface();
+                QueuePrepareCanonicalFocusTarget();
                 _autoCloseTimer.Start();
             };
             Activated += (_, _) => QueueCanonicalFocusTarget();
@@ -126,7 +168,7 @@ internal static class Program
             new()
             {
                 Name = "RememberSemanticSelectionCheckBox",
-                AccessibleName = "Remember semantic selection",
+                AccessibleName = "Remember semantic selection: on",
                 Text = "Remember semantic selection",
                 Bounds = new Rectangle(24, 104, 220, 24),
                 Checked = true,
@@ -149,6 +191,94 @@ internal static class Program
                 AccessibleName = "Smoke query input",
                 Text = "semantic text",
                 Bounds = new Rectangle(24, 136, 220, 28),
+            };
+
+        private static Label CreateQueryMirrorLabel(string initialText) =>
+            new()
+            {
+                Name = "QueryMirrorLabel",
+                AccessibleName = $"Query mirror: {initialText}",
+                Text = $"Query mirror: {initialText}",
+                Bounds = new Rectangle(24, 168, 220, 24),
+                BackColor = Color.White,
+            };
+
+        private static NumericUpDown CreateRangeInput() =>
+            new()
+            {
+                Name = "SmokeRangeInputUpDown",
+                AccessibleName = "Smoke range input",
+                Minimum = 0,
+                Maximum = 10,
+                Value = 5,
+                Bounds = new Rectangle(24, 196, 220, 24),
+            };
+
+        private static Label CreateRangeMirrorLabel(decimal initialValue) =>
+            new()
+            {
+                Name = "RangeMirrorLabel",
+                AccessibleName = $"Range mirror: {initialValue}",
+                Text = $"Range mirror: {initialValue}",
+                Bounds = new Rectangle(24, 224, 220, 24),
+                BackColor = Color.White,
+            };
+
+        private static MirrorScrollListBox CreateScrollListBox()
+        {
+            MirrorScrollListBox listBox = new()
+            {
+                Name = "SmokeScrollListBox",
+                AccessibleName = "Smoke scroll list",
+                Bounds = new Rectangle(260, 308, 212, 92),
+                IntegralHeight = false,
+            };
+            for (int index = 1; index <= 60; index++)
+            {
+                listBox.Items.Add($"Scroll item {index:00}");
+            }
+
+            return listBox;
+        }
+
+        private static Label CreateScrollMirrorLabel(string initialItem) =>
+            new()
+            {
+                Name = "ScrollMirrorLabel",
+                AccessibleName = $"Scroll mirror: {initialItem}",
+                Text = $"Scroll mirror: {initialItem}",
+                Bounds = new Rectangle(260, 404, 212, 24),
+                BackColor = Color.White,
+            };
+
+        private static Button CreateDragSourceButton() =>
+            new()
+            {
+                Name = "DragSourceTokenButton",
+                AccessibleName = "Drag source token",
+                Text = "Drag source token",
+                Bounds = new Rectangle(24, 436, 140, 36),
+                UseVisualStyleBackColor = true,
+            };
+
+        private static Panel CreateDragDestinationPanel() =>
+            new()
+            {
+                Name = "DragDestinationTargetPanel",
+                AccessibleName = "Drag destination target: empty",
+                Bounds = new Rectangle(220, 432, 180, 72),
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.LightSteelBlue,
+            };
+
+        private static Label CreateDragMirrorLabel() =>
+            new()
+            {
+                Name = "DragMirrorLabel",
+                AccessibleName = "Drag mirror: ready",
+                Text = "Drag mirror: ready",
+                Bounds = new Rectangle(24, 488, 180, 24),
+                BackColor = Color.White,
             };
 
         private static Panel CreateVisualHeartbeatPanel() =>
@@ -190,6 +320,131 @@ internal static class Program
             return timer;
         }
 
+        private System.Windows.Forms.Timer CreateDragPollTimer()
+        {
+            System.Windows.Forms.Timer timer = new()
+            {
+                Interval = 16,
+                Enabled = false,
+            };
+            timer.Tick += (_, _) =>
+            {
+                if (!_dragInProgress)
+                {
+                    timer.Stop();
+                    return;
+                }
+
+                Point cursorInForm = PointToClient(Cursor.Position);
+                _dragSourceButton.Location = new Point(
+                    cursorInForm.X - _dragPointerOffset.X,
+                    cursorInForm.Y - _dragPointerOffset.Y);
+
+                if ((Control.MouseButtons & MouseButtons.Left) == 0)
+                {
+                    EndDragInteraction();
+                }
+            };
+            return timer;
+        }
+
+        private void UpdateQueryMirror()
+        {
+            string mirrorText = $"Query mirror: {_queryTextBox.Text}";
+            _queryMirrorLabel.Text = mirrorText;
+            _queryMirrorLabel.AccessibleName = mirrorText;
+        }
+
+        private void UpdateRememberSemanticSelectionName()
+        {
+            _rememberCheckBox.AccessibleName = _rememberCheckBox.Checked
+                ? "Remember semantic selection: on"
+                : "Remember semantic selection: off";
+        }
+
+        private void SelectAllInQueryTextBox()
+        {
+            if (!_queryTextBox.IsHandleCreated || !_queryTextBox.Focused)
+            {
+                return;
+            }
+
+            _queryTextBox.SelectAll();
+        }
+
+        private void QueueSelectAllInQueryTextBox() =>
+            BeginInvoke(SelectAllInQueryTextBox);
+
+        private void UpdateRangeMirror()
+        {
+            string mirrorText = $"Range mirror: {_rangeInput.Value}";
+            _rangeMirrorLabel.Text = mirrorText;
+            _rangeMirrorLabel.AccessibleName = mirrorText;
+        }
+
+        private void UpdateScrollMirror()
+        {
+            string mirrorText = $"Scroll mirror: {_scrollListBox.TopVisibleItemText}";
+            _scrollMirrorLabel.Text = mirrorText;
+            _scrollMirrorLabel.AccessibleName = mirrorText;
+        }
+
+        private void DragSourceButtonOnMouseDown(object? sender, MouseEventArgs eventArgs)
+        {
+            if (eventArgs.Button != MouseButtons.Left)
+            {
+                return;
+            }
+
+            _dragInProgress = true;
+            _dragPointerOffset = eventArgs.Location;
+            _dragSourceButton.Capture = true;
+            _dragSourceButton.BringToFront();
+            _dragPollTimer.Start();
+        }
+
+        private void EndDragInteraction()
+        {
+            if (!_dragInProgress)
+            {
+                return;
+            }
+
+            _dragInProgress = false;
+            _dragSourceButton.Capture = false;
+            _dragPollTimer.Stop();
+            if (_dragDestinationPanel.Bounds.Contains(GetControlCenter(_dragSourceButton)))
+            {
+                _dragSourceButton.Location = new Point(
+                    _dragDestinationPanel.Left + (_dragDestinationPanel.Width - _dragSourceButton.Width) / 2,
+                    _dragDestinationPanel.Top + (_dragDestinationPanel.Height - _dragSourceButton.Height) / 2);
+                _dragDestinationPanel.AccessibleName = "Drag destination target: occupied";
+                UpdateDragMirror("dropped");
+                return;
+            }
+
+            _dragSourceButton.Location = _dragSourceOrigin;
+            _dragDestinationPanel.AccessibleName = "Drag destination target: empty";
+            UpdateDragMirror("ready");
+        }
+
+        private void ResetDragSurface()
+        {
+            _dragInProgress = false;
+            _dragSourceButton.Capture = false;
+            _dragPollTimer.Stop();
+            _dragSourceButton.Location = _dragSourceOrigin;
+            _dragDestinationPanel.AccessibleName = "Drag destination target: empty";
+            UpdateDragMirror("ready");
+        }
+
+        private void UpdateDragMirror(string state)
+        {
+            string mirrorText = $"Drag mirror: {state}";
+            _dragMirrorLabel.Text = mirrorText;
+            _dragMirrorLabel.AccessibleName = mirrorText;
+        }
+
         private System.Windows.Forms.Timer CreateTransientHideTimer()
         {
             System.Windows.Forms.Timer timer = new()
@@ -226,7 +481,7 @@ internal static class Program
             {
                 Name = "SmokeNavigationTree",
                 AccessibleName = "Smoke navigation tree",
-                Bounds = new Rectangle(24, 184, 220, 116),
+                Bounds = new Rectangle(24, 252, 220, 48),
                 HideSelection = false,
             };
 
@@ -260,6 +515,14 @@ internal static class Program
 
         private void QueueCanonicalFocusTarget() =>
             BeginInvoke(SetCanonicalFocusTarget);
+
+        private void QueuePrepareCanonicalFocusTarget() =>
+            BeginInvoke(PrepareCanonicalFocusTarget);
+
+        private static Point GetControlCenter(Control control) =>
+            new(
+                control.Left + (control.Width / 2),
+                control.Top + (control.Height / 2));
 
         private void ArmElementGoneScenario()
         {
@@ -299,6 +562,48 @@ internal static class Program
             }
 
             base.WndProc(ref m);
+        }
+    }
+
+    private sealed class MirrorScrollListBox : ListBox
+    {
+        private const int WmVscroll = 0x0115;
+        private const int WmMousewheel = 0x020A;
+        private const int WmMousehwheel = 0x020E;
+        private int _lastTopIndex;
+
+        public event EventHandler? TopVisibleItemChanged;
+
+        public string TopVisibleItemText =>
+            Items.Count == 0 || TopIndex < 0 || TopIndex >= Items.Count
+                ? "none"
+                : Items[TopIndex]?.ToString() ?? "none";
+
+        protected override void OnCreateControl()
+        {
+            base.OnCreateControl();
+            _lastTopIndex = TopIndex;
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+
+            if (m.Msg is WmVscroll or WmMousewheel or WmMousehwheel)
+            {
+                NotifyIfTopVisibleItemChanged();
+            }
+        }
+
+        private void NotifyIfTopVisibleItemChanged()
+        {
+            if (TopIndex == _lastTopIndex)
+            {
+                return;
+            }
+
+            _lastTopIndex = TopIndex;
+            TopVisibleItemChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

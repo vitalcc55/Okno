@@ -53,11 +53,42 @@ builder.Services.AddSingleton(static services => new ComputerUseWinClickExecutio
     services.GetRequiredService<IWindowActivationService>(),
     new ComputerUseWinClickTargetResolver(services.GetRequiredService<IUiAutomationService>()),
     services.GetRequiredService<IInputService>()));
+builder.Services.AddSingleton(static services => new ComputerUseWinDragExecutionCoordinator(
+    services.GetRequiredService<IWindowActivationService>(),
+    new ComputerUseWinDragTargetResolver(services.GetRequiredService<IUiAutomationService>()),
+    services.GetRequiredService<IInputService>()));
+builder.Services.AddSingleton(static services => new ComputerUseWinPressKeyExecutionCoordinator(
+    services.GetRequiredService<IWindowActivationService>(),
+    services.GetRequiredService<IInputService>()));
+builder.Services.AddSingleton(static services => new ComputerUseWinSetValueExecutionCoordinator(
+    services.GetRequiredService<IWindowActivationService>(),
+    services.GetRequiredService<IUiAutomationService>(),
+    services.GetRequiredService<IUiAutomationSetValueService>()));
+builder.Services.AddSingleton(static services => new ComputerUseWinTypeTextExecutionCoordinator(
+    services.GetRequiredService<IWindowActivationService>(),
+    services.GetRequiredService<IUiAutomationService>(),
+    services.GetRequiredService<IInputService>()));
+builder.Services.AddSingleton(static services => new ComputerUseWinScrollExecutionCoordinator(
+    services.GetRequiredService<IWindowActivationService>(),
+    services.GetRequiredService<IUiAutomationService>(),
+    services.GetRequiredService<IUiAutomationScrollService>(),
+    services.GetRequiredService<IInputService>()));
+builder.Services.AddSingleton(static services => new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+    services.GetRequiredService<IWindowActivationService>(),
+    services.GetRequiredService<IUiAutomationService>(),
+    services.GetRequiredService<IUiAutomationSecondaryActionService>()));
 builder.Services.AddSingleton<ComputerUseWinStateStore>();
 builder.Services.AddSingleton<ComputerUseWinStoredStateResolver>();
+builder.Services.AddSingleton<ComputerUseWinActionRequestExecutor>();
 builder.Services.AddSingleton<ComputerUseWinListAppsHandler>();
 builder.Services.AddSingleton<ComputerUseWinGetAppStateHandler>();
 builder.Services.AddSingleton<ComputerUseWinClickHandler>();
+builder.Services.AddSingleton<ComputerUseWinDragHandler>();
+builder.Services.AddSingleton<ComputerUseWinPerformSecondaryActionHandler>();
+builder.Services.AddSingleton<ComputerUseWinPressKeyHandler>();
+builder.Services.AddSingleton<ComputerUseWinScrollHandler>();
+builder.Services.AddSingleton<ComputerUseWinSetValueHandler>();
+builder.Services.AddSingleton<ComputerUseWinTypeTextHandler>();
 builder.Services.AddSingleton<IComputerUseWinInstructionProvider, ComputerUseWinPlaybookProvider>();
 builder.Services.AddSingleton<AdminTools>();
 builder.Services.AddSingleton(static services => new WindowTools(

@@ -92,6 +92,245 @@ internal sealed class Win32InputService(
                 InputAction action = request.Actions[index];
                 batch.BeginAction(index, action, ResolveEffectiveButtonForAction(action));
 
+                if (string.Equals(action.Type, InputActionTypeValues.Type, StringComparison.Ordinal))
+                {
+                    if (!TryResolveAdmissibleTarget(
+                            batch,
+                            dispatchPlan: null,
+                            out WindowDescriptor? keyboardTargetWindow,
+                            out _,
+                            out failureCode,
+                            out reason))
+                    {
+                        return MaterializeFactual(batch.MaterializeCurrentActionFailure(
+                            failureCode!,
+                            reason!,
+                            targetWindow.Hwnd));
+                    }
+
+                    batch.UpdateTargetHwnd(keyboardTargetWindow!.Hwnd);
+                    InputDispatchResult dispatchResult = platform.DispatchText(
+                        new InputTextDispatchContext(
+                            action.Text!,
+                            keyboardTargetWindow));
+                    if (!dispatchResult.Success)
+                    {
+                        if (dispatchResult.CommittedSideEffects)
+                        {
+                            batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterTypeTextDispatch);
+                        }
+
+                        return MaterializeFactual(
+                            batch.MaterializeCurrentActionFailure(
+                                dispatchResult.FailureCode ?? InputFailureCodeValues.InputDispatchFailed,
+                                dispatchResult.Reason ?? "Runtime не смог подтвердить text dispatch.",
+                                keyboardTargetWindow.Hwnd),
+                            dispatchResult.CommittedSideEffects
+                                ? InputFailureStageValues.TextDispatchCommittedFailure
+                                : InputFailureStageValues.InputDispatch);
+                    }
+
+                    if (dispatchResult.CommittedSideEffects)
+                    {
+                        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterTypeTextDispatch);
+                    }
+
+                    if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
+                    batch.UpdateExpectedTarget(keyboardTargetWindow);
+                    batch.CompleteCurrentActionSuccess();
+                    continue;
+                }
+
+                if (string.Equals(action.Type, InputActionTypeValues.Keypress, StringComparison.Ordinal))
+                {
+                    if (!TryResolveAdmissibleTarget(
+                            batch,
+                            dispatchPlan: null,
+                            out WindowDescriptor? keyboardTargetWindow,
+                            out _,
+                            out failureCode,
+                            out reason))
+                    {
+                        return MaterializeFactual(batch.MaterializeCurrentActionFailure(
+                            failureCode!,
+                            reason!,
+                            targetWindow.Hwnd));
+                    }
+
+                    batch.UpdateTargetHwnd(keyboardTargetWindow!.Hwnd);
+                    InputDispatchResult dispatchResult = platform.DispatchKeypress(
+                        new InputKeypressDispatchContext(
+                            action.Key!,
+                            action.Repeat ?? 1,
+                            keyboardTargetWindow));
+                    if (!dispatchResult.Success)
+                    {
+                        if (dispatchResult.CommittedSideEffects)
+                        {
+                            batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterKeypressDispatch);
+                        }
+
+                        return MaterializeFactual(
+                            batch.MaterializeCurrentActionFailure(
+                                dispatchResult.FailureCode ?? InputFailureCodeValues.InputDispatchFailed,
+                                dispatchResult.Reason ?? "Runtime не смог подтвердить keypress dispatch.",
+                                keyboardTargetWindow.Hwnd),
+                            dispatchResult.FailureStageHint
+                                ?? (dispatchResult.CommittedSideEffects
+                                    ? InputFailureStageValues.KeypressDispatchCommittedFailure
+                                    : InputFailureStageValues.InputDispatch));
+                    }
+
+                    if (dispatchResult.CommittedSideEffects)
+                    {
+                        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterKeypressDispatch);
+                    }
+
+                    if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
+                    batch.UpdateExpectedTarget(keyboardTargetWindow);
+                    batch.CompleteCurrentActionSuccess();
+                    continue;
+                }
+
+                if (string.Equals(action.Type, InputActionTypeValues.Drag, StringComparison.Ordinal))
+                {
+                    if (!TryResolveAdmissibleTarget(
+                            batch,
+                            dispatchPlan: null,
+                            out WindowDescriptor? dragTargetWindow,
+                            out _,
+                            out failureCode,
+                            out reason))
+                    {
+                        return MaterializeFactual(batch.MaterializeCurrentActionFailure(
+                            failureCode!,
+                            reason!,
+                            targetWindow.Hwnd));
+                    }
+
+                    batch.UpdateTargetHwnd(dragTargetWindow!.Hwnd);
+
+                    if (!InputCoordinateMapper.TryBuildDragDispatchPlan(action, dragTargetWindow, out InputDragDispatchPlan? dragDispatchPlan, out failureCode, out reason)
+                        || dragDispatchPlan is null)
+                    {
+                        return MaterializeFactual(batch.MaterializeCurrentActionFailure(
+                            failureCode!,
+                            reason!,
+                            dragTargetWindow.Hwnd));
+                    }
+
+                    if (!batch.TryEnterActionSideEffectPhase(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult!, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
+                    InputPoint dragStartPoint = dragDispatchPlan.ResolvedScreenPath[0];
+                    CursorMoveAttemptResult dragMoveResult = TryMoveCursorAndVerify(dragTargetWindow, dragStartPoint);
+                    ApplyMoveOutcomeToBatch(batch, dragStartPoint, dragMoveResult);
+                    if (!dragMoveResult.Success)
+                    {
+                        if (dragMoveResult.MoveApplied)
+                        {
+                            batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterMove);
+                        }
+
+                        return MaterializeFactual(batch.MaterializeCurrentActionFailure(
+                            dragMoveResult.FailureCode!,
+                            dragMoveResult.Reason!,
+                            dragTargetWindow.Hwnd));
+                    }
+
+                    batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterMove);
+                    if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
+                    if (!TryResolveAdmissibleTarget(
+                            batch,
+                            dispatchPlan: null,
+                            out dragTargetWindow,
+                            out _,
+                            out failureCode,
+                            out reason))
+                    {
+                        return MaterializeFactual(
+                            batch.MaterializeCurrentActionFailure(
+                                failureCode!,
+                                reason!,
+                                targetWindow.Hwnd),
+                            ResolveFailureStage(failureCode));
+                    }
+
+                    batch.UpdateTargetHwnd(dragTargetWindow!.Hwnd);
+
+                    if (!InputCoordinateMapper.TryValidateDragDispatchPlan(
+                            dragDispatchPlan,
+                            dragTargetWindow,
+                            out dragDispatchPlan,
+                            out failureCode,
+                            out reason)
+                        || dragDispatchPlan is null)
+                    {
+                        return MaterializeFactual(
+                            batch.MaterializeCurrentActionFailure(
+                                failureCode!,
+                                reason!,
+                                dragTargetWindow.Hwnd),
+                            InputFailureStageValues.CoordinateMapping);
+                    }
+
+                    InputDispatchResult dragDispatchResult = platform.DispatchDrag(
+                        new InputDragDispatchContext(
+                            dragDispatchPlan.ResolvedScreenPath,
+                            dragTargetWindow));
+                    if (platform.TryGetCursorPosition(out InputPoint observedDragCursorPoint))
+                    {
+                        batch.UpdateResolvedPoint(observedDragCursorPoint);
+                    }
+                    else
+                    {
+                        batch.UpdateResolvedPoint(dragDispatchPlan.ResolvedScreenPath[^1]);
+                    }
+
+                    if (!dragDispatchResult.Success)
+                    {
+                        if (dragDispatchResult.CommittedSideEffects)
+                        {
+                            batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterDragDispatch);
+                        }
+
+                        return MaterializeFactual(
+                            batch.MaterializeCurrentActionFailure(
+                                dragDispatchResult.FailureCode ?? InputFailureCodeValues.InputDispatchFailed,
+                                dragDispatchResult.Reason ?? "Runtime не смог подтвердить drag dispatch.",
+                                dragTargetWindow.Hwnd),
+                            ResolveDragFailureStage(dragDispatchResult));
+                    }
+
+                    if (dragDispatchResult.CommittedSideEffects)
+                    {
+                        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterDragDispatch);
+                    }
+
+                    if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
+                    batch.UpdateExpectedTarget(dragTargetWindow);
+                    batch.CompleteCurrentActionSuccess();
+                    continue;
+                }
+
                 if (!TryResolveAdmissibleTarget(
                         batch,
                         dispatchPlan: null,
@@ -171,6 +410,44 @@ internal sealed class Win32InputService(
 
                 if (string.Equals(action.Type, InputActionTypeValues.Move, StringComparison.Ordinal))
                 {
+                    batch.UpdateExpectedTarget(liveTargetWindow);
+                    batch.CompleteCurrentActionSuccess();
+                    continue;
+                }
+
+                if (string.Equals(action.Type, InputActionTypeValues.Scroll, StringComparison.Ordinal))
+                {
+                    InputDispatchResult dispatchResult = platform.DispatchScroll(
+                        new InputScrollDispatchContext(
+                            dispatchPlan!.ResolvedScreenPoint,
+                            action.Direction!,
+                            action.Delta!.Value,
+                            liveTargetWindow));
+                    if (!dispatchResult.Success)
+                    {
+                        if (dispatchResult.CommittedSideEffects)
+                        {
+                            batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterScrollDispatch);
+                        }
+
+                        return MaterializeFactual(
+                            batch.MaterializeCurrentActionFailure(
+                                dispatchResult.FailureCode ?? InputFailureCodeValues.InputDispatchFailed,
+                                dispatchResult.Reason ?? "Runtime не смог подтвердить scroll dispatch.",
+                                liveTargetWindow.Hwnd),
+                            InputFailureStageValues.InputDispatch);
+                    }
+
+                    if (dispatchResult.CommittedSideEffects)
+                    {
+                        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterScrollDispatch);
+                    }
+
+                    if (batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
                     batch.UpdateExpectedTarget(liveTargetWindow);
                     batch.CompleteCurrentActionSuccess();
                     continue;
@@ -703,12 +980,25 @@ internal sealed class Win32InputService(
             _ => InputFailureStageValues.InputDispatch,
         };
 
+    private static string ResolveDragFailureStage(InputDispatchResult dragDispatchResult)
+    {
+        if (!string.IsNullOrWhiteSpace(dragDispatchResult.FailureStageHint))
+        {
+            return dragDispatchResult.FailureStageHint;
+        }
+
+        return dragDispatchResult.CommittedSideEffects
+            ? InputFailureStageValues.DragDispatchPartialUncompensated
+            : InputFailureStageValues.DragDispatchNotStartedAfterMove;
+    }
+
     private static string? ResolveFailureStage(string? failureCode) =>
         failureCode switch
         {
             InputFailureCodeValues.InvalidRequest
                 or InputFailureCodeValues.UnsupportedActionType
-                or InputFailureCodeValues.UnsupportedCoordinateSpace => InputFailureStageValues.RequestValidation,
+                or InputFailureCodeValues.UnsupportedCoordinateSpace
+                or InputFailureCodeValues.UnsupportedKey => InputFailureStageValues.RequestValidation,
             InputFailureCodeValues.MissingTarget
                 or InputFailureCodeValues.StaleExplicitTarget
                 or InputFailureCodeValues.StaleAttachedTarget => InputFailureStageValues.TargetResolution,
@@ -719,6 +1009,7 @@ internal sealed class Win32InputService(
                 or InputFailureCodeValues.CaptureReferenceStale
                 or InputFailureCodeValues.PointOutOfBounds => InputFailureStageValues.CoordinateMapping,
             InputFailureCodeValues.CursorMoveFailed => InputFailureStageValues.CursorMove,
+            InputFailureCodeValues.UnsupportedKeyboardLayout => InputFailureStageValues.InputDispatch,
             InputFailureCodeValues.InputDispatchFailed => InputFailureStageValues.InputDispatch,
             _ => null,
         };

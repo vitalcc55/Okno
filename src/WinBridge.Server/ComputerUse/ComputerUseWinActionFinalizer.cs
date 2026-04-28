@@ -2,6 +2,7 @@ using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Server.ComputerUse;
 
@@ -12,7 +13,8 @@ internal static class ComputerUseWinActionFinalizer
         string toolName,
         long? targetHwnd,
         int? elementIndex,
-        InputResult input)
+        InputResult input,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null)
     {
         ArgumentNullException.ThrowIfNull(invocation);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
@@ -26,7 +28,8 @@ internal static class ComputerUseWinActionFinalizer
             auditOutcome,
             payload.Reason ?? $"Computer Use action '{toolName}' завершён.",
             payload.TargetHwnd,
-            ComputerUseWinAuditDataBuilder.CreateActionCompletionData(input));
+            ComputerUseWinAuditDataBuilder.CreateActionCompletionData(toolName, input));
+        ComputerUseWinActionObservability.RecordBestEffort(invocation, toolName, payload, observabilityContext);
         return CreateToolResult(payload, isError: payload.Status == ComputerUseWinStatusValues.Failed);
     }
 
@@ -37,18 +40,19 @@ internal static class ComputerUseWinActionFinalizer
         int? elementIndex,
         Exception exception,
         InputResult? factualFailure = null,
-        bool preDispatchStateMutationPossible = false)
+        bool preDispatchStateMutationPossible = false,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null)
     {
         ArgumentNullException.ThrowIfNull(invocation);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
         ArgumentNullException.ThrowIfNull(exception);
 
         return factualFailure is null
-            ? FinalizeUnexpectedInternalFailure(invocation, toolName, targetHwnd, elementIndex, exception, preDispatchStateMutationPossible)
-            : FinalizeUnexpectedFactualFailure(invocation, toolName, targetHwnd, elementIndex, exception, factualFailure);
+            ? FinalizeUnexpectedInternalFailure(invocation, toolName, targetHwnd, elementIndex, exception, preDispatchStateMutationPossible, observabilityContext)
+            : FinalizeUnexpectedFactualFailure(invocation, toolName, targetHwnd, elementIndex, exception, factualFailure, observabilityContext);
     }
 
-    private static ComputerUseWinActionResult CreatePayload(
+    internal static ComputerUseWinActionResult CreatePayload(
         long? targetHwnd,
         int? elementIndex,
         InputResult input)
@@ -75,7 +79,8 @@ internal static class ComputerUseWinActionFinalizer
         long? targetHwnd,
         int? elementIndex,
         Exception exception,
-        bool preDispatchStateMutationPossible)
+        bool preDispatchStateMutationPossible,
+        ComputerUseWinActionObservabilityContext? observabilityContext)
     {
         ComputerUseWinActionLifecyclePhase phase = preDispatchStateMutationPossible
             ? ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch
@@ -97,6 +102,22 @@ internal static class ComputerUseWinActionFinalizer
             exception,
             bestEffort: true,
             data: ComputerUseWinAuditDataBuilder.CreateUnexpectedFailureData(phase));
+        ComputerUseWinActionObservability.RecordBestEffort(
+            invocation,
+            toolName,
+            payload,
+            MergeObservabilityContext(
+                toolName,
+                payload,
+                observabilityContext,
+                failureStage: phase switch
+                {
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation => "pre_dispatch_internal",
+                    ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch => "pre_dispatch_after_activation",
+                    ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch => "after_revalidation_before_dispatch",
+                    _ => "post_dispatch",
+                },
+                exceptionType: exception.GetType().FullName));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -106,7 +127,8 @@ internal static class ComputerUseWinActionFinalizer
         long? targetHwnd,
         int? elementIndex,
         Exception exception,
-        InputResult factualFailure)
+        InputResult factualFailure,
+        ComputerUseWinActionObservabilityContext? observabilityContext)
     {
         ComputerUseWinActionResult payload = CreatePayload(targetHwnd, elementIndex, factualFailure);
 
@@ -117,8 +139,52 @@ internal static class ComputerUseWinActionFinalizer
             payload.TargetHwnd,
             exception,
             bestEffort: true,
-            data: ComputerUseWinAuditDataBuilder.CreateActionCompletionData(factualFailure, "post_dispatch_factual"));
+            data: ComputerUseWinAuditDataBuilder.CreateActionCompletionData(toolName, factualFailure, "post_dispatch_factual"));
+        ComputerUseWinActionObservability.RecordBestEffort(
+            invocation,
+            toolName,
+            payload,
+            MergeObservabilityContext(
+                toolName,
+                payload,
+                observabilityContext,
+                childArtifactPath: string.Equals(toolName, ToolNames.ComputerUseWinDrag, StringComparison.Ordinal)
+                    ? null
+                    : factualFailure.ArtifactPath,
+                failureStage: "post_dispatch_factual",
+                exceptionType: exception.GetType().FullName));
         return CreateToolResult(payload, isError: true);
+    }
+
+    private static ComputerUseWinActionObservabilityContext? MergeObservabilityContext(
+        string toolName,
+        ComputerUseWinActionResult payload,
+        ComputerUseWinActionObservabilityContext? context,
+        string? childArtifactPath = null,
+        string? failureStage = null,
+        string? exceptionType = null)
+    {
+        ComputerUseWinActionObservabilityContext effectiveContext = context ?? new(
+            ActionName: toolName,
+            RuntimeState: "observed",
+            AppId: "unknown",
+            WindowIdPresent: false,
+            StateTokenPresent: false,
+            TargetMode: payload.ElementIndex is null ? "unknown" : "element_index",
+            ElementIndexPresent: payload.ElementIndex is not null,
+            CoordinateSpace: null,
+            CaptureReferencePresent: false,
+            ConfirmationRequired: false,
+            Confirmed: false,
+            RiskClass: null,
+            DispatchPath: null);
+
+        return effectiveContext with
+        {
+            ChildArtifactPath = childArtifactPath ?? effectiveContext.ChildArtifactPath,
+            FailureStage = failureStage ?? effectiveContext.FailureStage,
+            ExceptionType = exceptionType ?? effectiveContext.ExceptionType,
+        };
     }
 
     private static CallToolResult CreateToolResult(ComputerUseWinActionResult payload, bool isError)

@@ -7,89 +7,22 @@ using WinBridge.Runtime.Windows.Input;
 namespace WinBridge.Server.ComputerUse;
 
 internal sealed class ComputerUseWinClickHandler(
-    ComputerUseWinStoredStateResolver storedStateResolver,
+    ComputerUseWinActionRequestExecutor actionRequestExecutor,
     ComputerUseWinClickExecutionCoordinator clickExecutionCoordinator)
 {
-    public async Task<CallToolResult> ExecuteAsync(
+    public Task<CallToolResult> ExecuteAsync(
         AuditInvocationScope invocation,
         ComputerUseWinClickRequest request,
         CancellationToken cancellationToken)
-    {
-        if (!storedStateResolver.TryResolve(
-                request.StateToken,
-                invocation,
-                ToolNames.ComputerUseWinClick,
-                DetermineValidationMode(request),
-                out ComputerUseWinActionReadyState? state,
-                out CallToolResult? failureResult))
-        {
-            return failureResult!;
-        }
-
-        ComputerUseWinActionReadyState actionReadyState = state!;
-        ComputerUseWinStoredState resolvedState = actionReadyState.StoredState;
-
-        try
-        {
-            ComputerUseWinClickExecutionOutcome outcome = await clickExecutionCoordinator.ExecuteAsync(
-                resolvedState,
-                request,
-                cancellationToken).ConfigureAwait(false);
-
-            if (outcome.IsApprovalRequired)
-            {
-                return ComputerUseWinToolResultFactory.CreateActionApprovalRequired(
-                    invocation,
-                    ToolNames.ComputerUseWinClick,
-                    resolvedState.Session.Hwnd,
-                    request.ElementIndex,
-                    outcome.ApprovalReason!,
-                    outcome.Phase);
-            }
-
-            if (!outcome.IsSuccess)
-            {
-                return ComputerUseWinToolResultFactory.CreateActionFailure(
-                    invocation,
-                    ToolNames.ComputerUseWinClick,
-                    outcome.FailureDetails!,
-                    resolvedState.Session.Hwnd,
-                    request.ElementIndex,
-                    outcome.Phase);
-            }
-
-            return ComputerUseWinToolResultFactory.CreateActionToolResult(
-                invocation,
-                ToolNames.ComputerUseWinClick,
-                resolvedState.Session.Hwnd,
-                request.ElementIndex,
-                outcome.Input!);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (InputExecutionFailureException exception)
-        {
-            return ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
-                invocation,
-                ToolNames.ComputerUseWinClick,
-                resolvedState.Session.Hwnd,
-                request.ElementIndex,
-                exception.InnerException ?? exception,
-                exception.Result);
-        }
-        catch (Exception exception)
-        {
-            return ComputerUseWinActionFinalizer.FinalizeUnexpectedFailure(
-                invocation,
-                ToolNames.ComputerUseWinClick,
-                resolvedState.Session.Hwnd,
-                request.ElementIndex,
-                exception,
-                preDispatchStateMutationPossible: true);
-        }
-    }
+        => actionRequestExecutor.ExecuteAsync(
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            request.StateToken,
+            request.ElementIndex,
+            DetermineValidationMode(request),
+            (resolvedState, ct) => clickExecutionCoordinator.ExecuteAsync(resolvedState, request, ct),
+            (resolvedState, outcome) => CreateObservabilityContext(resolvedState, request, outcome),
+            cancellationToken);
 
     private static ComputerUseWinStoredStateValidationMode DetermineValidationMode(ComputerUseWinClickRequest request)
     {
@@ -104,5 +37,40 @@ internal sealed class ComputerUseWinClickHandler(
         return string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
             ? ComputerUseWinStoredStateValidationMode.CoordinateCapturePixelsAction
             : ComputerUseWinStoredStateValidationMode.CoordinateScreenAction;
+    }
+
+    private static ComputerUseWinActionObservabilityContext CreateObservabilityContext(
+        ComputerUseWinStoredState resolvedState,
+        ComputerUseWinClickRequest request,
+        ComputerUseWinActionExecutionOutcome outcome)
+    {
+        string targetMode = request.ElementIndex is not null ? "element_index" : "point";
+        string coordinateSpace = request.ElementIndex is not null
+            ? InputCoordinateSpaceValues.Screen
+            : request.CoordinateSpace ?? InputCoordinateSpaceValues.CapturePixels;
+
+        return new(
+            ActionName: ToolNames.ComputerUseWinClick,
+            RuntimeState: "observed",
+            AppId: resolvedState.Session.AppId,
+            WindowIdPresent: !string.IsNullOrWhiteSpace(resolvedState.Session.WindowId),
+            StateTokenPresent: !string.IsNullOrWhiteSpace(request.StateToken),
+            TargetMode: targetMode,
+            ElementIndexPresent: request.ElementIndex is not null,
+            CoordinateSpace: coordinateSpace,
+            CaptureReferencePresent: resolvedState.CaptureReference is not null,
+            ConfirmationRequired: outcome.ConfirmationRequired,
+            Confirmed: request.Confirm,
+            RiskClass: outcome.RiskClass,
+            DispatchPath: outcome.DispatchPath,
+            ChildArtifactPath: outcome.Input?.ArtifactPath,
+            FailureStage: outcome.Phase switch
+            {
+                ComputerUseWinActionLifecyclePhase.BeforeActivation => "pre_dispatch_reject",
+                ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch => "pre_dispatch_after_activation",
+                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch => "after_revalidation_before_dispatch",
+                _ => "post_dispatch",
+            },
+            ExceptionType: null);
     }
 }

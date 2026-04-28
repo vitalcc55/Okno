@@ -27,6 +27,8 @@ public sealed class AuditLog
     private readonly object _sync = new();
     private string? _lastDisplayIdentityFingerprint;
 
+    public string RunDirectory => _options.RunDirectory;
+
     public AuditLog(AuditLogOptions options, TimeProvider timeProvider)
         : this(options, timeProvider, new AuditPayloadRedactor())
     {

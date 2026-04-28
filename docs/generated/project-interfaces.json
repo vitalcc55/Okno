@@ -296,6 +296,7 @@
   "artifacts": [
     "artifacts/diagnostics/\u003Crun_id\u003E/events.jsonl",
     "artifacts/diagnostics/\u003Crun_id\u003E/summary.md",
+    "artifacts/diagnostics/\u003Crun_id\u003E/computer-use-win/action-*.json",
     "artifacts/diagnostics/\u003Crun_id\u003E/captures/\u003Ccapture_id\u003E.png",
     "artifacts/diagnostics/\u003Crun_id\u003E/launch/\u003Claunch_id\u003E.json",
     "artifacts/diagnostics/\u003Crun_id\u003E/uia/\u003Csnapshot_id\u003E.json",

@@ -46,70 +46,98 @@
         "suggested_alternative": null,
         "smoke_required": true,
         "execution_policy": null
-      }
-    ],
-    "deferred": [
-      {
-        "name": "type_text",
-        "capability": "computer_use_win.action",
-        "lifecycle": "deferred",
-        "safety_class": "os_side_effect",
-        "summary": "\u041F\u0435\u0447\u0430\u0442\u0430\u0435\u0442 \u0442\u0435\u043A\u0441\u0442 \u0432 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 app session \u0447\u0435\u0440\u0435\u0437 \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u0439 input path \u0431\u0435\u0437 hidden clipboard fallback.",
-        "planned_phase": "computer-use-win action wave 2",
-        "suggested_alternative": "\u041F\u043E\u0441\u043B\u0435 shipped first operator loop \u0440\u0435\u0430\u043B\u0438\u0437\u043E\u0432\u0430\u0442\u044C real text input path.",
-        "smoke_required": false,
-        "execution_policy": null
       },
       {
         "name": "press_key",
         "capability": "computer_use_win.action",
-        "lifecycle": "deferred",
+        "lifecycle": "implemented",
         "safety_class": "os_side_effect",
-        "summary": "\u041D\u0430\u0436\u0438\u043C\u0430\u0435\u0442 \u043A\u043B\u0430\u0432\u0438\u0448\u0443 \u0438\u043B\u0438 \u0441\u043E\u0447\u0435\u0442\u0430\u043D\u0438\u0435 \u043A\u043B\u0430\u0432\u0438\u0448 \u0432 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 app session.",
-        "planned_phase": "computer-use-win action wave 2",
-        "suggested_alternative": "\u041F\u043E\u0441\u043B\u0435 shipped first operator loop \u0440\u0435\u0430\u043B\u0438\u0437\u043E\u0432\u0430\u0442\u044C keypress path.",
-        "smoke_required": false,
+        "summary": "\u041D\u0430\u0436\u0438\u043C\u0430\u0435\u0442 named key literal \u0438\u043B\u0438 modifier combo \u0432 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 app session. Bare printable text \u0441\u044E\u0434\u0430 \u043D\u0435 \u0432\u0445\u043E\u0434\u0438\u0442 \u0438 \u0434\u043E\u043B\u0436\u0435\u043D \u0438\u0434\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 type_text.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true,
+        "execution_policy": null
+      },
+      {
+        "name": "set_value",
+        "capability": "computer_use_win.action",
+        "lifecycle": "implemented",
+        "safety_class": "os_side_effect",
+        "summary": "\u0421\u0435\u043C\u0430\u043D\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u0443\u0441\u0442\u0430\u043D\u0430\u0432\u043B\u0438\u0432\u0430\u0435\u0442 text \u0438\u043B\u0438 number value \u0443 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u043E\u0433\u043E \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u0430 \u0438\u0437 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0433\u043E app state \u0447\u0435\u0440\u0435\u0437 ValuePattern/RangeValuePattern \u0431\u0435\u0437 hidden typing fallback.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true,
+        "execution_policy": null
+      },
+      {
+        "name": "type_text",
+        "capability": "computer_use_win.action",
+        "lifecycle": "implemented",
+        "safety_class": "os_side_effect",
+        "summary": "\u041F\u0435\u0447\u0430\u0442\u0430\u0435\u0442 \u0442\u0435\u043A\u0441\u0442 \u0432 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 app session \u0447\u0435\u0440\u0435\u0437 \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u0439 input path \u0431\u0435\u0437 hidden clipboard fallback.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true,
         "execution_policy": null
       },
       {
         "name": "scroll",
         "capability": "computer_use_win.action",
-        "lifecycle": "deferred",
+        "lifecycle": "implemented",
         "safety_class": "os_side_effect",
         "summary": "\u0421\u043A\u0440\u043E\u043B\u043B\u0438\u0442 app session \u043F\u043E elementIndex \u0438\u043B\u0438 point \u0438\u0437 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0433\u043E app state.",
-        "planned_phase": "computer-use-win action wave 2",
-        "suggested_alternative": "\u041F\u043E\u0441\u043B\u0435 shipped first operator loop \u0440\u0435\u0430\u043B\u0438\u0437\u043E\u0432\u0430\u0442\u044C scroll path.",
-        "smoke_required": false,
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true,
+        "execution_policy": null
+      },
+      {
+        "name": "perform_secondary_action",
+        "capability": "computer_use_win.action",
+        "lifecycle": "implemented",
+        "safety_class": "os_side_effect",
+        "summary": "\u0412\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u0442 product-owned secondary action \u043D\u0430\u0434 semantic target \u0438\u0437 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0433\u043E app state.",
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true,
         "execution_policy": null
       },
       {
         "name": "drag",
         "capability": "computer_use_win.action",
-        "lifecycle": "deferred",
+        "lifecycle": "implemented",
         "safety_class": "os_side_effect",
         "summary": "\u0414\u0435\u043B\u0430\u0435\u0442 drag gesture \u0432 app session \u043F\u043E element indices \u0438\u043B\u0438 coordinates \u0438\u0437 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0433\u043E app state.",
-        "planned_phase": "computer-use-win action wave 2",
-        "suggested_alternative": "\u041F\u043E\u0441\u043B\u0435 shipped first operator loop \u0440\u0435\u0430\u043B\u0438\u0437\u043E\u0432\u0430\u0442\u044C drag path.",
-        "smoke_required": false,
+        "planned_phase": null,
+        "suggested_alternative": null,
+        "smoke_required": true,
         "execution_policy": null
       }
     ],
+    "deferred": [],
     "implemented_names": [
       "list_apps",
       "get_app_state",
-      "click"
+      "click",
+      "press_key",
+      "set_value",
+      "type_text",
+      "scroll",
+      "perform_secondary_action",
+      "drag"
     ],
     "smoke_required_names": [
       "list_apps",
       "get_app_state",
-      "click"
+      "click",
+      "press_key",
+      "set_value",
+      "type_text",
+      "scroll",
+      "perform_secondary_action",
+      "drag"
     ],
-    "deferred_phase_map": {
-      "type_text": "computer-use-win action wave 2",
-      "press_key": "computer-use-win action wave 2",
-      "scroll": "computer-use-win action wave 2",
-      "drag": "computer-use-win action wave 2"
-    }
+    "deferred_phase_map": {}
   },
   "scripts": [
     "scripts/bootstrap.ps1",
@@ -125,6 +153,7 @@
   "artifacts": [
     "artifacts/diagnostics/\u003Crun_id\u003E/events.jsonl",
     "artifacts/diagnostics/\u003Crun_id\u003E/summary.md",
+    "artifacts/diagnostics/\u003Crun_id\u003E/computer-use-win/action-*.json",
     "artifacts/diagnostics/\u003Crun_id\u003E/captures/\u003Ccapture_id\u003E.png",
     "artifacts/diagnostics/\u003Crun_id\u003E/launch/\u003Claunch_id\u003E.json",
     "artifacts/diagnostics/\u003Crun_id\u003E/uia/\u003Csnapshot_id\u003E.json",

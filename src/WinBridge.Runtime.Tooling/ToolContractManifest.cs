@@ -66,7 +66,7 @@ public static class ToolContractManifest
         "Okno bootstrap runtime экспортирует observe/window slice, public okno.health readiness summary, public windows.uia_snapshot, public windows.wait, public windows.launch_process, public windows.open_target и public click-first `windows.input` boundary без hidden enforcement. Для `windows.input` сейчас опубликован только implemented subset `move`, `click`, `double_click`, `click(button=right)`; artifacts/events/materializer уже закрыты Package D через `input.runtime.completed` и `artifacts/diagnostics/<run_id>/input/input-*.json`, а smoke/fresh-host acceptance закрыты Package E через real helper click proof и fresh staged host binding proof.";
 
     public static string ComputerUseWinContractNotes { get; } =
-        "Public product profile `computer-use-win` публикует vendor-like operator surface поверх внутреннего Okno engine. В текущем shipped subset в public profile входят `list_apps`, `get_app_state` и `click`; `list_apps` группирует visible window instances по app-level approval identity, публикует nested `windows[]` и выдаёт runtime-owned selectable `windowId`, а `get_app_state` таргетирует конкретный instance через `windowId` или explicit `hwnd`. `type_text`, `press_key`, `scroll` и `drag` закреплены как следующий глобальный action wave и пока не публикуются как implemented product surface. Низкоуровневые `windows.*` tools остаются внутренним execution substrate и не являются главным product-facing Codex UX.";
+        "Public product profile `computer-use-win` публикует vendor-like operator surface поверх внутреннего Okno engine. В текущем shipped subset в public profile входят `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action` и `drag`; `list_apps` группирует visible window instances по app-level approval identity, публикует nested `windows[]` и выдаёт runtime-owned selectable `windowId`, а `get_app_state` таргетирует конкретный instance через `windowId` или explicit `hwnd`. `type_text` остаётся focused-editable input path без clipboard-default и без hidden focus guessing, `set_value` сохраняется как preferred semantic path для settable controls, `scroll` предпочитает semantic UIA `ScrollPattern` path и оставляет coordinate wheel только как explicit confirmed fallback, `perform_secondary_action` v1 остаётся semantic-only path для strong UIA secondary affordance `toggle` без context-menu/right-click fallback, а `drag` требует отдельный source/destination proof и по умолчанию завершает generic path как `verify_needed`, а не optimistic `done`. Низкоуровневые `windows.*` tools остаются внутренним execution substrate и не являются главным product-facing Codex UX.";
 
     public static IReadOnlyList<ToolDescriptor> All { get; } =
         new[]
@@ -159,14 +159,14 @@ public static class ToolContractManifest
             new(ToolNames.ComputerUseWinListApps, "computer_use_win.apps", ToolLifecycle.Implemented, ToolSafetyClass.SessionMutation, ToolDescriptions.ComputerUseWinListAppsTool, null, null, true),
             new(ToolNames.ComputerUseWinGetAppState, "computer_use_win.state", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinGetAppStateTool, null, null, true),
             new(ToolNames.ComputerUseWinClick, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinClickTool, null, null, true),
+            new(ToolNames.ComputerUseWinPressKey, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinPressKeyTool, null, null, true),
+            new(ToolNames.ComputerUseWinSetValue, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinSetValueTool, null, null, true),
+            new(ToolNames.ComputerUseWinTypeText, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinTypeTextTool, null, null, true),
+            new(ToolNames.ComputerUseWinScroll, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinScrollTool, null, null, true),
+            new(ToolNames.ComputerUseWinPerformSecondaryAction, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinPerformSecondaryActionTool, null, null, true),
+            new(ToolNames.ComputerUseWinDrag, "computer_use_win.action", ToolLifecycle.Implemented, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinDragTool, null, null, true),
         ];
-        ToolDescriptor[] deferred =
-        [
-            new(ToolNames.ComputerUseWinTypeText, "computer_use_win.action", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinTypeTextTool, "computer-use-win action wave 2", "После shipped first operator loop реализовать real text input path.", false),
-            new(ToolNames.ComputerUseWinPressKey, "computer_use_win.action", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinPressKeyTool, "computer-use-win action wave 2", "После shipped first operator loop реализовать keypress path.", false),
-            new(ToolNames.ComputerUseWinScroll, "computer_use_win.action", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinScrollTool, "computer-use-win action wave 2", "После shipped first operator loop реализовать scroll path.", false),
-            new(ToolNames.ComputerUseWinDrag, "computer_use_win.action", ToolLifecycle.Deferred, ToolSafetyClass.OsSideEffect, ToolDescriptions.ComputerUseWinDragTool, "computer-use-win action wave 2", "После shipped first operator loop реализовать drag path.", false),
-        ];
+        ToolDescriptor[] deferred = [];
 
         return new(
             ToolSurfaceProfileValues.ComputerUseWin,

@@ -4,9 +4,9 @@
 
 - `Okno` — продуктовое имя проекта. Внутренний codename и namespace-слой пока остаются `WinBridge`.
 - Source of truth по продукту больше не лежит в корне: используй [docs/product/index.md](docs/product/index.md), [docs/product/okno-spec.md](docs/product/okno-spec.md), [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md), [docs/product/okno-vision.md](docs/product/okno-vision.md).
-- Source of truth по OpenAI interop: [docs/architecture/openai-computer-use-interop.md](docs/architecture/openai-computer-use-interop.md), [docs/exec-plans/active/openai-computer-use-interop.md](docs/exec-plans/active/openai-computer-use-interop.md).
+- Историческое решение по OpenAI interop: [docs/architecture/openai-computer-use-interop.md](docs/architecture/openai-computer-use-interop.md), [docs/exec-plans/completed/completed-2026-04-27-openai-computer-use-interop-superseded.md](docs/exec-plans/completed/completed-2026-04-27-openai-computer-use-interop-superseded.md). Текущий Codex-facing путь — public plugin `computer-use-win`, а не отдельный OpenAI-native adapter.
 - Source of truth по policy использования reference repos и official docs: [docs/architecture/reference-research-policy.md](docs/architecture/reference-research-policy.md).
-- Операционный source of truth для bootstrap: [docs/exec-plans/active/bootstrap-harness.md](docs/exec-plans/active/bootstrap-harness.md), [docs/generated/commands.md](docs/generated/commands.md), [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md), [docs/generated/stack-research.md](docs/generated/stack-research.md), `docs/bootstrap/bootstrap-status.json`.
+- Операционный source of truth для bootstrap: [docs/exec-plans/completed/completed-2026-03-15-bootstrap-harness.md](docs/exec-plans/completed/completed-2026-03-15-bootstrap-harness.md), [docs/generated/commands.md](docs/generated/commands.md), [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md), [docs/generated/stack-research.md](docs/generated/stack-research.md), `docs/bootstrap/bootstrap-status.json`.
 - Source of truth для tool contract: `src/WinBridge.Runtime.Tooling/ToolNames.cs` + `src/WinBridge.Runtime.Tooling/ToolContractManifest.cs`.
 
 ## Структура

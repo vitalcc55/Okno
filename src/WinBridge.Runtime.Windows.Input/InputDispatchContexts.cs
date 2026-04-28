@@ -7,7 +7,8 @@ internal sealed record InputDispatchResult(
     bool Success,
     bool CommittedSideEffects = false,
     string? FailureCode = null,
-    string? Reason = null);
+    string? Reason = null,
+    string? FailureStageHint = null);
 
 internal sealed record InputTextDispatchContext(
     string Text,

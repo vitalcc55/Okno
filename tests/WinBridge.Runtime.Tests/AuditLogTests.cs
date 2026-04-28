@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Guards;
@@ -179,6 +180,205 @@ public sealed class AuditLogTests
         string startedEvent = File.ReadAllLines(options.EventsPath)[0];
         Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
         Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BeginInvocationRedactsComputerUseWinPressKeyRequestSummary()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-004c",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-004c"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-004c", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-004c", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-004c", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   ToolNames.ComputerUseWinPressKey,
+                   new
+                   {
+                       stateToken = "super-secret-state-token",
+                       key = "ctrl+shift+w",
+                       repeat = 2,
+                       confirm = true,
+                   },
+                   snapshot))
+        {
+            invocation.Complete("done", "Тестовый computer-use-win press_key вызов завершён.");
+        }
+
+        string startedEvent = File.ReadAllLines(options.EventsPath)[0];
+        Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("ctrl+shift+w", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BeginInvocationRedactsComputerUseWinDragRequestSummary()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-004d",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-004d"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-004d", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-004d", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-004d", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   ToolNames.ComputerUseWinDrag,
+                   new
+                   {
+                       stateToken = "super-secret-state-token",
+                       fromPoint = new { x = 20, y = 30 },
+                       toPoint = new { x = 140, y = 90 },
+                       confirm = true,
+                   },
+                   snapshot))
+        {
+            invocation.Complete("done", "Тестовый computer-use-win drag вызов завершён.");
+        }
+
+        string startedEvent = File.ReadAllLines(options.EventsPath)[0];
+        Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"x\":20", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"y\":30", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AuditToolContextCoversImplementedComputerUseWinActionsWithRedaction()
+    {
+        string[] implementedActionToolNames =
+            ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin)
+                .ImplementedNames
+                .Where(toolName => toolName is not ToolNames.ComputerUseWinListApps and not ToolNames.ComputerUseWinGetAppState)
+                .ToArray();
+        Type auditToolContextType = typeof(AuditLog).Assembly.GetType("WinBridge.Runtime.Diagnostics.AuditToolContext")!;
+        MethodInfo resolveMethod = auditToolContextType.GetMethod("Resolve", BindingFlags.Public | BindingFlags.Static)!;
+        PropertyInfo redactionClassProperty = auditToolContextType.GetProperty("RedactionClass", BindingFlags.Instance | BindingFlags.Public)!;
+
+        foreach (string toolName in implementedActionToolNames)
+        {
+            object context = resolveMethod.Invoke(null, [toolName, null])!;
+            ToolExecutionRedactionClass redactionClass = (ToolExecutionRedactionClass)redactionClassProperty.GetValue(context)!;
+            Assert.NotEqual(ToolExecutionRedactionClass.None, redactionClass);
+        }
+    }
+
+    [Fact]
+    public void BeginInvocationRedactsComputerUseWinSetValueRequestSummary()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-004d",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-004d"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-004d", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-004d", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-004d", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   ToolNames.ComputerUseWinSetValue,
+                   new
+                   {
+                       stateToken = "super-secret-state-token",
+                       elementIndex = 1,
+                       valueKind = "text",
+                       textValue = "super-secret-semantic-value",
+                   },
+                   snapshot))
+        {
+            invocation.Complete("done", "Тестовый computer-use-win set_value вызов завершён.");
+        }
+
+        string startedEvent = File.ReadAllLines(options.EventsPath)[0];
+        Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret-semantic-value", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BeginInvocationRedactsComputerUseWinSetValueNumericRequestSummary()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-004e",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-004e"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-004e", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-004e", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-004e", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   ToolNames.ComputerUseWinSetValue,
+                   new
+                   {
+                       stateToken = "super-secret-state-token",
+                       elementIndex = 1,
+                       valueKind = "number",
+                       numberValue = 9.5,
+                   },
+                   snapshot))
+        {
+            invocation.Complete("done", "Тестовый computer-use-win numeric set_value вызов завершён.");
+        }
+
+        string startedEvent = File.ReadAllLines(options.EventsPath)[0];
+        Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("9.5", startedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BeginInvocationRedactsComputerUseWinTypeTextRequestSummary()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = new(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: "run-004f",
+            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
+            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "run-004f"),
+            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "run-004f", "events.jsonl"),
+            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "run-004f", "summary.md"));
+        AuditLog auditLog = new(options, TimeProvider.System);
+        SessionSnapshot snapshot = SessionSnapshot.CreateInitial("run-004f", DateTimeOffset.UtcNow);
+
+        using (AuditInvocationScope invocation = auditLog.BeginInvocation(
+                   ToolNames.ComputerUseWinTypeText,
+                   new
+                   {
+                       stateToken = "super-secret-state-token",
+                       text = "  stage five raw text  ",
+                   },
+                   snapshot))
+        {
+            invocation.Complete("done", "Тестовый computer-use-win type_text вызов завершён.");
+        }
+
+        string startedEvent = File.ReadAllLines(options.EventsPath)[0];
+        Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("stage five raw text", startedEvent, StringComparison.Ordinal);
         Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
     }
 

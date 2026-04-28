@@ -22,20 +22,14 @@ internal static class InputCoordinateMapper
             return false;
         }
 
-        if (string.Equals(action.CoordinateSpace, InputCoordinateSpaceValues.Screen, StringComparison.Ordinal))
-        {
-            return TryMapScreen(action.Point, targetWindow.Bounds, out screenPoint, out failureCode, out reason);
-        }
-
-        if (string.Equals(action.CoordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
-        {
-            return TryMapCapturePixels(action.Point, action.CaptureReference, targetWindow, out screenPoint, out failureCode, out reason);
-        }
-
-        screenPoint = null;
-        failureCode = InputFailureCodeValues.UnsupportedCoordinateSpace;
-        reason = $"Runtime не поддерживает coordinateSpace '{action.CoordinateSpace}' для click-first input subset.";
-        return false;
+        return TryMapPoint(
+            action.Point,
+            action.CoordinateSpace,
+            action.CaptureReference,
+            targetWindow,
+            out screenPoint,
+            out failureCode,
+            out reason);
     }
 
     public static bool TryBuildDispatchPlan(
@@ -53,6 +47,50 @@ internal static class InputCoordinateMapper
         }
 
         dispatchPlan = new(action, screenPoint);
+        return true;
+    }
+
+    public static bool TryBuildDragDispatchPlan(
+        InputAction action,
+        WindowDescriptor targetWindow,
+        out InputDragDispatchPlan? dispatchPlan,
+        out string? failureCode,
+        out string? reason)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(targetWindow);
+
+        if (action.Path is null || action.Path.Count < 2)
+        {
+            dispatchPlan = null;
+            failureCode = InputFailureCodeValues.InvalidRequest;
+            reason = "Drag action требует path минимум из двух точек.";
+            return false;
+        }
+
+        List<InputPoint> resolvedScreenPath = new(action.Path.Count);
+        foreach (InputPoint point in action.Path)
+        {
+            if (!TryMapPoint(
+                    point,
+                    action.CoordinateSpace,
+                    action.CaptureReference,
+                    targetWindow,
+                    out InputPoint? resolvedScreenPoint,
+                    out failureCode,
+                    out reason)
+                || resolvedScreenPoint is null)
+            {
+                dispatchPlan = null;
+                return false;
+            }
+
+            resolvedScreenPath.Add(resolvedScreenPoint);
+        }
+
+        dispatchPlan = new(action, resolvedScreenPath);
+        failureCode = null;
+        reason = null;
         return true;
     }
 
@@ -81,6 +119,61 @@ internal static class InputCoordinateMapper
         return true;
     }
 
+    public static bool TryValidateDragDispatchPlan(
+        InputDragDispatchPlan dispatchPlan,
+        WindowDescriptor targetWindow,
+        out InputDragDispatchPlan? validatedDispatchPlan,
+        out string? failureCode,
+        out string? reason)
+    {
+        ArgumentNullException.ThrowIfNull(dispatchPlan);
+        ArgumentNullException.ThrowIfNull(targetWindow);
+
+        if (string.Equals(dispatchPlan.Action.CoordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
+        {
+            List<InputPoint> refreshedScreenPath = new(dispatchPlan.Action.Path!.Count);
+            foreach (InputPoint pathPoint in dispatchPlan.Action.Path!)
+            {
+                if (!TryMapCapturePixels(
+                        pathPoint,
+                        dispatchPlan.Action.CaptureReference,
+                        targetWindow,
+                        out InputPoint? refreshedScreenPoint,
+                        out failureCode,
+                        out reason)
+                    || refreshedScreenPoint is null)
+                {
+                    validatedDispatchPlan = null;
+                    return false;
+                }
+
+                refreshedScreenPath.Add(refreshedScreenPoint);
+            }
+
+            validatedDispatchPlan = dispatchPlan with
+            {
+                ResolvedScreenPath = refreshedScreenPath,
+            };
+            failureCode = null;
+            reason = null;
+            return true;
+        }
+
+        foreach (InputPoint screenPoint in dispatchPlan.ResolvedScreenPath)
+        {
+            if (!ValidateScreenPoint(screenPoint, targetWindow.Bounds, out failureCode, out reason))
+            {
+                validatedDispatchPlan = null;
+                return false;
+            }
+        }
+
+        validatedDispatchPlan = dispatchPlan;
+        failureCode = null;
+        reason = null;
+        return true;
+    }
+
     private static bool TryMapScreen(
         InputPoint requestedPoint,
         Bounds liveBounds,
@@ -100,6 +193,31 @@ internal static class InputCoordinateMapper
         failureCode = null;
         reason = null;
         return true;
+    }
+
+    private static bool TryMapPoint(
+        InputPoint requestedPoint,
+        string? coordinateSpace,
+        InputCaptureReference? captureReference,
+        WindowDescriptor targetWindow,
+        out InputPoint? screenPoint,
+        out string? failureCode,
+        out string? reason)
+    {
+        if (string.Equals(coordinateSpace, InputCoordinateSpaceValues.Screen, StringComparison.Ordinal))
+        {
+            return TryMapScreen(requestedPoint, targetWindow.Bounds, out screenPoint, out failureCode, out reason);
+        }
+
+        if (string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
+        {
+            return TryMapCapturePixels(requestedPoint, captureReference, targetWindow, out screenPoint, out failureCode, out reason);
+        }
+
+        screenPoint = null;
+        failureCode = InputFailureCodeValues.UnsupportedCoordinateSpace;
+        reason = $"Runtime не поддерживает coordinateSpace '{coordinateSpace}' для click-first input subset.";
+        return false;
     }
 
     private static bool TryMapCapturePixels(

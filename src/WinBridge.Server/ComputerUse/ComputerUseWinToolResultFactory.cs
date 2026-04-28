@@ -75,8 +75,9 @@ internal static class ComputerUseWinToolResultFactory
         ComputerUseWinFailureDetails failure,
         long? targetHwnd = null,
         int? elementIndex = null,
-        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation) =>
-        CreateActionFailure(invocation, toolName, failure.FailureCode, failure.Reason, targetHwnd, elementIndex, failure.AuditException, phase);
+        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null) =>
+        CreateActionFailure(invocation, toolName, failure.FailureCode, failure.Reason, targetHwnd, elementIndex, failure.AuditException, phase, observabilityContext);
 
     public static CallToolResult CreateActionFailure(
         AuditInvocationScope invocation,
@@ -86,7 +87,8 @@ internal static class ComputerUseWinToolResultFactory
         long? targetHwnd = null,
         int? elementIndex = null,
         Exception? auditException = null,
-        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation)
+        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null)
     {
         ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredFailurePayload(
             failureCode,
@@ -101,6 +103,22 @@ internal static class ComputerUseWinToolResultFactory
             targetHwnd,
             auditException,
             data: ComputerUseWinAuditDataBuilder.CreateStructuredPhaseData(phase));
+        ComputerUseWinActionObservability.RecordBestEffort(
+            invocation,
+            toolName,
+            payload,
+            MergeObservabilityContext(
+                toolName,
+                payload,
+                observabilityContext,
+                failureStage: phase switch
+                {
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation => "pre_dispatch_reject",
+                    ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch => "pre_dispatch_after_activation",
+                    ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch => "after_revalidation_before_dispatch",
+                    _ => "post_dispatch",
+                },
+                exceptionType: auditException?.GetType().FullName));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -110,7 +128,8 @@ internal static class ComputerUseWinToolResultFactory
         long? targetHwnd,
         int? elementIndex,
         string reason,
-        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation)
+        ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null)
     {
         ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredApprovalRequiredPayload(
             reason,
@@ -123,6 +142,21 @@ internal static class ComputerUseWinToolResultFactory
             ComputerUseWinFailureCodeValues.ApprovalRequired,
             targetHwnd,
             data: ComputerUseWinAuditDataBuilder.CreateStructuredPhaseData(phase));
+        ComputerUseWinActionObservability.RecordBestEffort(
+            invocation,
+            toolName,
+            payload,
+            MergeObservabilityContext(
+                toolName,
+                payload,
+                observabilityContext,
+                failureStage: phase switch
+                {
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation => "pre_dispatch_reject",
+                    ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch => "pre_dispatch_after_activation",
+                    ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch => "after_revalidation_before_dispatch",
+                    _ => "post_dispatch",
+                }));
         return CreateToolResult(payload, isError: true);
     }
 
@@ -131,6 +165,38 @@ internal static class ComputerUseWinToolResultFactory
         string toolName,
         long? targetHwnd,
         int? elementIndex,
-        InputResult input) =>
-        ComputerUseWinActionFinalizer.FinalizeResult(invocation, toolName, targetHwnd, elementIndex, input);
+        InputResult input,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null) =>
+        ComputerUseWinActionFinalizer.FinalizeResult(invocation, toolName, targetHwnd, elementIndex, input, observabilityContext);
+
+    private static ComputerUseWinActionObservabilityContext? MergeObservabilityContext(
+        string toolName,
+        ComputerUseWinActionResult payload,
+        ComputerUseWinActionObservabilityContext? context,
+        string? childArtifactPath = null,
+        string? failureStage = null,
+        string? exceptionType = null)
+    {
+        ComputerUseWinActionObservabilityContext effectiveContext = context ?? new(
+            ActionName: toolName,
+            RuntimeState: "observed",
+            AppId: "unknown",
+            WindowIdPresent: false,
+            StateTokenPresent: false,
+            TargetMode: payload.ElementIndex is null ? "unknown" : "element_index",
+            ElementIndexPresent: payload.ElementIndex is not null,
+            CoordinateSpace: null,
+            CaptureReferencePresent: false,
+            ConfirmationRequired: false,
+            Confirmed: false,
+            RiskClass: null,
+            DispatchPath: null);
+
+        return effectiveContext with
+        {
+            ChildArtifactPath = childArtifactPath ?? effectiveContext.ChildArtifactPath,
+            FailureStage = failureStage ?? effectiveContext.FailureStage,
+            ExceptionType = exceptionType ?? effectiveContext.ExceptionType,
+        };
+    }
 }

@@ -17,6 +17,7 @@ internal sealed record UiaSnapshotNodeData(
     bool IsOffscreen,
     bool HasKeyboardFocus,
     bool IsPassword,
+    bool? IsReadOnly,
     string[] Patterns,
     Bounds? BoundingRectangle,
     long? NativeWindowHandle);

@@ -1,5 +1,10 @@
 # ExecPlan: Computer Use for Windows deferred product work
 
+Статус: completed. Архивируется в `docs/exec-plans/completed/`, потому что
+Stage 0-7, optional Stage 5/6 decisions, Stage 7 closure, final verification и
+post-review hardening закрыты; следующий активный workstream теперь
+`computer-use-win-next-actions`.
+
 > **Для agentic workers:** обязательные sub-skills при исполнении: использовать `superpowers:test-driven-development` для поведенческих и кодовых изменений, `superpowers:requesting-code-review` перед каждым commit, `superpowers:receiving-code-review` для каждого review response и `superpowers:systematic-debugging` для каждого подтверждённого дефекта или failed check. План исполняет один implementer-agent, который одновременно оркестрирует review-субагентов. Шаги используют checkbox-синтаксис (`- [ ]`) для durable progress tracking.
 
 **Цель:** выполнить deferred `computer-use-win` work как последовательную серию маленьких, проверяемых commit-пакетов без расширения public surface случайными путями и без сохранения legacy-компромиссов ради инерции.

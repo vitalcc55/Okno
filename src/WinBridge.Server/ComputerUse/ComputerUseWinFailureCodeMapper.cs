@@ -13,6 +13,8 @@ internal static class ComputerUseWinFailureCodeMapper
             InputFailureCodeValues.InvalidRequest => ComputerUseWinFailureCodeValues.InvalidRequest,
             InputFailureCodeValues.UnsupportedCoordinateSpace => ComputerUseWinFailureCodeValues.InvalidRequest,
             InputFailureCodeValues.UnsupportedActionType => ComputerUseWinFailureCodeValues.UnsupportedAction,
+            InputFailureCodeValues.UnsupportedKey => ComputerUseWinFailureCodeValues.UnsupportedAction,
+            InputFailureCodeValues.UnsupportedKeyboardLayout => ComputerUseWinFailureCodeValues.UnsupportedAction,
             InputFailureCodeValues.MissingTarget => ComputerUseWinFailureCodeValues.MissingTarget,
             InputFailureCodeValues.StaleExplicitTarget => ComputerUseWinFailureCodeValues.StaleState,
             InputFailureCodeValues.StaleAttachedTarget => ComputerUseWinFailureCodeValues.StaleState,
@@ -66,7 +68,7 @@ internal static class ComputerUseWinFailureCodeMapper
         failureCode switch
         {
             ComputerUseWinFailureCodeValues.InvalidRequest =>
-                "Запрос больше не соответствует публичному click contract; проверь selector и повтори вызов с актуальными аргументами.",
+                "Запрос больше не соответствует публичному action contract; проверь аргументы и повтори вызов с актуальным stateToken.",
             ComputerUseWinFailureCodeValues.UnsupportedAction =>
                 "Computer Use for Windows получил неподдерживаемый action outcome; повтори сценарий через актуальный публичный contract.",
             ComputerUseWinFailureCodeValues.UnexpectedInternalFailure =>
@@ -78,7 +80,7 @@ internal static class ComputerUseWinFailureCodeMapper
             ComputerUseWinFailureCodeValues.StaleState =>
                 "Состояние окна устарело; заново вызови get_app_state и используй свежий stateToken перед retry.",
             ComputerUseWinFailureCodeValues.CaptureReferenceRequired =>
-                "Для coordinate click по screenshot coordinates нужен актуальный get_app_state со свежим capture proof.",
+                "Для coordinate action по screenshot coordinates нужен актуальный get_app_state со свежим capture proof.",
             ComputerUseWinFailureCodeValues.TargetPreflightFailed or ComputerUseWinFailureCodeValues.TargetNotForeground or ComputerUseWinFailureCodeValues.TargetMinimized =>
                 "Окно изменило live activation state до dispatch; перед retry сначала заново вызови get_app_state.",
             ComputerUseWinFailureCodeValues.TargetIntegrityBlocked =>

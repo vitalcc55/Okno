@@ -3,6 +3,8 @@ namespace WinBridge.Runtime.Contracts;
 public static class InputActionScalarConstraints
 {
     public const int MinimumRepeat = 1;
+    public const int MaximumKeypressRepeat = 10;
+    public const int MaximumScrollPages = 10;
     public const int InvalidScrollDelta = 0;
     public const int MinimumCapturePixelDimension = 1;
     public const string NonWhitespacePattern = @"\S";

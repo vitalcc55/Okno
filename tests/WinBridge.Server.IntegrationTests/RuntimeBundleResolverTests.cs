@@ -12,8 +12,9 @@ public sealed class RuntimeBundleResolverTests
         string repoRoot = GetRepositoryRoot();
         string explicitRunId = "resolver-explicit-run";
         string ambientRunId = "resolver-ambient-run";
-        string fallbackMarker = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", "resolver-fallback-marker-" + Guid.NewGuid().ToString("N"));
-        string fallbackHelperMarker = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", "resolver-fallback-marker-" + Guid.NewGuid().ToString("N"));
+        string fallbackRelativePath = "resolver-fallback-marker-" + Guid.NewGuid().ToString("N");
+        string fallbackMarker = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", fallbackRelativePath);
+        string fallbackHelperMarker = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", fallbackRelativePath);
         string ambientArtifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", ambientRunId);
         string ambientRunRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", ambientRunId);
 
@@ -326,9 +327,15 @@ public sealed class RuntimeBundleResolverTests
         string runId = "resolver-preferred-source-run";
         string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", runId);
         string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", runId);
+        string fallbackRelativePath = "resolver-preferred-source-" + Guid.NewGuid().ToString("N");
+        string fallbackMarker = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", fallbackRelativePath);
+        string fallbackHelperMarker = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", fallbackRelativePath);
 
         try
         {
+            CreateMarkerFile(Path.Combine(fallbackMarker, "Okno.Server.dll"));
+            CreateMarkerFile(Path.Combine(fallbackHelperMarker, "WinBridge.SmokeWindowHost.exe"));
+
             using JsonDocument payload = InvokeJsonScript(
                 Path.Combine(repoRoot, "scripts", "codex", "prepare-okno-test-bundle.ps1"),
                 repoRoot,
@@ -357,6 +364,8 @@ public sealed class RuntimeBundleResolverTests
         {
             DeleteDirectoryIfExists(runRoot);
             DeleteDirectoryIfExists(artifactsRoot);
+            DeleteDirectoryIfExists(fallbackMarker);
+            DeleteDirectoryIfExists(fallbackHelperMarker);
         }
     }
 
@@ -366,8 +375,9 @@ public sealed class RuntimeBundleResolverTests
         string repoRoot = GetRepositoryRoot();
         string runId = "resolver-custom-run-root";
         string customRunRoot = Path.Combine(repoRoot, ".tmp", ".codex", "custom-run-root", Guid.NewGuid().ToString("N"));
-        string fallbackMarker = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", "resolver-custom-run-root-" + Guid.NewGuid().ToString("N"));
-        string fallbackHelperMarker = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", "resolver-custom-run-root-" + Guid.NewGuid().ToString("N"));
+        string fallbackRelativePath = "resolver-custom-run-root-" + Guid.NewGuid().ToString("N");
+        string fallbackMarker = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", fallbackRelativePath);
+        string fallbackHelperMarker = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", fallbackRelativePath);
 
         try
         {

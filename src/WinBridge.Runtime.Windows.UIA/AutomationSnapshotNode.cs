@@ -57,6 +57,8 @@ internal sealed class AutomationSnapshotNode(AutomationElement element, CacheReq
         cacheRequest.Add(AutomationElementIdentifiers.BoundingRectangleProperty);
         cacheRequest.Add(AutomationElementIdentifiers.NativeWindowHandleProperty);
         cacheRequest.Add(AutomationElementIdentifiers.IsPasswordProperty);
+        cacheRequest.Add(ValuePatternIdentifiers.IsReadOnlyProperty);
+        cacheRequest.Add(RangeValuePatternIdentifiers.IsReadOnlyProperty);
 
         foreach ((AutomationProperty property, _) in PatternAvailabilityProperties)
         {
@@ -85,6 +87,7 @@ internal sealed class AutomationSnapshotNode(AutomationElement element, CacheReq
             IsOffscreen: GetCachedBoolean(element, AutomationElementIdentifiers.IsOffscreenProperty),
             HasKeyboardFocus: GetCachedBoolean(element, AutomationElementIdentifiers.HasKeyboardFocusProperty),
             IsPassword: GetCachedBoolean(element, AutomationElementIdentifiers.IsPasswordProperty),
+            IsReadOnly: GetCachedReadOnlyState(element),
             Patterns: GetAvailablePatterns(element),
             BoundingRectangle: GetCachedBounds(element, AutomationElementIdentifiers.BoundingRectangleProperty),
             NativeWindowHandle: GetCachedNativeWindowHandle(element, AutomationElementIdentifiers.NativeWindowHandleProperty));
@@ -168,6 +171,35 @@ internal sealed class AutomationSnapshotNode(AutomationElement element, CacheReq
         return patterns.ToArray();
     }
 
+    private static bool? GetCachedReadOnlyState(AutomationElement automationElement)
+    {
+        bool hasValuePattern = GetCachedBoolean(automationElement, AutomationElementIdentifiers.IsValuePatternAvailableProperty);
+        bool hasRangeValuePattern = GetCachedBoolean(automationElement, AutomationElementIdentifiers.IsRangeValuePatternAvailableProperty);
+        if (!hasValuePattern && !hasRangeValuePattern)
+        {
+            return null;
+        }
+
+        bool? valueReadOnly = hasValuePattern
+            ? GetOptionalCachedBoolean(automationElement, ValuePatternIdentifiers.IsReadOnlyProperty)
+            : null;
+        bool? rangeReadOnly = hasRangeValuePattern
+            ? GetOptionalCachedBoolean(automationElement, RangeValuePatternIdentifiers.IsReadOnlyProperty)
+            : null;
+
+        if (valueReadOnly is false || rangeReadOnly is false)
+        {
+            return false;
+        }
+
+        if (valueReadOnly is true || rangeReadOnly is true)
+        {
+            return true;
+        }
+
+        return null;
+    }
+
     private static string? GetCachedString(AutomationElement automationElement, AutomationProperty property)
     {
         object value = automationElement.GetCachedPropertyValue(property, true);
@@ -178,6 +210,12 @@ internal sealed class AutomationSnapshotNode(AutomationElement element, CacheReq
     {
         object value = automationElement.GetCachedPropertyValue(property, true);
         return value is bool flag && flag;
+    }
+
+    private static bool? GetOptionalCachedBoolean(AutomationElement automationElement, AutomationProperty property)
+    {
+        object value = automationElement.GetCachedPropertyValue(property, true);
+        return value is bool flag ? flag : null;
     }
 
     private static ControlType? GetCachedControlType(AutomationElement automationElement, AutomationProperty property)

@@ -102,6 +102,7 @@ public sealed record ComputerUseWinClickRequest(
 
 public sealed record ComputerUseWinTypeTextRequest(
     string? StateToken = null,
+    int? ElementIndex = null,
     string? Text = null,
     bool Confirm = false);
 
@@ -111,6 +112,14 @@ public sealed record ComputerUseWinPressKeyRequest(
     int? Repeat = null,
     bool Confirm = false);
 
+public sealed record ComputerUseWinSetValueRequest(
+    string? StateToken = null,
+    int? ElementIndex = null,
+    string? ValueKind = null,
+    string? TextValue = null,
+    double? NumberValue = null,
+    bool Confirm = false);
+
 public sealed record ComputerUseWinScrollRequest(
     string? StateToken = null,
     int? ElementIndex = null,
@@ -118,6 +127,11 @@ public sealed record ComputerUseWinScrollRequest(
     string? CoordinateSpace = null,
     string? Direction = null,
     int? Pages = null,
+    bool Confirm = false);
+
+public sealed record ComputerUseWinPerformSecondaryActionRequest(
+    string? StateToken = null,
+    int? ElementIndex = null,
     bool Confirm = false);
 
 public sealed record ComputerUseWinDragRequest(

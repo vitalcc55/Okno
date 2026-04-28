@@ -59,6 +59,25 @@ public sealed class AuditInvocationScope : IDisposable
         _completed = true;
     }
 
+    public string RunDirectory => _auditLog.RunDirectory;
+
+    public bool TryRecordRuntimeEvent(
+        string eventName,
+        string severity,
+        string messageHuman,
+        string? toolName,
+        string? outcome,
+        long? windowHwnd,
+        IReadOnlyDictionary<string, string?>? data = null) =>
+        _auditLog.TryRecordRuntimeEvent(
+            eventName,
+            severity,
+            messageHuman,
+            toolName,
+            outcome,
+            windowHwnd,
+            data);
+
     public void Fail(Exception exception, long? windowHwnd = null)
     {
         if (_completed)

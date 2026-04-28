@@ -319,6 +319,7 @@ public sealed class AuditPayloadRedactor : IAuditPayloadRedactor
         {
             ToolExecutionRedactionClass.ClipboardPayload => MatchesAny(propertyName, "clipboard", "content", "data", "value"),
             ToolExecutionRedactionClass.LaunchPayload => MatchesAny(propertyName, "args", "arguments", "environment", "env", "workingDirectory", "path", "target", "uri", "url", "command", "commandLine"),
+            ToolExecutionRedactionClass.TargetMetadata => MatchesAny(propertyName, "textValue", "numberValue", "point", "fromPoint", "toPoint"),
             ToolExecutionRedactionClass.ArtifactReference => MatchesAny(propertyName, "content", "contents", "data"),
             _ => false,
         };

@@ -13,6 +13,12 @@ internal sealed class AuditToolContext
             [ToolNames.ComputerUseWinListApps] = ToolExecutionRedactionClass.TargetMetadata,
             [ToolNames.ComputerUseWinGetAppState] = ToolExecutionRedactionClass.TargetMetadata,
             [ToolNames.ComputerUseWinClick] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinDrag] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinPressKey] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinPerformSecondaryAction] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinScroll] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinSetValue] = ToolExecutionRedactionClass.TargetMetadata,
+            [ToolNames.ComputerUseWinTypeText] = ToolExecutionRedactionClass.TargetMetadata,
         };
 
     private AuditToolContext(

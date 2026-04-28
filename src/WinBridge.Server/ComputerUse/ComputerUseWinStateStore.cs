@@ -126,4 +126,5 @@ internal sealed record ComputerUseWinStoredElement(
     string ControlType,
     Bounds? Bounds,
     bool HasKeyboardFocus,
-    IReadOnlyList<string> Actions);
+    IReadOnlyList<string> Actions,
+    IReadOnlyList<string>? Patterns = null);

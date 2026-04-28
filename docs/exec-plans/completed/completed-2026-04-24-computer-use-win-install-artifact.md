@@ -1,5 +1,11 @@
 # ExecPlan: Computer Use for Windows install artifact
 
+Статус: completed. Архивируется в `docs/exec-plans/completed/`, потому что
+`computer-use-win` уже переведён на self-contained plugin-local runtime bundle,
+launcher проверяет manifest-backed `runtime/win-x64`, temp plugin copy вне repo
+tree покрыта install-surface tests, а последующие recovery/freshness gaps
+закрыты follow-up hardening в текущей ветке.
+
 ## Контекст
 
 Public plugin `plugins/computer-use-win/` уже публикует правильный product surface, но install artifact исторически запускал runtime через checkout репозитория. Это делало plugin корректным как local/dev published path, но не как self-contained installed artifact.

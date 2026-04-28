@@ -19,7 +19,7 @@ internal static class ComputerUseWinClickContract
     private static string? ValidateResolvedRequest(ComputerUseWinClickRequest request) =>
         ValidateSelectorPresence(request)
         ?? ValidateSelectorMode(request)
-        ?? ValidatePoint(request.Point, "point")
+        ?? ComputerUseWinPointContract.Validate(request.Point, "point")
         ?? ValidateCoordinateSpace(request.CoordinateSpace)
         ?? ValidateButton(request.Button);
 
@@ -50,7 +50,7 @@ internal static class ComputerUseWinClickContract
                 ["required"] = new JsonArray("point"),
                 ["properties"] = new JsonObject
                 {
-                    ["point"] = CreateRequiredPointSchema(),
+                    ["point"] = ComputerUseWinPointContract.CreateRequiredSchema(),
                 },
             },
         };
@@ -58,16 +58,19 @@ internal static class ComputerUseWinClickContract
     public static bool TryClassifyBeforeActivation(
         ComputerUseWinStoredState state,
         ComputerUseWinClickRequest request,
-        out ComputerUseWinClickExecutionOutcome? outcome)
+        out ComputerUseWinActionExecutionOutcome? outcome)
     {
         ArgumentNullException.ThrowIfNull(state);
 
         string? validationFailure = ValidateResolvedRequest(request);
         if (validationFailure is not null)
         {
-            outcome = ComputerUseWinClickExecutionOutcome.Failure(
+            outcome = ComputerUseWinActionExecutionOutcome.Failure(
                 ComputerUseWinFailureDetails.Expected(ComputerUseWinFailureCodeValues.InvalidRequest, validationFailure),
-                ComputerUseWinActionLifecyclePhase.BeforeActivation);
+                ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                confirmationRequired: false,
+                riskClass: null,
+                dispatchPath: null);
             return true;
         }
 
@@ -76,20 +79,26 @@ internal static class ComputerUseWinClickContract
             if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
                 || !ComputerUseWinActionability.IsClickActionable(storedElement))
             {
-                outcome = ComputerUseWinClickExecutionOutcome.Failure(
+                outcome = ComputerUseWinActionExecutionOutcome.Failure(
                     ComputerUseWinFailureDetails.Expected(
                         ComputerUseWinFailureCodeValues.InvalidRequest,
                         $"elementIndex {elementIndex} не существует или больше не является clickable target в последнем get_app_state."),
-                    ComputerUseWinActionLifecyclePhase.BeforeActivation);
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                    confirmationRequired: false,
+                    riskClass: "semantic_target",
+                    dispatchPath: "fresh_uia_revalidation_to_input");
                 return true;
             }
 
             if (!request.Confirm
                 && ComputerUseWinTargetPolicy.RequiresRiskConfirmation(storedElement, ToolNames.ComputerUseWinClick))
             {
-                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired(
+                outcome = ComputerUseWinActionExecutionOutcome.ApprovalRequired(
                     "Клик по выбранному элементу требует явного подтверждения.",
-                    ComputerUseWinActionLifecyclePhase.BeforeActivation);
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                    confirmationRequired: true,
+                    riskClass: "semantic_risky",
+                    dispatchPath: "fresh_uia_revalidation_to_input");
                 return true;
             }
 
@@ -106,11 +115,14 @@ internal static class ComputerUseWinClickContract
             {
                 if (state.CaptureReference is null)
                 {
-                    outcome = ComputerUseWinClickExecutionOutcome.Failure(
+                    outcome = ComputerUseWinActionExecutionOutcome.Failure(
                         ComputerUseWinFailureDetails.Expected(
                             ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
                             "Для coordinate click по screenshot coordinates нужен актуальный get_app_state со свежим capture proof."),
-                        ComputerUseWinActionLifecyclePhase.BeforeActivation);
+                        ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                        confirmationRequired: true,
+                        riskClass: "coordinate_low_confidence",
+                        dispatchPath: "capture_pixels_input");
                     return true;
                 }
 
@@ -120,20 +132,28 @@ internal static class ComputerUseWinClickContract
                     || point.X >= state.CaptureReference.PixelWidth
                     || point.Y >= state.CaptureReference.PixelHeight)
                 {
-                    outcome = ComputerUseWinClickExecutionOutcome.Failure(
+                    outcome = ComputerUseWinActionExecutionOutcome.Failure(
                         ComputerUseWinFailureDetails.Expected(
                             ComputerUseWinFailureCodeValues.PointOutOfBounds,
                             "Указанная capture_pixels point выходит за пределы capture raster из последнего get_app_state; скорректируй point перед retry."),
-                        ComputerUseWinActionLifecyclePhase.BeforeActivation);
+                        ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                        confirmationRequired: true,
+                        riskClass: "coordinate_low_confidence",
+                        dispatchPath: "capture_pixels_input");
                     return true;
                 }
             }
 
             if (!request.Confirm)
             {
-                outcome = ComputerUseWinClickExecutionOutcome.ApprovalRequired(
+                outcome = ComputerUseWinActionExecutionOutcome.ApprovalRequired(
                     CoordinateApprovalReason,
-                    ComputerUseWinActionLifecyclePhase.BeforeActivation);
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                    confirmationRequired: true,
+                    riskClass: "coordinate_low_confidence",
+                    dispatchPath: string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
+                        ? "capture_pixels_input"
+                        : "screen_input");
                 return true;
             }
 
@@ -141,11 +161,14 @@ internal static class ComputerUseWinClickContract
             return false;
         }
 
-        outcome = ComputerUseWinClickExecutionOutcome.Failure(
+        outcome = ComputerUseWinActionExecutionOutcome.Failure(
             ComputerUseWinFailureDetails.Expected(
                 ComputerUseWinFailureCodeValues.InvalidRequest,
                 "Для click требуется elementIndex или point."),
-            ComputerUseWinActionLifecyclePhase.BeforeActivation);
+            ComputerUseWinActionLifecyclePhase.BeforeActivation,
+            confirmationRequired: false,
+            riskClass: null,
+            dispatchPath: null);
         return true;
     }
 
@@ -210,45 +233,6 @@ internal static class ComputerUseWinClickContract
 
         return null;
     }
-
-    private static string? ValidatePoint(InputPoint? point, string parameterName)
-    {
-        if (point is null)
-        {
-            return null;
-        }
-
-        if (!point.HasValidObject)
-        {
-            return $"Параметр {parameterName} должен быть JSON object с integer x/y.";
-        }
-
-        if (!point.HasX || !point.HasValidX || !point.HasY || !point.HasValidY)
-        {
-            return $"Параметр {parameterName} должен содержать integer поля x и y.";
-        }
-
-        if (point.AdditionalProperties is { Count: > 0 })
-        {
-            string unexpectedKeys = string.Join(", ", point.AdditionalProperties.Keys.OrderBy(static key => key, StringComparer.Ordinal));
-            return $"Параметр {parameterName} не поддерживает дополнительные поля: {unexpectedKeys}.";
-        }
-
-        return null;
-    }
-
-    private static JsonObject CreateRequiredPointSchema() =>
-        new()
-        {
-            ["type"] = "object",
-            ["properties"] = new JsonObject
-            {
-                ["x"] = new JsonObject { ["type"] = "integer" },
-                ["y"] = new JsonObject { ["type"] = "integer" },
-            },
-            ["required"] = new JsonArray("x", "y"),
-            ["additionalProperties"] = false,
-        };
 
     internal const string CoordinateApprovalReason =
         "Coordinate click требует явного подтверждения, потому что target не доказан через semantic element из последнего get_app_state.";

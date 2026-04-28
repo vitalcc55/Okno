@@ -26,7 +26,8 @@ internal static class ComputerUseWinAccessibilityProjector
                 node.ControlType,
                 node.BoundingRectangle,
                 node.HasKeyboardFocus,
-                ComputerUseWinAffordanceResolver.Resolve(node));
+                ComputerUseWinAffordanceResolver.Resolve(node),
+                node.Patterns);
             index++;
 
             foreach (UiaElementSnapshot child in node.Children)

@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
+using WinBridge.Runtime.Windows.UIA;
 
 namespace WinBridge.Server.ComputerUse;
 
@@ -17,6 +18,12 @@ internal static class ComputerUseWinToolRegistration
             CreateListAppsTool(getTools),
             CreateGetAppStateTool(getTools),
             CreateClickTool(getTools),
+            CreateDragTool(getTools),
+            CreatePerformSecondaryActionTool(getTools),
+            CreatePressKeyTool(getTools),
+            CreateScrollTool(getTools),
+            CreateSetValueTool(getTools),
+            CreateTypeTextTool(getTools),
         ];
     }
 
@@ -61,6 +68,72 @@ internal static class ComputerUseWinToolRegistration
             ToolDescriptions.ComputerUseWinClickTool,
             static (tools, requestContext, cancellationToken) => tools.Click(requestContext, cancellationToken));
         tool.ProtocolTool.InputSchema = CreateClickSchema();
+        return tool;
+    }
+
+    private static McpServerTool CreateDragTool(Func<ComputerUseWinTools> getTools)
+    {
+        McpServerTool tool = CreateActionTool(
+            getTools,
+            ToolNames.ComputerUseWinDrag,
+            ToolDescriptions.ComputerUseWinDragTool,
+            static (tools, requestContext, cancellationToken) => tools.Drag(requestContext, cancellationToken));
+        tool.ProtocolTool.InputSchema = CreateDragSchema();
+        return tool;
+    }
+
+    private static McpServerTool CreatePressKeyTool(Func<ComputerUseWinTools> getTools)
+    {
+        McpServerTool tool = CreateActionTool(
+            getTools,
+            ToolNames.ComputerUseWinPressKey,
+            ToolDescriptions.ComputerUseWinPressKeyTool,
+            static (tools, requestContext, cancellationToken) => tools.PressKey(requestContext, cancellationToken));
+        tool.ProtocolTool.InputSchema = CreatePressKeySchema();
+        return tool;
+    }
+
+    private static McpServerTool CreatePerformSecondaryActionTool(Func<ComputerUseWinTools> getTools)
+    {
+        McpServerTool tool = CreateActionTool(
+            getTools,
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            ToolDescriptions.ComputerUseWinPerformSecondaryActionTool,
+            static (tools, requestContext, cancellationToken) => tools.PerformSecondaryAction(requestContext, cancellationToken));
+        tool.ProtocolTool.InputSchema = CreatePerformSecondaryActionSchema();
+        return tool;
+    }
+
+    private static McpServerTool CreateSetValueTool(Func<ComputerUseWinTools> getTools)
+    {
+        McpServerTool tool = CreateActionTool(
+            getTools,
+            ToolNames.ComputerUseWinSetValue,
+            ToolDescriptions.ComputerUseWinSetValueTool,
+            static (tools, requestContext, cancellationToken) => tools.SetValue(requestContext, cancellationToken));
+        tool.ProtocolTool.InputSchema = CreateSetValueSchema();
+        return tool;
+    }
+
+    private static McpServerTool CreateScrollTool(Func<ComputerUseWinTools> getTools)
+    {
+        McpServerTool tool = CreateActionTool(
+            getTools,
+            ToolNames.ComputerUseWinScroll,
+            ToolDescriptions.ComputerUseWinScrollTool,
+            static (tools, requestContext, cancellationToken) => tools.Scroll(requestContext, cancellationToken));
+        tool.ProtocolTool.InputSchema = CreateScrollSchema();
+        return tool;
+    }
+
+    private static McpServerTool CreateTypeTextTool(Func<ComputerUseWinTools> getTools)
+    {
+        McpServerTool tool = CreateActionTool(
+            getTools,
+            ToolNames.ComputerUseWinTypeText,
+            ToolDescriptions.ComputerUseWinTypeTextTool,
+            static (tools, requestContext, cancellationToken) => tools.TypeText(requestContext, cancellationToken));
+        tool.ProtocolTool.InputSchema = CreateTypeTextSchema();
         return tool;
     }
 
@@ -185,6 +258,201 @@ internal static class ComputerUseWinToolRegistration
             ["type"] = CreateTypeSet("string", "null"),
             ["pattern"] = @".*\S.*",
         };
+
+    private static JsonElement CreatePressKeySchema() =>
+        ParseSchema(
+            new JsonObject
+            {
+                ["type"] = "object",
+                ["additionalProperties"] = false,
+                ["required"] = CreateStringArray("stateToken", "key"),
+                ["properties"] = new JsonObject
+                {
+                    ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
+                    ["key"] = new JsonObject
+                    {
+                        ["type"] = "string",
+                        ["minLength"] = 1,
+                        ["pattern"] = @".*\S.*",
+                    },
+                    ["repeat"] = new JsonObject
+                    {
+                        ["type"] = CreateTypeSet("integer", "null"),
+                        ["minimum"] = 1,
+                        ["maximum"] = InputActionScalarConstraints.MaximumKeypressRepeat,
+                    },
+                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                },
+            });
+
+    private static JsonElement CreateSetValueSchema() =>
+        ParseSchema(
+            new JsonObject
+            {
+                ["type"] = "object",
+                ["additionalProperties"] = false,
+                ["required"] = CreateStringArray("stateToken", "elementIndex", "valueKind"),
+                ["not"] = new JsonObject
+                {
+                    ["required"] = CreateStringArray("textValue", "numberValue"),
+                },
+                ["oneOf"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["properties"] = new JsonObject
+                        {
+                            ["valueKind"] = new JsonObject { ["const"] = UiaSetValueKindValues.Text },
+                        },
+                        ["required"] = CreateStringArray("textValue"),
+                    },
+                    new JsonObject
+                    {
+                        ["properties"] = new JsonObject
+                        {
+                            ["valueKind"] = new JsonObject { ["const"] = UiaSetValueKindValues.Number },
+                        },
+                        ["required"] = CreateStringArray("numberValue"),
+                    },
+                },
+                ["properties"] = new JsonObject
+                {
+                    ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
+                    ["elementIndex"] = new JsonObject
+                    {
+                        ["type"] = "integer",
+                        ["minimum"] = 1,
+                    },
+                    ["valueKind"] = new JsonObject
+                    {
+                        ["type"] = "string",
+                        ["enum"] = CreateStringArray(UiaSetValueKindValues.Text, UiaSetValueKindValues.Number),
+                    },
+                    ["textValue"] = new JsonObject { ["type"] = "string" },
+                    ["numberValue"] = new JsonObject { ["type"] = "number" },
+                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                },
+            });
+
+    private static JsonElement CreateTypeTextSchema() =>
+        ParseSchema(
+            new JsonObject
+            {
+                ["type"] = "object",
+                ["additionalProperties"] = false,
+                ["required"] = CreateStringArray("stateToken", "text"),
+                ["properties"] = new JsonObject
+                {
+                    ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
+                    ["elementIndex"] = new JsonObject
+                    {
+                        ["type"] = CreateTypeSet("integer", "null"),
+                        ["minimum"] = 1,
+                    },
+                    ["text"] = new JsonObject
+                    {
+                        ["type"] = "string",
+                        ["minLength"] = 1,
+                    },
+                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                },
+            });
+
+    private static JsonElement CreateScrollSchema() =>
+        ParseSchema(
+            new JsonObject
+            {
+                ["type"] = "object",
+                ["additionalProperties"] = false,
+                ["required"] = CreateStringArray("stateToken", "direction"),
+                ["oneOf"] = ComputerUseWinScrollContract.CreateSelectorModeSchema(),
+                ["properties"] = new JsonObject
+                {
+                    ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
+                    ["elementIndex"] = new JsonObject
+                    {
+                        ["type"] = CreateTypeSet("integer", "null"),
+                        ["minimum"] = 1,
+                    },
+                    ["point"] = CreatePointSchema(),
+                    ["coordinateSpace"] = CreateNullableStringEnumSchema(
+                        [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels]),
+                    ["direction"] = new JsonObject
+                    {
+                        ["type"] = "string",
+                        ["enum"] = CreateStringArray(
+                            UiaScrollDirectionValues.Up,
+                            UiaScrollDirectionValues.Down,
+                            UiaScrollDirectionValues.Left,
+                            UiaScrollDirectionValues.Right),
+                    },
+                    ["pages"] = new JsonObject
+                    {
+                        ["type"] = CreateTypeSet("integer", "null"),
+                        ["minimum"] = 1,
+                        ["maximum"] = InputActionScalarConstraints.MaximumScrollPages,
+                    },
+                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                },
+            });
+
+    private static JsonElement CreateDragSchema() =>
+        ParseSchema(
+            new JsonObject
+            {
+                ["type"] = "object",
+                ["additionalProperties"] = false,
+                ["required"] = CreateStringArray("stateToken"),
+                ["allOf"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["oneOf"] = ComputerUseWinDragContract.CreateSourceSelectorModeSchema(),
+                    },
+                    new JsonObject
+                    {
+                        ["oneOf"] = ComputerUseWinDragContract.CreateDestinationSelectorModeSchema(),
+                    },
+                },
+                ["properties"] = new JsonObject
+                {
+                    ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
+                    ["fromElementIndex"] = new JsonObject
+                    {
+                        ["type"] = CreateTypeSet("integer", "null"),
+                        ["minimum"] = 1,
+                    },
+                    ["fromPoint"] = CreatePointSchema("fromPoint"),
+                    ["toElementIndex"] = new JsonObject
+                    {
+                        ["type"] = CreateTypeSet("integer", "null"),
+                        ["minimum"] = 1,
+                    },
+                    ["toPoint"] = CreatePointSchema("toPoint"),
+                    ["coordinateSpace"] = CreateNullableStringEnumSchema(
+                        [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels]),
+                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                },
+            });
+
+    private static JsonElement CreatePerformSecondaryActionSchema() =>
+        ParseSchema(
+            new JsonObject
+            {
+                ["type"] = "object",
+                ["additionalProperties"] = false,
+                ["required"] = CreateStringArray("stateToken", "elementIndex"),
+                ["properties"] = new JsonObject
+                {
+                    ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
+                    ["elementIndex"] = new JsonObject
+                    {
+                        ["type"] = "integer",
+                        ["minimum"] = 1,
+                    },
+                    ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                },
+            });
 
     private static JsonElement ParseSchema(JsonObject schema)
     {

@@ -151,6 +151,8 @@ public sealed class InputContractAndPolicyTests
                 "invalid_request",
                 "unsupported_action_type",
                 "unsupported_coordinate_space",
+                "unsupported_key",
+                "unsupported_keyboard_layout",
                 "missing_target",
                 "target_preflight_failed",
                 "stale_explicit_target",

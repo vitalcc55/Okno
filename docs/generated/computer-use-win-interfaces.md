@@ -28,15 +28,17 @@
 | `list_apps` | `session_mutation` | — | Возвращает running Windows apps для Computer Use for Windows. Публичный operator surface группирует visible window instances по app approval identity, публикует selectable `windows[]` с runtime-owned opaque `windowId` и заменяет latest published selector snapshot для следующего `get_app_state`. |
 | `get_app_state` | `os_side_effect` | — | Начинает или продолжает app use session и возвращает action-ready состояние конкретного window target: screenshot, compact accessibility tree, stateToken, captureReference и warnings. Primary reusable selector — `windowId` из latest `list_apps`; `hwnd` остаётся explicit low-level/debug path и не минтит новый public selector, если target не совпал с current published snapshot. stateToken публикуется только если capture и accessibility tree построены успешно; observation failure отвечает structured `failed` без session commit. |
 | `click` | `os_side_effect` | — | Кликает по elementIndex или pixel coordinates из последнего app state. При наличии elementIndex runtime сначала пере-подтверждает target через свежий UIA snapshot; coordinate click остаётся low-confidence path и требует explicit confirm. |
+| `press_key` | `os_side_effect` | — | Нажимает named key literal или modifier combo в текущий app session. Bare printable text сюда не входит и должен идти через type_text. |
+| `set_value` | `os_side_effect` | — | Семантически устанавливает text или number value у конкретного элемента из последнего app state через ValuePattern/RangeValuePattern без hidden typing fallback. |
+| `type_text` | `os_side_effect` | — | Печатает текст в текущий app session через реальный input path без hidden clipboard fallback. |
+| `scroll` | `os_side_effect` | — | Скроллит app session по elementIndex или point из последнего app state. |
+| `perform_secondary_action` | `os_side_effect` | — | Выполняет product-owned secondary action над semantic target из последнего app state. |
+| `drag` | `os_side_effect` | — | Делает drag gesture в app session по element indices или coordinates из последнего app state. |
 
 ### Deferred but declared
 
 | Tool | Current outcome | Planned phase | Policy |
 | --- | --- | --- | --- |
-| `type_text` | `unsupported` | computer-use-win action wave 2 | — |
-| `press_key` | `unsupported` | computer-use-win action wave 2 | — |
-| `scroll` | `unsupported` | computer-use-win action wave 2 | — |
-| `drag` | `unsupported` | computer-use-win action wave 2 | — |
 
 ## Script interfaces
 
@@ -54,6 +56,7 @@
 
 - `artifacts/diagnostics/<run_id>/events.jsonl`
 - `artifacts/diagnostics/<run_id>/summary.md`
+- `artifacts/diagnostics/<run_id>/computer-use-win/action-*.json`
 - `artifacts/diagnostics/<run_id>/captures/<capture_id>.png`
 - `artifacts/diagnostics/<run_id>/launch/<launch_id>.json`
 - `artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json`

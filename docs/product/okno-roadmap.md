@@ -34,7 +34,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 ## 3. Текущее состояние репозитория
 
-По состоянию на `2026-04-20` проект уже давно не находится в фазе ранней заготовки.
+По состоянию на `2026-04-27` проект уже давно не находится в фазе ранней заготовки.
 
 Что фактически уже есть:
 
@@ -43,6 +43,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 - shipped semantic/readiness baseline: `windows.uia_snapshot`, `windows.wait`, `okno.health`;
 - shipped launch family: `windows.launch_process`, `windows.open_target`;
 - shipped click-first action layer: `windows.input` для `move`, `click`, `double_click` и `click(button=right)` с smoke/fresh-host proof;
+- shipped public Codex-facing operator surface: plugin/profile `computer-use-win` с `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`;
 - shared safety/gating/redaction/evidence foundation;
 - sequential verification loop `build -> test -> smoke -> refresh-generated-docs -> verify`.
 
@@ -60,8 +61,8 @@ _Живой delivery roadmap проекта: текущий capability map, по
 | 06 | `okno.health` + runtime guard layer + safety baseline | readiness snapshot, shared gate, dry-run/confirmation model, redaction-first launch/input/clipboard baseline | `реализовано` | `95%` | `Ядро` |
 | 07 | `src/WinBridge.Runtime.Windows.Launch` + `windows.launch_process` | direct process launch через `ProcessStartInfo`, preview, factual result modes, launch artifacts | `реализовано` | `90%` | `Ядро` |
 | 08 | `src/WinBridge.Runtime.Windows.Launch` + `windows.open_target` | shell-open для `document` / `folder` / `url(http/https)`, safe preview, factual result, open-target artifacts | `реализовано` | `90%` | `Ядро` |
-| 09 | `plugins/computer-use-win` + `src/WinBridge.Server/ComputerUse` | public-facing Codex operator surface `list_apps`, `get_app_state`, `click` поверх внутреннего Okno engine, отдельный publication profile и self-contained plugin-local install artifact | `частично` | `55%` | `R2-следом` |
-| 10 | `src/WinBridge.Runtime.Windows.Input` + public Computer Use action wave (`type_text`, `press_key`, `scroll`, `drag`) | следующая глобальная action wave для `computer-use-win`; сейчас только planning/touchpoints, не shipped implementation | `декларировано` | `10%` | `R2-следом` |
+| 09 | `plugins/computer-use-win` + `src/WinBridge.Server/ComputerUse` | public-facing Codex operator surface `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag` поверх внутреннего Okno engine, отдельный publication profile и self-contained plugin-local install artifact | `частично` | `91%` | `R2-следом` |
+| 10 | `src/WinBridge.Runtime.Windows.Input` + public Computer Use action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) | текущая global action wave для `computer-use-win`; весь целевой action set уже shipped в public callable surface, а `drag` больше не остаётся deferred: runtime/input path materialize-ит separate source/destination proof, factual move/down/move/up dispatch, helper smoke и install/publication proof | `реализовано` | `93%` | `R2-следом` |
 | 11 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, low-noise visual proof and future OCR fallback bridge | `запланировано` | `0%` | `R2` |
 | 12 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2` |
 | 13 | `src/WinBridge.Runtime.Windows.UIA` + `windows.uia_action` | semantic action layer поверх shipped `uia_snapshot` и gate/readiness foundation | `декларировано` | `10%` | `R2` |
@@ -75,15 +76,14 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 Текущий practical order такой:
 
-1. public Computer Use action wave: `type_text`, `press_key`, `scroll`, `drag`
-2. app approvals hardening + risky action confirmation
-3. app playbooks expansion
-4. `windows.region_capture`
-5. `windows.clipboard_get` / `windows.clipboard_set`
-6. `windows.uia_action`
-7. `windows.dialog`
-8. `windows.surface_lifecycle`
-9. `windows.menu` / `windows.taskbar` / `windows.tray`
+1. app approvals hardening + risky action confirmation
+2. app playbooks expansion
+3. `windows.region_capture`
+4. `windows.clipboard_get` / `windows.clipboard_set`
+5. `windows.uia_action`
+6. `windows.dialog`
+7. `windows.surface_lifecycle`
+8. `windows.menu` / `windows.taskbar` / `windows.tray`
 
 Почему именно так:
 
@@ -101,6 +101,8 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 - tool surface должен быть **не шумным** и semantically clear;
 - capture, wait, launch/open и input должны оставаться отдельными понятными primitives, а не сваливаться в один “do anything” tool;
+- текущий Codex-facing product path идёт через `computer-use-win` plugin/profile поверх внутреннего Okno engine;
+- `windows.input` и соседние `windows.*` slices должны усиливать этот product path как внутренний substrate, а не конкурирующий public UX;
 - `windows.input` нужно проектировать vocabulary-compatible с типовым `computer use` action family:
   - `move`
   - `click`
@@ -112,7 +114,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 - `windows.capture` и `windows.wait` должны оставаться отдельными explicit steps;
 - narrow follow-up вроде `windows.region_capture` должен усиливать visual proof после actions, но не превращать visual stack в primary OCR-first mode раньше времени;
 - `windows.launch_process` и `windows.open_target` должны оставаться split;
-- future OpenAI adapter — это отдельный слой поверх `Okno`, а не причина размывать core runtime contract.
+- отдельный OpenAI-native adapter, если когда-нибудь понадобится, остаётся отдельным будущим слоем поверх `Okno`; текущий активный путь не через него, а через `computer-use-win`.
 
 ## 7. Что roadmap сознательно не делает
 

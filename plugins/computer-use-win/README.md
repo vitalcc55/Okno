@@ -12,7 +12,12 @@
   - `list_apps`
   - `get_app_state`
   - `click`
-- держит `type_text`, `press_key`, `scroll` и `drag` как следующий глобальный action wave, а не как текущий shipped subset;
+  - `press_key`
+  - `set_value`
+  - `type_text`
+  - `scroll`
+  - `perform_secondary_action`
+  - `drag`
 - добавляет bundled skill `computer-use-win`;
 - использует repo marketplace в `.agents/plugins/marketplace.json`.
 
@@ -22,6 +27,9 @@
 - launcher `run-computer-use-win-mcp.ps1` стартует только plugin-local runtime bundle `runtime/win-x64/Okno.Server.exe`;
 - public profile выбирается явно через `--tool-surface-profile computer-use-win`;
 - low-level `windows.*` surface остаётся внутренним execution substrate и не является главным product UX.
+- structured plugin/MCP integration остаётся preferred local path там, где она
+  уже есть; plugin не пытается быть raw visual shim поверх built-in OpenAI
+  computer use.
 
 ## Runtime publish
 
@@ -44,5 +52,6 @@ Skill требует state-first discipline:
 - expected advisory-unavailable path для playbook hints не должен ломать observation result; unexpected provider/runtime bug всё ещё materialize-ится как truthful `observation_failed`;
 - предпочитать `elementIndex` над coordinate click;
 - использовать coordinate click только с явным `confirm`, если semantic element не доказан;
+- не смешивать action tools с workflow-control semantics;
 - после action делать новый `get_app_state` или явную verify-step;
 - не автоматизировать blocked targets.

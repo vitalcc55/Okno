@@ -43,6 +43,10 @@ internal static class InputCancellationMaterializationPolicy
                 => "Input execution was cancelled after the first double_click tap had already been dispatched; second tap was not executed.",
             InputIrreversiblePhase.AfterDoubleClickSecondTap
                 => "Input execution was cancelled after both double_click taps had already been dispatched.",
+            InputIrreversiblePhase.AfterTypeTextDispatch
+                => "Input execution was cancelled after text dispatch had already been executed; retrying without verification may duplicate or corrupt the field contents.",
+            InputIrreversiblePhase.AfterKeypressDispatch
+                => "Input execution was cancelled after keypress dispatch had already been executed; retrying without verification may repeat the shortcut or key effect.",
             _ => "Input execution was cancelled after pointer side effects had already started for the current action.",
         };
 }

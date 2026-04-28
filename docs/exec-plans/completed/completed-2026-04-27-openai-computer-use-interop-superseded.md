@@ -1,7 +1,26 @@
 # ExecPlan: OpenAI computer use interop
 
-Статус: planned
+Статус: completed/superseded
 Создан: 2026-03-31
+Закрыт: 2026-04-27
+
+## Closure note
+
+План архивируется как superseded. Он был полезен как guardrail: не встраивать
+OpenAI-specific DTO, `computer_call` / `computer_call_output` glue и
+adapter-specific state в `WinBridge.Runtime` / `WinBridge.Server`.
+
+После реализации и hardening `computer-use-win` принято другое практическое
+направление:
+
+- основной Codex-facing путь — local MCP plugin `computer-use-win`;
+- `Okno` остаётся Windows-native engine;
+- следующий активный план — `computer-use-win-next-actions`;
+- отдельный OpenAI-native adapter не является текущей целью.
+
+Если в будущем появится реальное внешнее требование именно к OpenAI-native
+adapter contract, нужно открыть новый bounded ExecPlan поверх актуального
+`computer-use-win` surface, а не продолжать этот исторический план.
 
 ## Goal
 

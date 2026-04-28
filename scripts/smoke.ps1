@@ -515,7 +515,7 @@ function Test-UiaSemanticSubtreeReady {
     }
 
     return (@(Find-UiaNodes -Node $Payload.root -ControlType 'button' -Name 'Run semantic smoke').Count -gt 0) -and
-        (@(Find-UiaNodes -Node $Payload.root -ControlType 'check_box' -Name 'Remember semantic selection').Count -gt 0) -and
+        (@(Find-UiaNodes -Node $Payload.root -ControlType 'check_box' -Name 'Remember semantic selection: on').Count -gt 0) -and
         (@(Find-UiaNodes -Node $Payload.root -ControlType 'edit' -Name 'Smoke query input').Count -gt 0) -and
         (@(Find-UiaNodes -Node $Payload.root -ControlType 'tree_item' -Name 'Inbox').Count -gt 0)
 }
@@ -2304,7 +2304,7 @@ try {
     $smokeButtonNodes = @(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'button' -Name 'Run semantic smoke')
     Assert-Condition -Condition ($smokeButtonNodes.Count -gt 0) -Message 'UIA snapshot did not include expected smoke button.'
     Assert-Condition -Condition (@($smokeButtonNodes[0].patterns) -contains 'invoke') -Message 'UIA snapshot smoke button does not expose invoke pattern.'
-    $smokeCheckboxNodes = @(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'check_box' -Name 'Remember semantic selection')
+    $smokeCheckboxNodes = @(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'check_box' -Name 'Remember semantic selection: on')
     Assert-Condition -Condition ($smokeCheckboxNodes.Count -gt 0) -Message 'UIA snapshot did not include expected smoke checkbox.'
     Assert-Condition -Condition (@($smokeCheckboxNodes[0].patterns) -contains 'toggle') -Message 'UIA snapshot smoke checkbox does not expose toggle pattern.'
     $smokeEditNodes = @(Find-UiaNodes -Node $uiaSnapshotPayload.root -ControlType 'edit' -Name 'Smoke query input')

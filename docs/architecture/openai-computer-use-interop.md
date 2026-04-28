@@ -1,14 +1,32 @@
 # OpenAI Computer Use Interop
 
+Статус: historical/superseded.
+
+Этот документ оставлен как запись прежнего архитектурного решения: не тащить
+OpenAI-specific DTO и adapter glue в core runtime. После появления
+`computer-use-win` как основного Codex-facing plugin surface отдельный
+OpenAI-native adapter больше не является активным направлением разработки.
+
+Текущий практический путь описан в:
+
+- `docs/architecture/computer-use-win-surface.md`
+- `docs/architecture/computer-use-win-next-actions.md`
+- `docs/exec-plans/completed/completed-2026-04-28-computer-use-win-next-actions.md`
+
 ## Зачем нужен этот документ
 
 Этот документ фиксирует, как `Okno` должен соотноситься с `shell`, `skills`, `MCP` и `computer use` в экосистеме OpenAI, и как future compatibility нужно встраивать без поломки текущего Windows-native продукта.
 
-Он намеренно не меняет ближайший delivery order и не объявляет built-in `computer use` текущим runtime requirement.
+Он намеренно не менял ближайший delivery order и не объявлял built-in
+`computer use` текущим runtime requirement. Это решение закрыто: основной
+продуктовый путь теперь идёт через `computer-use-win`, без отдельного
+OpenAI-native adapter.
 
 ## Ключевая позиция
 
 `Okno` не конкурирует с OpenAI tool layers и не должен пытаться заменить их все одним runtime.
+Для текущего продукта это означает: развиваем Windows-native
+`computer-use-win` plugin, а не отдельный OpenAI adapter.
 
 Правильное разбиение слоёв:
 
@@ -23,7 +41,12 @@
 - Для локального `Codex app/CLI/IDE` основной путь теперь идёт как `shell + computer-use-win plugin + skills`, где `Okno` остаётся внутренним engine/runtime.
 - Built-in `computer use` не нужен для того, чтобы текущий `Okno` уже был полезным.
 - Current public-facing local integration entry point должен быть `computer-use-win`, а не low-level engine plugin narrative.
-- Любой будущий bridge к OpenAI `computer use` должен быть adapter-слоем поверх `Okno`, а не частью core runtime.
+- Official OpenAI docs и их sample repos дополнительно подтверждают этот выбор:
+  mature structured harness/MCP integration не нужно перестраивать вокруг
+  built-in visual loop, если проект уже имеет свой product-ready local path.
+- Если когда-нибудь появится новый внешний OpenAI adapter requirement, он
+  должен быть отдельным новым ExecPlan. Текущий roadmap не считает его
+  обязательным слоем.
 
 ## Architectural boundary
 
@@ -122,3 +145,5 @@ Adapter должен:
 - [MCP and Connectors](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
 - [Shell + Skills + Compaction](https://developers.openai.com/blog/skills-shell-tips)
 - [Codex app on Windows](https://developers.openai.com/codex/app/windows)
+- [openai-cua-sample-app](https://github.com/openai/openai-cua-sample-app)
+- [openai-testing-agent-demo](https://github.com/openai/openai-testing-agent-demo)

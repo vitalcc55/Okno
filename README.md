@@ -104,6 +104,15 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 - `get_app_state`
 - `click`
 
+Следующая целевая public action wave для этого surface:
+
+- `press_key`
+- `set_value`
+- `type_text`
+- `scroll`
+- `perform_secondary_action`
+- `drag`
+
 `Okno` остаётся внутренним engine и execution substrate под этим plugin surface.
 
 Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после изменения runtime/layout или после reinstall нужно заново materialize-ить plugin-local runtime bundle командой `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex. Repo-root hint больше не входит в public install path `computer-use-win`.
@@ -121,8 +130,12 @@ Computer Use for Windows не должен конкурировать с `shell`
 
 Практический вывод:
 
-- для текущего `Codex app/CLI/IDE` primary local path остаётся `shell + Okno MCP/plugin`;
+- для текущего `Codex app/CLI/IDE` primary local path остаётся
+  `shell + computer-use-win plugin + skills`, где `Okno` работает как
+  внутренний engine;
 - built-in OpenAI `computer use` не является блокером для текущего продукта и не требует перестройки core runtime;
+- official OpenAI docs и sample repos подтверждают, что mature structured
+  harness не нужно ломать ради built-in visual loop;
 - compatibility work нужно закладывать через action/schema discipline будущего `windows.input` и отдельный adapter-слой поверх `Okno`, а не через смешение OpenAI-specific логики с `WinBridge.Runtime` или `WinBridge.Server`.
 
 ## Где читать дальше

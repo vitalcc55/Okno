@@ -24,6 +24,7 @@ public sealed class UiaSnapshotTreeBuilderTests
                 IsOffscreen: false,
                 HasKeyboardFocus: false,
                 IsPassword: false,
+                IsReadOnly: null,
                 Patterns: ["invoke"],
                 BoundingRectangle: new Bounds(20, 20, 40, 40),
                 NativeWindowHandle: 42));
@@ -43,6 +44,7 @@ public sealed class UiaSnapshotTreeBuilderTests
                 IsOffscreen: false,
                 HasKeyboardFocus: false,
                 IsPassword: false,
+                IsReadOnly: null,
                 Patterns: ["expand_collapse", "invoke"],
                 BoundingRectangle: new Bounds(10, 10, 110, 40),
                 NativeWindowHandle: 41),
@@ -63,6 +65,7 @@ public sealed class UiaSnapshotTreeBuilderTests
                 IsOffscreen: false,
                 HasKeyboardFocus: true,
                 IsPassword: false,
+                IsReadOnly: null,
                 Patterns: ["window"],
                 BoundingRectangle: new Bounds(0, 0, 400, 300),
                 NativeWindowHandle: 40),
@@ -217,6 +220,7 @@ public sealed class UiaSnapshotTreeBuilderTests
             IsOffscreen: false,
             HasKeyboardFocus: false,
             IsPassword: false,
+            IsReadOnly: null,
             Patterns: [],
             BoundingRectangle: new Bounds(0, 0, 10, 10),
             NativeWindowHandle: null);

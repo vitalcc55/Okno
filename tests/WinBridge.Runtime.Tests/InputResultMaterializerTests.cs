@@ -120,6 +120,168 @@ public sealed class InputResultMaterializerTests
     }
 
     [Fact]
+    public void MaterializePreservesCommittedTextDispatchEvidence()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-input-text-dispatch");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+
+        InputResult result = materializer.Materialize(
+            new InputRequest
+            {
+                Hwnd = 4242,
+                Actions =
+                [
+                    new InputAction
+                    {
+                        Type = InputActionTypeValues.Type,
+                        Text = "typed text",
+                    },
+                ],
+            },
+            new InputExecutionContext(CreateWindow(hwnd: 4242)),
+            new InputResult(
+                Status: InputStatusValues.Failed,
+                Decision: InputStatusValues.Failed,
+                FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                Reason: "text dispatch failed after partial send",
+                TargetHwnd: 4242,
+                TargetSource: InputTargetSourceValues.Attached,
+                CompletedActionCount: 0,
+                FailedActionIndex: 0,
+                Actions:
+                [
+                    new InputActionResult(
+                        Type: InputActionTypeValues.Type,
+                        Status: InputStatusValues.Failed,
+                        FailureCode: InputFailureCodeValues.InputDispatchFailed),
+                ]),
+            failureStage: InputFailureStageValues.TextDispatchCommittedFailure);
+
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(File.ReadAllText(result.ArtifactPath));
+        JsonElement artifactResult = artifact.RootElement.GetProperty("result");
+        Assert.Equal("text_dispatch_committed_before_failure", artifactResult.GetProperty("committed_side_effect_evidence").GetString());
+        Assert.Equal(InputFailureStageValues.TextDispatchCommittedFailure, artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"failure_stage\":\"text_dispatch_committed_failure\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"committed_side_effect_evidence\":\"text_dispatch_committed_before_failure\"", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaterializePreservesCommittedKeypressDispatchEvidence()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-input-keypress-dispatch");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+
+        InputResult result = materializer.Materialize(
+            new InputRequest
+            {
+                Hwnd = 4242,
+                Actions =
+                [
+                    new InputAction
+                    {
+                        Type = InputActionTypeValues.Keypress,
+                        Key = "ctrl+s",
+                    },
+                ],
+            },
+            new InputExecutionContext(CreateWindow(hwnd: 4242)),
+            new InputResult(
+                Status: InputStatusValues.Failed,
+                Decision: InputStatusValues.Failed,
+                FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                Reason: "keypress dispatch failed after partial send",
+                TargetHwnd: 4242,
+                TargetSource: InputTargetSourceValues.Attached,
+                CompletedActionCount: 0,
+                FailedActionIndex: 0,
+                Actions:
+                [
+                    new InputActionResult(
+                        Type: InputActionTypeValues.Keypress,
+                        Status: InputStatusValues.Failed,
+                        FailureCode: InputFailureCodeValues.InputDispatchFailed),
+                ]),
+            failureStage: InputFailureStageValues.KeypressDispatchCommittedFailure);
+
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(File.ReadAllText(result.ArtifactPath));
+        JsonElement artifactResult = artifact.RootElement.GetProperty("result");
+        Assert.Equal("keyboard_dispatch_committed_before_failure", artifactResult.GetProperty("committed_side_effect_evidence").GetString());
+        Assert.Equal(InputFailureStageValues.KeypressDispatchCommittedFailure, artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"failure_stage\":\"keypress_dispatch_committed_failure\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"committed_side_effect_evidence\":\"keyboard_dispatch_committed_before_failure\"", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaterializeRedactsDragCoordinatesAndSuppressesRuntimeArtifactLink()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-input-drag-redaction");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        InputRequest request = new()
+        {
+            Hwnd = 4242,
+            Actions =
+            [
+                new InputAction
+                {
+                    Type = InputActionTypeValues.Drag,
+                    CoordinateSpace = InputCoordinateSpaceValues.Screen,
+                    Point = new InputPoint(111, 222),
+                    Path =
+                    [
+                        new InputPoint(111, 222),
+                        new InputPoint(333, 444),
+                    ],
+                },
+            ],
+        };
+
+        InputResult result = materializer.Materialize(
+            request,
+            new InputExecutionContext(CreateWindow(hwnd: 4242)),
+            new InputResult(
+                Status: InputStatusValues.VerifyNeeded,
+                Decision: InputStatusValues.VerifyNeeded,
+                ResultMode: InputResultModeValues.DispatchOnly,
+                TargetHwnd: 4242,
+                TargetSource: InputTargetSourceValues.Attached,
+                CompletedActionCount: 1,
+                Actions:
+                [
+                    new InputActionResult(
+                        Type: InputActionTypeValues.Drag,
+                        Status: InputStatusValues.VerifyNeeded,
+                        ResultMode: InputResultModeValues.DispatchOnly,
+                        CoordinateSpace: InputCoordinateSpaceValues.Screen,
+                        RequestedPoint: new InputPoint(111, 222),
+                        ResolvedScreenPoint: new InputPoint(333, 444),
+                        Reason: "Cursor drifted between (111,222) and (333,444)."),
+                ]));
+
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(File.ReadAllText(result.ArtifactPath));
+        JsonElement action = artifact.RootElement.GetProperty("result").GetProperty("actions")[0];
+        Assert.False(action.TryGetProperty("requested_point", out _));
+        Assert.False(action.TryGetProperty("resolved_screen_point", out _));
+        Assert.Equal("Runtime drag завершился без безопасного раскрытия coordinate detail.", action.GetProperty("reason").GetString());
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"event_name\":\"input.runtime.completed\"", eventLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"artifact_path\"", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MaterializeReturnsFactualResultWhenArtifactWriteFails()
     {
         string root = CreateTempDirectory();

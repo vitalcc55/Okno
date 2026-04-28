@@ -135,6 +135,87 @@ internal sealed class FakeUiAutomationService(
     }
 }
 
+internal sealed class FakeUiAutomationSetValueService(
+    Func<WindowDescriptor, UiaSetValueRequest, CancellationToken, Task<UiaSetValueResult>>? handler = null) : IUiAutomationSetValueService
+{
+    public int Calls { get; private set; }
+
+    public WindowDescriptor? LastWindow { get; private set; }
+
+    public UiaSetValueRequest? LastRequest { get; private set; }
+
+    public Task<UiaSetValueResult> SetValueAsync(
+        WindowDescriptor targetWindow,
+        UiaSetValueRequest request,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastWindow = targetWindow;
+        LastRequest = request;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("UIA set_value не должен вызываться в этом тесте.");
+        }
+
+        return handler(targetWindow, request, cancellationToken);
+    }
+}
+
+internal sealed class FakeUiAutomationScrollService(
+    Func<WindowDescriptor, UiaScrollRequest, CancellationToken, Task<UiaScrollResult>>? handler = null) : IUiAutomationScrollService
+{
+    public int Calls { get; private set; }
+
+    public WindowDescriptor? LastWindow { get; private set; }
+
+    public UiaScrollRequest? LastRequest { get; private set; }
+
+    public Task<UiaScrollResult> ScrollAsync(
+        WindowDescriptor targetWindow,
+        UiaScrollRequest request,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastWindow = targetWindow;
+        LastRequest = request;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("UIA scroll не должен вызываться в этом тесте.");
+        }
+
+        return handler(targetWindow, request, cancellationToken);
+    }
+}
+
+internal sealed class FakeUiAutomationSecondaryActionService(
+    Func<WindowDescriptor, UiaSecondaryActionRequest, CancellationToken, Task<UiaSecondaryActionResult>>? handler = null) : IUiAutomationSecondaryActionService
+{
+    public int Calls { get; private set; }
+
+    public WindowDescriptor? LastWindow { get; private set; }
+
+    public UiaSecondaryActionRequest? LastRequest { get; private set; }
+
+    public Task<UiaSecondaryActionResult> ExecuteAsync(
+        WindowDescriptor targetWindow,
+        UiaSecondaryActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastWindow = targetWindow;
+        LastRequest = request;
+
+        if (handler is null)
+        {
+            throw new NotSupportedException("UIA perform_secondary_action не должен вызываться в этом тесте.");
+        }
+
+        return handler(targetWindow, request, cancellationToken);
+    }
+}
+
 internal sealed class FakeWaitService(
     Func<WaitTargetResolution, WaitRequest, CancellationToken, Task<WaitResult>>? handler = null) : IWaitService
 {

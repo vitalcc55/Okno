@@ -47,6 +47,588 @@ public sealed class Win32InputServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsyncReturnsVerifyNeededForKeypressWhenPlatformDispatchSucceeds()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            KeypressDispatchResults =
+            [
+                new InputDispatchResult(Success: true, CommittedSideEffects: true),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateKeypressAction("ctrl+s", repeat: 2),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.VerifyNeeded, result.Status);
+        Assert.Equal(InputStatusValues.VerifyNeeded, result.Decision);
+        Assert.Equal(1, result.CompletedActionCount);
+        Assert.Single(platform.KeypressContexts);
+        Assert.Equal("ctrl+s", platform.KeypressContexts[0].Key);
+        Assert.Equal(2, platform.KeypressContexts[0].Repeat);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsVerifyNeededForTypeWhenPlatformDispatchSucceeds()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            TextDispatchResults =
+            [
+                new InputDispatchResult(Success: true, CommittedSideEffects: true),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateTypeAction("  typed text  "),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.VerifyNeeded, result.Status);
+        Assert.Equal(InputStatusValues.VerifyNeeded, result.Decision);
+        Assert.Equal(1, result.CompletedActionCount);
+        Assert.Single(platform.TextContexts);
+        Assert.Equal("  typed text  ", platform.TextContexts[0].Text);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsFailureForTypeWhenPlatformCannotDispatchText()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            TextDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: false,
+                    FailureCode: InputFailureCodeValues.UnsupportedActionType,
+                    Reason: "text dispatch unsupported"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateTypeAction("typed text"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.UnsupportedActionType, result.FailureCode);
+        Assert.Equal(0, result.CompletedActionCount);
+        Assert.Equal(0, result.FailedActionIndex);
+        Assert.Single(platform.TextContexts);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsVerifyNeededForScrollWhenPlatformDispatchSucceeds()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            ScrollDispatchResults =
+            [
+                new InputDispatchResult(Success: true, CommittedSideEffects: true),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateScrollAction(new InputPoint(140, 260), "down", 120),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.VerifyNeeded, result.Status);
+        Assert.Single(platform.ScrollContexts);
+        Assert.Equal("down", platform.ScrollContexts[0].Direction);
+        Assert.Equal(120, platform.ScrollContexts[0].Delta);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsFailureForScrollWhenPlatformCannotDispatchWheel()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            ScrollDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: false,
+                    FailureCode: InputFailureCodeValues.UnsupportedActionType,
+                    Reason: "scroll dispatch unsupported"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateScrollAction(new InputPoint(140, 260), "down", 120),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.UnsupportedActionType, result.FailureCode);
+        Assert.Single(platform.ScrollContexts);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsVerifyNeededForDragWhenPlatformDispatchSucceeds()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            DragDispatchResults =
+            [
+                new InputDispatchResult(Success: true, CommittedSideEffects: true),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateDragAction(new InputPoint(140, 260), new InputPoint(220, 320)),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.VerifyNeeded, result.Status);
+        Assert.Single(platform.DragContexts);
+        Assert.Equal(
+            [new InputPoint(140, 260), new InputPoint(220, 320)],
+            platform.DragContexts[0].ScreenPath.ToArray());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsFailureForDragWhenPlatformCannotStartDispatchAfterMove()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            DragDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: false,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "drag dispatch did not start"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateDragAction(new InputPoint(140, 260), new InputPoint(220, 320)),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Single(platform.DragContexts);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsFailureForDragWhenPlatformReportsCommittedSideEffectFailure()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            DragDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "drag dispatch failed after button down"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateDragAction(new InputPoint(140, 260), new InputPoint(220, 320)),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Single(platform.DragContexts);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesCompensatedDragFailureEvidenceInArtifact()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-drag-compensated");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            DragDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.CursorMoveFailed,
+                    Reason: "drag path failed after button-down; release compensation succeeded",
+                    FailureStageHint: InputFailureStageValues.DragDispatchPartialCompensated),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateDragAction(new InputPoint(140, 260), new InputPoint(220, 320)),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.DragDispatchPartialCompensated,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "drag_dispatch_partial_compensated",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesUncompensatedDragFailureEvidenceInArtifact()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-drag-uncompensated");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            DragDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.CursorMoveFailed,
+                    Reason: "drag path failed after button-down; release compensation failed",
+                    FailureStageHint: InputFailureStageValues.DragDispatchPartialUncompensated),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateDragAction(new InputPoint(140, 260), new InputPoint(220, 320)),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.DragDispatchPartialUncompensated,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "drag_dispatch_partial_uncompensated",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncFallsBackToUncompensatedDragEvidenceWhenCommittedFailureHintIsMissing()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-drag-uncompensated-no-hint");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            DragDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "drag release failed after button-down"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateDragAction(new InputPoint(140, 260), new InputPoint(220, 320)),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.DragDispatchPartialUncompensated,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "drag_dispatch_partial_uncompensated",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncRejectsKeypressRepeatBeyondBoundedMaximumBeforeDispatch()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateKeypressAction("ctrl+s", repeat: InputActionScalarConstraints.MaximumKeypressRepeat + 1),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InvalidRequest, result.FailureCode);
+        Assert.Empty(platform.KeypressContexts);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsFailureForKeypressWhenPlatformLosesForegroundProof()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            KeypressDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: false,
+                    FailureCode: InputFailureCodeValues.TargetNotForeground,
+                    Reason: "target not foreground"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateKeypressAction("ctrl+s"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.TargetNotForeground, result.FailureCode);
+        Assert.Equal(0, result.CompletedActionCount);
+        Assert.Equal(0, result.FailedActionIndex);
+        Assert.Single(platform.KeypressContexts);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncReturnsFailureForCommittedKeypressDispatchFailure()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            KeypressDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "keypress dispatch failed after partial send"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateKeypressAction("ctrl+s"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Equal(0, result.CompletedActionCount);
+        Assert.Equal(0, result.FailedActionIndex);
+        Assert.Single(platform.KeypressContexts);
+    }
+
+    [Fact]
     public async Task ExecuteAsyncMaterializesArtifactWhenMaterializerIsProvided()
     {
         string root = CreateTempDirectory();
@@ -133,6 +715,208 @@ public sealed class Win32InputServiceTests
         Assert.Equal(
             "partial_dispatch_uncompensated",
             rootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesCommittedTypeTextEvidenceInArtifact()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-type-text-dispatch");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            TextDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "text dispatch failed after partial send"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateTypeAction("typed text"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.TextDispatchCommittedFailure,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "text_dispatch_committed_before_failure",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesCommittedKeypressEvidenceInArtifact()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-keypress-dispatch");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            KeypressDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "keypress dispatch failed after partial send"),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateKeypressAction("ctrl+s"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.KeypressDispatchCommittedFailure,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "keyboard_dispatch_committed_before_failure",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesCompensatedKeypressFailureEvidenceInArtifact()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-keypress-compensated");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            KeypressDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "keypress dispatch failed after partial send; key-up compensation succeeded",
+                    FailureStageHint: InputFailureStageValues.KeypressDispatchPartialCompensated),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateKeypressAction("ctrl+s"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.KeypressDispatchPartialCompensated,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "keyboard_dispatch_partial_compensated",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesUncompensatedKeypressFailureEvidenceInArtifact()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-keypress-uncompensated");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            KeypressDispatchResults =
+            [
+                new InputDispatchResult(
+                    Success: false,
+                    CommittedSideEffects: true,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "keypress dispatch failed after partial send; key-up compensation failed",
+                    FailureStageHint: InputFailureStageValues.KeypressDispatchPartialUncompensated),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateKeypressAction("ctrl+s"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.KeypressDispatchPartialUncompensated,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "keyboard_dispatch_partial_uncompensated",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
     }
 
     [Fact]
@@ -1733,6 +2517,39 @@ public sealed class Win32InputServiceTests
         return action;
     }
 
+    private static InputAction CreateKeypressAction(string key, int repeat = 1) =>
+        new()
+        {
+            Type = InputActionTypeValues.Keypress,
+            Key = key,
+            Repeat = repeat,
+        };
+
+    private static InputAction CreateTypeAction(string text) =>
+        new()
+        {
+            Type = InputActionTypeValues.Type,
+            Text = text,
+        };
+
+    private static InputAction CreateScrollAction(InputPoint point, string direction, int delta) =>
+        new()
+        {
+            Type = InputActionTypeValues.Scroll,
+            Point = point,
+            CoordinateSpace = InputCoordinateSpaceValues.Screen,
+            Direction = direction,
+            Delta = delta,
+        };
+
+    private static InputAction CreateDragAction(InputPoint sourcePoint, InputPoint destinationPoint) =>
+        new()
+        {
+            Type = InputActionTypeValues.Drag,
+            CoordinateSpace = InputCoordinateSpaceValues.Screen,
+            Path = [sourcePoint, destinationPoint],
+        };
+
     private static InputCaptureReference CreateCaptureReference(
         WindowDescriptor targetWindow,
         InputBounds? bounds = null,
@@ -1833,6 +2650,10 @@ public sealed class Win32InputServiceTests
     {
         private readonly Queue<bool> _clickResults = new();
         private readonly Queue<InputClickDispatchResult> _clickDispatchResults = new();
+        private readonly Queue<InputDispatchResult> _textDispatchResults = new();
+        private readonly Queue<InputDispatchResult> _keypressDispatchResults = new();
+        private readonly Queue<InputDispatchResult> _scrollDispatchResults = new();
+        private readonly Queue<InputDispatchResult> _dragDispatchResults = new();
         private readonly Queue<IReadOnlyList<string>> _ambientInputsBeforePointerSideEffect = new();
         private readonly Queue<IReadOnlyList<string>> _ambientModifiersBeforeDispatch = new();
         private readonly Queue<InputTargetSecurityInfo> _targetSecuritySequence = new();
@@ -1841,6 +2662,10 @@ public sealed class Win32InputServiceTests
         public List<InputPoint> MovedPoints { get; } = [];
         public List<InputPoint> DispatchPoints { get; } = [];
         public List<string> ClickButtons { get; } = [];
+        public List<InputTextDispatchContext> TextContexts { get; } = [];
+        public List<InputKeypressDispatchContext> KeypressContexts { get; } = [];
+        public List<InputScrollDispatchContext> ScrollContexts { get; } = [];
+        public List<InputDragDispatchContext> DragContexts { get; } = [];
         public InputProcessSecurityContext CurrentProcessSecurity { get; set; } = null!;
         public InputTargetSecurityInfo TargetSecurity { get; set; } = null!;
         public bool BlockFirstDispatch { get; set; }
@@ -1876,6 +2701,54 @@ public sealed class Win32InputServiceTests
                 foreach (InputClickDispatchResult item in value)
                 {
                     _clickDispatchResults.Enqueue(item);
+                }
+            }
+        }
+
+        public IReadOnlyList<InputDispatchResult> KeypressDispatchResults
+        {
+            init
+            {
+                _keypressDispatchResults.Clear();
+                foreach (InputDispatchResult item in value)
+                {
+                    _keypressDispatchResults.Enqueue(item);
+                }
+            }
+        }
+
+        public IReadOnlyList<InputDispatchResult> TextDispatchResults
+        {
+            init
+            {
+                _textDispatchResults.Clear();
+                foreach (InputDispatchResult item in value)
+                {
+                    _textDispatchResults.Enqueue(item);
+                }
+            }
+        }
+
+        public IReadOnlyList<InputDispatchResult> ScrollDispatchResults
+        {
+            init
+            {
+                _scrollDispatchResults.Clear();
+                foreach (InputDispatchResult item in value)
+                {
+                    _scrollDispatchResults.Enqueue(item);
+                }
+            }
+        }
+
+        public IReadOnlyList<InputDispatchResult> DragDispatchResults
+        {
+            init
+            {
+                _dragDispatchResults.Clear();
+                foreach (InputDispatchResult item in value)
+                {
+                    _dragDispatchResults.Enqueue(item);
                 }
             }
         }
@@ -2105,33 +2978,73 @@ public sealed class Win32InputServiceTests
                     Reason: "Dispatch failed.");
         }
 
-        public InputDispatchResult DispatchText(InputTextDispatchContext context) =>
-            new(
+        public InputDispatchResult DispatchText(InputTextDispatchContext context)
+        {
+            TextContexts.Add(context);
+            OnDispatchSideEffect?.Invoke(TextContexts.Count);
+
+            if (_textDispatchResults.Count > 0)
+            {
+                return _textDispatchResults.Dequeue();
+            }
+
+            return new(
                 Success: false,
                 CommittedSideEffects: false,
                 FailureCode: InputFailureCodeValues.UnsupportedActionType,
                 Reason: "Fake platform does not implement text dispatch in this test.");
+        }
 
-        public InputDispatchResult DispatchKeypress(InputKeypressDispatchContext context) =>
-            new(
+        public InputDispatchResult DispatchKeypress(InputKeypressDispatchContext context)
+        {
+            KeypressContexts.Add(context);
+            OnDispatchSideEffect?.Invoke(KeypressContexts.Count);
+
+            if (_keypressDispatchResults.Count > 0)
+            {
+                return _keypressDispatchResults.Dequeue();
+            }
+
+            return new(
                 Success: false,
                 CommittedSideEffects: false,
                 FailureCode: InputFailureCodeValues.UnsupportedActionType,
                 Reason: "Fake platform does not implement key dispatch in this test.");
+        }
 
-        public InputDispatchResult DispatchScroll(InputScrollDispatchContext context) =>
-            new(
+        public InputDispatchResult DispatchScroll(InputScrollDispatchContext context)
+        {
+            ScrollContexts.Add(context);
+            OnDispatchSideEffect?.Invoke(ScrollContexts.Count);
+
+            if (_scrollDispatchResults.Count > 0)
+            {
+                return _scrollDispatchResults.Dequeue();
+            }
+
+            return new(
                 Success: false,
                 CommittedSideEffects: false,
                 FailureCode: InputFailureCodeValues.UnsupportedActionType,
                 Reason: "Fake platform does not implement scroll dispatch in this test.");
+        }
 
-        public InputDispatchResult DispatchDrag(InputDragDispatchContext context) =>
-            new(
+        public InputDispatchResult DispatchDrag(InputDragDispatchContext context)
+        {
+            DragContexts.Add(context);
+            OnDispatchSideEffect?.Invoke(DragContexts.Count);
+
+            if (_dragDispatchResults.Count > 0)
+            {
+                return _dragDispatchResults.Dequeue();
+            }
+
+            return new(
                 Success: false,
                 CommittedSideEffects: false,
                 FailureCode: InputFailureCodeValues.UnsupportedActionType,
                 Reason: "Fake platform does not implement drag dispatch in this test.");
+        }
 
         public bool WaitForFirstDispatchEntered(TimeSpan timeout) =>
             _firstDispatchEntered.Wait(timeout);

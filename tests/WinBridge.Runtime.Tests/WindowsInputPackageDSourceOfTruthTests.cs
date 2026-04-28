@@ -9,7 +9,7 @@ public sealed class WindowsInputSourceOfTruthTests
     {
         string repoRoot = GetRepositoryRoot();
         string windowsInputPlan = File.ReadAllText(Path.Combine(repoRoot, "docs", "exec-plans", "completed", "completed-2026-04-20-windows-input.md"));
-        string interopPlan = File.ReadAllText(Path.Combine(repoRoot, "docs", "exec-plans", "active", "openai-computer-use-interop.md"));
+        string interopPlan = File.ReadAllText(Path.Combine(repoRoot, "docs", "exec-plans", "completed", "completed-2026-04-27-openai-computer-use-interop-superseded.md"));
         string interopArchitecture = File.ReadAllText(Path.Combine(repoRoot, "docs", "architecture", "openai-computer-use-interop.md"));
         ToolContractExportDocument exportDocument = ToolContractExporter.CreateDocument();
 

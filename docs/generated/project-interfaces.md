@@ -64,6 +64,7 @@
 
 - `artifacts/diagnostics/<run_id>/events.jsonl`
 - `artifacts/diagnostics/<run_id>/summary.md`
+- `artifacts/diagnostics/<run_id>/computer-use-win/action-*.json`
 - `artifacts/diagnostics/<run_id>/captures/<capture_id>.png`
 - `artifacts/diagnostics/<run_id>/launch/<launch_id>.json`
 - `artifacts/diagnostics/<run_id>/uia/<snapshot_id>.json`

@@ -58,9 +58,8 @@ internal static class ComputerUseWinTargetPolicy
         if (string.Equals(actionName, ToolNames.ComputerUseWinPressKey, StringComparison.Ordinal))
         {
             return key is not null
-                && (key.Contains("enter", StringComparison.OrdinalIgnoreCase)
-                    || key.Contains("delete", StringComparison.OrdinalIgnoreCase)
-                    || key.Contains("return", StringComparison.OrdinalIgnoreCase));
+                && ComputerUseWinPressKeyContract.TryParse(key, out ComputerUseWinPressKeyLiteral? literal, out _)
+                && ComputerUseWinPressKeyContract.RequiresConfirmation(literal!);
         }
 
         if (element is null)

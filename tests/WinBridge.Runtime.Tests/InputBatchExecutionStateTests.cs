@@ -126,6 +126,44 @@ public sealed class InputBatchExecutionStateTests
         Assert.DoesNotContain("second tap was not executed", failure.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void CancellationAfterTypeTextDispatchUsesTextSpecificReason()
+    {
+        InputBatchExecutionState batch = CreateBatch();
+        batch.BeginAction(0, CreateKeyboardAction(InputActionTypeValues.Type, text: "typed text"), effectiveButton: null);
+        batch.UpdateTargetHwnd(101);
+        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterTypeTextDispatch);
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        bool materialized = batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellation.Token, out InputResult? result);
+
+        Assert.True(materialized);
+        InputResult failure = Assert.IsType<InputResult>(result);
+        Assert.Contains("text dispatch", failure.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pointer", failure.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CancellationAfterKeypressDispatchUsesKeyboardSpecificReason()
+    {
+        InputBatchExecutionState batch = CreateBatch();
+        batch.BeginAction(0, CreateKeyboardAction(InputActionTypeValues.Keypress, key: "ctrl+s"), effectiveButton: null);
+        batch.UpdateTargetHwnd(101);
+        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterKeypressDispatch);
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        bool materialized = batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellation.Token, out InputResult? result);
+
+        Assert.True(materialized);
+        InputResult failure = Assert.IsType<InputResult>(result);
+        Assert.Contains("keypress dispatch", failure.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pointer", failure.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static InputBatchExecutionState CreateBatch() =>
         new(
             CreateWindow(),
@@ -141,6 +179,17 @@ public sealed class InputBatchExecutionStateTests
             Type = type,
             Point = point,
             CoordinateSpace = coordinateSpace,
+        };
+
+    private static InputAction CreateKeyboardAction(
+        string type,
+        string? text = null,
+        string? key = null) =>
+        new()
+        {
+            Type = type,
+            Text = text,
+            Key = key,
         };
 
     private static WindowDescriptor CreateWindow(

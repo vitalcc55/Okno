@@ -38,8 +38,12 @@ internal sealed class InputArtifactWriter(AuditLogOptions auditLogOptions)
 
             string path = Path.Combine(directory, InputArtifactNameBuilder.Create(capturedAtUtc.UtcDateTime));
             tempPath = Path.Combine(directory, Path.GetRandomFileName() + ".tmp");
+            bool redactSensitiveDragEvidence = InputObservabilityPolicy.RequiresSensitiveDragRedaction(request, result);
+            InputResult artifactResult = redactSensitiveDragEvidence
+                ? InputObservabilityPolicy.RedactDragCoordinates(result)
+                : result;
             InputSanitizedResult sanitizedResult = InputSanitizedResult.FromResult(
-                result with { ArtifactPath = path },
+                artifactResult with { ArtifactPath = path },
                 InputResultMaterializer.ResolveCommittedSideEffectEvidence(result, failureDiagnostics?.FailureStage));
             InputArtifactPayload payload = new(
                 RequestSummary: InputRequestSummary.FromRequest(request, context, result),
@@ -228,3 +232,52 @@ internal sealed record InputFailureDiagnostics(
 
 internal sealed class InputArtifactException(string message, Exception innerException)
     : Exception(message, innerException);
+
+internal static class InputObservabilityPolicy
+{
+    private const string SafeDragReason = "Runtime drag завершился без безопасного раскрытия coordinate detail.";
+
+    public static bool RequiresSensitiveDragRedaction(InputRequest request, InputResult result)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(result);
+
+        return ContainsDragRequestAction(request.Actions)
+            || ContainsDragResultAction(result.Actions);
+    }
+
+    public static InputResult RedactDragCoordinates(InputResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return result with
+        {
+            Reason = RedactReasonIfPresent(result.Reason),
+            Actions = result.Actions?.Select(RedactAction).ToArray(),
+        };
+    }
+
+    private static bool ContainsDragRequestAction(IReadOnlyList<InputAction>? actions) =>
+        actions?.Any(static action => string.Equals(action.Type, InputActionTypeValues.Drag, StringComparison.Ordinal)) == true;
+
+    private static bool ContainsDragResultAction(IReadOnlyList<InputActionResult>? actions) =>
+        actions?.Any(static action => string.Equals(action.Type, InputActionTypeValues.Drag, StringComparison.Ordinal)) == true;
+
+    private static InputActionResult RedactAction(InputActionResult action)
+    {
+        if (!string.Equals(action.Type, InputActionTypeValues.Drag, StringComparison.Ordinal))
+        {
+            return action;
+        }
+
+        return action with
+        {
+            Reason = RedactReasonIfPresent(action.Reason),
+            RequestedPoint = null,
+            ResolvedScreenPoint = null,
+        };
+    }
+
+    private static string? RedactReasonIfPresent(string? reason) =>
+        string.IsNullOrWhiteSpace(reason) ? reason : SafeDragReason;
+}

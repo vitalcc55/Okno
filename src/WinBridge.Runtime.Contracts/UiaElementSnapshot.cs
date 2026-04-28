@@ -36,6 +36,8 @@ public sealed record UiaElementSnapshot
 
     public IReadOnlyList<string> Patterns { get; init; } = [];
 
+    public bool? IsReadOnly { get; init; }
+
     public string? Value { get; init; }
 
     public Bounds? BoundingRectangle { get; init; }

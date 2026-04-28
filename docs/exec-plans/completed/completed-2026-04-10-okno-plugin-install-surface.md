@@ -1,5 +1,11 @@
 # ExecPlan: Okno plugin install surface
 
+Статус: completed/superseded. Архивируется в `docs/exec-plans/completed/`,
+потому что repo-side `okno` launcher/resolver/hint work был выполнен, а
+product-facing install path теперь принадлежит `computer-use-win`. Старый
+`okno` plugin остаётся internal/dev-only surface; невыполненные внешние
+cache/restart шаги больше не должны висеть как active product workstream.
+
 ## Контекст
 
 Repo plugin `plugins/okno/` уже согласован как source of truth, но Codex для local plugins загружает установленную copy из `~/.codex/plugins/cache/.../local`, а не напрямую из repo `source.path`. Значит install surface должен уметь находить реальный checkout репозитория после cache install и fail-closed объяснять, когда repo root hint не подготовлен.

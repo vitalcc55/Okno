@@ -7,7 +7,9 @@ public static class ToolNames
     public const string ComputerUseWinClick = "click";
     public const string ComputerUseWinTypeText = "type_text";
     public const string ComputerUseWinPressKey = "press_key";
+    public const string ComputerUseWinSetValue = "set_value";
     public const string ComputerUseWinScroll = "scroll";
+    public const string ComputerUseWinPerformSecondaryAction = "perform_secondary_action";
     public const string ComputerUseWinDrag = "drag";
 
     public const string OknoHealth = "okno.health";

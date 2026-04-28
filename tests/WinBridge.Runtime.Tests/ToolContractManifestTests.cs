@@ -6,7 +6,7 @@ namespace WinBridge.Runtime.Tests;
 public sealed class ToolContractManifestTests
 {
     [Fact]
-    public void ComputerUseWinProfilePublishesVendorLikeImplementedSurface()
+    public void ComputerUseWinProfilePublishesVendorLikeImplementedSurfaceWithDrag()
     {
         ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
 
@@ -16,16 +16,24 @@ public sealed class ToolContractManifestTests
                 ToolNames.ComputerUseWinListApps,
                 ToolNames.ComputerUseWinGetAppState,
                 ToolNames.ComputerUseWinClick,
-            ],
-            profile.ImplementedNames);
-        Assert.Equal(
-            [
-                ToolNames.ComputerUseWinTypeText,
                 ToolNames.ComputerUseWinPressKey,
+                ToolNames.ComputerUseWinSetValue,
+                ToolNames.ComputerUseWinTypeText,
                 ToolNames.ComputerUseWinScroll,
+                ToolNames.ComputerUseWinPerformSecondaryAction,
                 ToolNames.ComputerUseWinDrag,
             ],
-            profile.Deferred.Select(static descriptor => descriptor.Name).ToArray());
+            profile.ImplementedNames);
+        Assert.Empty(profile.Deferred);
+    }
+
+    [Fact]
+    public void ComputerUseWinContractNotesReflectShippedSecondaryAction()
+    {
+        Assert.Contains("set_value", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.Contains("type_text", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.Contains("perform_secondary_action", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.DoesNotContain("`perform_secondary_action` и `drag` закреплены", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
     }
 
     [Fact]

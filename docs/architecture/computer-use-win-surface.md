@@ -29,6 +29,11 @@ Codex
 - отдельный репозиторий для `computer-use-win`;
 - смешение product-facing operator tools и low-level `windows.*` как одного шумного public surface.
 
+Official OpenAI docs и sample repos поддерживают именно эту границу: когда у
+продукта уже есть зрелый structured harness, его не нужно ломать ради
+built-in `computer use`. Правильнее сохранить quiet plugin/MCP surface и
+расширять его action vocabulary поверх внутреннего engine.
+
 ## Что публикуется сейчас
 
 Текущий shipped public subset для `computer-use-win`:
@@ -36,12 +41,27 @@ Codex
 - `list_apps`
 - `get_app_state`
 - `click`
+- `press_key`
+- `set_value`
+- `type_text`
+- `scroll`
+- `perform_secondary_action`
+- `drag`
 
 Это намеренно quiet operator loop:
 
 ```text
-list_apps -> get_app_state -> click -> get_app_state
+list_apps -> get_app_state -> (click | press_key) -> get_app_state
+list_apps -> get_app_state -> (click | press_key | set_value) -> get_app_state
+list_apps -> get_app_state -> click -> get_app_state -> type_text -> get_app_state
+list_apps -> get_app_state -> scroll -> get_app_state
+list_apps -> get_app_state -> perform_secondary_action -> get_app_state
+list_apps -> get_app_state -> drag -> get_app_state
 ```
+
+Именно этот loop является текущим product UX. Workflow control, scenario
+completion и demo-orchestration сигналы не должны смешиваться с public
+operator tools.
 
 Текущая discovery model после `Stage 4`:
 
@@ -57,7 +77,32 @@ list_apps -> get_app_state -> click -> get_app_state
 - explicit `hwnd` и attached fallback не минтят новый reusable `windowId`: они переиспользуют selector из current published snapshot при strict match, иначе public `session.windowId` отсутствует/null и следующий refresh должен идти через `hwnd`, attached session или свежий `list_apps`.
 - `get_app_state` не публикует pre-activation `windowId` после side-effecting activation без повторного strict proof. Если activation изменила `WindowState`, bounds, monitor metadata или другие discovery-snapshot поля, success payload и stored state оставляют `session.windowId` absent/null вместо возврата selector, который следующий `get_app_state(windowId)` сразу reject-нет.
 
-`type_text`, `press_key`, `scroll` и `drag` закреплены как следующий глобальный action wave, но пока не считаются shipped public implementation.
+Текущая action wave полностью поднята в shipped public subset: `press_key`,
+`set_value`, `type_text`, `scroll`, `perform_secondary_action` и `drag` уже
+перешли в implemented public profile после полного contract/runtime/test/docs
+proof.
+Текущий `press_key` v1 намеренно узкий: только named keys и modifier combos,
+`repeat` ограничен диапазоном `1..10`, а shortcut-базы `A-Z` / `0-9`
+диспетчатся как invariant virtual keys, а не как layout-sensitive text input.
+Текущий `set_value` v1 использует semantic set path через `ValuePattern` /
+`RangeValuePattern` и не деградирует в blind typing fallback. Текущий
+`type_text` v1 остаётся lower-confidence input path: он печатает только в
+focused writable `edit` target, который заново подтверждён через fresh UIA
+snapshot и UIA read-only semantics, не использует clipboard/paste как default
+shortcut и по умолчанию завершает action результатом `verify_needed`, а не
+optimistic `done`. Текущий `scroll` v1 предпочитает semantic `ScrollPattern`
+для `elementIndex` target, не меняет selector/session ownership и допускает
+coordinate wheel fallback только через explicit `point` + `confirm` path с
+fresh geometry proof; semantic success возвращает `done`, а wheel fallback
+остается `verify_needed`. Текущий `perform_secondary_action` v1 тоже остаётся
+semantic-only: он публикуется только для strong UIA secondary affordance
+`toggle`, требует fresh `elementIndex` proof и не деградирует в
+context-menu/right-click fallback. Текущий `drag` v1 требует separate source и
+destination proof, принимает `fromElementIndex|fromPoint` и
+`toElementIndex|toPoint`, использует один Windows-native input runtime вместо
+второго dispatch layer, требует explicit confirmation для coordinate endpoints
+и по умолчанию завершает generic path как `verify_needed`, а не optimistic
+`done`.
 
 ## Что остаётся внутренним engine surface
 
@@ -124,8 +169,12 @@ list_apps -> get_app_state -> click -> get_app_state
 - `get_app_state` не является observation-only read-only hint: approved/confirmed path может менять approval store, foreground state и attached/session state, поэтому public metadata не должна рекламировать его как pure read-only tool;
 - malformed request shapes должны отсекаться на public boundary как `invalid_request`: explicit invalid `tool-surface-profile`, nested extra fields и schema-invalid `maxNodes` не должны уходить в widened surface или поздний `observation_failed`;
 - public `click` contract должен совпадать в validator, `tools/list` schema и generated exports: допустимые `button`/`coordinateSpace`, обязательный `stateToken` и selector mode (`elementIndex` xor `point`) публикуются из того же owner-слоя, что и runtime enforcement;
+- action layer должен оставаться маленьким и semantically clear: `set_value`
+  и `perform_secondary_action` допустимы как Windows-native semantic additions,
+  но broad tool zoo, orchestration-only tools и “do anything” surface сюда не
+  входят;
 - public `computer-use-win` action payload обязан emit-ить только product-owned `failureCode` и `reason`; low-level `windows.input` evidence остаётся допустимым в audit/evidence, но не протекает наружу как несанкционированный payload wording;
-- `tool.invocation.completed` для `computer-use-win` использует safe audit payload builders: completion trail может нести `runtime_state`, `app_id`, `window_id`, `state_token_present`, `public_reason` и artifact hints, но не raw `stateToken` и не raw low-level `reason`;
+- `tool.invocation.started` и `tool.invocation.completed` для `computer-use-win` используют safe audit payload builders и redaction classes: trail может нести `runtime_state`, `app_id`, `window_id`, `state_token_present`, `public_reason` и artifact hints, но не raw `stateToken`, не raw key literal, не raw semantic value и не raw low-level `reason`;
 - public action result должен materialize-иться из явной lifecycle phase: `pre_dispatch_reject`, `pre_dispatch_after_activation`, `after_revalidation_before_dispatch`, `post_dispatch_factual_failure`, `success`; `refreshStateRecommended` выводится не из record-default, а из комбинации phase + public failure semantics: malformed pre-dispatch reject может оставаться `false`, а `state_required` / `stale_state` / `capture_reference_required` и любые structured outcomes после activation/revalidation обязаны честно требовать свежий `get_app_state`;
 - click activation failure после уже принятого `stateToken` не должен materialize-иться как `blocked_target` и не должен выводить причину из `Window == null`, `WasMinimized` / `IsForeground`, nullable resolver result или `reason`: policy block означает только intentional deny, а `ActivateWindowResult.failureKind` обязателен для всех `failed` / `ambiguous` activation payloads и должен сохранять source-owned cause (`missing_target`, `identity_changed`, `identity_proof_unavailable`, `restore_failed_still_minimized`, `foreground_not_confirmed`), которая маппится в retriable activation/state failures (`missing_target`, `stale_state`, `identity_proof_unavailable`, `target_minimized`, `target_not_foreground`) с phase `AfterActivationBeforeDispatch`;
 - transient inability to prove stable process identity не должна materialize-иться как policy block: public `get_app_state` обязан различать `blocked_target` и retriable `identity_proof_unavailable`, чтобы approval/block semantics не подменяли technical proof failure;
@@ -146,4 +195,5 @@ list_apps -> get_app_state -> click -> get_app_state
 - не публиковать next-wave actions как implemented до реального runtime proof;
 - не строить новый adapter-runtime поверх `Okno`, если тот же server/profile может дать нужный public surface;
 - не разводить отдельный repo ради продукта, который должен оставаться частью этого репозитория.
+- не добавлять workflow-control или demo-only tools в public action surface;
 - не возвращать public install path к repo-root hint, env fallback или `.tmp`-driven launch model.

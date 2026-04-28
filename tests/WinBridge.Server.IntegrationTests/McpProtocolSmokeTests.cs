@@ -239,8 +239,14 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal(
                 [
                     ToolNames.ComputerUseWinClick,
+                    ToolNames.ComputerUseWinDrag,
                     ToolNames.ComputerUseWinGetAppState,
                     ToolNames.ComputerUseWinListApps,
+                    ToolNames.ComputerUseWinPerformSecondaryAction,
+                    ToolNames.ComputerUseWinPressKey,
+                    ToolNames.ComputerUseWinScroll,
+                    ToolNames.ComputerUseWinSetValue,
+                    ToolNames.ComputerUseWinTypeText,
                 ],
                 toolNames);
 
@@ -249,6 +255,36 @@ public sealed class McpProtocolSmokeTests
                 .GetProperty("tools")
                 .EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinClick);
+            JsonElement pressKeyDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinPressKey);
+            JsonElement dragDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinDrag);
+            JsonElement secondaryActionDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinPerformSecondaryAction);
+            JsonElement scrollDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinScroll);
+            JsonElement setValueDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinSetValue);
+            JsonElement typeTextDescriptor = toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinTypeText);
             JsonElement listAppsDescriptor = toolsResponse.RootElement
                 .GetProperty("result")
                 .GetProperty("tools")
@@ -260,9 +296,32 @@ public sealed class McpProtocolSmokeTests
                 .EnumerateArray()
                 .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinGetAppState);
             JsonElement clickProperties = clickDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            JsonElement pressKeyProperties = pressKeyDescriptor.GetProperty("inputSchema").GetProperty("properties");
+            JsonElement dragSchema = dragDescriptor.GetProperty("inputSchema");
+            JsonElement dragProperties = dragSchema.GetProperty("properties");
+            JsonElement secondaryActionSchema = secondaryActionDescriptor.GetProperty("inputSchema");
+            JsonElement secondaryActionProperties = secondaryActionSchema.GetProperty("properties");
+            JsonElement scrollSchema = scrollDescriptor.GetProperty("inputSchema");
+            JsonElement scrollProperties = scrollSchema.GetProperty("properties");
+            JsonElement setValueSchema = setValueDescriptor.GetProperty("inputSchema");
+            JsonElement setValueProperties = setValueSchema.GetProperty("properties");
+            JsonElement typeTextSchema = typeTextDescriptor.GetProperty("inputSchema");
+            JsonElement typeTextProperties = typeTextSchema.GetProperty("properties");
             JsonElement getAppStateSchema = getAppStateDescriptor.GetProperty("inputSchema");
             JsonElement getAppStateProperties = getAppStateSchema.GetProperty("properties");
             AssertSchemaRequiredContains(clickDescriptor.GetProperty("inputSchema"), "stateToken");
+            AssertSchemaRequiredContains(dragSchema, "stateToken");
+            AssertSchemaRequiredContains(pressKeyDescriptor.GetProperty("inputSchema"), "stateToken");
+            AssertSchemaRequiredContains(pressKeyDescriptor.GetProperty("inputSchema"), "key");
+            AssertSchemaRequiredContains(secondaryActionSchema, "stateToken");
+            AssertSchemaRequiredContains(secondaryActionSchema, "elementIndex");
+            AssertSchemaRequiredContains(scrollSchema, "stateToken");
+            AssertSchemaRequiredContains(scrollSchema, "direction");
+            AssertSchemaRequiredContains(setValueSchema, "stateToken");
+            AssertSchemaRequiredContains(setValueSchema, "elementIndex");
+            AssertSchemaRequiredContains(setValueSchema, "valueKind");
+            AssertSchemaRequiredContains(typeTextSchema, "stateToken");
+            AssertSchemaRequiredContains(typeTextSchema, "text");
 
             JsonElement getAppStateAnnotations = getAppStateDescriptor.GetProperty("annotations");
             JsonElement listAppsAnnotations = listAppsDescriptor.GetProperty("annotations");
@@ -294,6 +353,37 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal(
                 [InputButtonValues.Left, InputButtonValues.Right],
                 clickProperties.GetProperty("button").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+            Assert.Equal("string", pressKeyProperties.GetProperty("key").GetProperty("type").GetString());
+            Assert.Equal(1, pressKeyProperties.GetProperty("repeat").GetProperty("minimum").GetInt32());
+            Assert.Equal(InputActionScalarConstraints.MaximumKeypressRepeat, pressKeyProperties.GetProperty("repeat").GetProperty("maximum").GetInt32());
+            Assert.Equal(1, dragProperties.GetProperty("fromElementIndex").GetProperty("minimum").GetInt32());
+            Assert.Equal(1, dragProperties.GetProperty("toElementIndex").GetProperty("minimum").GetInt32());
+            Assert.Equal(
+                [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+                dragProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+            JsonElement[] dragSelectorSets = [.. dragSchema.GetProperty("allOf").EnumerateArray()];
+            Assert.Equal(2, dragSelectorSets.Length);
+            Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromElementIndex"));
+            Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromPoint"));
+            Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toElementIndex"));
+            Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toPoint"));
+            Assert.Equal(1, secondaryActionProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+            Assert.False(secondaryActionProperties.TryGetProperty("point", out _));
+            Assert.Equal(1, scrollProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+            Assert.Equal(
+                ["up", "down", "left", "right"],
+                scrollProperties.GetProperty("direction").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+            Assert.Equal(1, scrollProperties.GetProperty("pages").GetProperty("minimum").GetInt32());
+            Assert.Equal(1, setValueProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+            Assert.Equal(
+                ["text", "number"],
+                setValueProperties.GetProperty("valueKind").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+            Assert.Equal("string", setValueProperties.GetProperty("textValue").GetProperty("type").GetString());
+            Assert.Equal("number", setValueProperties.GetProperty("numberValue").GetProperty("type").GetString());
+            Assert.Equal(1, typeTextProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+            Assert.Equal("string", typeTextProperties.GetProperty("text").GetProperty("type").GetString());
+            Assert.False(typeTextProperties.TryGetProperty("key", out _));
+            Assert.False(typeTextProperties.TryGetProperty("valueKind", out _));
 
             JsonElement[] selectorModes = [.. clickDescriptor.GetProperty("inputSchema").GetProperty("oneOf").EnumerateArray()];
             Assert.Equal(2, selectorModes.Length);
@@ -430,6 +520,678 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
             Assert.Equal(helperHwnd, clickPayload.GetProperty("targetHwnd").GetInt64());
             Assert.Equal(elementIndex, clickPayload.GetProperty("elementIndex").GetInt32());
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinPressKeyMovesKeyboardFocusThroughApprovedAppState()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper PressKey {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            string focusedNameBefore = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean())
+                .GetProperty("name")
+                .GetString()!;
+            Assert.Equal("Run semantic smoke", focusedNameBefore);
+
+            using JsonDocument pressKeyResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinPressKey,
+                new
+                {
+                    stateToken,
+                    key = "tab",
+                });
+
+            JsonElement pressKeyPayload = pressKeyResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, pressKeyPayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, pressKeyPayload.GetProperty("targetHwnd").GetInt64());
+
+            using JsonDocument secondStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+            string focusedNameAfter = secondStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean())
+                .GetProperty("name")
+                .GetString()!;
+            Assert.NotEqual(focusedNameBefore, focusedNameAfter);
+            Assert.Equal("Transient wait target", focusedNameAfter);
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinSetValueUpdatesSemanticMirrorThroughApprovedAppState()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper SetValue {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement targetElement = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
+            int elementIndex = targetElement.GetProperty("index").GetInt32();
+
+            using JsonDocument setValueResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinSetValue,
+                new
+                {
+                    stateToken,
+                    elementIndex,
+                    valueKind = "text",
+                    textValue = "stage four semantic value",
+                });
+
+            JsonElement setValuePayload = setValueResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Done, setValuePayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, setValuePayload.GetProperty("targetHwnd").GetInt64());
+
+            using JsonDocument secondStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+            Assert.Contains(
+                secondStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+                element => string.Equals(element.GetProperty("name").GetString(), "Query mirror: stage four semantic value", StringComparison.Ordinal));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinSetValueUpdatesRangeMirrorThroughApprovedAppState()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper SetValue Range {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement targetElement = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("name").GetString(), "Smoke range input", StringComparison.Ordinal)
+                    && string.Equals(element.GetProperty("controlType").GetString(), "edit", StringComparison.Ordinal));
+            int elementIndex = targetElement.GetProperty("index").GetInt32();
+
+            using JsonDocument setValueResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinSetValue,
+                new
+                {
+                    stateToken,
+                    elementIndex,
+                    valueKind = "number",
+                    numberValue = 9,
+                });
+
+            JsonElement setValuePayload = setValueResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Done, setValuePayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, setValuePayload.GetProperty("targetHwnd").GetInt64());
+
+            using JsonDocument secondStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+            Assert.Contains(
+                secondStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+                element => string.Equals(element.GetProperty("name").GetString(), "Range mirror: 9", StringComparison.Ordinal));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinTypeTextUpdatesQueryMirrorAfterExplicitFocusProof()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper TypeText {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement queryInputElement = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
+            int queryInputIndex = queryInputElement.GetProperty("index").GetInt32();
+
+            using JsonDocument clickResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinClick,
+                new
+                {
+                    stateToken = firstStateToken,
+                    elementIndex = queryInputIndex,
+                    confirm = false,
+                });
+
+            JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
+
+            using JsonDocument focusedStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement focusedStatePayload = focusedStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, focusedStatePayload.GetProperty("status").GetString());
+            string focusedStateToken = focusedStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement focusedElement = focusedStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean());
+            Assert.Equal("Smoke query input", focusedElement.GetProperty("name").GetString());
+
+            using JsonDocument typeTextResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinTypeText,
+                new
+                {
+                    stateToken = focusedStateToken,
+                    text = "stage five typed text",
+                });
+
+            JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+
+            using JsonDocument finalStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
+            Assert.Contains(
+                finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+                element => string.Equals(element.GetProperty("name").GetString(), "Query mirror: stage five typed text", StringComparison.Ordinal));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinScrollUpdatesScrollMirrorThroughApprovedAppState()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Scroll {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            string initialMirror = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element => element.GetProperty("name").GetString()!.StartsWith("Scroll mirror:", StringComparison.Ordinal))
+                .GetProperty("name")
+                .GetString()!;
+            JsonElement scrollTarget = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("name").GetString(), "Smoke scroll list", StringComparison.Ordinal)
+                    && string.Equals(element.GetProperty("controlType").GetString(), "list", StringComparison.Ordinal));
+            int elementIndex = scrollTarget.GetProperty("index").GetInt32();
+
+            using JsonDocument scrollResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinScroll,
+                new
+                {
+                    stateToken,
+                    elementIndex,
+                    direction = "down",
+                    pages = 1,
+                });
+
+            JsonElement scrollPayload = scrollResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Done, scrollPayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, scrollPayload.GetProperty("targetHwnd").GetInt64());
+
+            using JsonDocument secondStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+            string updatedMirror = secondStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element => element.GetProperty("name").GetString()!.StartsWith("Scroll mirror:", StringComparison.Ordinal))
+                .GetProperty("name")
+                .GetString()!;
+            Assert.NotEqual(initialMirror, updatedMirror);
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinPerformSecondaryActionTogglesCheckboxStateThroughApprovedAppState()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Secondary {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement toggleTarget = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("controlType").GetString(), "check_box", StringComparison.Ordinal)
+                    && element.GetProperty("name").GetString()!.StartsWith("Remember semantic selection:", StringComparison.Ordinal));
+            string initialName = toggleTarget.GetProperty("name").GetString()!;
+            int elementIndex = toggleTarget.GetProperty("index").GetInt32();
+
+            using JsonDocument secondaryActionResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinPerformSecondaryAction,
+                new
+                {
+                    stateToken,
+                    elementIndex,
+                    confirm = true,
+                });
+
+            JsonElement secondaryActionPayload = secondaryActionResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Done, secondaryActionPayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, secondaryActionPayload.GetProperty("targetHwnd").GetInt64());
+
+            using JsonDocument secondStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+            string updatedName = secondStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("controlType").GetString(), "check_box", StringComparison.Ordinal)
+                    && element.GetProperty("name").GetString()!.StartsWith("Remember semantic selection:", StringComparison.Ordinal))
+                .GetProperty("name")
+                .GetString()!;
+            Assert.NotEqual(initialName, updatedName);
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinDragUpdatesDragMirrorThroughApprovedAppState()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Drag {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement sourceTarget = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element => string.Equals(element.GetProperty("name").GetString(), "Drag source token", StringComparison.Ordinal));
+            JsonElement destinationTarget = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag destination target:", StringComparison.Ordinal));
+            string initialMirror = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag mirror:", StringComparison.Ordinal))
+                .GetProperty("name")
+                .GetString()!;
+            Assert.Contains(
+                ToolNames.ComputerUseWinDrag,
+                sourceTarget.GetProperty("actions").EnumerateArray().Select(item => item.GetString()));
+            Assert.Contains(
+                ToolNames.ComputerUseWinDrag,
+                destinationTarget.GetProperty("actions").EnumerateArray().Select(item => item.GetString()));
+
+            using JsonDocument dragResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinDrag,
+                new
+                {
+                    stateToken,
+                    fromElementIndex = sourceTarget.GetProperty("index").GetInt32(),
+                    toElementIndex = destinationTarget.GetProperty("index").GetInt32(),
+                    confirm = true,
+                });
+
+            JsonElement dragPayload = dragResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, dragPayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, dragPayload.GetProperty("targetHwnd").GetInt64());
+            Assert.True(dragPayload.GetProperty("refreshStateRecommended").GetBoolean());
+
+            using JsonDocument secondStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+            string updatedMirror = secondStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag mirror:", StringComparison.Ordinal))
+                .GetProperty("name")
+                .GetString()!;
+            Assert.NotEqual(initialMirror, updatedMirror);
+            Assert.Equal("Drag mirror: dropped", updatedMirror);
         }
         finally
         {
@@ -1539,7 +2301,7 @@ public sealed class McpProtocolSmokeTests
             JsonElement uiaRoot = uiaSnapshotStructured.GetProperty("root");
             JsonElement smokeButton = AssertUiaNodeExists(uiaRoot, "button", "Run semantic smoke");
             Assert.Contains("invoke", smokeButton.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()));
-            JsonElement smokeCheckbox = AssertUiaNodeExists(uiaRoot, "check_box", "Remember semantic selection");
+            JsonElement smokeCheckbox = AssertUiaNodeExists(uiaRoot, "check_box", "Remember semantic selection: on");
             Assert.Contains("toggle", smokeCheckbox.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()));
             JsonElement smokeEdit = AssertUiaNodeExists(uiaRoot, "edit", "Smoke query input");
             string[] editPatterns = smokeEdit.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()!).ToArray();
@@ -1941,7 +2703,7 @@ public sealed class McpProtocolSmokeTests
             if (!result.GetProperty("isError").GetBoolean()
                 && structured.TryGetProperty("root", out JsonElement root)
                 && TryFindUiaNode(root, "button", "Run semantic smoke", out _)
-                && TryFindUiaNode(root, "check_box", "Remember semantic selection", out _)
+                && TryFindUiaNode(root, "check_box", "Remember semantic selection: on", out _)
                 && TryFindUiaNode(root, "edit", "Smoke query input", out _)
                 && TryFindUiaNode(root, "tree_item", "Inbox", out _))
             {

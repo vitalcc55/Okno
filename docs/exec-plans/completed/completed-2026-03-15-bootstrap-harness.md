@@ -1,5 +1,10 @@
 # ExecPlan: Okno Harness Bootstrap
 
+Статус: completed. Архивируется в `docs/exec-plans/completed/`, потому что
+bootstrap scaffold, runtime skeleton, control-plane scripts, observe/capture
+slice, display/activation hardening and generated docs уже закрыты и больше не
+являются active workstream.
+
 ## Контекст
 
 Репозиторий пока содержит только product-spec и roadmap. Цель bootstrap — превратить его в legible, controllable, testable Windows-native `.NET` MCP runtime с reproducible scripts, docs и observability baseline.

@@ -128,6 +128,7 @@ internal static class UiaSnapshotTreeBuilder
                 IsOffscreen = data.IsOffscreen,
                 HasKeyboardFocus = data.HasKeyboardFocus,
                 Patterns = data.Patterns,
+                IsReadOnly = data.IsReadOnly,
                 Value = null,
                 BoundingRectangle = data.BoundingRectangle,
                 NativeWindowHandle = data.NativeWindowHandle,

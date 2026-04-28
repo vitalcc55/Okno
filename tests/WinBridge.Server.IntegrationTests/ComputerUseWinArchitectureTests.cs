@@ -57,6 +57,41 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void RiskPolicyRequiresConfirmationForDangerousPressKeyCombos()
+    {
+        Assert.True(ComputerUseWinTargetPolicy.RequiresRiskConfirmation(null, ToolNames.ComputerUseWinPressKey, "alt+f4"));
+        Assert.True(ComputerUseWinTargetPolicy.RequiresRiskConfirmation(null, ToolNames.ComputerUseWinPressKey, "shift+ctrl+w"));
+        Assert.False(ComputerUseWinTargetPolicy.RequiresRiskConfirmation(null, ToolNames.ComputerUseWinPressKey, "tab"));
+    }
+
+    [Fact]
+    public void PressKeyValidatorRejectsPrintableKeyWithoutModifier()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinPressKeyRequest(
+                StateToken: "token-1",
+                Key: "s",
+                Repeat: 1,
+                Confirm: false));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+    }
+
+    [Fact]
+    public void PressKeyValidatorRejectsRepeatBeyondBoundedMaximum()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinPressKeyRequest(
+                StateToken: "token-1",
+                Key: "ctrl+s",
+                Repeat: InputActionScalarConstraints.MaximumKeypressRepeat + 1,
+                Confirm: true));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("repeat", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void PlaybookProviderMatchesBareRuntimeProcessName()
     {
         string root = CreateTempDirectory();
@@ -134,25 +169,217 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
-    public void AffordanceResolverEmitsOnlyImplementedActionsForComputerUseProfile()
+    public void AffordanceResolverPublishesTypeTextOnlyForFocusedEditableTargets()
     {
-        UiaElementSnapshot node = new()
+        UiaElementSnapshot unfocusedNode = new()
         {
             ElementId = "path:0",
             ControlType = "edit",
             BoundingRectangle = new Bounds(10, 20, 110, 40),
             IsEnabled = true,
             IsOffscreen = false,
+            IsReadOnly = false,
+            Patterns = ["value"],
+        };
+        UiaElementSnapshot focusedNode = unfocusedNode with
+        {
+            HasKeyboardFocus = true,
         };
 
-        IReadOnlyList<string> actions = ComputerUseWinAffordanceResolver.Resolve(node);
+        IReadOnlyList<string> unfocusedActions = ComputerUseWinAffordanceResolver.Resolve(unfocusedNode);
+        IReadOnlyList<string> focusedActions = ComputerUseWinAffordanceResolver.Resolve(focusedNode);
+        IReadOnlyList<string> documentActions = ComputerUseWinAffordanceResolver.Resolve(
+            new UiaElementSnapshot
+            {
+                ElementId = "path:document",
+                ControlType = "document",
+                BoundingRectangle = new Bounds(20, 30, 180, 120),
+                IsEnabled = true,
+                IsOffscreen = false,
+                HasKeyboardFocus = true,
+            });
+        IReadOnlyList<string> missingWritableProofActions = ComputerUseWinAffordanceResolver.Resolve(
+            focusedNode with
+            {
+                IsReadOnly = null,
+            });
+        IReadOnlyList<string> readOnlyActions = ComputerUseWinAffordanceResolver.Resolve(
+            focusedNode with
+            {
+                IsReadOnly = true,
+            });
 
-        Assert.Contains(ToolNames.ComputerUseWinClick, actions);
-        Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, actions);
+        Assert.Contains(ToolNames.ComputerUseWinClick, unfocusedActions);
+        Assert.Contains(ToolNames.ComputerUseWinSetValue, unfocusedActions);
+        Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, unfocusedActions);
+        Assert.Contains(ToolNames.ComputerUseWinTypeText, focusedActions);
+        Assert.Contains(
+            ToolNames.ComputerUseWinScroll,
+            ComputerUseWinAffordanceResolver.Resolve(
+                new UiaElementSnapshot
+                {
+                    ElementId = "path:scroll",
+                    ControlType = "list",
+                    BoundingRectangle = new Bounds(12, 22, 140, 120),
+                    IsEnabled = true,
+                    IsOffscreen = false,
+                    Patterns = ["scroll"],
+                }));
+        Assert.Contains(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            ComputerUseWinAffordanceResolver.Resolve(
+                new UiaElementSnapshot
+                {
+                    ElementId = "path:toggle",
+                    ControlType = "check_box",
+                    BoundingRectangle = new Bounds(24, 104, 244, 128),
+                    IsEnabled = true,
+                    IsOffscreen = false,
+                    Patterns = ["toggle"],
+                }));
+        Assert.DoesNotContain(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            ComputerUseWinAffordanceResolver.Resolve(
+                new UiaElementSnapshot
+                {
+                    ElementId = "path:leaf-like",
+                    ControlType = "tree_item",
+                    BoundingRectangle = new Bounds(24, 252, 120, 276),
+                    IsEnabled = true,
+                    IsOffscreen = false,
+                    Patterns = ["expand_collapse"],
+                }));
+        Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, documentActions);
+        Assert.DoesNotContain(ToolNames.ComputerUseWinSetValue, missingWritableProofActions);
+        Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, missingWritableProofActions);
+        Assert.DoesNotContain(ToolNames.ComputerUseWinSetValue, readOnlyActions);
+        Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, readOnlyActions);
     }
 
     [Fact]
-    public void ComputerUseWinProfilePublishesOnlyThreeImplementedTools()
+    public void SetValueValidatorRejectsMissingElementIndex()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinSetValueRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                ValueKind: "text",
+                TextValue: "value",
+                NumberValue: null,
+                Confirm: false));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("elementIndex", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SetValueValidatorRejectsMismatchedValueKindPayload()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinSetValueRequest(
+                StateToken: "token-1",
+                ElementIndex: 1,
+                ValueKind: "number",
+                TextValue: "value",
+                NumberValue: null,
+                Confirm: false));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("valueKind", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TypeTextValidatorAllowsWhitespaceTextWithoutElementIndex()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Text: "   ",
+                Confirm: false));
+
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public void TypeTextValidatorRejectsEmptyText()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: 1,
+                Text: string.Empty,
+                Confirm: false));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("text", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ScrollValidatorRejectsSelectorlessRequest()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinScrollRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Point: null,
+                CoordinateSpace: null,
+                Direction: "down",
+                Pages: 1,
+                Confirm: false));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("elementIndex", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ScrollValidatorRejectsConflictingElementAndPointSelectors()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinScrollRequest(
+                StateToken: "token-1",
+                ElementIndex: 1,
+                Point: new InputPoint(10, 20),
+                CoordinateSpace: InputCoordinateSpaceValues.Screen,
+                Direction: "down",
+                Pages: 1,
+                Confirm: true));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("point", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ScrollValidatorRejectsPagesAboveMaximum()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinScrollRequest(
+                StateToken: "token-1",
+                ElementIndex: 1,
+                Direction: "down",
+                Pages: 11,
+                Confirm: false));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("pages", failure, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("10", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PerformSecondaryActionValidatorRejectsMissingElementIndex()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinPerformSecondaryActionRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Confirm: false));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("elementIndex", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ComputerUseWinProfilePublishesImplementedDragAlongsideShippedOperatorTools()
     {
         var tools = ComputerUseWinToolRegistration.Create(static () => null!);
         ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
@@ -175,8 +402,27 @@ public sealed class ComputerUseWinArchitectureTests
             profile.ImplementedNames.OrderBy(static item => item, StringComparer.Ordinal).ToArray(),
             publishedToolNames);
         Assert.Equal(
-            ["CreateClickTool", "CreateGetAppStateTool", "CreateListAppsTool"],
+            ["CreateClickTool", "CreateDragTool", "CreateGetAppStateTool", "CreateListAppsTool", "CreatePerformSecondaryActionTool", "CreatePressKeyTool", "CreateScrollTool", "CreateSetValueTool", "CreateTypeTextTool"],
             factoryMethodNames);
+    }
+
+    [Fact]
+    public void ComputerUseWinDeferredWaveIsEmptyAfterDragPromotion()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
+
+        string[] deferredNames = profile.Deferred
+            .Select(static descriptor => descriptor.Name)
+            .OrderBy(static item => item, StringComparer.Ordinal)
+            .ToArray();
+        string[] publishedToolNames = tools
+            .Select(tool => tool.ProtocolTool.Name)
+            .OrderBy(static item => item, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(deferredNames);
+        Assert.Contains("drag", publishedToolNames);
     }
 
     [Fact]
@@ -211,7 +457,7 @@ public sealed class ComputerUseWinArchitectureTests
             .ToArray();
 
         Assert.Equal(
-            ["Click", "GetAppState", "ListApps"],
+            ["Click", "Drag", "GetAppState", "ListApps", "PerformSecondaryAction", "PressKey", "Scroll", "SetValue", "TypeText"],
             callableMethodNames);
     }
 
@@ -227,6 +473,7 @@ public sealed class ComputerUseWinArchitectureTests
         services.AddSingleton<IWindowActivationService>(new FakeWindowActivationService(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true)));
         services.AddSingleton<ICaptureService>(new NoopCaptureService());
         services.AddSingleton<IUiAutomationService>(new FakeUiAutomationService());
+        services.AddSingleton<IUiAutomationSetValueService>(new FakeUiAutomationSetValueService());
         services.AddSingleton<IInputService>(new FakeInputService());
         services.AddSingleton(new ComputerUseWinOptions(
             PluginRoot: temp.Root,
@@ -244,11 +491,44 @@ public sealed class ComputerUseWinArchitectureTests
             provider.GetRequiredService<IWindowActivationService>(),
             new ComputerUseWinClickTargetResolver(provider.GetRequiredService<IUiAutomationService>()),
             provider.GetRequiredService<IInputService>()));
+        services.AddSingleton(static provider => new ComputerUseWinDragExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            new ComputerUseWinDragTargetResolver(provider.GetRequiredService<IUiAutomationService>()),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton(static provider => new ComputerUseWinPressKeyExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton(static provider => new ComputerUseWinSetValueExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationSetValueService>()));
+        services.AddSingleton(static provider => new ComputerUseWinTypeTextExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton<IUiAutomationScrollService>(new FakeUiAutomationScrollService());
+        services.AddSingleton(static provider => new ComputerUseWinScrollExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationScrollService>(),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton<IUiAutomationSecondaryActionService>(new FakeUiAutomationSecondaryActionService());
+        services.AddSingleton(static provider => new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationSecondaryActionService>()));
         services.AddSingleton<ComputerUseWinStateStore>();
         services.AddSingleton<ComputerUseWinStoredStateResolver>();
+        services.AddSingleton<ComputerUseWinActionRequestExecutor>();
         services.AddSingleton<ComputerUseWinListAppsHandler>();
         services.AddSingleton<ComputerUseWinGetAppStateHandler>();
         services.AddSingleton<ComputerUseWinClickHandler>();
+        services.AddSingleton<ComputerUseWinDragHandler>();
+        services.AddSingleton<ComputerUseWinPerformSecondaryActionHandler>();
+        services.AddSingleton<ComputerUseWinPressKeyHandler>();
+        services.AddSingleton<ComputerUseWinScrollHandler>();
+        services.AddSingleton<ComputerUseWinSetValueHandler>();
+        services.AddSingleton<ComputerUseWinTypeTextHandler>();
         services.AddSingleton<ComputerUseWinTools>();
 
         using ServiceProvider provider = services.BuildServiceProvider();
@@ -256,6 +536,13 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.IsType<ComputerUseWinListAppsHandler>(provider.GetRequiredService<ComputerUseWinListAppsHandler>());
         Assert.IsType<ComputerUseWinGetAppStateHandler>(provider.GetRequiredService<ComputerUseWinGetAppStateHandler>());
         Assert.IsType<ComputerUseWinClickHandler>(provider.GetRequiredService<ComputerUseWinClickHandler>());
+        Assert.IsType<ComputerUseWinDragHandler>(provider.GetRequiredService<ComputerUseWinDragHandler>());
+        Assert.IsType<ComputerUseWinPerformSecondaryActionHandler>(provider.GetRequiredService<ComputerUseWinPerformSecondaryActionHandler>());
+        Assert.IsType<ComputerUseWinPressKeyHandler>(provider.GetRequiredService<ComputerUseWinPressKeyHandler>());
+        Assert.IsType<ComputerUseWinScrollHandler>(provider.GetRequiredService<ComputerUseWinScrollHandler>());
+        Assert.IsType<ComputerUseWinSetValueHandler>(provider.GetRequiredService<ComputerUseWinSetValueHandler>());
+        Assert.IsType<ComputerUseWinTypeTextHandler>(provider.GetRequiredService<ComputerUseWinTypeTextHandler>());
+        Assert.IsType<ComputerUseWinActionRequestExecutor>(provider.GetRequiredService<ComputerUseWinActionRequestExecutor>());
         Assert.IsType<ComputerUseWinExecutionTargetCatalog>(provider.GetRequiredService<ComputerUseWinExecutionTargetCatalog>());
         Assert.IsType<ComputerUseWinTools>(provider.GetRequiredService<ComputerUseWinTools>());
     }
@@ -373,6 +660,56 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ToolRequestBinderRejectsNestedAdditionalPropertiesForComputerUseScrollPoint()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true},"direction":"down","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["direction"] = document.RootElement.GetProperty("direction").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinScrollRequest(),
+            out ComputerUseWinScrollRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinScrollRequest(), request);
+        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("extra", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsOutOfRangePagesForComputerUseScroll()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"direction":"down","pages":11}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
+            ["direction"] = document.RootElement.GetProperty("direction").Clone(),
+            ["pages"] = document.RootElement.GetProperty("pages").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinScrollRequest(),
+            out ComputerUseWinScrollRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinScrollRequest(), request);
+        Assert.Contains("pages", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("10", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ToolRequestBinderRejectsUnsupportedCoordinateSpaceForComputerUseClick()
     {
         using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"bogus","confirm":true}""");
@@ -417,6 +754,56 @@ public sealed class ComputerUseWinArchitectureTests
 
         Assert.False(success);
         Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsWhitespaceCoordinateSpaceForComputerUseScrollPoint()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"   ","direction":"down","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
+            ["direction"] = document.RootElement.GetProperty("direction").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinScrollRequest(),
+            out ComputerUseWinScrollRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinScrollRequest(), request);
+        Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsWhitespaceCoordinateSpaceForComputerUseDragPointPath()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","fromPoint":{"x":10,"y":20},"toPoint":{"x":30,"y":40},"coordinateSpace":"   ","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["fromPoint"] = document.RootElement.GetProperty("fromPoint").Clone(),
+            ["toPoint"] = document.RootElement.GetProperty("toPoint").Clone(),
+            ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinDragRequest(),
+            out ComputerUseWinDragRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinDragRequest(), request);
         Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -732,6 +1119,93 @@ public sealed class ComputerUseWinArchitectureTests
         JsonElement inputSchema = clickTool.ProtocolTool.InputSchema;
 
         Assert.Equal(@".*\S.*", inputSchema.GetProperty("properties").GetProperty("stateToken").GetProperty("pattern").GetString());
+    }
+
+    [Fact]
+    public void ComputerUseWinScrollToolSchemaBoundsPagesAndRequiresNonNullSelectorBranches()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var scrollTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinScroll, StringComparison.Ordinal));
+        JsonElement inputSchema = scrollTool.ProtocolTool.InputSchema;
+        JsonElement properties = inputSchema.GetProperty("properties");
+
+        Assert.Equal(10, properties.GetProperty("pages").GetProperty("maximum").GetInt32());
+
+        JsonElement[] selectorModes = [.. inputSchema.GetProperty("oneOf").EnumerateArray()];
+        JsonElement elementBranch = selectorModes.Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
+        JsonElement pointBranch = selectorModes.Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
+
+        Assert.Equal("integer", elementBranch.GetProperty("properties").GetProperty("elementIndex").GetProperty("type").GetString());
+        Assert.Equal("object", pointBranch.GetProperty("properties").GetProperty("point").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void ComputerUseWinDragToolSchemaRequiresStateTokenAndSeparateSourceDestinationModes()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var dragTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinDrag, StringComparison.Ordinal));
+        JsonElement inputSchema = dragTool.ProtocolTool.InputSchema;
+        JsonElement properties = inputSchema.GetProperty("properties");
+
+        string[] required = inputSchema.GetProperty("required").EnumerateArray()
+            .Select(item => item.GetString())
+            .Where(static item => item is not null)
+            .Cast<string>()
+            .ToArray();
+
+        Assert.Equal(["stateToken"], required);
+        Assert.True(inputSchema.TryGetProperty("allOf", out JsonElement allOf));
+        JsonElement[] selectorModes = [.. allOf.EnumerateArray()];
+        Assert.Equal(2, selectorModes.Length);
+        Assert.All(
+            selectorModes,
+            mode => Assert.True(mode.TryGetProperty("oneOf", out _)));
+
+        JsonElement sourceBranch = selectorModes[0].GetProperty("oneOf").EnumerateArray()
+            .Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromElementIndex"));
+        JsonElement sourcePointBranch = selectorModes[0].GetProperty("oneOf").EnumerateArray()
+            .Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromPoint"));
+        JsonElement destinationBranch = selectorModes[1].GetProperty("oneOf").EnumerateArray()
+            .Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toElementIndex"));
+        JsonElement destinationPointBranch = selectorModes[1].GetProperty("oneOf").EnumerateArray()
+            .Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toPoint"));
+
+        Assert.Equal("integer", sourceBranch.GetProperty("properties").GetProperty("fromElementIndex").GetProperty("type").GetString());
+        Assert.Equal("object", sourcePointBranch.GetProperty("properties").GetProperty("fromPoint").GetProperty("type").GetString());
+        Assert.Equal("integer", destinationBranch.GetProperty("properties").GetProperty("toElementIndex").GetProperty("type").GetString());
+        Assert.Equal("object", destinationPointBranch.GetProperty("properties").GetProperty("toPoint").GetProperty("type").GetString());
+        Assert.Equal(@".*\S.*", properties.GetProperty("stateToken").GetProperty("pattern").GetString());
+    }
+
+    [Fact]
+    public void ComputerUseWinSecondaryActionToolSchemaRequiresStateTokenAndElementIndex()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var secondaryActionTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinPerformSecondaryAction, StringComparison.Ordinal));
+        JsonElement inputSchema = secondaryActionTool.ProtocolTool.InputSchema;
+        JsonElement properties = inputSchema.GetProperty("properties");
+
+        string[] required = inputSchema.GetProperty("required").EnumerateArray()
+            .Select(item => item.GetString())
+            .Where(static item => item is not null)
+            .Cast<string>()
+            .ToArray();
+
+        Assert.Equal(["stateToken", "elementIndex"], required);
+        Assert.Equal(1, properties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.False(properties.TryGetProperty("point", out _));
+    }
+
+    [Fact]
+    public void SecondaryActionKindDerivationAcceptsPrePatternAndResolvedPatternDispatchPaths()
+    {
+        Assert.Equal(
+            UiaSecondaryActionKindValues.Toggle,
+            ComputerUseWinPerformSecondaryActionHandler.ResolveSemanticActionKind("uia_toggle"));
+        Assert.Equal(
+            UiaSecondaryActionKindValues.Toggle,
+            ComputerUseWinPerformSecondaryActionHandler.ResolveSemanticActionKind("uia_toggle_pattern"));
+        Assert.Null(ComputerUseWinPerformSecondaryActionHandler.ResolveSemanticActionKind(null));
     }
 
     [Fact]

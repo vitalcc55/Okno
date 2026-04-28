@@ -79,6 +79,46 @@ internal sealed class InputResultMaterializer
             return "cursor_move_committed_click_dispatch_clean_failure";
         }
 
+        if (string.Equals(failureStage, InputFailureStageValues.TextDispatchCommittedFailure, StringComparison.Ordinal))
+        {
+            return "text_dispatch_committed_before_failure";
+        }
+
+        if (string.Equals(failureStage, InputFailureStageValues.KeypressDispatchPartialCompensated, StringComparison.Ordinal))
+        {
+            return "keyboard_dispatch_partial_compensated";
+        }
+
+        if (string.Equals(failureStage, InputFailureStageValues.KeypressDispatchPartialUncompensated, StringComparison.Ordinal))
+        {
+            return "keyboard_dispatch_partial_uncompensated";
+        }
+
+        if (string.Equals(failureStage, InputFailureStageValues.KeypressDispatchCommittedFailure, StringComparison.Ordinal))
+        {
+            return "keyboard_dispatch_committed_before_failure";
+        }
+
+        if (string.Equals(failureStage, InputFailureStageValues.DragDispatchNotStartedAfterMove, StringComparison.Ordinal))
+        {
+            return "cursor_move_committed_drag_dispatch_not_started";
+        }
+
+        if (string.Equals(failureStage, InputFailureStageValues.DragDispatchPartialCompensated, StringComparison.Ordinal))
+        {
+            return "drag_dispatch_partial_compensated";
+        }
+
+        if (string.Equals(failureStage, InputFailureStageValues.DragDispatchPartialUncompensated, StringComparison.Ordinal))
+        {
+            return "drag_dispatch_partial_uncompensated";
+        }
+
+        if (string.Equals(failureStage, InputFailureStageValues.DragDispatchCommittedFailure, StringComparison.Ordinal))
+        {
+            return "drag_dispatch_committed_before_failure";
+        }
+
         if (string.Equals(result.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal)
             && result.CompletedActionCount > 0)
         {
@@ -124,6 +164,32 @@ internal sealed class InputResultMaterializer
         IReadOnlyList<InputActionResult> resultActions = result.Actions ?? Array.Empty<InputActionResult>();
         IReadOnlyList<InputAction> requestActions = request.Actions ?? Array.Empty<InputAction>();
         string committedSideEffectEvidence = ResolveCommittedSideEffectEvidence(result, failureDiagnostics?.FailureStage);
+        bool suppressRuntimeArtifactPath = InputObservabilityPolicy.RequiresSensitiveDragRedaction(request, result);
+        Dictionary<string, string?> eventData = new()
+        {
+            ["status"] = result.Status,
+            ["decision"] = result.Decision,
+            ["result_mode"] = result.ResultMode,
+            ["failure_code"] = result.FailureCode,
+            ["target_hwnd"] = result.TargetHwnd?.ToString(CultureInfo.InvariantCulture),
+            ["target_source"] = result.TargetSource,
+            ["completed_action_count"] = result.CompletedActionCount.ToString(CultureInfo.InvariantCulture),
+            ["failed_action_index"] = result.FailedActionIndex?.ToString(CultureInfo.InvariantCulture),
+            ["action_types"] = JoinDistinct(resultActions.Count > 0
+                ? resultActions.Select(action => action.Type)
+                : requestActions.Select(action => action.Type)),
+            ["coordinate_spaces"] = JoinDistinct(resultActions.Count > 0
+                ? resultActions.Select(action => action.CoordinateSpace)
+                : requestActions.Select(action => action.CoordinateSpace)),
+            ["failure_stage"] = failureDiagnostics?.FailureStage,
+            ["exception_type"] = failureDiagnostics?.ExceptionType,
+            ["committed_side_effect_evidence"] = committedSideEffectEvidence,
+        };
+        if (!suppressRuntimeArtifactPath)
+        {
+            eventData["artifact_path"] = result.ArtifactPath;
+        }
+
         _auditLog.TryRecordRuntimeEvent(
             eventName: RuntimeCompletedEventName,
             severity: severity,
@@ -131,27 +197,7 @@ internal sealed class InputResultMaterializer
             toolName: ToolName,
             outcome: result.Status,
             windowHwnd: result.TargetHwnd,
-            data: new Dictionary<string, string?>
-            {
-                ["status"] = result.Status,
-                ["decision"] = result.Decision,
-                ["result_mode"] = result.ResultMode,
-                ["failure_code"] = result.FailureCode,
-                ["target_hwnd"] = result.TargetHwnd?.ToString(CultureInfo.InvariantCulture),
-                ["target_source"] = result.TargetSource,
-                ["completed_action_count"] = result.CompletedActionCount.ToString(CultureInfo.InvariantCulture),
-                ["failed_action_index"] = result.FailedActionIndex?.ToString(CultureInfo.InvariantCulture),
-                ["action_types"] = JoinDistinct(resultActions.Count > 0
-                    ? resultActions.Select(action => action.Type)
-                    : requestActions.Select(action => action.Type)),
-                ["coordinate_spaces"] = JoinDistinct(resultActions.Count > 0
-                    ? resultActions.Select(action => action.CoordinateSpace)
-                    : requestActions.Select(action => action.CoordinateSpace)),
-                ["artifact_path"] = result.ArtifactPath,
-                ["failure_stage"] = failureDiagnostics?.FailureStage,
-                ["exception_type"] = failureDiagnostics?.ExceptionType,
-                ["committed_side_effect_evidence"] = committedSideEffectEvidence,
-            });
+            data: eventData);
     }
 
     private static InputFailureDiagnostics? CreateFailureDiagnostics(string? failureStage, Exception? exception)

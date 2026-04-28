@@ -6,8 +6,10 @@ public static class ToolDescriptions
     public const string ComputerUseWinGetAppStateTool = "Начинает или продолжает app use session и возвращает action-ready состояние конкретного window target: screenshot, compact accessibility tree, stateToken, captureReference и warnings. Primary reusable selector — `windowId` из latest `list_apps`; `hwnd` остаётся explicit low-level/debug path и не минтит новый public selector, если target не совпал с current published snapshot. stateToken публикуется только если capture и accessibility tree построены успешно; observation failure отвечает structured `failed` без session commit.";
     public const string ComputerUseWinClickTool = "Кликает по elementIndex или pixel coordinates из последнего app state. При наличии elementIndex runtime сначала пере-подтверждает target через свежий UIA snapshot; coordinate click остаётся low-confidence path и требует explicit confirm.";
     public const string ComputerUseWinTypeTextTool = "Печатает текст в текущий app session через реальный input path без hidden clipboard fallback.";
-    public const string ComputerUseWinPressKeyTool = "Нажимает клавишу или сочетание клавиш в текущий app session.";
+    public const string ComputerUseWinPressKeyTool = "Нажимает named key literal или modifier combo в текущий app session. Bare printable text сюда не входит и должен идти через type_text.";
+    public const string ComputerUseWinSetValueTool = "Семантически устанавливает text или number value у конкретного элемента из последнего app state через ValuePattern/RangeValuePattern без hidden typing fallback.";
     public const string ComputerUseWinScrollTool = "Скроллит app session по elementIndex или point из последнего app state.";
+    public const string ComputerUseWinPerformSecondaryActionTool = "Выполняет product-owned secondary action над semantic target из последнего app state.";
     public const string ComputerUseWinDragTool = "Делает drag gesture в app session по element indices или coordinates из последнего app state.";
 
     public const string OknoHealthTool = "Возвращает сводку состояния runtime и консервативный readiness snapshot: transport, artifacts, implemented tools, display identity path, guard domains и capability status без hidden enforcement.";

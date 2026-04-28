@@ -1,5 +1,6 @@
 using System.Globalization;
 using WinBridge.Runtime.Contracts;
+using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Input;
 
 namespace WinBridge.Server.ComputerUse;
@@ -27,7 +28,7 @@ internal static class ComputerUseWinAuditDataBuilder
         return data;
     }
 
-    public static Dictionary<string, string?> CreateActionCompletionData(InputResult input, string? failurePhase = null)
+    public static Dictionary<string, string?> CreateActionCompletionData(string toolName, InputResult input, string? failurePhase = null)
     {
         ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(input.FailureCode, input.Reason);
         Dictionary<string, string?> data = new(StringComparer.Ordinal)
@@ -42,8 +43,12 @@ internal static class ComputerUseWinAuditDataBuilder
             ["target_source"] = input.TargetSource,
             ["completed_action_count"] = input.CompletedActionCount.ToString(CultureInfo.InvariantCulture),
             ["failed_action_index"] = input.FailedActionIndex?.ToString(CultureInfo.InvariantCulture),
-            ["artifact_path"] = input.ArtifactPath,
         };
+        if (!string.Equals(toolName, ToolNames.ComputerUseWinDrag, StringComparison.Ordinal))
+        {
+            data["artifact_path"] = input.ArtifactPath;
+        }
+
         if (!string.IsNullOrWhiteSpace(failurePhase))
         {
             data["failure_phase"] = failurePhase;
