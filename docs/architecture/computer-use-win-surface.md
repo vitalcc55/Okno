@@ -104,6 +104,23 @@ destination proof, принимает `fromElementIndex|fromPoint` и
 и по умолчанию завершает generic path как `verify_needed`, а не optimistic
 `done`.
 
+## Ближайший product gap
+
+Первый реальный post-wave gap уже surfaced в живом использовании:
+
+- screenshot-first navigation в poor-UIA apps уже работает;
+- semantic и coordinate actions поверх такого navigation path уже работают;
+- но text entry без доказанного editable UIA proof по-прежнему корректно
+  fail-close-ится.
+
+Ближайший узкий follow-up здесь не должен размываться в broad clipboard/input
+feature. Следующий pragmatic шаг:
+
+- bounded keyboard-focus fallback для `type_text` в poor-UIA apps;
+- только с explicit confirmation/proof;
+- без clipboard default;
+- с честным `verify_needed`, а не с fake semantic success.
+
 ## Что остаётся внутренним engine surface
 
 Эти tools и services остаются внутренним execution substrate:
@@ -173,6 +190,10 @@ destination proof, принимает `fromElementIndex|fromPoint` и
   и `perform_secondary_action` допустимы как Windows-native semantic additions,
   но broad tool zoo, orchestration-only tools и “do anything” surface сюда не
   входят;
+- если внешний client/adaptor когда-нибудь начнёт downscale-ить screenshots,
+  coordinate actions обязаны remap-иться обратно в original geometry basis;
+  resized screenshot space само по себе не является source of truth для
+  destructive dispatch;
 - public `computer-use-win` action payload обязан emit-ить только product-owned `failureCode` и `reason`; low-level `windows.input` evidence остаётся допустимым в audit/evidence, но не протекает наружу как несанкционированный payload wording;
 - `tool.invocation.started` и `tool.invocation.completed` для `computer-use-win` используют safe audit payload builders и redaction classes: trail может нести `runtime_state`, `app_id`, `window_id`, `state_token_present`, `public_reason` и artifact hints, но не raw `stateToken`, не raw key literal, не raw semantic value и не raw low-level `reason`;
 - public action result должен materialize-иться из явной lifecycle phase: `pre_dispatch_reject`, `pre_dispatch_after_activation`, `after_revalidation_before_dispatch`, `post_dispatch_factual_failure`, `success`; `refreshStateRecommended` выводится не из record-default, а из комбинации phase + public failure semantics: malformed pre-dispatch reject может оставаться `false`, а `state_required` / `stale_state` / `capture_reference_required` и любые structured outcomes после activation/revalidation обязаны честно требовать свежий `get_app_state`;

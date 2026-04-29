@@ -44,6 +44,11 @@ OpenAI-native adapter.
 - Official OpenAI docs и их sample repos дополнительно подтверждают этот выбор:
   mature structured harness/MCP integration не нужно перестраивать вокруг
   built-in visual loop, если проект уже имеет свой product-ready local path.
+- `images-vision` отдельно подтверждает, что spatially sensitive
+  computer-use screenshots должны сохранять original/full-fidelity detail либо
+  явный coordinate remap после downscale, а `codex/mcp` и MCP tool guidance
+  скорее добавляют client-side narrowing/ops правила, чем меняют runtime
+  архитектуру.
 - Если когда-нибудь появится новый внешний OpenAI adapter requirement, он
   должен быть отдельным новым ExecPlan. Текущий roadmap не считает его
   обязательным слоем.
@@ -141,8 +146,12 @@ Adapter должен:
 ## Official references
 
 - [Computer use](https://developers.openai.com/api/docs/guides/tools-computer-use)
+- [Images and vision](https://developers.openai.com/api/docs/guides/images-vision)
 - [Skills](https://developers.openai.com/api/docs/guides/tools-skills)
 - [MCP and Connectors](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
+- [Guide to Using the Responses API's MCP Tool](https://developers.openai.com/learn/tools)
+- [Docs MCP](https://developers.openai.com/learn/docs-mcp)
+- [Codex MCP](https://developers.openai.com/codex/mcp)
 - [Shell + Skills + Compaction](https://developers.openai.com/blog/skills-shell-tips)
 - [Codex app on Windows](https://developers.openai.com/codex/app/windows)
 - [openai-cua-sample-app](https://github.com/openai/openai-cua-sample-app)

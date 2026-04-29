@@ -464,7 +464,7 @@ Input — это fallback и исполнительный слой, но не о
 
 - `Okno` не должен пытаться стать “ещё одним shell”;
 - `Okno` не должен зависеть от built-in `computer use`, чтобы быть полезным локально;
-- текущий основной путь для Codex остаётся `shell + Okno(MCP/plugin) + skills`;
+- текущий основной путь для Codex остаётся `shell + computer-use-win plugin + skills`, где `Okno` работает как внутренний Windows-native engine;
 - будущая `computer use`-совместимость должна приходить как отдельный adapter-слой поверх `Okno`, а не как OpenAI-specific логика внутри core runtime.
 
 Переиспользование по слоям должно выглядеть так:
@@ -537,4 +537,3 @@ OCR полезен как fallback, но не как главный semantic lay
 - **Текущее состояние:** надёжное ядро
 - **Следующая волна:** единый browser+desktop runtime
 - **Дальняя волна:** зрелый agent-native Windows control layer
-

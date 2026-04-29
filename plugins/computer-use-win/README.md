@@ -30,6 +30,9 @@
 - structured plugin/MCP integration остаётся preferred local path там, где она
   уже есть; plugin не пытается быть raw visual shim поверх built-in OpenAI
   computer use.
+- если оператору нужен ещё более узкий client-side surface, это лучше делать
+  через Codex MCP config (`enabled_tools` / `disabled_tools`), а не через
+  размножение plugin профилей или отдельный runtime.
 
 ## Runtime publish
 
@@ -55,3 +58,11 @@ Skill требует state-first discipline:
 - не смешивать action tools с workflow-control semantics;
 - после action делать новый `get_app_state` или явную verify-step;
 - не автоматизировать blocked targets.
+
+## Ближайший known gap
+
+- poor-UIA apps уже могут проходить screenshot-first navigation и subsequent
+  actions;
+- но `type_text` без editable UIA proof по-прежнему fail-close-ится;
+- следующий узкий follow-up здесь — bounded keyboard-focus fallback без
+  clipboard default и без hidden focus guessing.

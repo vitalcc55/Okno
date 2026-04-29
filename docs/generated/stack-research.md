@@ -109,8 +109,12 @@
 - [Unrolling the Codex Agent Loop](https://openai.com/index/unrolling-the-codex-agent-loop/)
 - [How OpenAI uses Codex](https://openai.com/index/how-openai-uses-codex/)
 - [Computer use](https://developers.openai.com/api/docs/guides/tools-computer-use)
+- [Images and vision](https://developers.openai.com/api/docs/guides/images-vision)
 - [Skills](https://developers.openai.com/api/docs/guides/tools-skills)
 - [MCP and Connectors](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
+- [Guide to Using the Responses API's MCP Tool](https://developers.openai.com/learn/tools)
+- [Docs MCP](https://developers.openai.com/learn/docs-mcp)
+- [Codex MCP](https://developers.openai.com/codex/mcp)
 - [Shell + Skills + Compaction](https://developers.openai.com/blog/skills-shell-tips)
 - [Codex app on Windows](https://developers.openai.com/codex/app/windows)
 
@@ -120,5 +124,9 @@
 - Verification-first loop материализован как команды, а не как устная договорённость.
 - Evidence pack хранится в артефактах запуска, а не только в чате.
 - `shell`, `skills`, `MCP` и `computer use` трактуются как соседние слои, а не как взаимозаменяемые части одного продукта.
-- Текущий локальный integration path для Codex остаётся `shell + Okno(MCP/plugin) + skills`; built-in `computer use` не считается немедленной зависимостью для текущего `Okno`.
+- Текущий локальный integration path для Codex теперь фактически идёт как `shell + computer-use-win plugin + skills`, где `Okno` остаётся внутренним engine/runtime; built-in `computer use` не считается немедленной зависимостью для текущего продукта.
 - Future OpenAI interop фиксируется как compatibility track для `windows.input` и отдельного adapter-слоя, а не как причина смешивать OpenAI-specific contracts с `WinBridge.Runtime`.
+- `images-vision` дополнительно подтверждает, что для spatially sensitive computer-use screenshots нужно держать original/full-fidelity detail или делать явный coordinate remap после downscale, что хорошо совпадает с `captureReference` / geometry-proof моделью репозитория.
+- MCP cookbook/tooling docs дополнительно усиливают quiet-surface подход: narrow tool lists, allow-list thinking (`allowed_tools`) и строгий контроль approvals полезны как client-side/ops layer, но не требуют перестройки локального `computer-use-win` runtime.
+- `Docs MCP` полезен как preferred OpenAI-doc lookup path для дальнейших инженерных задач, но не является runtime dependency продукта.
+- `Codex MCP` подтверждает, что текущий `STDIO` path для `computer-use-win` корректен, а `enabled_tools` / `disabled_tools` стоит рассматривать как future operator guidance для client-side narrowing, а не как причину плодить новые plugin profiles.

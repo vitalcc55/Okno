@@ -20,6 +20,16 @@
 - почему выбраны именно такие инженерные решения;
 - на какие внешние источники мы опирались и что именно из них взяли.
 
+Дополнительный practical rule для future external/client loops:
+
+- если screenshot позже downscale-ится для model turn, destructive
+  coordinate-based actions не должны работать в координатах уменьшенного
+  изображения “как есть”;
+- model-space coordinates обязаны remap-иться обратно в original geometry
+  basis;
+- именно поэтому capture metadata и `captureReference` в `Okno` должны
+  оставаться source of truth для coordinate proof, а не просто inline PNG.
+
 ## Что реализовано
 
 На текущем этапе `observe/capture` slice опирается на четыре публичных capability:
@@ -278,6 +288,25 @@ Metadata не смешивает window pixels с более поздней live
 - `Recreate` как канонический ответ на size drift frame pool;
 - захват через `B8G8R8A8`;
 - общую форму capture pipeline для первого native backend.
+
+### 5. OpenAI Images and Vision guidance
+
+Источник:
+
+- [Images and vision](https://developers.openai.com/api/docs/guides/images-vision)
+
+Что взяли:
+
+- для computer-use, localization и click-accuracy use cases рекомендуется
+  `detail: "original"`;
+- `gpt-5.5` трактует `auto` и omitted detail как `original`, но contract всё
+  равно должен мыслить original-resolution screenshots как source of truth;
+- если client/adaptor downscale-ит screenshot ради стоимости/latency, ему
+  нужно remap-ить координаты обратно в original image coordinate space.
+
+Это хорошо совпадает с текущим `captureReference` / geometry-proof подходом
+проекта и объясняет, почему `Okno` не должен превращать reduced screenshot
+space в authoritative dispatch basis.
 
 ### 5. Win32 interop для window/monitor capture item
 

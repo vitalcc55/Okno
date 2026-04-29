@@ -56,7 +56,8 @@ Source of truth для `Okno` всегда строится в таком пор
 
 - Microsoft Learn / Win32 / .NET API docs для Windows и `System.Diagnostics.Process`, UIA, shell, desktop/session/integrity;
 - MCP specification для tool/result/`structuredContent`/`isError`;
-- OpenAI official docs для `computer use`, tools, MCP/connectors, skills, Codex/Windows interop.
+- OpenAI official docs для `computer use`, `images-vision`, MCP/connectors,
+  Docs MCP, Codex MCP, skills и Codex/Windows interop.
 
 Это отвечает на вопрос:
 
@@ -140,7 +141,10 @@ Reference repos помогают ответить на другие вопрос
 - shell-open / `ShellExecuteExW`;
 - foreground/focus limitations;
 - MCP tool result contract;
-- OpenAI `computer use` / MCP integration semantics.
+- OpenAI `computer use` / MCP integration semantics;
+- image detail / original-resolution guidance для computer-use screenshots;
+- Codex MCP config features вроде `enabled_tools` / `disabled_tools`, если
+  речь идёт о client-side narrowing layer.
 
 Только после этого reference repos становятся действительно полезными: уже видно, где они опираются на платформу, а где делают свой pragmatic compromise.
 
@@ -273,6 +277,8 @@ Reference repos помогают ответить на другие вопрос
 OpenAI docs нужны не вместо reference repos, а параллельно с ними:
 
 - official OpenAI docs объясняют, как выглядят `computer use`, `skills`, `MCP/connectors`, `shell`;
+- official OpenAI docs также задают правила для image detail / screenshot
+  fidelity, Docs MCP как preferred doc lookup path и Codex MCP config model;
 - reference repos показывают, как похожие runtime layers practically живут в коде;
 - `Okno` должен брать из OpenAI docs compatibility target, а из reference repos — инженерные приёмы.
 

@@ -34,7 +34,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 ## 3. Текущее состояние репозитория
 
-По состоянию на `2026-04-27` проект уже давно не находится в фазе ранней заготовки.
+По состоянию на `2026-04-29` проект уже давно не находится в фазе ранней заготовки.
 
 Что фактически уже есть:
 
@@ -63,32 +63,35 @@ _Живой delivery roadmap проекта: текущий capability map, по
 | 08 | `src/WinBridge.Runtime.Windows.Launch` + `windows.open_target` | shell-open для `document` / `folder` / `url(http/https)`, safe preview, factual result, open-target artifacts | `реализовано` | `90%` | `Ядро` |
 | 09 | `plugins/computer-use-win` + `src/WinBridge.Server/ComputerUse` | public-facing Codex operator surface `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag` поверх внутреннего Okno engine, отдельный publication profile и self-contained plugin-local install artifact | `частично` | `91%` | `R2-следом` |
 | 10 | `src/WinBridge.Runtime.Windows.Input` + public Computer Use action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) | текущая global action wave для `computer-use-win`; весь целевой action set уже shipped в public callable surface, а `drag` больше не остаётся deferred: runtime/input path materialize-ит separate source/destination proof, factual move/down/move/up dispatch, helper smoke и install/publication proof | `реализовано` | `93%` | `R2-следом` |
-| 11 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, low-noise visual proof and future OCR fallback bridge | `запланировано` | `0%` | `R2` |
-| 12 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2` |
-| 13 | `src/WinBridge.Runtime.Windows.UIA` + `windows.uia_action` | semantic action layer поверх shipped `uia_snapshot` и gate/readiness foundation | `декларировано` | `10%` | `R2` |
-| 14 | proposed `windows.dialog` | common dialogs: open/save/confirm, path input, accept/close flow | `запланировано` | `0%` | `R2` |
-| 15 | proposed `windows.surface_lifecycle` | claim/reconcile/close only owned shell/window/dialog surfaces after `launch_process` / `open_target`; fail-closed на reused unowned surface | `запланировано` | `0%` | `R2-R3` |
-| 16 | proposed `windows.menu` / `windows.taskbar` / `windows.tray` | desktop surfaces beyond core window automation | `запланировано` | `0%` | `R2-R3` |
-| 17 | `scripts/*` + `docs/generated/*` + smoke/verify control plane | bootstrap/build/test/smoke/refresh-generated-docs/ci, generated surface sync, deterministic local proof loop | `частично` | `70%` | `Операции` |
-| 18 | proposed `daemon` / `overlay` / `virtual desktop` / richer shell modes | background companion, visualizer, virtual desktop support, deeper shell/runtime modes | `запланировано` | `0%` | `R3+` |
+| 11 | `plugins/computer-use-win` + focused `type_text` fallback follow-up | explicit keyboard-focus fallback for poor-UIA apps after screenshot-first navigation, only with proof/confirmation, no clipboard default and default `verify_needed` semantics | `запланировано` | `0%` | `R2-следом` |
+| 12 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, low-noise visual proof and future OCR fallback bridge | `запланировано` | `0%` | `R2` |
+| 13 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2` |
+| 14 | `src/WinBridge.Runtime.Windows.UIA` + `windows.uia_action` | semantic action layer поверх shipped `uia_snapshot` и gate/readiness foundation | `декларировано` | `10%` | `R2` |
+| 15 | proposed `windows.dialog` | common dialogs: open/save/confirm, path input, accept/close flow | `запланировано` | `0%` | `R2` |
+| 16 | proposed `windows.surface_lifecycle` | claim/reconcile/close only owned shell/window/dialog surfaces after `launch_process` / `open_target`; fail-closed на reused unowned surface | `запланировано` | `0%` | `R2-R3` |
+| 17 | proposed `windows.menu` / `windows.taskbar` / `windows.tray` | desktop surfaces beyond core window automation | `запланировано` | `0%` | `R2-R3` |
+| 18 | `scripts/*` + `docs/generated/*` + smoke/verify control plane | bootstrap/build/test/smoke/refresh-generated-docs/ci, generated surface sync, deterministic local proof loop | `частично` | `70%` | `Операции` |
+| 19 | proposed `daemon` / `overlay` / `virtual desktop` / richer shell modes | background companion, visualizer, virtual desktop support, deeper shell/runtime modes | `запланировано` | `0%` | `R3+` |
 
 ## 5. Ближайший порядок доставки
 
 Текущий practical order такой:
 
-1. app approvals hardening + risky action confirmation
-2. app playbooks expansion
-3. `windows.region_capture`
-4. `windows.clipboard_get` / `windows.clipboard_set`
-5. `windows.uia_action`
-6. `windows.dialog`
-7. `windows.surface_lifecycle`
-8. `windows.menu` / `windows.taskbar` / `windows.tray`
+1. focused `type_text` fallback for poor-UIA apps
+2. app approvals hardening + risky action confirmation
+3. app playbooks expansion
+4. `windows.region_capture`
+5. `windows.clipboard_get` / `windows.clipboard_set`
+6. `windows.uia_action`
+7. `windows.dialog`
+8. `windows.surface_lifecycle`
+9. `windows.menu` / `windows.taskbar` / `windows.tray`
 
 Почему именно так:
 
 - reference repos показывают, что зрелые runtimes почти всегда быстро приходят к app/window/input/dialog/menu families;
 - official OpenAI `computer use` loop делает input vocabulary и quiet action semantics важнее, чем поздние shell niceties;
+- live product feedback после shipped action wave уже показал один практический gap: screenshot-first navigation в poor-UIA apps работает, но text entry без editable proof правильно fail-close-ится, поэтому ближайший follow-up логично сузить до explicit keyboard-focus fallback, а не размывать его сразу в clipboard или broad shell hacks;
 - reference repos и текущий `observe/capture` stack показывают, что narrow `region_capture` даёт более дешёвый verify-after-action loop и полезен как мост к visual fallback, не размывая capture family в OCR/browser subsystem;
 - уже shipped `launch_process` и `open_target` закрыли start/open baseline, поэтому next product value теперь в action layer;
 - `surface_lifecycle` важен, но без clipboard/dialog и broad action coverage он не даст полноценный teardown path.
@@ -112,6 +115,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
   - `type`
   - `keypress`
 - `windows.capture` и `windows.wait` должны оставаться отдельными explicit steps;
+- если future external/client loop downscale-ит screenshots, координаты должны remap-иться обратно в original geometry basis; `captureReference` и future screenshot-first flows нельзя трактовать как free-form resized image space без coordinate discipline;
 - narrow follow-up вроде `windows.region_capture` должен усиливать visual proof после actions, но не превращать visual stack в primary OCR-first mode раньше времени;
 - `windows.launch_process` и `windows.open_target` должны оставаться split;
 - отдельный OpenAI-native adapter, если когда-нибудь понадобится, остаётся отдельным будущим слоем поверх `Okno`; текущий активный путь не через него, а через `computer-use-win`.

@@ -103,9 +103,6 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 - `list_apps`
 - `get_app_state`
 - `click`
-
-Следующая целевая public action wave для этого surface:
-
 - `press_key`
 - `set_value`
 - `type_text`
@@ -114,6 +111,14 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 - `drag`
 
 `Okno` остаётся внутренним engine и execution substrate под этим plugin surface.
+
+Текущий product gap после shipped action wave:
+
+- poor-UIA apps могут уже проходить screenshot-first navigation и coordinate/semantic actions;
+- но text entry без доказанного editable UIA proof по-прежнему fail-close-ится;
+- следующий узкий follow-up здесь — keyboard-focus fallback для `type_text` в
+  poor-UIA apps, только с explicit confirmation/proof, без clipboard default и
+  с честным `verify_needed`.
 
 Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после изменения runtime/layout или после reinstall нужно заново materialize-ить plugin-local runtime bundle командой `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex. Repo-root hint больше не входит в public install path `computer-use-win`.
 
@@ -136,6 +141,12 @@ Computer Use for Windows не должен конкурировать с `shell`
 - built-in OpenAI `computer use` не является блокером для текущего продукта и не требует перестройки core runtime;
 - official OpenAI docs и sample repos подтверждают, что mature structured
   harness не нужно ломать ради built-in visual loop;
+- official `images-vision` guidance подтверждает, что для spatially sensitive
+  computer-use screenshots стоит сохранять full-fidelity/original detail либо
+  делать явный coordinate remap после downscale;
+- official MCP guidance для Codex и Responses API дополнительно усиливает
+  narrow-surface подход: keep tool list small, use allow-list thinking where
+  appropriate and не смешивать workflow-control с public operator actions;
 - compatibility work нужно закладывать через action/schema discipline будущего `windows.input` и отдельный adapter-слой поверх `Okno`, а не через смешение OpenAI-specific логики с `WinBridge.Runtime` или `WinBridge.Server`.
 
 ## Где читать дальше
