@@ -66,3 +66,13 @@ Skill требует state-first discipline:
 - но `type_text` без editable UIA proof по-прежнему fail-close-ится;
 - следующий узкий follow-up здесь — bounded keyboard-focus fallback без
   clipboard default и без hidden focus guessing.
+- после этого следующий UX follow-up — successor-state / action+observe path,
+  чтобы честный `verify_needed` не требовал полного ручного reobserve после
+  каждого low-confidence action.
+- `windowId` safety semantics не нужно размывать до `hwnd + processId`, но
+  continuity UX нужно усиливать отдельно, чтобы агент меньше тратил turns на
+  повторные `list_apps` loops.
+- `get_app_state` уже возвращает screenshot bytes в MCP result и локальный
+  artifact, но если конкретный client не рендерит image block inline,
+  screenshot preview hint остаётся отдельным UX hardening item, а не поводом
+  убирать image-bearing observe result.

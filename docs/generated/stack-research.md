@@ -112,7 +112,8 @@
 - [Images and vision](https://developers.openai.com/api/docs/guides/images-vision)
 - [Skills](https://developers.openai.com/api/docs/guides/tools-skills)
 - [MCP and Connectors](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
-- [Guide to Using the Responses API's MCP Tool](https://developers.openai.com/learn/tools)
+- [Tools overview](https://developers.openai.com/learn/tools)
+- [Guide to Using the Responses API's MCP Tool](https://developers.openai.com/cookbook/examples/mcp/mcp_tool_guide)
 - [Docs MCP](https://developers.openai.com/learn/docs-mcp)
 - [Codex MCP](https://developers.openai.com/codex/mcp)
 - [Shell + Skills + Compaction](https://developers.openai.com/blog/skills-shell-tips)
@@ -126,6 +127,7 @@
 - `shell`, `skills`, `MCP` и `computer use` трактуются как соседние слои, а не как взаимозаменяемые части одного продукта.
 - Текущий локальный integration path для Codex теперь фактически идёт как `shell + computer-use-win plugin + skills`, где `Okno` остаётся внутренним engine/runtime; built-in `computer use` не считается немедленной зависимостью для текущего продукта.
 - Future OpenAI interop фиксируется как compatibility track для `windows.input` и отдельного adapter-слоя, а не как причина смешивать OpenAI-specific contracts с `WinBridge.Runtime`.
+- `tools-computer-use` дополнительно фиксирует screenshot-first loop как норму: первый turn часто просит screenshot до первого action batch, а после batch harness должен вернуть updated screenshot как first-class image input; это подтверждает наш explicit `get_app_state` / capture-first loop и не поддерживает деградацию screenshot до path-only metadata.
 - `images-vision` дополнительно подтверждает, что для spatially sensitive computer-use screenshots нужно держать original/full-fidelity detail или делать явный coordinate remap после downscale, что хорошо совпадает с `captureReference` / geometry-proof моделью репозитория.
 - MCP cookbook/tooling docs дополнительно усиливают quiet-surface подход: narrow tool lists, allow-list thinking (`allowed_tools`) и строгий контроль approvals полезны как client-side/ops layer, но не требуют перестройки локального `computer-use-win` runtime.
 - `Docs MCP` полезен как preferred OpenAI-doc lookup path для дальнейших инженерных задач, но не является runtime dependency продукта.

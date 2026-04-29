@@ -781,7 +781,7 @@ behavior.
   - `Goodall` (`019dd263-38c1-7db0-8b74-5bf0e2f32138`) - `approve`
   - `Carver` (`019dd263-3a12-70d0-80c6-90171f6309d6`) - `approve`
 - Official docs checked:
-  - OpenAI Computer Use guide: `https://platform.openai.com/docs/guides/tools-computer-use`
+  - OpenAI Computer Use guide: `https://developers.openai.com/api/docs/guides/tools-computer-use`
   - Microsoft `SendInput`: `https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput`
   - Microsoft `KEYBDINPUT`: `https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput`
   - Microsoft surrogate/supplementary character guidance: `https://learn.microsoft.com/en-us/windows/win32/intl/surrogates-and-supplementary-characters`

@@ -63,6 +63,21 @@ list_apps -> get_app_state -> drag -> get_app_state
 completion и demo-orchestration сигналы не должны смешиваться с public
 operator tools.
 
+С точки зрения official OpenAI screenshot-first guidance важно ещё одно:
+
+- первый turn может запросить screenshot до первого action batch;
+- после action batch harness должен вернуть updated screenshot как first-class
+  image input;
+- поэтому `get_app_state` в `computer-use-win` должен оставаться image-bearing
+  observe step, а не деградировать в path-only metadata surface.
+
+Текущий repo уже следует этой линии частично: `get_app_state` публикует
+structured metadata и screenshot bytes в MCP result, а `artifactPath`
+остаётся operator/debug trail. Если конкретный Codex/client UI не рендерит
+этот image block inline и оператору всё ещё нужен отдельный `view_image`, это
+следует считать operator UX gap, а не доказательством того, что screenshot
+loop в runtime не работает.
+
 Текущая discovery model после `Stage 4`:
 
 - `list_apps` сохраняет top-level `apps[]` как app-level approval/policy groups;
@@ -121,6 +136,22 @@ feature. Следующий pragmatic шаг:
 - без clipboard default;
 - с честным `verify_needed`, а не с fake semantic success.
 
+Но feedback после shipped wave уже показал и три соседних follow-up зоны:
+
+- successor-state / action+observe reduction: `verify_needed` остаётся честной
+  success semantics, но оператору и агенту не нужно вечно платить полным
+  `action -> get_app_state` roundtrip там, где runtime может сразу вернуть
+  свежий successor state того же окна;
+- public instance continuity UX: safety model правильно держит `windowId`
+  discovery-scoped и fail-closed, но следующий UX шаг должен уменьшить churn и
+  лишние `list_apps` loops без ослабления continuity proof и без наивного
+  перехода к `hwnd + processId` как public selector;
+- screenshot preview UX: для screenshot-first debugging/operator review нужен
+  более бесшовный путь к current screenshot, если client UI не показывает
+  MCP image block автоматически; это можно решать через preview hint /
+  renderable image field / explicit include-image mode, но не ценой отказа от
+  first-class image content или от локального artifact trail.
+
 ## Что остаётся внутренним engine surface
 
 Эти tools и services остаются внутренним execution substrate:
@@ -166,6 +197,10 @@ feature. Следующий pragmatic шаг:
 - approval/block policy и `list_apps` app grouping допускаются только при доказанной stable process identity; окна без канонического process identity или без достаточной live instance identity не должны получать public app/window selectors и fail-close-ятся до approval/observation path;
 - public discovery обязан различать app-level approval key и window-level execution target: `appId` группирует policy, а `windowId` выбирает конкретный visible instance без foreground guessing;
 - `windowId` не должен silently retarget-ить replacement window: selector разрешается только через runtime-owned discovery catalog и strict discovery proof, а не через повторное вычисление из текущих live свойств окна;
+- следующий UX layer не должен пытаться лечить selector churn наивным
+  `hwnd + processId`: reused HWND и replacement window всё ещё реальны, поэтому
+  удобство нужно наращивать через runtime-owned continuity/publication model, а
+  не через ослабление identity proof;
 - public metadata для `list_apps` должна отражать stateful selector issuance: `readOnlyHint=true`, `idempotentHint=true` и `destructiveHint=false` для этого tool больше недопустимы, пока selector issuance живёт внутри `list_apps`, потому что новый snapshot может инвалидировать старые selectors;
 - continuity proof для attached refresh не совпадает с `windowId` proof: session refresh допускает обычный post-action drift (`Title`, `Bounds`, `WindowState`, monitor metadata), но не должен пропускать stable-identity replacement;
 - risky action confirmation — отдельный product-facing шаг;
@@ -181,6 +216,9 @@ feature. Следующий pragmatic шаг:
 - missing capture proof не является window-continuity failure: если live target всё ещё совпадает, `capture_pixels` click должен доходить до action contract и materialize-иться как `capture_reference_required`, а не как `stale_state`;
 - `elementIndex` click не должен слепо доверять сохранённым bounds: перед dispatch runtime заново разрешает target через свежий UIA snapshot с тем же observation budget и fail-close-ит как `stale_state`, только если semantic match больше не доказуем;
 - ordinary actions внутри already-approved app должны быть дешевле, чем low-level per-step friction;
+- снижение per-step friction должно идти через better successor-state /
+  action+observe shaping и более сильный visual follow-up loop, а не через
+  optimistic `done` там, где semantic outcome не доказан;
 - `get_app_state` разделяет critical observation и advisory enrichment: screenshot + accessibility tree определяют success/failure; expected advisory-unavailable path для playbook hints не имеет права downcast-ить успешный observation result, но unexpected provider/runtime bug всё ещё materialize-ится как truthful `observation_failed` с sanitized audit provenance;
 - `get_app_state` публикует `stateToken` и commit-ит shared state только после полной успешной materialization public result; failed observation не должна оставлять ghost tokens или другие скрытые bounded-state commits;
 - `get_app_state` не является observation-only read-only hint: approved/confirmed path может менять approval store, foreground state и attached/session state, поэтому public metadata не должна рекламировать его как pure read-only tool;

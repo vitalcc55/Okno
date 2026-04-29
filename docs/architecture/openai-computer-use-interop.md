@@ -44,6 +44,11 @@ OpenAI-native adapter.
 - Official OpenAI docs и их sample repos дополнительно подтверждают этот выбор:
   mature structured harness/MCP integration не нужно перестраивать вокруг
   built-in visual loop, если проект уже имеет свой product-ready local path.
+- `computer use` guide отдельно нормализует screenshot-first цикл: первый turn
+  часто начинается со screenshot, а после каждого action batch harness должен
+  вернуть updated screenshot как first-class image input. Для `Okno` это
+  усиливает `get_app_state` / `windows.capture` как отдельные observe steps и
+  не поддерживает деградацию screenshot до одного только `artifactPath`.
 - `images-vision` отдельно подтверждает, что spatially sensitive
   computer-use screenshots должны сохранять original/full-fidelity detail либо
   явный coordinate remap после downscale, а `codex/mcp` и MCP tool guidance
@@ -149,7 +154,8 @@ Adapter должен:
 - [Images and vision](https://developers.openai.com/api/docs/guides/images-vision)
 - [Skills](https://developers.openai.com/api/docs/guides/tools-skills)
 - [MCP and Connectors](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
-- [Guide to Using the Responses API's MCP Tool](https://developers.openai.com/learn/tools)
+- [Tools overview](https://developers.openai.com/learn/tools)
+- [Guide to Using the Responses API's MCP Tool](https://developers.openai.com/cookbook/examples/mcp/mcp_tool_guide)
 - [Docs MCP](https://developers.openai.com/learn/docs-mcp)
 - [Codex MCP](https://developers.openai.com/codex/mcp)
 - [Shell + Skills + Compaction](https://developers.openai.com/blog/skills-shell-tips)

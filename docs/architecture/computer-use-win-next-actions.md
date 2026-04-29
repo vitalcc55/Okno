@@ -274,6 +274,7 @@ public action должен иметь не только unit/integration tests, 
 - official OpenAI docs:
   - `https://developers.openai.com/api/docs/guides/images-vision`
   - `https://developers.openai.com/api/docs/guides/tools-computer-use`
+  - `https://developers.openai.com/learn/tools`
   - `https://developers.openai.com/cookbook/examples/mcp/mcp_tool_guide`
   - `https://developers.openai.com/api/docs/guides/tools-connectors-mcp`
   - `https://developers.openai.com/learn/docs-mcp`

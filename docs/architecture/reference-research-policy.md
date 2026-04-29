@@ -59,6 +59,18 @@ Source of truth для `Okno` всегда строится в таком пор
 - OpenAI official docs для `computer use`, `images-vision`, MCP/connectors,
   Docs MCP, Codex MCP, skills и Codex/Windows interop.
 
+Для OpenAI engineering work держи явный source pack, даже если часть этих
+страниц плохо всплывает в обычном поиске:
+
+- `https://developers.openai.com/api/docs/guides/tools-computer-use`
+- `https://developers.openai.com/api/docs/guides/images-vision`
+- `https://developers.openai.com/api/docs/guides/tools-connectors-mcp`
+- `https://developers.openai.com/learn/tools`
+- `https://developers.openai.com/cookbook/examples/mcp/mcp_tool_guide`
+- `https://developers.openai.com/learn/docs-mcp`
+- `https://developers.openai.com/codex/mcp`
+- `https://developers.openai.com/codex/app/windows`
+
 Это отвечает на вопрос:
 
 - что платформа действительно гарантирует;
@@ -142,6 +154,8 @@ Reference repos помогают ответить на другие вопрос
 - foreground/focus limitations;
 - MCP tool result contract;
 - OpenAI `computer use` / MCP integration semantics;
+- `learn/tools` и cookbook `mcp_tool_guide`, если вопрос про client-side
+  narrowing, `allowed_tools`, MCP server trust и remote tool orchestration;
 - image detail / original-resolution guidance для computer-use screenshots;
 - Codex MCP config features вроде `enabled_tools` / `disabled_tools`, если
   речь идёт о client-side narrowing layer.

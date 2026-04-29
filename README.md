@@ -119,6 +119,12 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 - следующий узкий follow-up здесь — keyboard-focus fallback для `type_text` в
   poor-UIA apps, только с explicit confirmation/proof, без clipboard default и
   с честным `verify_needed`.
+- следующий UX follow-up после этого — successor-state / action+observe
+  shaping, чтобы агенту не приходилось всегда крутить полный
+  `action -> get_app_state` loop после честного `verify_needed`;
+- continuity/identity UX тоже остаётся отдельным gap: `windowId` нужно делать
+  удобнее для агента без ослабления strict discovery proof и без наивного
+  публичного `hwnd + processId`.
 
 Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после изменения runtime/layout или после reinstall нужно заново materialize-ить plugin-local runtime bundle командой `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex. Repo-root hint больше не входит в public install path `computer-use-win`.
 
@@ -144,6 +150,9 @@ Computer Use for Windows не должен конкурировать с `shell`
 - official `images-vision` guidance подтверждает, что для spatially sensitive
   computer-use screenshots стоит сохранять full-fidelity/original detail либо
   делать явный coordinate remap после downscale;
+- official `computer use` guidance отдельно фиксирует screenshot-first cycle:
+  первый turn часто начинается со screenshot, а после action batch harness
+  должен вернуть updated screenshot как first-class image input;
 - official MCP guidance для Codex и Responses API дополнительно усиливает
   narrow-surface подход: keep tool list small, use allow-list thinking where
   appropriate and не смешивать workflow-control с public operator actions;

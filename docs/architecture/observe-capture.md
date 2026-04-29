@@ -30,6 +30,18 @@
 - именно поэтому capture metadata и `captureReference` в `Okno` должны
   оставаться source of truth для coordinate proof, а не просто inline PNG.
 
+Отдельный OpenAI-specific practical rule для screenshot-first loops:
+
+- official `computer use` guidance нормализует цикл `screenshot -> actions ->
+  updated screenshot -> next actions`;
+- первый model turn может запросить screenshot ещё до первого action batch, и
+  это считается нормальным поведением;
+- после action batch screenshot должен возвращаться как first-class image
+  input, а не только как путь к локальному файлу;
+- поэтому для `Okno` `artifactPath` остаётся важным operator/debug evidence
+  path, но не должен рассматриваться как достаточная замена model-facing image
+  content.
+
 ## Что реализовано
 
 На текущем этапе `observe/capture` slice опирается на четыре публичных capability:
@@ -129,6 +141,15 @@ Metadata не смешивает window pixels с более поздней live
 - smoke может проверить, что файл реально создан;
 - человек может открыть конкретный PNG без повторного прогона;
 - audit/summary и capture artifact оказываются в одном diagnostics run directory.
+
+Но `artifactPath` не должен подменять screenshot-first contract целиком:
+
+- OpenAI computer-use loop ожидает updated screenshot как first-class image
+  payload после action batch;
+- локальный файл нужен как evidence/investigation path и operator fallback;
+- если конкретный client не умеет сразу рендерить MCP image block inline,
+  это отдельный UX gap client/output shaping, а не причина отказываться от
+  image-bearing observation result.
 
 ### 4. Backend выбран как WGC-first
 
