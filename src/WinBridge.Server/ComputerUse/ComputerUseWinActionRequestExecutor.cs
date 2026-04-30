@@ -1,12 +1,42 @@
 using ModelContextProtocol.Protocol;
+using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
+using WinBridge.Runtime.Session;
 using WinBridge.Runtime.Windows.Input;
 
 namespace WinBridge.Server.ComputerUse;
 
-internal sealed class ComputerUseWinActionRequestExecutor(
-    ComputerUseWinStoredStateResolver storedStateResolver)
+internal sealed class ComputerUseWinActionRequestExecutor
 {
+    private readonly ComputerUseWinStoredStateResolver storedStateResolver;
+    private readonly ComputerUseWinAppStateObserver? appStateObserver;
+    private readonly ComputerUseWinStateStore? stateStore;
+    private readonly ISessionManager? sessionManager;
+
+    public ComputerUseWinActionRequestExecutor(ComputerUseWinStoredStateResolver storedStateResolver)
+    {
+        ArgumentNullException.ThrowIfNull(storedStateResolver);
+
+        this.storedStateResolver = storedStateResolver;
+    }
+
+    public ComputerUseWinActionRequestExecutor(
+        ComputerUseWinStoredStateResolver storedStateResolver,
+        ComputerUseWinAppStateObserver appStateObserver,
+        ComputerUseWinStateStore stateStore,
+        ISessionManager sessionManager)
+    {
+        ArgumentNullException.ThrowIfNull(storedStateResolver);
+        ArgumentNullException.ThrowIfNull(appStateObserver);
+        ArgumentNullException.ThrowIfNull(stateStore);
+        ArgumentNullException.ThrowIfNull(sessionManager);
+
+        this.storedStateResolver = storedStateResolver;
+        this.appStateObserver = appStateObserver;
+        this.stateStore = stateStore;
+        this.sessionManager = sessionManager;
+    }
+
     public async Task<CallToolResult> ExecuteAsync(
         AuditInvocationScope invocation,
         string toolName,
@@ -16,6 +46,7 @@ internal sealed class ComputerUseWinActionRequestExecutor(
         Func<ComputerUseWinStoredState, CancellationToken, Task<ComputerUseWinActionExecutionOutcome>> execute,
         Func<ComputerUseWinStoredState, ComputerUseWinActionExecutionOutcome, ComputerUseWinActionObservabilityContext>? createObservabilityContext,
         CancellationToken cancellationToken,
+        bool observeAfter = false,
         bool preDispatchStateMutationPossible = true)
     {
         if (!storedStateResolver.TryResolve(
@@ -60,13 +91,23 @@ internal sealed class ComputerUseWinActionRequestExecutor(
                     observabilityContext);
             }
 
+            ComputerUseWinActionSuccessorObservation? successorObservation = await TryObserveSuccessorStateAsync(
+                observeAfter,
+                resolvedState,
+                outcome,
+                cancellationToken).ConfigureAwait(false);
+
             return ComputerUseWinToolResultFactory.CreateActionToolResult(
                 invocation,
                 toolName,
                 resolvedState.Session.Hwnd,
                 elementIndex,
                 outcome.Input!,
-                observabilityContext);
+                EnrichObservabilityContext(
+                    observabilityContext,
+                    observeAfter,
+                    successorObservation),
+                successorObservation);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -92,5 +133,88 @@ internal sealed class ComputerUseWinActionRequestExecutor(
                 exception,
                 preDispatchStateMutationPossible: preDispatchStateMutationPossible);
         }
+    }
+
+    private async Task<ComputerUseWinActionSuccessorObservation?> TryObserveSuccessorStateAsync(
+        bool observeAfter,
+        ComputerUseWinStoredState resolvedState,
+        ComputerUseWinActionExecutionOutcome outcome,
+        CancellationToken cancellationToken)
+    {
+        if (!observeAfter || !IsCommittedInput(outcome.Input))
+        {
+            return null;
+        }
+
+        if (appStateObserver is null || stateStore is null || sessionManager is null)
+        {
+            return ComputerUseWinActionSuccessorObservation.Failed(
+                new ComputerUseWinActionSuccessorStateFailure(
+                    ComputerUseWinFailureCodeValues.UnexpectedInternalFailure,
+                    "Computer Use for Windows не смог выполнить observeAfter: shared observation dependencies недоступны."));
+        }
+
+        try
+        {
+            WindowDescriptor selectedWindow = outcome.SuccessorObservationWindow ?? resolvedState.Window;
+            ComputerUseWinAppStateObservationOutcome observation = await appStateObserver.ObserveAsync(
+                selectedWindow,
+                resolvedState.Session.AppId,
+                resolvedState.Session.WindowId,
+                resolvedState.Observation.RequestedMaxNodes,
+                warnings: [],
+                cancellationToken).ConfigureAwait(false);
+            if (!observation.IsSuccess)
+            {
+                ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(
+                    observation.FailureCode,
+                    observation.Reason);
+                return ComputerUseWinActionSuccessorObservation.Failed(
+                    new ComputerUseWinActionSuccessorStateFailure(
+                        failure.FailureCode ?? ComputerUseWinFailureCodeValues.ObservationFailed,
+                        failure.Reason ?? "Computer Use for Windows не смог materialize successorState после committed action."));
+            }
+
+            ComputerUseWinMaterializedAppState materializedState = ComputerUseWinGetAppStateFinalizer.CommitPreparedState(
+                observation.PreparedState!,
+                stateStore,
+                sessionManager,
+                selectedWindow);
+            return ComputerUseWinActionSuccessorObservation.Success(materializedState);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return ComputerUseWinActionSuccessorObservation.Failed(
+                new ComputerUseWinActionSuccessorStateFailure(
+                    ComputerUseWinFailureCodeValues.UnexpectedInternalFailure,
+                    "Computer Use for Windows не смог materialize successorState после committed action."));
+        }
+    }
+
+    private static bool IsCommittedInput(InputResult? input) =>
+        input is not null
+        && (string.Equals(input.Status, InputStatusValues.Done, StringComparison.Ordinal)
+            || string.Equals(input.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal));
+
+    private static ComputerUseWinActionObservabilityContext? EnrichObservabilityContext(
+        ComputerUseWinActionObservabilityContext? context,
+        bool observeAfter,
+        ComputerUseWinActionSuccessorObservation? successorObservation)
+    {
+        if (context is null)
+        {
+            return null;
+        }
+
+        return context with
+        {
+            ObserveAfterRequested = observeAfter,
+            SuccessorStateAvailable = successorObservation?.SuccessorState is not null,
+            SuccessorStateFailureCode = successorObservation?.Failure?.FailureCode,
+        };
     }
 }

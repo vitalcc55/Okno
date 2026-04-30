@@ -104,7 +104,8 @@ internal sealed class ComputerUseWinScrollExecutionCoordinator(
                         FailedActionIndex: 0),
                     confirmationRequired: false,
                     riskClass: "semantic_scroll",
-                    dispatchPath: semanticScroll.ResolvedPattern is null ? "uia_scroll_pattern" : $"uia_{semanticScroll.ResolvedPattern}");
+                    dispatchPath: semanticScroll.ResolvedPattern is null ? "uia_scroll_pattern" : $"uia_{semanticScroll.ResolvedPattern}",
+                    successorObservationWindow: resolvedState.Window);
             }
 
             return ComputerUseWinActionExecutionOutcome.Success(
@@ -116,7 +117,8 @@ internal sealed class ComputerUseWinScrollExecutionCoordinator(
                     CompletedActionCount: 1),
                 confirmationRequired: false,
                 riskClass: "semantic_scroll",
-                dispatchPath: semanticScroll.ResolvedPattern is null ? "uia_scroll_pattern" : $"uia_{semanticScroll.ResolvedPattern}");
+                dispatchPath: semanticScroll.ResolvedPattern is null ? "uia_scroll_pattern" : $"uia_{semanticScroll.ResolvedPattern}",
+                successorObservationWindow: resolvedState.Window);
         }
 
         InputResult input = await inputService.ExecuteAsync(
@@ -156,7 +158,8 @@ internal sealed class ComputerUseWinScrollExecutionCoordinator(
             input,
             confirmationRequired: targetResolution.RequiresConfirmation,
             riskClass: "coordinate_scroll",
-            dispatchPath: "win32_sendinput_wheel");
+            dispatchPath: "win32_sendinput_wheel",
+            successorObservationWindow: resolvedState.Window);
     }
 
     private static string MapFailureCode(string? failureKind) =>

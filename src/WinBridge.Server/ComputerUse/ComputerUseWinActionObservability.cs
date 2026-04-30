@@ -44,7 +44,10 @@ internal sealed record ComputerUseWinActionObservabilityContext(
     bool? CoordinateFallbackUsed = null,
     string? ChildArtifactPath = null,
     string? FailureStage = null,
-    string? ExceptionType = null);
+    string? ExceptionType = null,
+    bool? ObserveAfterRequested = null,
+    bool? SuccessorStateAvailable = null,
+    string? SuccessorStateFailureCode = null);
 
 internal static class ComputerUseWinActionObservability
 {
@@ -146,6 +149,9 @@ internal static class ComputerUseWinActionObservability
             DestinationMode: context.DestinationMode,
             PathPointCountBucket: context.PathPointCountBucket,
             CoordinateFallbackUsed: context.CoordinateFallbackUsed,
+            ObserveAfterRequested: context.ObserveAfterRequested,
+            SuccessorStateAvailable: context.SuccessorStateAvailable,
+            SuccessorStateFailureCode: context.SuccessorStateFailureCode,
             RefreshStateRecommended: payload.RefreshStateRecommended,
             VerifyStatus: payload.Status,
             ArtifactPath: path,
@@ -203,6 +209,9 @@ internal static class ComputerUseWinActionObservability
             ["destination_mode"] = context.DestinationMode,
             ["path_point_count_bucket"] = context.PathPointCountBucket,
             ["coordinate_fallback_used"] = context.CoordinateFallbackUsed?.ToString().ToLowerInvariant(),
+            ["observe_after_requested"] = context.ObserveAfterRequested?.ToString().ToLowerInvariant(),
+            ["successor_state_available"] = context.SuccessorStateAvailable?.ToString().ToLowerInvariant(),
+            ["successor_state_failure_code"] = context.SuccessorStateFailureCode,
             ["refresh_state_recommended"] = payload.RefreshStateRecommended.ToString().ToLowerInvariant(),
             ["verify_status"] = payload.Status,
             ["artifact_path"] = artifactPath,
@@ -270,6 +279,9 @@ internal sealed record ComputerUseWinActionArtifactPayload(
     string? DestinationMode,
     string? PathPointCountBucket,
     bool? CoordinateFallbackUsed,
+    bool? ObserveAfterRequested,
+    bool? SuccessorStateAvailable,
+    string? SuccessorStateFailureCode,
     bool RefreshStateRecommended,
     string VerifyStatus,
     string ArtifactPath,

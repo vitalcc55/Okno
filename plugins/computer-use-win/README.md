@@ -56,7 +56,8 @@ Skill требует state-first discipline:
 - предпочитать `elementIndex` над coordinate click;
 - использовать coordinate click только с явным `confirm`, если semantic element не доказан;
 - не смешивать action tools с workflow-control semantics;
-- после action делать новый `get_app_state` или явную verify-step;
+- после action делать новый `get_app_state`, использовать explicit
+  `observeAfter=true` на поддерживаемых actions или выполнять явную verify-step;
 - не автоматизировать blocked targets.
 
 ## Ближайший known gap
@@ -67,9 +68,14 @@ Skill требует state-first discipline:
   focused poor-UIA target: он требует `confirm=true`, fresh focus proof и
   остаётся `verify_needed`/SendInput route без clipboard default и hidden focus
   guessing;
-- следующий UX follow-up — successor-state / action+observe path,
-  чтобы честный `verify_needed` не требовал полного ручного reobserve после
-  каждого low-confidence action.
+- `click`, `press_key`, `type_text`, `scroll` и `drag` теперь поддерживают
+  explicit `observeAfter=true`: после committed `done` / `verify_needed`
+  action result может включать nested `successorState`, новый short-lived
+  `stateToken` и screenshot image block. Это снижает loop cost, но не меняет
+  честный top-level action status; failed successor observe остаётся advisory
+  `successorStateFailure`.
+- следующий UX follow-up — public instance continuity, чтобы strict
+  `windowId` semantics давали меньше churn при повторных discovery loops.
 - `windowId` safety semantics не нужно размывать до `hwnd + processId`, но
   continuity UX нужно усиливать отдельно, чтобы агент меньше тратил turns на
   повторные `list_apps` loops.

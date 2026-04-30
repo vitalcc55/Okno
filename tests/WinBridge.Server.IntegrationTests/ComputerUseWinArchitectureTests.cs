@@ -1166,6 +1166,45 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ComputerUseWinSelectedActionSchemasExposeObserveAfterOptIn()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        string[] observeAfterTools =
+        [
+            ToolNames.ComputerUseWinClick,
+            ToolNames.ComputerUseWinDrag,
+            ToolNames.ComputerUseWinPressKey,
+            ToolNames.ComputerUseWinScroll,
+            ToolNames.ComputerUseWinTypeText,
+        ];
+
+        foreach (string toolName in observeAfterTools)
+        {
+            JsonElement properties = tools
+                .Single(tool => string.Equals(tool.ProtocolTool.Name, toolName, StringComparison.Ordinal))
+                .ProtocolTool
+                .InputSchema
+                .GetProperty("properties");
+
+            Assert.Equal("boolean", properties.GetProperty("observeAfter").GetProperty("type").GetString());
+        }
+
+        JsonElement setValueProperties = tools
+            .Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinSetValue, StringComparison.Ordinal))
+            .ProtocolTool
+            .InputSchema
+            .GetProperty("properties");
+        JsonElement secondaryActionProperties = tools
+            .Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinPerformSecondaryAction, StringComparison.Ordinal))
+            .ProtocolTool
+            .InputSchema
+            .GetProperty("properties");
+
+        Assert.False(setValueProperties.TryGetProperty("observeAfter", out _));
+        Assert.False(secondaryActionProperties.TryGetProperty("observeAfter", out _));
+    }
+
+    [Fact]
     public void ComputerUseWinScrollToolSchemaBoundsPagesAndRequiresNonNullSelectorBranches()
     {
         var tools = ComputerUseWinToolRegistration.Create(static () => null!);

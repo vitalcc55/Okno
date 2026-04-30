@@ -166,8 +166,16 @@ internal static class ComputerUseWinToolResultFactory
         long? targetHwnd,
         int? elementIndex,
         InputResult input,
-        ComputerUseWinActionObservabilityContext? observabilityContext = null) =>
-        ComputerUseWinActionFinalizer.FinalizeResult(invocation, toolName, targetHwnd, elementIndex, input, observabilityContext);
+        ComputerUseWinActionObservabilityContext? observabilityContext = null,
+        ComputerUseWinActionSuccessorObservation? successorObservation = null) =>
+        ComputerUseWinActionFinalizer.FinalizeResult(
+            invocation,
+            toolName,
+            targetHwnd,
+            elementIndex,
+            input,
+            observabilityContext,
+            successorObservation);
 
     private static ComputerUseWinActionObservabilityContext? MergeObservabilityContext(
         string toolName,

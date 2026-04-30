@@ -109,7 +109,8 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
             input,
             confirmationRequired: resolution.RequiresConfirmation,
             riskClass: DetermineRiskClass(request, resolution.RequiresConfirmation),
-            dispatchPath: DetermineDispatchPath(request));
+            dispatchPath: DetermineDispatchPath(request),
+            successorObservationWindow: resolvedState.Window);
     }
 
     private Task<InputResult> ExecuteInputAsync(
@@ -190,7 +191,8 @@ internal sealed record ComputerUseWinActionExecutionOutcome(
     bool ConfirmationRequired,
     string? RiskClass,
     string? DispatchPath,
-    bool FallbackUsed = false)
+    bool FallbackUsed = false,
+    WindowDescriptor? SuccessorObservationWindow = null)
 {
     public bool IsSuccess => Input is not null;
 
@@ -201,8 +203,9 @@ internal sealed record ComputerUseWinActionExecutionOutcome(
         bool confirmationRequired,
         string? riskClass,
         string? dispatchPath,
-        bool fallbackUsed = false) =>
-        new(input, null, null, ComputerUseWinActionLifecyclePhase.PostDispatch, confirmationRequired, riskClass, dispatchPath, fallbackUsed);
+        bool fallbackUsed = false,
+        WindowDescriptor? successorObservationWindow = null) =>
+        new(input, null, null, ComputerUseWinActionLifecyclePhase.PostDispatch, confirmationRequired, riskClass, dispatchPath, fallbackUsed, successorObservationWindow);
 
     public static ComputerUseWinActionExecutionOutcome Failure(
         ComputerUseWinFailureDetails failure,

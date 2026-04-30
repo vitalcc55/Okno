@@ -198,6 +198,7 @@ internal static class ComputerUseWinToolRegistration
                     ["coordinateSpace"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedCoordinateSpaceValues),
                     ["button"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedButtonValues),
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                    ["observeAfter"] = new JsonObject { ["type"] = "boolean" },
                 },
             });
 
@@ -282,6 +283,7 @@ internal static class ComputerUseWinToolRegistration
                         ["maximum"] = InputActionScalarConstraints.MaximumKeypressRepeat,
                     },
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                    ["observeAfter"] = new JsonObject { ["type"] = "boolean" },
                 },
             });
 
@@ -356,6 +358,7 @@ internal static class ComputerUseWinToolRegistration
                     },
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
                     ["allowFocusedFallback"] = new JsonObject { ["type"] = "boolean" },
+                    ["observeAfter"] = new JsonObject { ["type"] = "boolean" },
                 },
             });
 
@@ -394,6 +397,7 @@ internal static class ComputerUseWinToolRegistration
                         ["maximum"] = InputActionScalarConstraints.MaximumScrollPages,
                     },
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                    ["observeAfter"] = new JsonObject { ["type"] = "boolean" },
                 },
             });
 
@@ -433,6 +437,7 @@ internal static class ComputerUseWinToolRegistration
                     ["coordinateSpace"] = CreateNullableStringEnumSchema(
                         [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels]),
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                    ["observeAfter"] = new JsonObject { ["type"] = "boolean" },
                 },
             });
 

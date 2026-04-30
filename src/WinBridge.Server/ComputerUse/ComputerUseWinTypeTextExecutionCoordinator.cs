@@ -126,7 +126,8 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
             confirmationRequired: focusedFallbackUsed,
             riskClass: riskClass,
             dispatchPath: DispatchPath,
-            fallbackUsed: focusedFallbackUsed);
+            fallbackUsed: focusedFallbackUsed,
+            successorObservationWindow: resolvedState.Window);
     }
 
     private async Task<ComputerUseWinFailureDetails?> RevalidateFocusedTargetAsync(

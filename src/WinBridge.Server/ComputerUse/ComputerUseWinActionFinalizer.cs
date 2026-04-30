@@ -14,13 +14,14 @@ internal static class ComputerUseWinActionFinalizer
         long? targetHwnd,
         int? elementIndex,
         InputResult input,
-        ComputerUseWinActionObservabilityContext? observabilityContext = null)
+        ComputerUseWinActionObservabilityContext? observabilityContext = null,
+        ComputerUseWinActionSuccessorObservation? successorObservation = null)
     {
         ArgumentNullException.ThrowIfNull(invocation);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
         ArgumentNullException.ThrowIfNull(input);
 
-        ComputerUseWinActionResult payload = CreatePayload(targetHwnd, elementIndex, input);
+        ComputerUseWinActionResult payload = CreatePayload(targetHwnd, elementIndex, input, successorObservation);
         string auditOutcome = payload.Status is ComputerUseWinStatusValues.Done or ComputerUseWinStatusValues.VerifyNeeded
             ? "done"
             : "failed";
@@ -30,7 +31,7 @@ internal static class ComputerUseWinActionFinalizer
             payload.TargetHwnd,
             ComputerUseWinAuditDataBuilder.CreateActionCompletionData(toolName, input));
         ComputerUseWinActionObservability.RecordBestEffort(invocation, toolName, payload, observabilityContext);
-        return CreateToolResult(payload, isError: payload.Status == ComputerUseWinStatusValues.Failed);
+        return CreateToolResult(payload, isError: payload.Status == ComputerUseWinStatusValues.Failed, successorObservation?.ImageContent);
     }
 
     public static CallToolResult FinalizeUnexpectedFailure(
@@ -55,7 +56,8 @@ internal static class ComputerUseWinActionFinalizer
     internal static ComputerUseWinActionResult CreatePayload(
         long? targetHwnd,
         int? elementIndex,
-        InputResult input)
+        InputResult input,
+        ComputerUseWinActionSuccessorObservation? successorObservation = null)
     {
         string status = string.Equals(input.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal)
             ? ComputerUseWinStatusValues.VerifyNeeded
@@ -63,14 +65,17 @@ internal static class ComputerUseWinActionFinalizer
                 ? ComputerUseWinStatusValues.Done
                 : ComputerUseWinStatusValues.Failed;
         ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(input.FailureCode, input.Reason);
+        ComputerUseWinGetAppStateResult? successorState = successorObservation?.SuccessorState;
 
         return new(
             Status: status,
-            RefreshStateRecommended: true,
+            RefreshStateRecommended: status == ComputerUseWinStatusValues.Failed || successorState is null,
             FailureCode: failure.FailureCode,
             Reason: status == ComputerUseWinStatusValues.Failed ? failure.Reason : input.Reason,
             TargetHwnd: input.TargetHwnd ?? targetHwnd,
-            ElementIndex: elementIndex);
+            ElementIndex: elementIndex,
+            SuccessorState: successorState,
+            SuccessorStateFailure: successorObservation?.Failure);
     }
 
     private static CallToolResult FinalizeUnexpectedInternalFailure(
@@ -187,21 +192,29 @@ internal static class ComputerUseWinActionFinalizer
         };
     }
 
-    private static CallToolResult CreateToolResult(ComputerUseWinActionResult payload, bool isError)
+    private static CallToolResult CreateToolResult(
+        ComputerUseWinActionResult payload,
+        bool isError,
+        ImageContentBlock? imageContent = null)
     {
         JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions);
+        List<ContentBlock> content =
+        [
+            new TextContentBlock
+            {
+                Text = JsonSerializer.Serialize(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions),
+            },
+        ];
+        if (imageContent is not null)
+        {
+            content.Add(imageContent);
+        }
 
         return new CallToolResult
         {
             IsError = isError,
             StructuredContent = structuredContent,
-            Content =
-            [
-                new TextContentBlock
-                {
-                    Text = JsonSerializer.Serialize(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions),
-                },
-            ],
+            Content = content,
         };
     }
 

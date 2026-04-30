@@ -76,7 +76,8 @@ internal sealed class ComputerUseWinPressKeyExecutionCoordinator(
             input,
             confirmationRequired: requiresConfirmation,
             riskClass: requiresConfirmation ? "dangerous_key" : "keyboard_key",
-            dispatchPath: "win32_sendinput_keypress");
+            dispatchPath: "win32_sendinput_keypress",
+            successorObservationWindow: resolvedState.Window);
     }
 
     private Task<InputResult> ExecuteInputAsync(

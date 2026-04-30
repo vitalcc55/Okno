@@ -98,20 +98,23 @@ public sealed record ComputerUseWinClickRequest(
     InputPoint? Point = null,
     string? CoordinateSpace = null,
     string? Button = null,
-    bool Confirm = false);
+    bool Confirm = false,
+    bool ObserveAfter = false);
 
 public sealed record ComputerUseWinTypeTextRequest(
     string? StateToken = null,
     int? ElementIndex = null,
     string? Text = null,
     bool Confirm = false,
-    bool AllowFocusedFallback = false);
+    bool AllowFocusedFallback = false,
+    bool ObserveAfter = false);
 
 public sealed record ComputerUseWinPressKeyRequest(
     string? StateToken = null,
     string? Key = null,
     int? Repeat = null,
-    bool Confirm = false);
+    bool Confirm = false,
+    bool ObserveAfter = false);
 
 public sealed record ComputerUseWinSetValueRequest(
     string? StateToken = null,
@@ -128,7 +131,8 @@ public sealed record ComputerUseWinScrollRequest(
     string? CoordinateSpace = null,
     string? Direction = null,
     int? Pages = null,
-    bool Confirm = false);
+    bool Confirm = false,
+    bool ObserveAfter = false);
 
 public sealed record ComputerUseWinPerformSecondaryActionRequest(
     string? StateToken = null,
@@ -142,7 +146,12 @@ public sealed record ComputerUseWinDragRequest(
     int? ToElementIndex = null,
     InputPoint? ToPoint = null,
     string? CoordinateSpace = null,
-    bool Confirm = false);
+    bool Confirm = false,
+    bool ObserveAfter = false);
+
+public sealed record ComputerUseWinActionSuccessorStateFailure(
+    string FailureCode,
+    string Reason);
 
 public sealed record ComputerUseWinActionResult(
     string Status,
@@ -151,4 +160,6 @@ public sealed record ComputerUseWinActionResult(
     string? FailureCode = null,
     string? Reason = null,
     long? TargetHwnd = null,
-    int? ElementIndex = null);
+    int? ElementIndex = null,
+    ComputerUseWinGetAppStateResult? SuccessorState = null,
+    ComputerUseWinActionSuccessorStateFailure? SuccessorStateFailure = null);

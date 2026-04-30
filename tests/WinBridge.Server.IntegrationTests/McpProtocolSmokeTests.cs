@@ -384,6 +384,13 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal("string", typeTextProperties.GetProperty("text").GetProperty("type").GetString());
             Assert.Equal("boolean", typeTextProperties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
             Assert.Equal("boolean", typeTextProperties.GetProperty("confirm").GetProperty("type").GetString());
+            Assert.Equal("boolean", clickProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+            Assert.Equal("boolean", pressKeyProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+            Assert.Equal("boolean", dragProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+            Assert.Equal("boolean", scrollProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+            Assert.Equal("boolean", typeTextProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+            Assert.False(setValueProperties.TryGetProperty("observeAfter", out _));
+            Assert.False(secondaryActionProperties.TryGetProperty("observeAfter", out _));
             Assert.False(typeTextProperties.TryGetProperty("key", out _));
             Assert.False(typeTextProperties.TryGetProperty("valueKind", out _));
 
@@ -516,12 +523,33 @@ public sealed class McpProtocolSmokeTests
                 {
                     stateToken,
                     elementIndex,
+                    observeAfter = true,
                 });
 
             JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
             Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
+            Assert.False(clickPayload.GetProperty("refreshStateRecommended").GetBoolean());
             Assert.Equal(helperHwnd, clickPayload.GetProperty("targetHwnd").GetInt64());
             Assert.Equal(elementIndex, clickPayload.GetProperty("elementIndex").GetInt32());
+            Assert.Contains(
+                clickResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
+                block => block.GetProperty("type").GetString() == "image");
+            JsonElement successorState = clickPayload.GetProperty("successorState");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
+            string successorToken = successorState.GetProperty("stateToken").GetString()!;
+            Assert.NotEqual(stateToken, successorToken);
+
+            using JsonDocument followUpResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinPressKey,
+                new
+                {
+                    stateToken = successorToken,
+                    key = "tab",
+                });
+
+            JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, followUpPayload.GetProperty("targetHwnd").GetInt64());
         }
         finally
         {

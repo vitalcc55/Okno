@@ -1,6 +1,6 @@
 ---
 name: "computer-use-win"
-description: "Workflow для работы с Computer Use for Windows в этом репозитории: каждый GUI turn начинать с get_app_state, предпочитать element-targeted actions, повторно наблюдать state после действий и не автоматизировать blocked targets."
+description: "Workflow для работы с Computer Use for Windows в этом репозитории: каждый GUI turn начинать с get_app_state, предпочитать element-targeted actions, использовать observeAfter или повторно наблюдать state после действий и не автоматизировать blocked targets."
 ---
 
 # Computer Use for Windows
@@ -8,7 +8,7 @@ description: "Workflow для работы с Computer Use for Windows в это
 ## Когда использовать
 
 - Нужно работать с публичным Codex surface `computer-use-win`, а не с внутренними `windows.*` engine tools.
-- Нужно пройти Windows GUI workflow через `list_apps -> get_app_state -> click`.
+- Нужно пройти Windows GUI workflow через `list_apps -> get_app_state -> action`.
 - Нужно держать Computer Use turn discipline и app approvals.
 
 ## Важный контекст
@@ -17,7 +17,7 @@ description: "Workflow для работы с Computer Use for Windows в это
 - Внутри plugin работает `Okno` engine, но снаружи user-facing product name — `Computer Use for Windows`.
 - Каждый GUI turn начинай с `get_app_state`.
 - Предпочитай `elementIndex` над coordinate click, если index доступен.
-- После action делай повторный `get_app_state` или явную verify-step, а не гадай по результату.
+- После action используй `observeAfter=true` на поддерживаемых actions, делай повторный `get_app_state` или явную verify-step, а не гадай по результату.
 - Не автоматизируй terminal apps, сам Codex и другие blocked targets.
 - Все shell-команды ниже предполагают, что current working directory уже находится в корне этого репозитория.
 
@@ -27,6 +27,7 @@ description: "Workflow для работы с Computer Use for Windows в это
 
 ```text
 list_apps -> get_app_state -> click -> get_app_state
+list_apps -> get_app_state -> action(observeAfter=true) -> successorState
 ```
 
 2. Если задача меняет runtime, server, tool contract, diagnostics или verification path, сначала запусти:

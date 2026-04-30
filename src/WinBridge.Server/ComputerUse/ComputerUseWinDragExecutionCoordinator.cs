@@ -121,7 +121,8 @@ internal sealed class ComputerUseWinDragExecutionCoordinator(
             input,
             confirmationRequired: requiresConfirmation,
             riskClass: DetermineRiskClass(typedPayload, resolution.SourceElement, resolution.DestinationElement),
-            dispatchPath: ComputerUseWinDragContract.DetermineDispatchPath(typedPayload));
+            dispatchPath: ComputerUseWinDragContract.DetermineDispatchPath(typedPayload),
+            successorObservationWindow: resolvedState.Window);
     }
 
     private Task<InputResult> ExecuteInputAsync(

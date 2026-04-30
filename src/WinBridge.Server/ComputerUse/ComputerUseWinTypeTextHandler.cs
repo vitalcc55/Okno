@@ -21,7 +21,8 @@ internal sealed class ComputerUseWinTypeTextHandler(
             ComputerUseWinStoredStateValidationMode.SemanticElementAction,
             (resolvedState, ct) => typeTextExecutionCoordinator.ExecuteAsync(resolvedState, request, ct),
             (resolvedState, outcome) => CreateObservabilityContext(resolvedState, request, outcome),
-            cancellationToken);
+            cancellationToken,
+            observeAfter: request.ObserveAfter);
 
     private static ComputerUseWinActionObservabilityContext CreateObservabilityContext(
         ComputerUseWinStoredState resolvedState,

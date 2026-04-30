@@ -22,7 +22,8 @@ internal sealed class ComputerUseWinClickHandler(
             DetermineValidationMode(request),
             (resolvedState, ct) => clickExecutionCoordinator.ExecuteAsync(resolvedState, request, ct),
             (resolvedState, outcome) => CreateObservabilityContext(resolvedState, request, outcome),
-            cancellationToken);
+            cancellationToken,
+            observeAfter: request.ObserveAfter);
 
     private static ComputerUseWinStoredStateValidationMode DetermineValidationMode(ComputerUseWinClickRequest request)
     {

@@ -95,10 +95,11 @@ click/scroll/type paths.
   `allowFocusedFallback=true` + `confirm=true`, fresh target-local focus proof,
   no clipboard default и public `verify_needed`.
 
-Следующий ближайший follow-up после этого не в новой action vocabulary, а в
-lower-friction screenshot-first loop: successor-state / action+observe должен
-уменьшить ручной `action -> get_app_state` cost после честного
-`verify_needed`.
+Второй quality gap после wave closure тоже закрыт как bounded follow-up без
+новой action vocabulary: explicit `observeAfter=true` на supported actions
+может вернуть nested `successorState` и screenshot image block после committed
+`done` / `verify_needed`, уменьшая ручной `action -> get_app_state` cost без
+превращения `verify_needed` в optimistic `done`.
 
 ## Контракт действий
 

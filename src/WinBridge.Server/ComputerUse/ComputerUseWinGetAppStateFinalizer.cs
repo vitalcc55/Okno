@@ -50,8 +50,8 @@ internal static class ComputerUseWinGetAppStateFinalizer
         ArgumentNullException.ThrowIfNull(stateStore);
         ArgumentNullException.ThrowIfNull(sessionManager);
 
-        string stateToken = ComputerUseWinStateStore.CreateToken();
-        ComputerUseWinGetAppStateResult payload = preparedState.CreatePayload(stateToken);
+        ComputerUseWinMaterializedAppState materializedState = CommitPreparedState(preparedState, stateStore, sessionManager, selectedWindow);
+        ComputerUseWinGetAppStateResult payload = materializedState.Payload;
         JsonElement structuredContent = JsonSerializer.SerializeToElement(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions);
         CallToolResult result = new()
         {
@@ -63,16 +63,9 @@ internal static class ComputerUseWinGetAppStateFinalizer
                 {
                     Text = JsonSerializer.Serialize(payload, ComputerUseWinToolResultFactory.PayloadJsonOptions),
                 },
-                new ImageContentBlock
-                {
-                    Data = Encoding.ASCII.GetBytes(Convert.ToBase64String(preparedState.PngBytes)),
-                    MimeType = preparedState.MimeType,
-                },
+                materializedState.ImageContent,
             ],
         };
-
-        stateStore.Commit(stateToken, preparedState.StoredState);
-        sessionManager.Attach(selectedWindow, "computer-use-win");
 
         invocation.CompleteBestEffort(
             "done",
@@ -82,4 +75,32 @@ internal static class ComputerUseWinGetAppStateFinalizer
 
         return result;
     }
+
+    internal static ComputerUseWinMaterializedAppState CommitPreparedState(
+        ComputerUseWinPreparedAppState preparedState,
+        ComputerUseWinStateStore stateStore,
+        ISessionManager sessionManager,
+        WindowDescriptor selectedWindow)
+    {
+        ArgumentNullException.ThrowIfNull(preparedState);
+        ArgumentNullException.ThrowIfNull(stateStore);
+        ArgumentNullException.ThrowIfNull(sessionManager);
+        ArgumentNullException.ThrowIfNull(selectedWindow);
+
+        string stateToken = ComputerUseWinStateStore.CreateToken();
+        ComputerUseWinGetAppStateResult payload = preparedState.CreatePayload(stateToken);
+        ImageContentBlock imageContent = new()
+        {
+            Data = Encoding.ASCII.GetBytes(Convert.ToBase64String(preparedState.PngBytes)),
+            MimeType = preparedState.MimeType,
+        };
+
+        sessionManager.Attach(selectedWindow, "computer-use-win");
+        stateStore.Commit(stateToken, preparedState.StoredState);
+        return new ComputerUseWinMaterializedAppState(payload, imageContent);
+    }
 }
+
+internal sealed record ComputerUseWinMaterializedAppState(
+    ComputerUseWinGetAppStateResult Payload,
+    ImageContentBlock ImageContent);

@@ -64,7 +64,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 | 09 | `plugins/computer-use-win` + `src/WinBridge.Server/ComputerUse` | public-facing Codex operator surface `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag` поверх внутреннего Okno engine, отдельный publication profile и self-contained plugin-local install artifact | `частично` | `92%` | `R2-следом` |
 | 10 | `src/WinBridge.Runtime.Windows.Input` + public Computer Use action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) | текущая global action wave для `computer-use-win`; весь целевой action set уже shipped в public callable surface, а `drag` больше не остаётся deferred: runtime/input path materialize-ит separate source/destination proof, factual move/down/move/up dispatch, helper smoke и install/publication proof | `реализовано` | `93%` | `R2-следом` |
 | 11 | `plugins/computer-use-win` + focused `type_text` fallback follow-up | explicit `allowFocusedFallback=true` keyboard-focus fallback for poor-UIA apps after screenshot-first navigation, only with `confirm=true`, fresh focus proof, no clipboard default and public `verify_needed` semantics | `реализовано` | `100%` | `R2-следом` |
-| 12 | `plugins/computer-use-win` + successor-state/action+observe follow-up | optional post-action reobserve path, successor-state shaping and lower-friction screenshot-first loop after `click`, `drag` and other low-confidence actions without pretending stronger semantic proof than runtime actually has | `запланировано` | `0%` | `R2` |
+| 12 | `plugins/computer-use-win` + successor-state/action+observe follow-up | explicit `observeAfter=true` post-action reobserve path для `click`, `press_key`, `type_text`, `scroll` и `drag`: nested `successorState`, updated screenshot image block, новый short-lived `stateToken`, factual top-level action status и advisory `successorStateFailure` без optimistic semantic proof | `реализовано` | `100%` | `R2-следом` |
 | 13 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, low-noise visual proof and future OCR fallback bridge | `запланировано` | `0%` | `R2` |
 | 14 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice | `декларировано` | `15%` | `R2` |
 | 15 | `src/WinBridge.Runtime.Windows.UIA` + `windows.uia_action` | semantic action layer поверх shipped `uia_snapshot` и gate/readiness foundation | `декларировано` | `10%` | `R2` |
@@ -78,23 +78,22 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 Текущий practical order такой:
 
-1. successor-state / action+observe after low-confidence actions
-2. public instance continuity UX without weakening strict discovery proof
-3. app approvals hardening + risky action confirmation
-4. app playbooks expansion
-5. `windows.region_capture`
-6. `windows.clipboard_get` / `windows.clipboard_set`
-7. `windows.uia_action`
-8. `windows.dialog`
-9. `windows.surface_lifecycle`
-10. `windows.menu` / `windows.taskbar` / `windows.tray`
+1. public instance continuity UX without weakening strict discovery proof
+2. app approvals hardening + risky action confirmation
+3. app playbooks expansion
+4. `windows.region_capture`
+5. `windows.clipboard_get` / `windows.clipboard_set`
+6. `windows.uia_action`
+7. `windows.dialog`
+8. `windows.surface_lifecycle`
+9. `windows.menu` / `windows.taskbar` / `windows.tray`
 
 Почему именно так:
 
 - reference repos показывают, что зрелые runtimes почти всегда быстро приходят к app/window/input/dialog/menu families;
 - official OpenAI `computer use` loop делает input vocabulary и quiet action semantics важнее, чем поздние shell niceties;
-- focused poor-UIA text-entry gap уже закрыт narrow `type_text` fallback slice через explicit `allowFocusedFallback=true` + `confirm=true`, fresh focus proof, no clipboard default и public `verify_needed`, поэтому следующий highest-value UX gap — не новый text path, а successor-state / action+observe shaping;
-- live product feedback после shipped action wave уже показал вторую UX-проблему: агенту дорого постоянно крутить полный `action -> get_app_state` loop после честного `verify_needed`, поэтому successor-state / action+observe shaping стоит поднять раньше approvals/playbooks;
+- focused poor-UIA text-entry gap уже закрыт narrow `type_text` fallback slice через explicit `allowFocusedFallback=true` + `confirm=true`, fresh focus proof, no clipboard default и public `verify_needed`;
+- successor-state / action+observe gap тоже закрыт explicit `observeAfter=true` path: честный `verify_needed` больше не обязан автоматически означать полный следующий `get_app_state`, если runtime уже вернул nested `successorState` и screenshot image block;
 - live product feedback по `windowId` churn тоже подтверждает направление: strict discovery-scoped selector semantics остаются правильными по safety, но следующий UX шаг должен уменьшать лишние `list_apps` refresh loops без перехода к наивному public id на базе `hwnd + processId`;
 - shipped focused fallback сохраняет boundary: screenshot-first navigation в poor-UIA apps работает, text entry без editable proof допускается только с explicit keyboard-focus fallback, а clipboard или broad shell hacks остаются отдельными later slices;
 - reference repos и текущий `observe/capture` stack показывают, что narrow `region_capture` даёт более дешёвый verify-after-action loop и полезен как мост к visual fallback, не размывая capture family в OCR/browser subsystem;
@@ -123,8 +122,8 @@ _Живой delivery roadmap проекта: текущий capability map, по
 - built-in `computer use` guide отдельно нормализует screenshot-first cycle:
   первый turn часто начинается со screenshot, после action batch harness
   возвращает updated screenshot, а значит `get_app_state`/capture-first loops
-  и future successor-state shaping должны оставаться first-class image paths, а
-  не path-only metadata wrappers;
+  и shipped `observeAfter=true` successor-state path должны оставаться
+  first-class image paths, а не path-only metadata wrappers;
 - если future external/client loop downscale-ит screenshots, координаты должны remap-иться обратно в original geometry basis; `captureReference` и future screenshot-first flows нельзя трактовать как free-form resized image space без coordinate discipline;
 - narrow follow-up вроде `windows.region_capture` должен усиливать visual proof после actions, но не превращать visual stack в primary OCR-first mode раньше времени;
 - `windows.launch_process` и `windows.open_target` должны оставаться split;

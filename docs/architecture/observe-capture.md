@@ -41,6 +41,12 @@
 - поэтому для `Okno` `artifactPath` остаётся важным operator/debug evidence
   path, но не должен рассматриваться как достаточная замена model-facing image
   content.
+- public `computer-use-win` action tools теперь могут явно включать тот же
+  loop через `observeAfter=true` на `click`, `press_key`, `type_text`,
+  `scroll` и `drag`: action payload сохраняет factual top-level status, а
+  nested `successorState` и appended image block становятся fresh observation
+  для следующего шага. Failed post-action observe остаётся advisory и не
+  переписывает committed action result.
 
 ## Что реализовано
 
@@ -146,6 +152,8 @@ Metadata не смешивает window pixels с более поздней live
 
 - OpenAI computer-use loop ожидает updated screenshot как first-class image
   payload после action batch;
+- `computer-use-win` закрывает это либо явным follow-up `get_app_state`, либо
+  successful `observeAfter=true` successor state;
 - локальный файл нужен как evidence/investigation path и operator fallback;
 - если конкретный client не умеет сразу рендерить MCP image block inline,
   это отдельный UX gap client/output shaping, а не причина отказываться от

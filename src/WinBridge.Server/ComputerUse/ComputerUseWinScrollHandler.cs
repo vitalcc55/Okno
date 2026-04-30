@@ -21,7 +21,8 @@ internal sealed class ComputerUseWinScrollHandler(
             DetermineValidationMode(request),
             (resolvedState, ct) => scrollExecutionCoordinator.ExecuteAsync(resolvedState, request, ct),
             (resolvedState, outcome) => CreateObservabilityContext(resolvedState, request, outcome),
-            cancellationToken);
+            cancellationToken,
+            observeAfter: request.ObserveAfter);
 
     private static ComputerUseWinActionObservabilityContext CreateObservabilityContext(
         ComputerUseWinStoredState resolvedState,

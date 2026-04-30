@@ -656,10 +656,10 @@ Questions for review:
 
 **Tests first**
 
-- RED tests for new schema fields and result shape;
-- RED tests that action success plus failed successor observe still returns factual action outcome;
-- RED tests for image-bearing action result when `observeAfter=true`;
-- RED tests for new token commit only on successful successor observe.
+- [x] RED tests for new schema fields and result shape;
+- [x] RED tests that action success plus failed successor observe still returns factual action outcome;
+- [x] RED tests for image-bearing action result when `observeAfter=true`;
+- [x] RED tests for new token commit only on successful successor observe.
 
 **Expected result model**
 
@@ -668,6 +668,30 @@ Questions for review:
 - successful `successorState` satisfies the “need fresh state for the next step” concern, so `refreshStateRecommended=false` for that result shape.
 - low-confidence top-level status may still remain `verify_needed` even when `successorState` is present; that status now means semantic conservatism, not “you must immediately call `get_app_state` again”.
 - if successor observe fails after a committed action, keep the ordinary action result semantics and leave `refreshStateRecommended=true`.
+
+#### Отчёт этапа
+
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: `pending`
+- TDD применялся: да; RED сначала падал на отсутствующих `ObserveAfter` request fields / executor constructor, затем GREEN закрыл schema, result shape, image block, successor token commit и failed successor observe advisory path.
+- Проверки:
+  - `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinActionAndProjectionTests.ClickHandlerReportsCaptureReferenceRequiredWhenLiveStateLacksCaptureProof|FullyQualifiedName~ComputerUseWinSelectedActionSchemasExposeObserveAfterOptIn|FullyQualifiedName~ClickHandlerEmbedsSuccessorStateAndImageWhenObserveAfterSucceeds|FullyQualifiedName~ClickHandlerKeepsCommittedActionOutcomeWhenObserveAfterFails|FullyQualifiedName~McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools|FullyQualifiedName~McpProtocolSmokeTests.ComputerUseWinClickUsesStateTokenAndElementIndexAfterApprovedAppState"` passed `6/6`.
+  - `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinActionAndProjectionTests.ClickHandlerReportsCaptureReferenceRequiredWhenLiveStateLacksCaptureProof|FullyQualifiedName~ComputerUseWinSelectedActionSchemasExposeObserveAfterOptIn|FullyQualifiedName~ClickHandlerEmbedsSuccessorStateAndImageWhenObserveAfterSucceeds|FullyQualifiedName~ClickHandlerKeepsCommittedActionOutcomeWhenObserveAfterFails|FullyQualifiedName~ClickHandlerKeepsCommittedActionOutcomeWhenSuccessorMaterializationThrows|FullyQualifiedName~McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools|FullyQualifiedName~McpProtocolSmokeTests.ComputerUseWinClickUsesStateTokenAndElementIndexAfterApprovedAppState|FullyQualifiedName~ComputerUseWinHandlersResolveFromServiceCollection"` passed `8/8` after self-review hardening.
+  - `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinFinalizationTests"` passed `28/28`.
+  - `dotnet test .\tests\WinBridge.Runtime.Tests\WinBridge.Runtime.Tests.csproj --filter "FullyQualifiedName~ToolContractManifestTests.ComputerUseWinContractNotesReflectShippedSecondaryAction|FullyQualifiedName~ToolContractExporterTests"` passed `12/12` after an earlier invalid parallel test invocation caused a file-lock and was rerun sequentially.
+  - `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinInstallSurfaceTests.ComputerUseWinPluginReadmeDocumentsCurrentShippedToolSurface"` passed `1/1` after bundled skill guidance fix.
+  - `scripts\refresh-generated-docs.ps1` passed with build `0 warnings / 0 errors`.
+- Review agents: `Copernicus -> approve/no P0-P3`; `Aristotle -> approve with non-blocking P3 docs-skill note`, re-review `approve/no remaining findings`
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`; review and re-review prompts included mandatory sandbox-mode addendum verbatim.
+- Official docs checked: active source-pack constraints from Stage 0; no new external runtime facts introduced in this stage.
+- Reference repos checked: none for Stage 2 implementation; repo-local owner paths and tests were sufficient.
+- Подтверждённые замечания: P3 bundled plugin skill still described only old post-action `get_app_state` loop and omitted `observeAfter=true`.
+- Отклонённые замечания: `none`
+- Исправленные root causes: plugin-bundled `plugins/computer-use-win/skills/computer-use-win/SKILL.md` now documents `observeAfter=true` as a supported post-action loop alongside `get_app_state` and explicit verify-step; post-self-review hardening also made thrown successor materialization advisory instead of rewriting committed action outcome.
+- Проверенные соседние paths: action finalizer/audit materialization, MCP tools/list schema, real helper click successor-state smoke, generated profile export, DI handler resolution, bundled plugin README + skill guidance.
+- Остаточные риски: full install/publication contour remains Stage 4/5 scope.
+- Разблокировка следующего этапа: blocked until Stage 2 commit SHA is recorded.
 
 **Stage gate:** before leaving Stage 2, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
 
