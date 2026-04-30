@@ -671,9 +671,9 @@ Questions for review:
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-screenshot-first-hardening`
-- Commit SHA: `pending`
+- Commit SHA: `cd57192`
 - TDD применялся: да; RED сначала падал на отсутствующих `ObserveAfter` request fields / executor constructor, затем GREEN закрыл schema, result shape, image block, successor token commit и failed successor observe advisory path.
 - Проверки:
   - `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinActionAndProjectionTests.ClickHandlerReportsCaptureReferenceRequiredWhenLiveStateLacksCaptureProof|FullyQualifiedName~ComputerUseWinSelectedActionSchemasExposeObserveAfterOptIn|FullyQualifiedName~ClickHandlerEmbedsSuccessorStateAndImageWhenObserveAfterSucceeds|FullyQualifiedName~ClickHandlerKeepsCommittedActionOutcomeWhenObserveAfterFails|FullyQualifiedName~McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools|FullyQualifiedName~McpProtocolSmokeTests.ComputerUseWinClickUsesStateTokenAndElementIndexAfterApprovedAppState"` passed `6/6`.
@@ -691,7 +691,7 @@ Questions for review:
 - Исправленные root causes: plugin-bundled `plugins/computer-use-win/skills/computer-use-win/SKILL.md` now documents `observeAfter=true` as a supported post-action loop alongside `get_app_state` and explicit verify-step; post-self-review hardening also made thrown successor materialization advisory instead of rewriting committed action outcome.
 - Проверенные соседние paths: action finalizer/audit materialization, MCP tools/list schema, real helper click successor-state smoke, generated profile export, DI handler resolution, bundled plugin README + skill guidance.
 - Остаточные риски: full install/publication contour remains Stage 4/5 scope.
-- Разблокировка следующего этапа: blocked until Stage 2 commit SHA is recorded.
+- Разблокировка следующего этапа: Stage 3 / Package D may start after this metadata update is committed.
 
 **Stage gate:** before leaving Stage 2, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
 
