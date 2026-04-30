@@ -68,6 +68,35 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public void ListAppsReusesWindowIdsForUnchangedDiscoverySnapshot()
+    {
+        using TempDirectoryScope temp = new();
+        ComputerUseWinApprovalStore approvalStore = CreateApprovalStore(temp);
+        ComputerUseWinTools tools = CreateComputerUseWinTools(
+            new FakeListAppsWindowManager(
+            [
+                CreateWindow(hwnd: 101, title: "Explorer A", processName: "explorer", processId: 1001, isForeground: false),
+                CreateWindow(hwnd: 202, title: "Explorer B", processName: "explorer", processId: 1001, isForeground: true),
+            ]),
+            approvalStore);
+
+        ComputerUseWinListAppsResult firstPayload = JsonSerializer.Deserialize<ComputerUseWinListAppsResult>(
+            tools.ListApps().StructuredContent!.Value.GetRawText(),
+            ComputerUseWinToolResultFactory.PayloadJsonOptions)!;
+        ComputerUseWinListAppsResult secondPayload = JsonSerializer.Deserialize<ComputerUseWinListAppsResult>(
+            tools.ListApps().StructuredContent!.Value.GetRawText(),
+            ComputerUseWinToolResultFactory.PayloadJsonOptions)!;
+
+        string firstExplorerA = firstPayload.Apps.Single(app => app.AppId == "explorer").Windows.Single(window => window.Hwnd == 101).WindowId;
+        string secondExplorerA = secondPayload.Apps.Single(app => app.AppId == "explorer").Windows.Single(window => window.Hwnd == 101).WindowId;
+        string firstExplorerB = firstPayload.Apps.Single(app => app.AppId == "explorer").Windows.Single(window => window.Hwnd == 202).WindowId;
+        string secondExplorerB = secondPayload.Apps.Single(app => app.AppId == "explorer").Windows.Single(window => window.Hwnd == 202).WindowId;
+
+        Assert.Equal(firstExplorerA, secondExplorerA);
+        Assert.Equal(firstExplorerB, secondExplorerB);
+    }
+
+    [Fact]
     public void GetAppStateTargetResolverCarriesExecutionTargetForWindowIdHwndAndAttachedFallback()
     {
         IReadOnlyList<WindowDescriptor> windows =
@@ -2859,6 +2888,88 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Assert.NotNull(resolvedTarget);
             Assert.False(continuityFailed);
         }
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogReusesWindowIdAcrossStrictDiscoveryMatch()
+    {
+        IReadOnlyList<WindowDescriptor> discoveryBatch =
+        [
+            CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false),
+            CreateWindow(hwnd: 202, title: "Window B", processName: "explorer", processId: 1001, isForeground: true),
+        ];
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+
+        IReadOnlyList<ComputerUseWinExecutionTarget> firstTargets = executionTargetCatalog.Materialize(discoveryBatch);
+        IReadOnlyList<ComputerUseWinExecutionTarget> secondTargets = executionTargetCatalog.Materialize(discoveryBatch);
+
+        Assert.Equal(
+            firstTargets.Single(target => target.Window.Hwnd == 101).PublicWindowId,
+            secondTargets.Single(target => target.Window.Hwnd == 101).PublicWindowId);
+        Assert.Equal(
+            firstTargets.Single(target => target.Window.Hwnd == 202).PublicWindowId,
+            secondTargets.Single(target => target.Window.Hwnd == 202).PublicWindowId);
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogIssuesNewWindowIdWhenDiscoverySnapshotDrifts()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor driftedWindow = originalWindow with
+        {
+            Title = "Window A - updated",
+        };
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+
+        ComputerUseWinExecutionTarget originalTarget = Assert.Single(executionTargetCatalog.Materialize([originalWindow]));
+        ComputerUseWinExecutionTarget driftedTarget = Assert.Single(executionTargetCatalog.Materialize([driftedWindow]));
+
+        Assert.NotEqual(originalTarget.PublicWindowId, driftedTarget.PublicWindowId);
+        Assert.False(executionTargetCatalog.TryResolveWindowId(
+            originalTarget.PublicWindowId!,
+            [driftedWindow],
+            out ComputerUseWinExecutionTarget? _,
+            out WindowDescriptor? _,
+            out bool continuityFailed));
+        Assert.False(continuityFailed);
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogDoesNotReuseWindowIdForReusedHwndReplacement()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, threadId: 2002, isForeground: false);
+        WindowDescriptor replacementWindow = originalWindow with
+        {
+            ThreadId = 9999,
+        };
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+
+        ComputerUseWinExecutionTarget originalTarget = Assert.Single(executionTargetCatalog.Materialize([originalWindow]));
+        ComputerUseWinExecutionTarget replacementTarget = Assert.Single(executionTargetCatalog.Materialize([replacementWindow]));
+
+        Assert.NotEqual(originalTarget.PublicWindowId, replacementTarget.PublicWindowId);
+        Assert.False(executionTargetCatalog.TryResolveWindowId(
+            originalTarget.PublicWindowId!,
+            [replacementWindow],
+            out ComputerUseWinExecutionTarget? _,
+            out WindowDescriptor? _,
+            out bool continuityFailed));
+        Assert.False(continuityFailed);
+    }
+
+    [Fact]
+    public void ExecutionTargetCatalogDoesNotReuseWindowIdWhenCurrentDiscoveryBatchHasDuplicateStrictMatches()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor duplicateWindow = originalWindow with { };
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+
+        ComputerUseWinExecutionTarget originalTarget = Assert.Single(executionTargetCatalog.Materialize([originalWindow]));
+        IReadOnlyList<ComputerUseWinExecutionTarget> duplicateTargets = executionTargetCatalog.Materialize([originalWindow, duplicateWindow]);
+
+        Assert.Equal(2, duplicateTargets.Count);
+        Assert.All(duplicateTargets, target => Assert.NotEqual(originalTarget.PublicWindowId, target.PublicWindowId));
+        Assert.NotEqual(duplicateTargets[0].PublicWindowId, duplicateTargets[1].PublicWindowId);
     }
 
     [Fact]

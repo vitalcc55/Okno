@@ -224,18 +224,20 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             return [];
         }
 
-        ComputerUseWinExecutionTarget[] issuedTargets = pendingTargets
-            .Select(static pending => new ComputerUseWinExecutionTarget(
-                pending.ApprovalKey,
-                pending.ExecutionTargetId,
-                pending.ExecutionTargetId.Value,
-                pending.Window))
-            .ToArray();
         lock (gate)
         {
             EvictExpired_NoLock();
             long generation = nextGeneration++;
             DateTimeOffset issuedAtUtc = timeProvider.GetUtcNow();
+            HashSet<string> ambiguousReusableWindowIds = FindAmbiguousReusableWindowIds_NoLock(
+                pendingTargets,
+                protectAsPublishedDiscoverySnapshot);
+            ComputerUseWinExecutionTarget[] issuedTargets = pendingTargets
+                .Select(pending => CreatePublishedTarget_NoLock(
+                    pending,
+                    protectAsPublishedDiscoverySnapshot,
+                    ambiguousReusableWindowIds))
+                .ToArray();
             foreach (ComputerUseWinExecutionTarget issuedTarget in issuedTargets)
             {
                 string windowId = issuedTarget.PublicWindowId
@@ -255,9 +257,61 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
             }
 
             EvictOverflowPreservingLifetimes_NoLock(generation);
+            return issuedTargets;
+        }
+    }
+
+    private ComputerUseWinExecutionTarget CreatePublishedTarget_NoLock(
+        PendingTarget pendingTarget,
+        bool allowPublishedReuse,
+        HashSet<string> ambiguousReusableWindowIds)
+    {
+        if (allowPublishedReuse && TryFindReusablePublishedEntry_NoLock(pendingTarget.Window, out CatalogEntry? entry))
+        {
+            if (ambiguousReusableWindowIds.Contains(entry.WindowId))
+            {
+                return CreateNewPublishedTarget(pendingTarget);
+            }
+
+            return new ComputerUseWinExecutionTarget(
+                entry.ApprovalKey,
+                entry.ExecutionTargetId,
+                entry.WindowId,
+                pendingTarget.Window);
         }
 
-        return issuedTargets;
+        return CreateNewPublishedTarget(pendingTarget);
+    }
+
+    private static ComputerUseWinExecutionTarget CreateNewPublishedTarget(PendingTarget pendingTarget) =>
+        new(
+            pendingTarget.ApprovalKey,
+            pendingTarget.ExecutionTargetId,
+            pendingTarget.ExecutionTargetId.Value,
+            pendingTarget.Window);
+
+    private HashSet<string> FindAmbiguousReusableWindowIds_NoLock(
+        IReadOnlyList<PendingTarget> pendingTargets,
+        bool allowPublishedReuse)
+    {
+        if (!allowPublishedReuse)
+        {
+            return [];
+        }
+
+        Dictionary<string, int> matchCounts = new(StringComparer.Ordinal);
+        foreach (PendingTarget pendingTarget in pendingTargets)
+        {
+            if (TryFindReusablePublishedEntry_NoLock(pendingTarget.Window, out CatalogEntry? entry))
+            {
+                matchCounts[entry.WindowId] = matchCounts.GetValueOrDefault(entry.WindowId) + 1;
+            }
+        }
+
+        return matchCounts
+            .Where(static entry => entry.Value > 1)
+            .Select(static entry => entry.Key)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private bool TryResolveCurrentPublishedWindow_NoMutation(
@@ -291,6 +345,28 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
                 liveWindow);
             return true;
         }
+    }
+
+    private bool TryFindReusablePublishedEntry_NoLock(WindowDescriptor liveWindow, out CatalogEntry entry)
+    {
+        entry = null!;
+        if (latestPublishedDiscoveryGeneration is not long latestPublished)
+        {
+            return false;
+        }
+
+        CatalogEntry[] matches = entries.Values
+            .Where(candidate => candidate.Generation == latestPublished)
+            .Where(candidate => ComputerUseWinWindowContinuityProof.MatchesDiscoverySelector(liveWindow, candidate.Window))
+            .Take(2)
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            return false;
+        }
+
+        entry = matches[0];
+        return true;
     }
 
     private static ComputerUseWinWindowInstanceIdentity CreateExecutionTargetId() =>

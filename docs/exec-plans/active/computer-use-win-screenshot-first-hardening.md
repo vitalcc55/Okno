@@ -731,6 +731,29 @@ Questions for review:
 - lower `list_apps` churn for steady windows;
 - unchanged fail-closed behavior on ambiguity or replacement.
 
+#### Отчёт этапа
+
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: `pending`
+- TDD применялся: да; RED сначала падал на repeated unchanged discovery snapshot (`list_apps` и direct catalog) из-за mint нового `windowId`, затем GREEN подтвердил strict selector reuse без public schema changes.
+- Проверки:
+  - RED `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ListAppsReusesWindowIdsForUnchangedDiscoverySnapshot|FullyQualifiedName~ExecutionTargetCatalogReusesWindowIdAcrossStrictDiscoveryMatch|FullyQualifiedName~ExecutionTargetCatalogIssuesNewWindowIdWhenDiscoverySnapshotDrifts|FullyQualifiedName~ExecutionTargetCatalogDoesNotReuseWindowIdForReusedHwndReplacement"` failed `2/4` on unchanged selector churn.
+  - GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ListAppsReusesWindowIdsForUnchangedDiscoverySnapshot|FullyQualifiedName~ExecutionTargetCatalogReusesWindowIdAcrossStrictDiscoveryMatch|FullyQualifiedName~ExecutionTargetCatalogIssuesNewWindowIdWhenDiscoverySnapshotDrifts|FullyQualifiedName~ExecutionTargetCatalogDoesNotReuseWindowIdForReusedHwndReplacement"` passed `4/4`.
+  - GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ListAppsReusesWindowIdsForUnchangedDiscoverySnapshot|FullyQualifiedName~ExecutionTargetCatalogReusesWindowIdAcrossStrictDiscoveryMatch|FullyQualifiedName~ExecutionTargetCatalogIssuesNewWindowIdWhenDiscoverySnapshotDrifts|FullyQualifiedName~ExecutionTargetCatalogDoesNotReuseWindowIdForReusedHwndReplacement|FullyQualifiedName~ExecutionTargetCatalog|FullyQualifiedName~GetAppStateTargetResolver"` passed `15/15`.
+  - GREEN after P3 fix `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ExecutionTargetCatalogDoesNotReuseWindowIdWhenCurrentDiscoveryBatchHasDuplicateStrictMatches|FullyQualifiedName~ListAppsReusesWindowIdsForUnchangedDiscoverySnapshot|FullyQualifiedName~ExecutionTargetCatalogReusesWindowIdAcrossStrictDiscoveryMatch|FullyQualifiedName~ExecutionTargetCatalogIssuesNewWindowIdWhenDiscoverySnapshotDrifts|FullyQualifiedName~ExecutionTargetCatalogDoesNotReuseWindowIdForReusedHwndReplacement|FullyQualifiedName~ExecutionTargetCatalog|FullyQualifiedName~GetAppStateTargetResolver"` passed `16/16`.
+  - `git diff --check` passed.
+- Review agents: `Pasteur -> approve with non-blocking P3 duplicate-current-batch note`, re-review `approve/no remaining findings`; `Einstein -> approve/no P0-P3`
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`; review prompts must include mandatory sandbox-mode addendum verbatim.
+- Official docs checked: Stage 0 source-pack constraints reused; Stage 3 changes repo-local selector publication behavior only and did not require fresh online lookup.
+- Reference repos checked: none for Stage 3 implementation; strict discovery proof owner paths were local.
+- Подтверждённые замечания: P3 current discovery batch with duplicate strict matches could reuse one old `windowId` twice.
+- Отклонённые замечания: `none`
+- Исправленные root causes: added duplicate-current-batch regression and disabled previous-entry reuse when more than one pending target would reuse the same latest-published `windowId`.
+- Проверенные соседние paths: `list_apps` public payload, direct execution target catalog reuse, drifted discovery snapshot, reused `HWND` replacement, duplicate-current-batch ambiguity, existing catalog overflow/invalidation tests, explicit `hwnd` and attached fallback target resolver behavior.
+- Остаточные риски: full docs/generated/install contour remains Stage 4/5 scope.
+- Разблокировка следующего этапа: blocked until Stage 3 commit SHA is recorded.
+
 **Stage gate:** before leaving Stage 3, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
 
 ### Package E: Verification, docs and install-surface sync
