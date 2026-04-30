@@ -11,7 +11,7 @@ Primary scope: `focused type_text fallback`, `successor-state / action+observe`,
 - Stage 2 package commit: `cd57192`
 - Stage 3 package commit: `a76effd`
 - Stage 4 package commit: `4840007d25981a13d78a44a688d901600cebbb28`
-- Stage 5 closure commit: pending
+- Stage 5 closure commit: `b92ae22b7eb17202d3f51d6c85b8223ba402594f`
 - Closure path: archived completed execution record; stage-by-stage sections
   below are preserved as historical delivery evidence rather than an active
   work queue.
@@ -854,9 +854,9 @@ Questions for review:
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-screenshot-first-hardening`
-- Commit SHA: pending
+- Commit SHA: `b92ae22b7eb17202d3f51d6c85b8223ba402594f`
 - Shipped slices:
   - Package B: `type_text` focused fallback through explicit `allowFocusedFallback=true` + `confirm=true`, fresh target-local focus proof, SendInput text dispatch, no clipboard/paste default and public `verify_needed` semantics.
   - Package C: `observeAfter=true` on `click`, `press_key`, `type_text`, `scroll` and `drag`, with nested `successorState`, updated screenshot image content, short-lived successor `stateToken`, factual top-level action status and advisory `successorStateFailure`.
