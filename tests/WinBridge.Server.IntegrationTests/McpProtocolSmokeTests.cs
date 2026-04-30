@@ -1031,11 +1031,31 @@ public sealed class McpProtocolSmokeTests
                     text = "fallback typed text",
                     allowFocusedFallback = true,
                     confirm = true,
+                    observeAfter = true,
                 });
 
             JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
             Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
+            Assert.False(typeTextPayload.GetProperty("refreshStateRecommended").GetBoolean());
             Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+            Assert.Contains(
+                typeTextResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
+                block => block.GetProperty("type").GetString() == "image");
+            JsonElement successorState = typeTextPayload.GetProperty("successorState");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
+            string successorToken = successorState.GetProperty("stateToken").GetString()!;
+            Assert.NotEqual(focusedStateToken, successorToken);
+
+            using JsonDocument followUpResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinPressKey,
+                new
+                {
+                    stateToken = successorToken,
+                    key = "tab",
+                });
+
+            JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
 
             using JsonDocument finalStateResponse = await session.CallToolAsync(
                 ToolNames.ComputerUseWinGetAppState,

@@ -15,7 +15,8 @@ internal sealed class ComputerUseWinStoredStateResolver(
         string toolName,
         ComputerUseWinStoredStateValidationMode validationMode,
         out ComputerUseWinActionReadyState? state,
-        out CallToolResult? failureResult)
+        out CallToolResult? failureResult,
+        ComputerUseWinActionObservabilityContext? requestObservabilityContext = null)
     {
         ComputerUseWinRuntimeState staleState = ComputerUseWinRuntimeStateModel.Stale();
         if (string.IsNullOrWhiteSpace(stateToken))
@@ -25,7 +26,8 @@ internal sealed class ComputerUseWinStoredStateResolver(
                 invocation,
                 toolName,
                 ComputerUseWinFailureCodeValues.StateRequired,
-                "Сначала вызови get_app_state и передай stateToken.");
+                "Сначала вызови get_app_state и передай stateToken.",
+                observabilityContext: requestObservabilityContext);
             return false;
         }
 
@@ -41,14 +43,17 @@ internal sealed class ComputerUseWinStoredStateResolver(
                 invocation,
                 toolName,
                 ComputerUseWinFailureCodeValues.StaleState,
-                "stateToken больше не найден; заново вызови get_app_state.");
+                "stateToken больше не найден; заново вызови get_app_state.",
+                observabilityContext: requestObservabilityContext);
             return false;
         }
 
-        WindowDescriptor expectedWindow = storedState.Window;
-        WindowDescriptor? liveWindow = windowManager.ListWindows().SingleOrDefault(item =>
-            ComputerUseWinWindowContinuityProof.MatchesObservedState(item, storedState, validationMode));
-        if (liveWindow is null)
+        bool liveWindowResolved = ComputerUseWinLiveWindowSelector.TrySelectSingle(
+            windowManager.ListWindows(),
+            item => ComputerUseWinWindowContinuityProof.MatchesObservedState(item, storedState, validationMode),
+            out WindowDescriptor? liveWindow,
+            out bool ambiguous);
+        if (!liveWindowResolved)
         {
             state = null;
             if (ComputerUseWinRuntimeStateModel.CanExecuteAction(staleState))
@@ -59,13 +64,49 @@ internal sealed class ComputerUseWinStoredStateResolver(
             failureResult = ComputerUseWinToolResultFactory.CreateActionFailure(
                 invocation,
                 toolName,
-                ComputerUseWinFailureCodeValues.StaleState,
-                "Окно из stateToken больше не совпадает с текущим live target.");
+                ambiguous ? ComputerUseWinFailureCodeValues.AmbiguousTarget : ComputerUseWinFailureCodeValues.StaleState,
+                ambiguous
+                    ? "Computer Use for Windows не смог однозначно сопоставить stateToken с текущим live target."
+                    : "Окно из stateToken больше не совпадает с текущим live target.",
+                observabilityContext: requestObservabilityContext);
             return false;
         }
 
-        state = ComputerUseWinRuntimeStateModel.CreateActionReadyState(storedState with { Window = liveWindow });
+        state = ComputerUseWinRuntimeStateModel.CreateActionReadyState(storedState with { Window = liveWindow! });
         failureResult = null;
+        return true;
+    }
+
+    public bool TryResolveSuccessorObservationWindow(
+        WindowDescriptor candidateWindow,
+        out WindowDescriptor? liveWindow,
+        out ComputerUseWinFailureDetails? failureDetails)
+    {
+        ArgumentNullException.ThrowIfNull(candidateWindow);
+
+        liveWindow = null;
+        failureDetails = null;
+        bool resolved = ComputerUseWinLiveWindowSelector.TrySelectSingle(
+            windowManager.ListWindows(),
+            item => ComputerUseWinWindowContinuityProof.MatchesAttachedSession(item, candidateWindow),
+            out liveWindow,
+            out bool ambiguous);
+        if (ambiguous)
+        {
+            failureDetails = ComputerUseWinFailureDetails.Expected(
+                ComputerUseWinFailureCodeValues.AmbiguousTarget,
+                "Computer Use for Windows не смог однозначно сопоставить post-action target window для observeAfter.");
+            return false;
+        }
+
+        if (!resolved)
+        {
+            failureDetails = ComputerUseWinFailureDetails.Expected(
+                ComputerUseWinFailureCodeValues.StaleState,
+                "Целевое окно после committed action больше не найдено; заново вызови get_app_state.");
+            return false;
+        }
+
         return true;
     }
 }

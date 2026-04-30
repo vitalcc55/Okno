@@ -116,12 +116,14 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 
 - poor-UIA apps могут уже проходить screenshot-first navigation и coordinate/semantic actions;
 - text entry без доказанного editable UIA proof теперь доступен только через
-  explicit `allowFocusedFallback=true` + `confirm=true`, fresh focus proof,
-  без clipboard default и с честным `verify_needed`;
+  explicit `allowFocusedFallback=true` + `confirm=true`, fresh target-local
+  focus proof и text-entry-like candidate, без clipboard default и с честным
+  `verify_needed`;
 - successor-state / action+observe закрыт explicit `observeAfter=true` на
   поддерживаемых actions: result может включать nested `successorState`,
   новый short-lived `stateToken` и screenshot image block без optimistic
-  semantic success;
+  semantic success; post-action observe заново сопоставляет live window и не
+  переносит stale pre-action `windowId` в nested session;
 - continuity/identity UX снижает churn без ослабления proof: repeated
   unchanged `list_apps` snapshots переиспользуют strict runtime-owned
   `windowId`, а drift/replacement paths всё ещё fail-close без наивного

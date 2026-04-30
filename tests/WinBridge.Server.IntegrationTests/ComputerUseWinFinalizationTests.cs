@@ -747,6 +747,56 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void StructuredActionFailureSanitizesObservationFailureReason()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-structured-action-failure-sanitizer-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinClick,
+                new { stateToken = "token-1", elementIndex = 1, observeAfter = true },
+                new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-structured-action-failure-sanitizer-tests")).GetSnapshot());
+
+            CallToolResult result = ComputerUseWinToolResultFactory.CreateActionFailure(
+                invocation,
+                ToolNames.ComputerUseWinClick,
+                ComputerUseWinFailureCodeValues.ObservationFailed,
+                "secret traversal failure",
+                targetHwnd: 101,
+                elementIndex: 1,
+                phase: ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch);
+
+            Assert.True(result.IsError);
+            JsonElement payload = result.StructuredContent!.Value;
+            Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, payload.GetProperty("failureCode").GetString());
+            string reason = payload.GetProperty("reason").GetString()!;
+            Assert.DoesNotContain("secret traversal failure", reason, StringComparison.Ordinal);
+            Assert.Contains("get_app_state", reason, StringComparison.Ordinal);
+
+            string completedEvent = File.ReadLines(options.EventsPath)
+                .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
+            Assert.DoesNotContain("secret traversal failure", completedEvent, StringComparison.Ordinal);
+
+            string actionArtifactPath = Directory
+                .GetFiles(Path.Combine(options.RunDirectory, "computer-use-win"), "action-*.json", SearchOption.TopDirectoryOnly)
+                .Single();
+            string actionArtifact = File.ReadAllText(actionArtifactPath);
+            Assert.DoesNotContain("secret traversal failure", actionArtifact, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ActionFinalizerKeepsPublicResultWhenActionArtifactWriteFails()
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));

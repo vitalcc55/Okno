@@ -890,6 +890,43 @@ Questions for review:
 - Остаточные риски: screenshot preview remains client/operator UX work; approvals/playbooks, clipboard, region capture and OCR-lite remain explicit future work.
 - Next work item: approvals hardening + risky action confirmation, then app playbooks expansion.
 
+#### Post-closure adversarial review addendum
+
+- Статус: `closed`
+- Review agents: `Goodall`, `Hume`, `Nietzsche`
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`
+- Review mode: sandbox/static-analysis; prompts explicitly forbade bootstrap, verify, dotnet restore/build/test, smoke, linters, generated-doc refresh, GUI/server processes and any heavy checks without a separate request.
+- Подтверждённые замечания:
+  - P1 focused `type_text` fallback admitted arbitrary focused clickable non-window controls instead of a text-entry-like target class.
+  - P2 successor observe reused pre-action `WindowDescriptor` / `windowId` instead of re-resolving the post-action live window before nested state materialization.
+  - P2 `successorStateFailure.reason` could transit raw UIA/capture failure text because `observation_failed` lacked product-owned public wording.
+  - P2 docs/generated/proof drift: observability docs missed successor/fallback safe fields, generated test matrix omitted focused fallback / `observeAfter` / continuity / cache proof coverage, and cache-installed proof was not reproducible as a committed script.
+  - P2 closure proof gap: direct `type_text(allowFocusedFallback=true, confirm=true, observeAfter=true)` e2e was not covered by a single runtime/smoke story.
+  - Re-review P1: token classification still used substring hints, so `ContextMenu`, `ResearchPanel`, `FieldsetHost` and `EntryPointCanvas` could pass as text-entry-like `document`/`custom` controls.
+  - Re-review P2: `observe_after_requested` was added only on committed success path, so failed/approval pre-dispatch branches lost the request-level opt-in evidence.
+  - Re-review P2: structured action failures still published raw UIA/capture `Reason` through `CreateActionFailure`, even though successor failures were sanitized.
+  - Re-review P3: generated test matrix attributed cache-installed proof to integration tests, and proof metadata recorded `repoHead` without dirty/clean source provenance.
+  - Re-review round 2 P2: focused fallback semantic-hint tokenization still used unbounded stack allocation over app-controlled UIA `Name` / `AutomationId`.
+  - Re-review round 2 P3: `observe_after_requested` was still missing on pre-resolution state-token failure branches.
+  - Re-review round 2 P2: stored-state and get_app_state live-window resolution still used `SingleOrDefault`, so duplicate strict matches could throw instead of fail-closing.
+  - Re-review round 3 P2: cache-installed proof could prove cache/repo plugin-copy equality while the published runtime bundle was stale relative to latest runtime source fixes.
+  - Re-review round 3 P3: this post-closure addendum still carried `in_progress` wording after the latest fix batch.
+  - Re-review round 4 P2: cache-installed proof freshness still used a `src`-only input boundary and missed repo-root runtime publication inputs such as `Directory.Build.props`, `Directory.Packages.props`, `global.json`, solution/package config and analyzer config.
+  - Re-review round 5 P2: cache-installed proof anchored freshness to `Okno.Server.exe` mtime instead of the runtime bundle manifest that publish/launcher already use as completion proof.
+- Исправленные root causes:
+  - `ComputerUseWinActionability` now limits focused fallback to `edit` or text-entry-like `document` / `custom` targets through bounded tokenized text/input/edit/query/search-box hints, preserving target-local focus proof and blocking arbitrary focused clickable controls, substring false positives and oversized UIA semantic-hint metadata.
+  - `ComputerUseWinStoredStateResolver` now provides a shared post-action live-window resolver for successor observe; `ComputerUseWinActionRequestExecutor` uses it before capture/UIA and does not carry stale pre-action `windowId` into nested `successorState`.
+  - `ComputerUseWinFailureCodeMapper` now maps `observation_failed` to safe product-owned fresh-observation guidance, and `ComputerUseWinToolResultFactory.CreateActionFailure` applies public failure mapping to unsafe structured action failure payloads/audit completion messages.
+  - `ComputerUseWinToolResultFactory.CreateActionFailure` now sanitizes only unsafe runtime/provider classes (`observation_failed`, `unexpected_internal_failure`, `input_dispatch_failed`) while preserving product-owned validation and stale-target retry reasons such as malformed drag points and source/destination mismatch.
+  - `ComputerUseWinActionRequestExecutor` now records `ObserveAfterRequested` before state resolution and before approval/failure/success branching, carrying it through state-token failures, failed pre-dispatch paths and unexpected failure fallback observability.
+  - `ComputerUseWinLiveWindowSelector` centralizes 0/1/many live-window selection; stored-state resolution, successor observe and get_app_state explicit/attached target resolution now fail-close on duplicates without `SingleOrDefault` exceptions.
+  - `scripts/codex/prove-computer-use-win-cache-install.ps1` records a stale-resistant cache-installed MCP proof by comparing repo/cache plugin file hashes, proving exact nine-tool tools/list schema, `allowFocusedFallback`, selected-action `observeAfter`, semantic-only absence of `observeAfter`, and `list_apps.status=ok`.
+  - `scripts/codex/prove-computer-use-win-cache-install.ps1` now records `repoWorkingTreeClean`, `repoStatusShort`, runtime-affecting dirty paths, runtime bundle freshness against publication inputs, runtime bundle manifest path/write time, `publicationAcceptanceEligible`, `repoPluginDigest` and `cachePluginDigest`; generated test matrix separates integration tests from install/publication proof.
+  - The proof script now uses one runtime publication input model for dirty-path classification and freshness (`src` project files plus repo-root build/analyzer/package config), validates `okno-runtime-bundle-manifest.json`, and treats manifest write time as the publication completion timestamp instead of trusting a single executable sentinel.
+  - Observability/generated/product/plugin docs now describe `observe_after_requested`, `successor_state_available`, `successor_state_failure_code`, tokenized text-entry-like fallback scope, post-action live-window re-resolution and the cache-installed proof command.
+- TDD применялся: `да`; RED targeted tests first failed for raw successor failure leakage, stale pre-action successor window use, arbitrary non-text focused fallback dispatch and the composed focused-fallback+observeAfter proof gap, then passed after root-cause fixes.
+- Проверенные соседние paths: normal `type_text` vs fallback, `allowFocusedFallback` with/without `elementIndex`, non-text focused controls, adversarial text-marker substrings, oversized UIA names/automation ids, successor observe success/failure, pre-resolution and pre-dispatch observeAfter failure telemetry, structured action failure sanitizer plus drag validation/stale retry reasons, post-action target missing/ambiguous failure mapping, stored/get_app_state duplicate target resolution, public docs/generated/plugin skill wording and cache proof reproducibility/provenance.
+
 ## 11. Test ladder
 
 ### L1: unit / contract / owner tests

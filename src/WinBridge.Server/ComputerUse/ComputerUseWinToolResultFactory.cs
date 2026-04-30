@@ -90,16 +90,21 @@ internal static class ComputerUseWinToolResultFactory
         ComputerUseWinActionLifecyclePhase phase = ComputerUseWinActionLifecyclePhase.BeforeActivation,
         ComputerUseWinActionObservabilityContext? observabilityContext = null)
     {
+        ComputerUseWinFailureTranslation publicFailure = ShouldSanitizeStructuredActionReason(failureCode)
+            ? ComputerUseWinFailureCodeMapper.ToPublicFailure(failureCode, reason)
+            : new ComputerUseWinFailureTranslation(failureCode, reason);
+        string publicFailureCode = publicFailure.FailureCode ?? failureCode;
+        string publicReason = publicFailure.Reason ?? reason;
         ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredFailurePayload(
-            failureCode,
-            reason,
+            publicFailureCode,
+            publicReason,
             targetHwnd,
             elementIndex,
             phase);
         ComputerUseWinFailureCompletion.CompleteFailure(
             invocation,
-            reason,
-            failureCode,
+            publicReason,
+            publicFailureCode,
             targetHwnd,
             auditException,
             data: ComputerUseWinAuditDataBuilder.CreateStructuredPhaseData(phase));
@@ -121,6 +126,12 @@ internal static class ComputerUseWinToolResultFactory
                 exceptionType: auditException?.GetType().FullName));
         return CreateToolResult(payload, isError: true);
     }
+
+    private static bool ShouldSanitizeStructuredActionReason(string failureCode) =>
+        failureCode is
+            ComputerUseWinFailureCodeValues.ObservationFailed or
+            ComputerUseWinFailureCodeValues.UnexpectedInternalFailure or
+            ComputerUseWinFailureCodeValues.InputDispatchFailed;
 
     public static CallToolResult CreateActionApprovalRequired(
         AuditInvocationScope invocation,

@@ -40,6 +40,12 @@ internal sealed record ComputerUseWinGetAppStateTargetResolution(
             ComputerUseWinFailureCodeValues.IdentityProofUnavailable,
             "Computer Use for Windows не смог подтвердить instance identity окна; повтори get_app_state после нового live proof.",
             window);
+
+    public static ComputerUseWinGetAppStateTargetResolution AmbiguousTarget(string reason, WindowDescriptor? window = null) =>
+        Failure(
+            ComputerUseWinFailureCodeValues.AmbiguousTarget,
+            reason,
+            window);
 }
 
 internal static class ComputerUseWinGetAppStateTargetResolver
@@ -57,15 +63,25 @@ internal static class ComputerUseWinGetAppStateTargetResolver
 
         if (hwnd is not null)
         {
-            WindowDescriptor? explicitWindow = windows.SingleOrDefault(item => item.Hwnd == hwnd.Value);
-            if (explicitWindow is null)
+            bool explicitWindowResolved = ComputerUseWinLiveWindowSelector.TrySelectSingle(
+                windows,
+                item => item.Hwnd == hwnd.Value,
+                out WindowDescriptor? explicitWindow,
+                out bool ambiguousExplicitWindow);
+            if (ambiguousExplicitWindow)
+            {
+                return ComputerUseWinGetAppStateTargetResolution.AmbiguousTarget(
+                    "Computer Use for Windows нашёл несколько live windows для указанного hwnd и не может выбрать target безопасно.");
+            }
+
+            if (!explicitWindowResolved)
             {
                 return ComputerUseWinGetAppStateTargetResolution.MissingExplicitHwnd();
             }
 
-            _ = executionTargetCatalog.TryIssue(explicitWindow, out ComputerUseWinExecutionTarget? explicitTarget);
+            _ = executionTargetCatalog.TryIssue(explicitWindow!, out ComputerUseWinExecutionTarget? explicitTarget);
             return explicitTarget is null
-                ? ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(explicitWindow)
+                ? ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(explicitWindow!)
                 : ComputerUseWinGetAppStateTargetResolution.Success(explicitTarget);
         }
 
@@ -90,25 +106,35 @@ internal static class ComputerUseWinGetAppStateTargetResolver
         AttachedWindow? attached = sessionManager.GetAttachedWindow();
         if (attached?.Window is WindowDescriptor attachedWindow)
         {
-            WindowDescriptor? liveAttached = windows.SingleOrDefault(item => item.Hwnd == attachedWindow.Hwnd);
-            if (liveAttached is not null)
+            bool liveAttachedResolved = ComputerUseWinLiveWindowSelector.TrySelectSingle(
+                windows,
+                item => item.Hwnd == attachedWindow.Hwnd,
+                out WindowDescriptor? liveAttached,
+                out bool ambiguousAttachedWindow);
+            if (ambiguousAttachedWindow)
+            {
+                return ComputerUseWinGetAppStateTargetResolution.AmbiguousTarget(
+                    "Computer Use for Windows нашёл несколько live windows для attached hwnd и не может выбрать target безопасно.");
+            }
+
+            if (liveAttachedResolved)
             {
                 bool expectedHasStableIdentity = WindowIdentityValidator.TryValidateStableIdentity(attachedWindow, out _);
-                bool liveHasStableIdentity = WindowIdentityValidator.TryValidateStableIdentity(liveAttached, out _);
+                bool liveHasStableIdentity = WindowIdentityValidator.TryValidateStableIdentity(liveAttached!, out _);
                 if (!expectedHasStableIdentity || !liveHasStableIdentity)
                 {
-                    return ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached);
+                    return ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached!);
                 }
 
-                if (ComputerUseWinWindowContinuityProof.MatchesAttachedSession(liveAttached, attachedWindow))
+                if (ComputerUseWinWindowContinuityProof.MatchesAttachedSession(liveAttached!, attachedWindow))
                 {
-                    _ = executionTargetCatalog.TryIssue(liveAttached, out ComputerUseWinExecutionTarget? attachedTarget);
+                    _ = executionTargetCatalog.TryIssue(liveAttached!, out ComputerUseWinExecutionTarget? attachedTarget);
                     return attachedTarget is null
-                        ? ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached)
+                        ? ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached!)
                         : ComputerUseWinGetAppStateTargetResolution.Success(attachedTarget);
                 }
 
-                return ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached);
+                return ComputerUseWinGetAppStateTargetResolution.IdentityProofUnavailable(liveAttached!);
             }
         }
 

@@ -18,6 +18,7 @@ description: "Workflow для работы с Computer Use for Windows в это
 - Каждый GUI turn начинай с `get_app_state`.
 - Предпочитай `elementIndex` над coordinate click, если index доступен.
 - После action используй `observeAfter=true` на поддерживаемых actions, делай повторный `get_app_state` или явную verify-step, а не гадай по результату.
+- `type_text(allowFocusedFallback=true)` используй только для уже focused poor-UIA text target с `confirm=true`; это не generic ввод в любой focused clickable control.
 - Не автоматизируй terminal apps, сам Codex и другие blocked targets.
 - Все shell-команды ниже предполагают, что current working directory уже находится в корне этого репозитория.
 
@@ -58,6 +59,12 @@ list_apps -> get_app_state -> action(observeAfter=true) -> successorState
 
 ```powershell
 .\scripts\refresh-generated-docs.ps1
+```
+
+7. Если менялся installed `computer-use-win` public surface, после publish/cache sync докажи установленную копию:
+
+```powershell
+.\scripts\codex\prove-computer-use-win-cache-install.ps1
 ```
 
 ## Definition of done

@@ -928,6 +928,40 @@ public sealed class ComputerUseWinInstallSurfaceTests
         }
     }
 
+    [Theory]
+    [InlineData("Directory.Build.props")]
+    [InlineData("Directory.Packages.props")]
+    [InlineData("Directory.Build.rsp")]
+    [InlineData("global.json")]
+    [InlineData("WinBridge.sln")]
+    [InlineData("NuGet.Config")]
+    [InlineData(".editorconfig")]
+    [InlineData(".globalconfig")]
+    [InlineData("*.globalconfig")]
+    [InlineData("*.props")]
+    [InlineData("*.targets")]
+    public void CacheInstallProofTracksRepoLevelRuntimePublicationInputs(string inputMarker)
+    {
+        string repoRoot = GetRepositoryRoot();
+        string proofScriptPath = Path.Combine(repoRoot, "scripts", "codex", "prove-computer-use-win-cache-install.ps1");
+        string proofScript = File.ReadAllText(proofScriptPath);
+
+        Assert.Contains(inputMarker, proofScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CacheInstallProofUsesRuntimeManifestAsFreshnessAnchor()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string proofScriptPath = Path.Combine(repoRoot, "scripts", "codex", "prove-computer-use-win-cache-install.ps1");
+        string proofScript = File.ReadAllText(proofScriptPath);
+
+        Assert.Contains("okno-runtime-bundle-manifest.json", proofScript, StringComparison.Ordinal);
+        Assert.Contains("Assert-RuntimeBundleMatchesManifest", proofScript, StringComparison.Ordinal);
+        Assert.Contains("runtimeBundleManifestWriteTimeUtc", proofScript, StringComparison.Ordinal);
+        Assert.Contains("runtimeBundleFreshForPublicationInputs", proofScript, StringComparison.Ordinal);
+    }
+
     private static Process StartPluginLauncher(string pluginRoot)
     {
         ProcessStartInfo startInfo = new()

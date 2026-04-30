@@ -49,13 +49,19 @@ internal sealed class ComputerUseWinActionRequestExecutor
         bool observeAfter = false,
         bool preDispatchStateMutationPossible = true)
     {
+        ComputerUseWinActionObservabilityContext requestEnvelopeObservabilityContext = CreateRequestObservabilityContext(
+            toolName,
+            stateToken,
+            elementIndex,
+            observeAfter);
         if (!storedStateResolver.TryResolve(
                 stateToken,
                 invocation,
                 toolName,
                 validationMode,
                 out ComputerUseWinActionReadyState? state,
-                out CallToolResult? failureResult))
+                out CallToolResult? failureResult,
+                requestEnvelopeObservabilityContext))
         {
             return failureResult!;
         }
@@ -66,6 +72,9 @@ internal sealed class ComputerUseWinActionRequestExecutor
         {
             ComputerUseWinActionExecutionOutcome outcome = await execute(resolvedState, cancellationToken).ConfigureAwait(false);
             ComputerUseWinActionObservabilityContext? observabilityContext = createObservabilityContext?.Invoke(resolvedState, outcome);
+            ComputerUseWinActionObservabilityContext? requestObservabilityContext = MarkObserveAfterRequest(
+                observabilityContext,
+                observeAfter);
 
             if (outcome.IsApprovalRequired)
             {
@@ -76,7 +85,7 @@ internal sealed class ComputerUseWinActionRequestExecutor
                     elementIndex,
                     outcome.ApprovalReason!,
                     outcome.Phase,
-                    observabilityContext);
+                    requestObservabilityContext);
             }
 
             if (!outcome.IsSuccess)
@@ -88,7 +97,7 @@ internal sealed class ComputerUseWinActionRequestExecutor
                     resolvedState.Session.Hwnd,
                     elementIndex,
                     outcome.Phase,
-                    observabilityContext);
+                    requestObservabilityContext);
             }
 
             ComputerUseWinActionSuccessorObservation? successorObservation = await TryObserveSuccessorStateAsync(
@@ -104,7 +113,7 @@ internal sealed class ComputerUseWinActionRequestExecutor
                 elementIndex,
                 outcome.Input!,
                 EnrichObservabilityContext(
-                    observabilityContext,
+                    requestObservabilityContext,
                     observeAfter,
                     successorObservation),
                 successorObservation);
@@ -121,7 +130,8 @@ internal sealed class ComputerUseWinActionRequestExecutor
                 resolvedState.Session.Hwnd,
                 elementIndex,
                 exception.InnerException ?? exception,
-                exception.Result);
+                exception.Result,
+                observabilityContext: CreateFallbackObservabilityContext(toolName, resolvedState, elementIndex, observeAfter));
         }
         catch (Exception exception)
         {
@@ -131,7 +141,8 @@ internal sealed class ComputerUseWinActionRequestExecutor
                 resolvedState.Session.Hwnd,
                 elementIndex,
                 exception,
-                preDispatchStateMutationPossible: preDispatchStateMutationPossible);
+                preDispatchStateMutationPossible: preDispatchStateMutationPossible,
+                observabilityContext: CreateFallbackObservabilityContext(toolName, resolvedState, elementIndex, observeAfter));
         }
     }
 
@@ -156,11 +167,25 @@ internal sealed class ComputerUseWinActionRequestExecutor
 
         try
         {
-            WindowDescriptor selectedWindow = outcome.SuccessorObservationWindow ?? resolvedState.Window;
+            WindowDescriptor candidateWindow = outcome.SuccessorObservationWindow ?? resolvedState.Window;
+            if (!storedStateResolver.TryResolveSuccessorObservationWindow(
+                    candidateWindow,
+                    out WindowDescriptor? selectedWindow,
+                    out ComputerUseWinFailureDetails? targetFailure))
+            {
+                ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(
+                    targetFailure!.FailureCode,
+                    targetFailure.Reason);
+                return ComputerUseWinActionSuccessorObservation.Failed(
+                    new ComputerUseWinActionSuccessorStateFailure(
+                        failure.FailureCode ?? ComputerUseWinFailureCodeValues.StaleState,
+                        failure.Reason ?? "Computer Use for Windows не смог подтвердить post-action target для observeAfter."));
+            }
+
             ComputerUseWinAppStateObservationOutcome observation = await appStateObserver.ObserveAsync(
-                selectedWindow,
+                selectedWindow!,
                 resolvedState.Session.AppId,
-                resolvedState.Session.WindowId,
+                windowId: null,
                 resolvedState.Observation.RequestedMaxNodes,
                 warnings: [],
                 cancellationToken).ConfigureAwait(false);
@@ -179,7 +204,7 @@ internal sealed class ComputerUseWinActionRequestExecutor
                 observation.PreparedState!,
                 stateStore,
                 sessionManager,
-                selectedWindow);
+                selectedWindow!);
             return ComputerUseWinActionSuccessorObservation.Success(materializedState);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -199,6 +224,63 @@ internal sealed class ComputerUseWinActionRequestExecutor
         input is not null
         && (string.Equals(input.Status, InputStatusValues.Done, StringComparison.Ordinal)
             || string.Equals(input.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal));
+
+    private static ComputerUseWinActionObservabilityContext? MarkObserveAfterRequest(
+        ComputerUseWinActionObservabilityContext? context,
+        bool observeAfter)
+    {
+        if (context is null)
+        {
+            return null;
+        }
+
+        return context with
+        {
+            ObserveAfterRequested = observeAfter,
+        };
+    }
+
+    private static ComputerUseWinActionObservabilityContext CreateFallbackObservabilityContext(
+        string toolName,
+        ComputerUseWinStoredState resolvedState,
+        int? elementIndex,
+        bool observeAfter) =>
+        new(
+            ActionName: toolName,
+            RuntimeState: "observed",
+            AppId: resolvedState.Session.AppId,
+            WindowIdPresent: !string.IsNullOrWhiteSpace(resolvedState.Session.WindowId),
+            StateTokenPresent: true,
+            TargetMode: elementIndex is null ? "unknown" : "element_index",
+            ElementIndexPresent: elementIndex is not null,
+            CoordinateSpace: null,
+            CaptureReferencePresent: resolvedState.CaptureReference is not null,
+            ConfirmationRequired: false,
+            Confirmed: false,
+            RiskClass: null,
+            DispatchPath: null,
+            ObserveAfterRequested: observeAfter);
+
+    private static ComputerUseWinActionObservabilityContext CreateRequestObservabilityContext(
+        string toolName,
+        string? stateToken,
+        int? elementIndex,
+        bool observeAfter) =>
+        new(
+            ActionName: toolName,
+            RuntimeState: "unresolved",
+            AppId: "unknown",
+            WindowIdPresent: false,
+            StateTokenPresent: !string.IsNullOrWhiteSpace(stateToken),
+            TargetMode: elementIndex is null ? "unknown" : "element_index",
+            ElementIndexPresent: elementIndex is not null,
+            CoordinateSpace: null,
+            CaptureReferencePresent: false,
+            ConfirmationRequired: false,
+            Confirmed: false,
+            RiskClass: null,
+            DispatchPath: null,
+            ObserveAfterRequested: observeAfter);
 
     private static ComputerUseWinActionObservabilityContext? EnrichObservabilityContext(
         ComputerUseWinActionObservabilityContext? context,

@@ -79,6 +79,8 @@ internal static class ComputerUseWinFailureCodeMapper
                 "Целевое окно больше не найдено; заново вызови get_app_state и повтори действие только после нового stateToken.",
             ComputerUseWinFailureCodeValues.StaleState =>
                 "Состояние окна устарело; заново вызови get_app_state и используй свежий stateToken перед retry.",
+            ComputerUseWinFailureCodeValues.ObservationFailed =>
+                "Computer Use for Windows не смог materialize fresh observation state; заново вызови get_app_state перед следующим action.",
             ComputerUseWinFailureCodeValues.CaptureReferenceRequired =>
                 "Для coordinate action по screenshot coordinates нужен актуальный get_app_state со свежим capture proof.",
             ComputerUseWinFailureCodeValues.TargetPreflightFailed or ComputerUseWinFailureCodeValues.TargetNotForeground or ComputerUseWinFailureCodeValues.TargetMinimized =>

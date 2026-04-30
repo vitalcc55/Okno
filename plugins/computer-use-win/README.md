@@ -65,15 +65,18 @@ Skill требует state-first discipline:
 - poor-UIA apps уже могут проходить screenshot-first navigation и subsequent
   actions;
 - `type_text` теперь имеет explicit `allowFocusedFallback=true` path для уже
-  focused poor-UIA target: он требует `confirm=true`, fresh focus proof и
-  остаётся `verify_needed`/SendInput route без clipboard default и hidden focus
-  guessing;
+  focused poor-UIA text target: он требует `confirm=true`, fresh target-local
+  focus proof и text-entry-like candidate (`edit` либо `document`/`custom` с
+  tokenized text/input/edit/query/search-box hint). Это не разрешает ввод в произвольный
+  focused clickable control; результат остаётся `verify_needed`/SendInput route
+  без clipboard default и hidden focus guessing;
 - `click`, `press_key`, `type_text`, `scroll` и `drag` теперь поддерживают
   explicit `observeAfter=true`: после committed `done` / `verify_needed`
   action result может включать nested `successorState`, новый short-lived
   `stateToken` и screenshot image block. Это снижает loop cost, но не меняет
   честный top-level action status; failed successor observe остаётся advisory
-  `successorStateFailure`.
+  `successorStateFailure`. Successor observe заново сопоставляет post-action
+  live window и не переносит stale pre-action `windowId` в nested session.
 - public instance continuity уже снижает churn: repeated unchanged
   `list_apps` snapshots переиспользуют прежний runtime-owned `windowId`;
   drift/replacement paths всё ещё fail-close, а `hwnd + processId` не стал

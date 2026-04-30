@@ -6,6 +6,8 @@ namespace WinBridge.Server.ComputerUse;
 
 internal static class ComputerUseWinActionability
 {
+    private const int MaxSemanticHintLength = 256;
+
     public static bool IsClickActionable(UiaElementSnapshot node)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -115,7 +117,7 @@ internal static class ComputerUseWinActionability
 
         return element.HasKeyboardFocus
             && element.Bounds is not null
-            && !string.Equals(element.ControlType, "window", StringComparison.OrdinalIgnoreCase)
+            && IsFocusedTextEntryFallbackControl(element)
             && element.Actions.Contains(ToolNames.ComputerUseWinClick, StringComparer.Ordinal);
     }
 
@@ -124,6 +126,101 @@ internal static class ComputerUseWinActionability
         ArgumentNullException.ThrowIfNull(element);
 
         return !string.IsNullOrWhiteSpace(element.AutomationId);
+    }
+
+    private static bool IsFocusedTextEntryFallbackControl(ComputerUseWinStoredElement element)
+    {
+        if (string.Equals(element.ControlType, "edit", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return (string.Equals(element.ControlType, "document", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(element.ControlType, "custom", StringComparison.OrdinalIgnoreCase))
+            && HasTextEntryHint(element);
+    }
+
+    private static bool HasTextEntryHint(ComputerUseWinStoredElement element)
+    {
+        return HasTextEntryHint(element.Name)
+            || HasTextEntryHint(element.AutomationId);
+    }
+
+    private static bool HasTextEntryHint(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string trimmed = value.Trim();
+        if (trimmed.Length > MaxSemanticHintLength)
+        {
+            return false;
+        }
+
+        List<string> tokens = TokenizeSemanticName(trimmed);
+        for (int index = 0; index < tokens.Count; index++)
+        {
+            string token = tokens[index];
+            if (token is "text" or "input" or "edit" or "query" or "textbox" or "textarea" or "textinput" or "searchbox")
+            {
+                return true;
+            }
+
+            if (index + 1 < tokens.Count && IsTextEntryQualifier(token) && IsTextEntryObject(tokens[index + 1]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static List<string> TokenizeSemanticName(string value)
+    {
+        List<string> tokens = [];
+        Span<char> buffer = stackalloc char[value.Length];
+        int length = 0;
+        char previous = '\0';
+
+        foreach (char current in value)
+        {
+            if (!char.IsLetterOrDigit(current))
+            {
+                FlushToken(tokens, buffer, ref length);
+                previous = '\0';
+                continue;
+            }
+
+            if (length > 0 && char.IsUpper(current) && (char.IsLower(previous) || char.IsDigit(previous)))
+            {
+                FlushToken(tokens, buffer, ref length);
+            }
+
+            buffer[length++] = char.ToLowerInvariant(current);
+            previous = current;
+        }
+
+        FlushToken(tokens, buffer, ref length);
+        return tokens;
+    }
+
+    private static bool IsTextEntryQualifier(string token) =>
+        token is "text" or "input" or "edit" or "query" or "search";
+
+    private static bool IsTextEntryObject(string token) =>
+        token is "box" or "field" or "input" or "textbox" or "textarea";
+
+    private static void FlushToken(List<string> tokens, Span<char> buffer, ref int length)
+    {
+        if (length == 0)
+        {
+            return;
+        }
+
+        tokens.Add(new string(buffer[..length]));
+        length = 0;
     }
 
     private static bool IsEditableTextControl(string controlType) =>
