@@ -785,9 +785,9 @@ Questions for review:
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-screenshot-first-hardening`
-- Commit SHA: pending
+- Commit SHA: `4840007d25981a13d78a44a688d901600cebbb28`
 - TDD применялся: `not_applicable` для docs/verification sync; regression fix for the Stage 2 test marker was driven by the failing full test contour and verified by a targeted test before the full contour was rerun.
 - Проверки:
   - `.\scripts\build.ps1` passed with `0 warnings / 0 errors`.
