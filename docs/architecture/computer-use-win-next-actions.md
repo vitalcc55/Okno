@@ -88,13 +88,17 @@ factual low-level dispatch proof, отдельный source/destination contract
 deterministic helper story и install/publication proof поверх уже shipped
 click/scroll/type paths.
 
-Текущий ближайший follow-up после wave closure не в новой action vocabulary, а
-в quality gap текущего surface:
+Первый quality gap после wave closure закрыт отдельным bounded follow-up:
 
 - poor-UIA apps уже проходят screenshot-first navigation;
-- но text entry без editable UIA proof всё ещё правильно fail-close-ится;
-- поэтому следующий узкий workstream должен смотреть в сторону
-  keyboard-focus fallback для `type_text`, а не в сторону broad new actions.
+- text entry без editable UIA proof теперь возможен только через explicit
+  `allowFocusedFallback=true` + `confirm=true`, fresh target-local focus proof,
+  no clipboard default и public `verify_needed`.
+
+Следующий ближайший follow-up после этого не в новой action vocabulary, а в
+lower-friction screenshot-first loop: successor-state / action+observe должен
+уменьшить ручной `action -> get_app_state` cost после честного
+`verify_needed`.
 
 ## Контракт действий
 
@@ -144,6 +148,10 @@ orchestration, должны жить вне action tools.
   writable `edit` target, а не пытается скрыто перевести focus сам;
 - если `elementIndex` не передан, typing допустим только когда stored state
   содержит ровно один доказанный focused writable `edit` element;
+- poor-UIA fallback допустим только по explicit `allowFocusedFallback=true`
+  при `confirm=true`, если stored и fresh state доказывают ровно один
+  target-local focused element; такой branch не добавляет projected
+  `type_text` affordance и не притворяется writable UIA proof;
 - `type_text` не должен молча поглощать use cases для `set_value`; если control
   является явно settable через semantic path, предпочтителен именно
   `set_value`;

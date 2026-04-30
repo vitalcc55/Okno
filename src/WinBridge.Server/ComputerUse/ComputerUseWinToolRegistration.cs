@@ -355,6 +355,7 @@ internal static class ComputerUseWinToolRegistration
                         ["minLength"] = 1,
                     },
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
+                    ["allowFocusedFallback"] = new JsonObject { ["type"] = "boolean" },
                 },
             });
 

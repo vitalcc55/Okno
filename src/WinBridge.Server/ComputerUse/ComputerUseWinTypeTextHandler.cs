@@ -36,11 +36,13 @@ internal sealed class ComputerUseWinTypeTextHandler(
             AppId: resolvedState.Session.AppId,
             WindowIdPresent: !string.IsNullOrWhiteSpace(resolvedState.Session.WindowId),
             StateTokenPresent: !string.IsNullOrWhiteSpace(request.StateToken),
-            TargetMode: request.ElementIndex is null ? "focused_editable" : "element_index",
+            TargetMode: outcome.FallbackUsed
+                ? request.ElementIndex is null ? "focused_fallback" : "element_focused_fallback"
+                : request.ElementIndex is null ? "focused_editable" : "element_index",
             ElementIndexPresent: request.ElementIndex is not null,
             CoordinateSpace: null,
             CaptureReferencePresent: false,
-            ConfirmationRequired: false,
+            ConfirmationRequired: outcome.ConfirmationRequired,
             Confirmed: request.Confirm,
             RiskClass: outcome.RiskClass,
             DispatchPath: outcome.DispatchPath,
@@ -48,6 +50,7 @@ internal sealed class ComputerUseWinTypeTextHandler(
             TextBucket: parsed ? payload!.TextBucket : null,
             ContainsNewline: parsed ? payload!.ContainsNewline : null,
             WhitespaceOnly: parsed ? payload!.WhitespaceOnly : null,
+            FallbackUsed: outcome.FallbackUsed,
             ChildArtifactPath: outcome.Input?.ArtifactPath,
             FailureStage: outcome.Phase switch
             {

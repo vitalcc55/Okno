@@ -316,6 +316,31 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void TypeTextValidatorRequiresConfirmForFocusedFallbackOptIn()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","text":"typed text","allowFocusedFallback":true,"confirm":false}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["text"] = document.RootElement.GetProperty("text").Clone(),
+            ["allowFocusedFallback"] = document.RootElement.GetProperty("allowFocusedFallback").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinTypeTextRequest(),
+            out ComputerUseWinTypeTextRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinTypeTextRequest(), request);
+        Assert.Contains("confirm", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("unmapped", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ScrollValidatorRejectsSelectorlessRequest()
     {
         string? failure = ComputerUseWinRequestContractValidator.Validate(
@@ -1119,6 +1144,25 @@ public sealed class ComputerUseWinArchitectureTests
         JsonElement inputSchema = clickTool.ProtocolTool.InputSchema;
 
         Assert.Equal(@".*\S.*", inputSchema.GetProperty("properties").GetProperty("stateToken").GetProperty("pattern").GetString());
+    }
+
+    [Fact]
+    public void ComputerUseWinTypeTextToolSchemaExposesFocusedFallbackOptIn()
+    {
+        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
+        var typeTextTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinTypeText, StringComparison.Ordinal));
+        JsonElement inputSchema = typeTextTool.ProtocolTool.InputSchema;
+        JsonElement properties = inputSchema.GetProperty("properties");
+
+        string[] required = inputSchema.GetProperty("required").EnumerateArray()
+            .Select(item => item.GetString())
+            .Where(static item => item is not null)
+            .Cast<string>()
+            .ToArray();
+
+        Assert.Equal(["stateToken", "text"], required);
+        Assert.Equal("boolean", properties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
+        Assert.Equal("boolean", properties.GetProperty("confirm").GetProperty("type").GetString());
     }
 
     [Fact]

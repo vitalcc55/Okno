@@ -821,7 +821,10 @@ public sealed class ComputerUseWinInstallSurfaceTests
         Assert.Contains("`scroll`", readme, StringComparison.Ordinal);
         Assert.Contains("`perform_secondary_action`", readme, StringComparison.Ordinal);
         Assert.Contains("`drag`", readme, StringComparison.Ordinal);
+        Assert.Contains("allowFocusedFallback=true", readme, StringComparison.Ordinal);
+        Assert.Contains("confirm=true", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("следующий глобальный action wave", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("type_text` без editable UIA proof по-прежнему fail-close", readme, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

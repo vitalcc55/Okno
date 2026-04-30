@@ -104,7 +104,8 @@ public sealed record ComputerUseWinTypeTextRequest(
     string? StateToken = null,
     int? ElementIndex = null,
     string? Text = null,
-    bool Confirm = false);
+    bool Confirm = false,
+    bool AllowFocusedFallback = false);
 
 public sealed record ComputerUseWinPressKeyRequest(
     string? StateToken = null,

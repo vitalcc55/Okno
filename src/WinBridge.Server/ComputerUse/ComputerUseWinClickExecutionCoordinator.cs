@@ -189,7 +189,8 @@ internal sealed record ComputerUseWinActionExecutionOutcome(
     ComputerUseWinActionLifecyclePhase Phase,
     bool ConfirmationRequired,
     string? RiskClass,
-    string? DispatchPath)
+    string? DispatchPath,
+    bool FallbackUsed = false)
 {
     public bool IsSuccess => Input is not null;
 
@@ -199,22 +200,25 @@ internal sealed record ComputerUseWinActionExecutionOutcome(
         InputResult input,
         bool confirmationRequired,
         string? riskClass,
-        string? dispatchPath) =>
-        new(input, null, null, ComputerUseWinActionLifecyclePhase.PostDispatch, confirmationRequired, riskClass, dispatchPath);
+        string? dispatchPath,
+        bool fallbackUsed = false) =>
+        new(input, null, null, ComputerUseWinActionLifecyclePhase.PostDispatch, confirmationRequired, riskClass, dispatchPath, fallbackUsed);
 
     public static ComputerUseWinActionExecutionOutcome Failure(
         ComputerUseWinFailureDetails failure,
         ComputerUseWinActionLifecyclePhase phase,
         bool confirmationRequired,
         string? riskClass,
-        string? dispatchPath) =>
-        new(null, failure, null, phase, confirmationRequired, riskClass, dispatchPath);
+        string? dispatchPath,
+        bool fallbackUsed = false) =>
+        new(null, failure, null, phase, confirmationRequired, riskClass, dispatchPath, fallbackUsed);
 
     public static ComputerUseWinActionExecutionOutcome ApprovalRequired(
         string reason,
         ComputerUseWinActionLifecyclePhase phase,
         bool confirmationRequired,
         string? riskClass,
-        string? dispatchPath) =>
-        new(null, null, reason, phase, confirmationRequired, riskClass, dispatchPath);
+        string? dispatchPath,
+        bool fallbackUsed = false) =>
+        new(null, null, reason, phase, confirmationRequired, riskClass, dispatchPath, fallbackUsed);
 }

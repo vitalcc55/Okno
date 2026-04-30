@@ -382,6 +382,8 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal("number", setValueProperties.GetProperty("numberValue").GetProperty("type").GetString());
             Assert.Equal(1, typeTextProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
             Assert.Equal("string", typeTextProperties.GetProperty("text").GetProperty("type").GetString());
+            Assert.Equal("boolean", typeTextProperties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
+            Assert.Equal("boolean", typeTextProperties.GetProperty("confirm").GetProperty("type").GetString());
             Assert.False(typeTextProperties.TryGetProperty("key", out _));
             Assert.False(typeTextProperties.TryGetProperty("valueKind", out _));
 
@@ -896,6 +898,130 @@ public sealed class McpProtocolSmokeTests
             Assert.Contains(
                 finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
                 element => string.Equals(element.GetProperty("name").GetString(), "Query mirror: stage five typed text", StringComparison.Ordinal));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinTypeTextFocusedFallbackUpdatesPoorUiaMirror()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Focused Fallback {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement fallbackTarget = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("name").GetString(), "Poor UIA text target", StringComparison.Ordinal));
+            string?[] fallbackActions = fallbackTarget.GetProperty("actions").EnumerateArray()
+                .Select(item => item.GetString())
+                .ToArray();
+            Assert.Contains(ToolNames.ComputerUseWinClick, fallbackActions);
+            Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, fallbackActions);
+
+            using JsonDocument clickResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinClick,
+                new
+                {
+                    stateToken = firstStateToken,
+                    elementIndex = fallbackTarget.GetProperty("index").GetInt32(),
+                    confirm = false,
+                });
+
+            JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
+
+            using JsonDocument focusedStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement focusedStatePayload = focusedStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, focusedStatePayload.GetProperty("status").GetString());
+            string focusedStateToken = focusedStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement focusedElement = focusedStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean());
+            Assert.Equal("Poor UIA text target", focusedElement.GetProperty("name").GetString());
+            string?[] focusedActions = focusedElement.GetProperty("actions").EnumerateArray()
+                .Select(item => item.GetString())
+                .ToArray();
+            Assert.Contains(ToolNames.ComputerUseWinClick, focusedActions);
+            Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, focusedActions);
+
+            using JsonDocument typeTextResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinTypeText,
+                new
+                {
+                    stateToken = focusedStateToken,
+                    text = "fallback typed text",
+                    allowFocusedFallback = true,
+                    confirm = true,
+                });
+
+            JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
+            Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+
+            using JsonDocument finalStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
+            Assert.Contains(
+                finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+                element => string.Equals(element.GetProperty("name").GetString(), "Poor UIA mirror: fallback typed text", StringComparison.Ordinal));
         }
         finally
         {

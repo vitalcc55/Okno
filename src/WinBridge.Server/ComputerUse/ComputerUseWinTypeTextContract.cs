@@ -39,6 +39,12 @@ internal static class ComputerUseWinTypeTextContract
             return false;
         }
 
+        if (request.AllowFocusedFallback && !request.Confirm)
+        {
+            failure = "Параметр allowFocusedFallback для type_text требует confirm=true.";
+            return false;
+        }
+
         payload = new(
             Text: request.Text,
             TextLength: request.Text.Length,

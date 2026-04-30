@@ -74,7 +74,7 @@
         "capability": "computer_use_win.action",
         "lifecycle": "implemented",
         "safety_class": "os_side_effect",
-        "summary": "\u041F\u0435\u0447\u0430\u0442\u0430\u0435\u0442 \u0442\u0435\u043A\u0441\u0442 \u0432 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 app session \u0447\u0435\u0440\u0435\u0437 \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u0439 input path \u0431\u0435\u0437 hidden clipboard fallback.",
+        "summary": "\u041F\u0435\u0447\u0430\u0442\u0430\u0435\u0442 \u0442\u0435\u043A\u0441\u0442 \u0432 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 app session. \u041F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u0442\u0440\u0435\u0431\u0443\u0435\u0442 focused editable proof; explicit allowFocusedFallback=true \u0442\u0440\u0435\u0431\u0443\u0435\u0442 confirm=true \u0438 fresh target-local focus proof \u0434\u043B\u044F poor-UIA fallback, \u043E\u0441\u0442\u0430\u0432\u0430\u044F\u0441\u044C SendInput/verify_needed path \u0431\u0435\u0437 hidden clipboard fallback.",
         "planned_phase": null,
         "suggested_alternative": null,
         "smoke_required": true,

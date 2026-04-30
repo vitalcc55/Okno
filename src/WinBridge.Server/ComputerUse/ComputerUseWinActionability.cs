@@ -109,6 +109,16 @@ internal static class ComputerUseWinActionability
             && element.Actions.Contains(ToolNames.ComputerUseWinTypeText, StringComparer.Ordinal);
     }
 
+    public static bool IsFocusedTypeTextFallbackCandidate(ComputerUseWinStoredElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        return element.HasKeyboardFocus
+            && element.Bounds is not null
+            && !string.Equals(element.ControlType, "window", StringComparison.OrdinalIgnoreCase)
+            && element.Actions.Contains(ToolNames.ComputerUseWinClick, StringComparer.Ordinal);
+    }
+
     public static bool HasSemanticFallbackSignal(ComputerUseWinStoredElement element)
     {
         ArgumentNullException.ThrowIfNull(element);

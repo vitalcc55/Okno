@@ -12,6 +12,7 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
 {
     private const string DispatchPath = "win32_sendinput_unicode";
     private const string RiskClass = "text_input";
+    private const string FocusedFallbackRiskClass = "focused_text_fallback";
 
     public async Task<ComputerUseWinActionExecutionOutcome> ExecuteAsync(
         ComputerUseWinStoredState state,
@@ -46,6 +47,9 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
 
         ComputerUseWinTypeTextPayload parsedPayload = payload!;
         ComputerUseWinStoredElement resolvedStoredTarget = storedTarget!;
+        bool focusedFallbackUsed = request.AllowFocusedFallback
+            && !ComputerUseWinActionability.IsTypeTextActionable(resolvedStoredTarget);
+        string riskClass = focusedFallbackUsed ? FocusedFallbackRiskClass : RiskClass;
 
         ActivateWindowResult activation = await windowActivationService.ActivateAsync(state.Window, cancellationToken).ConfigureAwait(false);
         if (!string.Equals(activation.Status, ActivateWindowStatusValues.Done, StringComparison.Ordinal)
@@ -54,9 +58,10 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
             return ComputerUseWinActionExecutionOutcome.Failure(
                 ComputerUseWinActivationFailureMapper.Map(activation),
                 ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch,
-                confirmationRequired: false,
-                riskClass: RiskClass,
-                dispatchPath: DispatchPath);
+                confirmationRequired: focusedFallbackUsed,
+                riskClass: riskClass,
+                dispatchPath: DispatchPath,
+                fallbackUsed: focusedFallbackUsed);
         }
 
         ComputerUseWinStoredState resolvedState = state with
@@ -67,15 +72,17 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
         ComputerUseWinFailureDetails? revalidationFailure = await RevalidateFocusedTargetAsync(
             resolvedState,
             resolvedStoredTarget,
+            focusedFallbackUsed,
             cancellationToken).ConfigureAwait(false);
         if (revalidationFailure is not null)
         {
             return ComputerUseWinActionExecutionOutcome.Failure(
                 revalidationFailure,
                 ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
-                confirmationRequired: false,
-                riskClass: RiskClass,
-                dispatchPath: DispatchPath);
+                confirmationRequired: focusedFallbackUsed,
+                riskClass: riskClass,
+                dispatchPath: DispatchPath,
+                fallbackUsed: focusedFallbackUsed);
         }
 
         InputResult input = await ExecuteInputAsync(resolvedState, parsedPayload.Text, cancellationToken).ConfigureAwait(false);
@@ -93,31 +100,39 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
                 revalidationFailure = await RevalidateFocusedTargetAsync(
                     resolvedState,
                     resolvedStoredTarget,
+                    focusedFallbackUsed,
                     cancellationToken).ConfigureAwait(false);
                 if (revalidationFailure is not null)
                 {
                     return ComputerUseWinActionExecutionOutcome.Failure(
                         revalidationFailure,
                         ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
-                        confirmationRequired: false,
-                        riskClass: RiskClass,
-                        dispatchPath: DispatchPath);
+                        confirmationRequired: focusedFallbackUsed,
+                        riskClass: riskClass,
+                        dispatchPath: DispatchPath,
+                        fallbackUsed: focusedFallbackUsed);
                 }
 
                 input = await ExecuteInputAsync(resolvedState, parsedPayload.Text, cancellationToken).ConfigureAwait(false);
             }
         }
 
+        InputResult publicInput = focusedFallbackUsed
+            ? NormalizeFocusedFallbackResult(input)
+            : input;
+
         return ComputerUseWinActionExecutionOutcome.Success(
-            input,
-            confirmationRequired: false,
-            riskClass: RiskClass,
-            dispatchPath: DispatchPath);
+            publicInput,
+            confirmationRequired: focusedFallbackUsed,
+            riskClass: riskClass,
+            dispatchPath: DispatchPath,
+            fallbackUsed: focusedFallbackUsed);
     }
 
     private async Task<ComputerUseWinFailureDetails?> RevalidateFocusedTargetAsync(
         ComputerUseWinStoredState state,
         ComputerUseWinStoredElement storedTarget,
+        bool focusedFallbackUsed,
         CancellationToken cancellationToken)
     {
         UiaSnapshotResult snapshot;
@@ -158,6 +173,23 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
             return ComputerUseWinFailureDetails.Expected(
                 ComputerUseWinFailureCodeValues.StaleState,
                 "Focused editable element из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.");
+        }
+
+        if (focusedFallbackUsed)
+        {
+            ComputerUseWinStoredElement[] focusedElements = freshElements.Values
+                .Where(static item => item.HasKeyboardFocus)
+                .ToArray();
+            if (focusedElements.Length != 1
+                || !string.Equals(focusedElements[0].ElementId, freshElement.ElementId, StringComparison.Ordinal)
+                || !ComputerUseWinActionability.IsFocusedTypeTextFallbackCandidate(freshElement))
+            {
+                return ComputerUseWinFailureDetails.Expected(
+                    ComputerUseWinFailureCodeValues.StaleState,
+                    "Focused fallback proof из stateToken устарел; сначала заново получи get_app_state после click/focus.");
+            }
+
+            return null;
         }
 
         if (!ComputerUseWinActionability.IsTypeTextActionable(freshElement))
@@ -211,6 +243,14 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
 
             if (!ComputerUseWinActionability.IsTypeTextActionable(storedTarget))
             {
+                if (request.AllowFocusedFallback
+                    && ComputerUseWinActionability.IsFocusedTypeTextFallbackCandidate(storedTarget))
+                {
+                    failureCode = null;
+                    reason = null;
+                    return true;
+                }
+
                 failureCode = ComputerUseWinFailureCodeValues.UnsupportedAction;
                 reason = "type_text требует elementIndex, который уже опубликован как focused editable target; сначала переведи focus через click и заново вызови get_app_state.";
                 return false;
@@ -226,6 +266,24 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
             .ToArray();
         if (focusedEditableTargets.Length != 1)
         {
+            if (request.AllowFocusedFallback)
+            {
+                ComputerUseWinStoredElement[] focusedFallbackTargets = state.Elements.Values
+                    .Where(ComputerUseWinActionability.IsFocusedTypeTextFallbackCandidate)
+                    .ToArray();
+                if (focusedFallbackTargets.Length == 1)
+                {
+                    storedTarget = focusedFallbackTargets[0];
+                    failureCode = null;
+                    reason = null;
+                    return true;
+                }
+
+                failureCode = ComputerUseWinFailureCodeValues.UnsupportedAction;
+                reason = "type_text allowFocusedFallback без elementIndex требует ровно один focused target-local element в последнем get_app_state.";
+                return false;
+            }
+
             failureCode = ComputerUseWinFailureCodeValues.UnsupportedAction;
             reason = "type_text без elementIndex требует ровно один доказанный focused editable target в последнем get_app_state.";
             return false;
@@ -241,4 +299,20 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
         string.Equals(input.Status, InputStatusValues.Failed, StringComparison.Ordinal)
         && (string.Equals(input.FailureCode, InputFailureCodeValues.TargetNotForeground, StringComparison.Ordinal)
             || string.Equals(input.FailureCode, InputFailureCodeValues.TargetPreflightFailed, StringComparison.Ordinal));
+
+    private static InputResult NormalizeFocusedFallbackResult(InputResult input)
+    {
+        if (!string.Equals(input.Status, InputStatusValues.Done, StringComparison.Ordinal))
+        {
+            return input;
+        }
+
+        return input with
+        {
+            Status = InputStatusValues.VerifyNeeded,
+            Decision = InputStatusValues.VerifyNeeded,
+            ResultMode = InputResultModeValues.DispatchOnly,
+            Reason = input.Reason ?? "Focused type_text fallback dispatched через SendInput; проверь обновлённое состояние UI.",
+        };
+    }
 }

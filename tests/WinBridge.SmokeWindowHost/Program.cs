@@ -75,6 +75,8 @@ internal static class Program
         private readonly CheckBox _rememberCheckBox;
         private readonly TextBox _queryTextBox;
         private readonly Label _queryMirrorLabel;
+        private readonly PoorUiaTextTargetControl _poorUiaTextTarget;
+        private readonly Label _poorUiaMirrorLabel;
         private readonly NumericUpDown _rangeInput;
         private readonly Label _rangeMirrorLabel;
         private readonly MirrorScrollListBox _scrollListBox;
@@ -106,6 +108,8 @@ internal static class Program
             _rememberCheckBox = CreateRememberCheckBox();
             _queryTextBox = CreateQueryTextBox();
             _queryMirrorLabel = CreateQueryMirrorLabel(_queryTextBox.Text);
+            _poorUiaTextTarget = CreatePoorUiaTextTarget();
+            _poorUiaMirrorLabel = CreatePoorUiaMirrorLabel(_poorUiaTextTarget.TypedText);
             _rangeInput = CreateRangeInput();
             _rangeMirrorLabel = CreateRangeMirrorLabel(_rangeInput.Value);
             _scrollListBox = CreateScrollListBox();
@@ -124,6 +128,7 @@ internal static class Program
             _queryTextBox.TextChanged += (_, _) => UpdateQueryMirror();
             _queryTextBox.Enter += (_, _) => QueueSelectAllInQueryTextBox();
             _queryTextBox.MouseUp += (_, _) => QueueSelectAllInQueryTextBox();
+            _poorUiaTextTarget.TypedTextChanged += (_, _) => UpdatePoorUiaMirror();
             _rememberCheckBox.CheckedChanged += (_, _) => UpdateRememberSemanticSelectionName();
             _rangeInput.ValueChanged += (_, _) => UpdateRangeMirror();
             _scrollListBox.TopVisibleItemChanged += (_, _) => UpdateScrollMirror();
@@ -133,6 +138,8 @@ internal static class Program
             Controls.Add(_rememberCheckBox);
             Controls.Add(_queryTextBox);
             Controls.Add(_queryMirrorLabel);
+            Controls.Add(_poorUiaTextTarget);
+            Controls.Add(_poorUiaMirrorLabel);
             Controls.Add(_rangeInput);
             Controls.Add(_rangeMirrorLabel);
             Controls.Add(CreateTreeView());
@@ -200,6 +207,24 @@ internal static class Program
                 AccessibleName = $"Query mirror: {initialText}",
                 Text = $"Query mirror: {initialText}",
                 Bounds = new Rectangle(24, 168, 220, 24),
+                BackColor = Color.White,
+            };
+
+        private static PoorUiaTextTargetControl CreatePoorUiaTextTarget() =>
+            new()
+            {
+                Name = "PoorUiaTextTarget",
+                AccessibleName = "Poor UIA text target",
+                Bounds = new Rectangle(24, 308, 220, 34),
+            };
+
+        private static Label CreatePoorUiaMirrorLabel(string initialText) =>
+            new()
+            {
+                Name = "PoorUiaMirrorLabel",
+                AccessibleName = $"Poor UIA mirror: {initialText}",
+                Text = $"Poor UIA mirror: {initialText}",
+                Bounds = new Rectangle(24, 348, 220, 24),
                 BackColor = Color.White,
             };
 
@@ -353,6 +378,13 @@ internal static class Program
             string mirrorText = $"Query mirror: {_queryTextBox.Text}";
             _queryMirrorLabel.Text = mirrorText;
             _queryMirrorLabel.AccessibleName = mirrorText;
+        }
+
+        private void UpdatePoorUiaMirror()
+        {
+            string mirrorText = $"Poor UIA mirror: {_poorUiaTextTarget.TypedText}";
+            _poorUiaMirrorLabel.Text = mirrorText;
+            _poorUiaMirrorLabel.AccessibleName = mirrorText;
         }
 
         private void UpdateRememberSemanticSelectionName()
@@ -604,6 +636,95 @@ internal static class Program
 
             _lastTopIndex = TopIndex;
             TopVisibleItemChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private sealed class PoorUiaTextTargetControl : Control
+    {
+        private string _typedText = string.Empty;
+
+        public PoorUiaTextTargetControl()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+            TabStop = true;
+            AccessibleRole = AccessibleRole.Document;
+            BackColor = Color.White;
+        }
+
+        public event EventHandler? TypedTextChanged;
+
+        public string TypedText => _typedText;
+
+        protected override bool IsInputKey(Keys keyData) => true;
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            Focus();
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            Focus();
+            base.OnMouseUp(e);
+        }
+
+        protected override void OnKeyPress(KeyPressEventArgs e)
+        {
+            base.OnKeyPress(e);
+            if (e.KeyChar == '\b')
+            {
+                if (_typedText.Length > 0)
+                {
+                    _typedText = _typedText[..^1];
+                    NotifyTypedTextChanged();
+                }
+
+                return;
+            }
+
+            if (char.IsControl(e.KeyChar))
+            {
+                return;
+            }
+
+            _typedText += e.KeyChar;
+            NotifyTypedTextChanged();
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            base.OnGotFocus(e);
+            Invalidate();
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            base.OnLostFocus(e);
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            Color borderColor = Focused ? Color.RoyalBlue : Color.Gray;
+            using Pen borderPen = new(borderColor, Focused ? 2 : 1);
+            Rectangle border = new(0, 0, Width - 1, Height - 1);
+            e.Graphics.FillRectangle(SystemBrushes.Window, ClientRectangle);
+            e.Graphics.DrawRectangle(borderPen, border);
+            TextRenderer.DrawText(
+                e.Graphics,
+                string.IsNullOrEmpty(_typedText) ? "poor UIA target" : _typedText,
+                Font,
+                new Rectangle(6, 6, Width - 12, Height - 12),
+                SystemColors.WindowText,
+                TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+        }
+
+        private void NotifyTypedTextChanged()
+        {
+            Invalidate();
+            TypedTextChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

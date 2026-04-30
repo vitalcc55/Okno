@@ -103,8 +103,10 @@ proof.
 `RangeValuePattern` и не деградирует в blind typing fallback. Текущий
 `type_text` v1 остаётся lower-confidence input path: он печатает только в
 focused writable `edit` target, который заново подтверждён через fresh UIA
-snapshot и UIA read-only semantics, не использует clipboard/paste как default
-shortcut и по умолчанию завершает action результатом `verify_needed`, а не
+snapshot и UIA read-only semantics; для poor-UIA targets есть explicit
+`allowFocusedFallback=true` branch, который требует `confirm=true`, fresh
+target-local focus proof и всё равно остаётся dispatch-only `verify_needed`.
+Этот path не использует clipboard/paste как default shortcut и не возвращает
 optimistic `done`. Текущий `scroll` v1 предпочитает semantic `ScrollPattern`
 для `elementIndex` target, не меняет selector/session ownership и допускает
 coordinate wheel fallback только через explicit `point` + `confirm` path с
@@ -121,22 +123,16 @@ destination proof, принимает `fromElementIndex|fromPoint` и
 
 ## Ближайший product gap
 
-Первый реальный post-wave gap уже surfaced в живом использовании:
+Первый реальный post-wave gap уже закрыт как bounded Stage 1 slice:
 
 - screenshot-first navigation в poor-UIA apps уже работает;
 - semantic и coordinate actions поверх такого navigation path уже работают;
-- но text entry без доказанного editable UIA proof по-прежнему корректно
-  fail-close-ится.
+- text entry без доказанного editable UIA proof теперь доступен только через
+  explicit `allowFocusedFallback=true` + `confirm=true`, fresh focus proof,
+  без clipboard default и с честным `verify_needed`, а не fake semantic
+  success.
 
-Ближайший узкий follow-up здесь не должен размываться в broad clipboard/input
-feature. Следующий pragmatic шаг:
-
-- bounded keyboard-focus fallback для `type_text` в poor-UIA apps;
-- только с explicit confirmation/proof;
-- без clipboard default;
-- с честным `verify_needed`, а не с fake semantic success.
-
-Но feedback после shipped wave уже показал и три соседних follow-up зоны:
+Feedback после shipped wave всё ещё оставляет три соседних follow-up зоны:
 
 - successor-state / action+observe reduction: `verify_needed` остаётся честной
   success semantics, но оператору и агенту не нужно вечно платить полным

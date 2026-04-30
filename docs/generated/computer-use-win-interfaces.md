@@ -30,7 +30,7 @@
 | `click` | `os_side_effect` | — | Кликает по elementIndex или pixel coordinates из последнего app state. При наличии elementIndex runtime сначала пере-подтверждает target через свежий UIA snapshot; coordinate click остаётся low-confidence path и требует explicit confirm. |
 | `press_key` | `os_side_effect` | — | Нажимает named key literal или modifier combo в текущий app session. Bare printable text сюда не входит и должен идти через type_text. |
 | `set_value` | `os_side_effect` | — | Семантически устанавливает text или number value у конкретного элемента из последнего app state через ValuePattern/RangeValuePattern без hidden typing fallback. |
-| `type_text` | `os_side_effect` | — | Печатает текст в текущий app session через реальный input path без hidden clipboard fallback. |
+| `type_text` | `os_side_effect` | — | Печатает текст в текущий app session. По умолчанию требует focused editable proof; explicit allowFocusedFallback=true требует confirm=true и fresh target-local focus proof для poor-UIA fallback, оставаясь SendInput/verify_needed path без hidden clipboard fallback. |
 | `scroll` | `os_side_effect` | — | Скроллит app session по elementIndex или point из последнего app state. |
 | `perform_secondary_action` | `os_side_effect` | — | Выполняет product-owned secondary action над semantic target из последнего app state. |
 | `drag` | `os_side_effect` | — | Делает drag gesture в app session по element indices или coordinates из последнего app state. |

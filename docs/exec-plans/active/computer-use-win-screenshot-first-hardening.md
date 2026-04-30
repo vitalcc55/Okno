@@ -594,6 +594,37 @@ Questions for review:
 
 **Stage gate:** before leaving Stage 1, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
 
+#### Stage 1 checklist
+
+- [x] Добавлен `allowFocusedFallback: boolean` в public `type_text` request DTO и MCP schema без новых tools.
+- [x] Validator требует `confirm=true`, если `allowFocusedFallback=true`; absent flag сохраняет старое поведение.
+- [x] Focused fallback доступен только для target-local focused element с bounds и click affordance; writable UIA proof не подделывается.
+- [x] Fresh UIA revalidation требует ровно один focused element и совпадение с resolved stored target; stale/missing focus proof fail-closed как structured failure.
+- [x] Fallback dispatch остаётся `SendInput` text path; clipboard/paste path не добавлен и audit не пишет raw text.
+- [x] Dispatch-only success на fallback нормализуется в `verify_needed`, даже если lower input result вернул optimistic `done`.
+- [x] Добавлен helper-backed MCP integration story для poor-UIA custom control: `get_app_state -> click/focus -> get_app_state -> type_text(allowFocusedFallback=true, confirm=true) -> get_app_state`.
+- [x] Tooling notes/descriptions отражают opt-in fallback, mandatory confirmation, fresh focus proof, `verify_needed` и отсутствие clipboard default.
+- [x] Generated docs, product/architecture docs and plugin README synced for the Stage 1 public contract change after review found stale public docs.
+- [x] Stage-scoped verification завершена targeted GREEN; broader full-branch verification still remains Stage 4/5.
+
+#### Отчёт этапа
+
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: `pending`
+- TDD применялся: `да`; RED зафиксирован для request validation/schema, focused fallback behavior, stale focus-proof failure, audit clipboard/paste guard, no optimistic `done`, manifest wording и helper-backed MCP flow.
+- Проверки: RED `TypeTextHandlerFocusedFallbackDoesNotPromoteDispatchOnlyDone` -> failed `done` vs `verify_needed`; RED `ToolContractManifestTests.ComputerUseWinContractNotesReflectShippedSecondaryAction` -> missing `allowFocusedFallback`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinActionAndProjectionTests.TypeTextHandler"` -> `12/12`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinArchitectureTests.TypeTextValidatorRequiresConfirmForFocusedFallbackOptIn|FullyQualifiedName~ComputerUseWinArchitectureTests.ComputerUseWinTypeTextToolSchemaExposesFocusedFallbackOptIn"` -> `2/2`; GREEN `dotnet test .\tests\WinBridge.Runtime.Tests\WinBridge.Runtime.Tests.csproj --filter "FullyQualifiedName~ToolContractManifestTests.ComputerUseWinContractNotesReflectShippedSecondaryAction|FullyQualifiedName~AuditLogTests.BeginInvocationRedactsComputerUseWinTypeTextRequestSummary"` -> `2/2`; GREEN `dotnet test .\tests\WinBridge.Runtime.Tests\WinBridge.Runtime.Tests.csproj --filter "FullyQualifiedName~ToolContractExporterTests"` -> `11/11`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~McpProtocolSmokeTests.ComputerUseWinTypeText"` -> `2/2`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools"` -> `1/1`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinInstallSurfaceTests.ComputerUseWinPluginReadmeDocumentsCurrentShippedToolSurface"` -> `1/1`; `scripts/refresh-generated-docs.ps1` -> success, build `0 warnings / 0 errors`; `git diff --check` -> success with generated-doc line-ending normalization warnings only.
+- Review agents: `Meitner -> approve/no P0-P3`; `Herschel -> approve/no P0-P3 after P2 fix`
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`; review prompts must include mandatory sandbox-mode addendum verbatim.
+- Official docs checked: Stage 0 source pack reused; Package B implementation stayed within already frozen Microsoft `SendInput` / UIA proof constraints and did not require fresh online lookup.
+- Reference repos checked: `not_applicable` для Stage 1 implementation; reference repos were not needed to choose the narrow proof model.
+- Подтверждённые замечания: P2 stale public/generated/plugin docs after public `type_text` contract change; residual non-blocking gap for direct `elementIndex + allowFocusedFallback` test coverage.
+- Отклонённые замечания: `none`
+- Исправленные root causes: generated `computer-use-win-interfaces.*` refreshed; plugin README updated; product/architecture docs updated to mark focused fallback shipped; install-surface README guard added; direct `elementIndex + allowFocusedFallback` regression test added.
+- Проверенные соседние paths: normal focused-editable `type_text` route, element-scoped fallback route, schema binder invalid-request path, manifest/exporter tests, audit redaction, MCP `tools/list` schema exposure, plugin README install-surface guard, helper-backed standard type_text MCP story, helper-backed poor-UIA fallback MCP story.
+- Остаточные риски: full sequential contour and fresh cache-installed publication proof remain Stage 4/5; broad OCR, clipboard, region capture and successor-state remain out of Package B.
+- Разблокировка следующего этапа: dedicated Stage 1 commit before starting Stage 2 / Package C.
+
 ### Package C: Successor-state / action+observe
 
 **Stage mapping:** `Stage 2`

@@ -63,10 +63,11 @@ Skill требует state-first discipline:
 
 - poor-UIA apps уже могут проходить screenshot-first navigation и subsequent
   actions;
-- но `type_text` без editable UIA proof по-прежнему fail-close-ится;
-- следующий узкий follow-up здесь — bounded keyboard-focus fallback без
-  clipboard default и без hidden focus guessing.
-- после этого следующий UX follow-up — successor-state / action+observe path,
+- `type_text` теперь имеет explicit `allowFocusedFallback=true` path для уже
+  focused poor-UIA target: он требует `confirm=true`, fresh focus proof и
+  остаётся `verify_needed`/SendInput route без clipboard default и hidden focus
+  guessing;
+- следующий UX follow-up — successor-state / action+observe path,
   чтобы честный `verify_needed` не требовал полного ручного reobserve после
   каждого low-confidence action.
 - `windowId` safety semantics не нужно размывать до `hwnd + processId`, но

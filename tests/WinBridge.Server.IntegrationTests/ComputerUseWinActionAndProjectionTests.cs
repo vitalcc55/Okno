@@ -1263,6 +1263,316 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task TypeTextHandlerUsesConfirmedFocusedFallbackForWeakFocusedElement()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedWeakStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-focused-weak-fallback-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, text = "typed fallback text", allowFocusedFallback = true, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: CreateFocusedWeakSnapshotRoot(hasKeyboardFocus: true),
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.VerifyNeeded,
+                    Decision: InputStatusValues.VerifyNeeded,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 1)));
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Text: "typed fallback text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.NotNull(inputService.LastRequest);
+        InputAction action = Assert.Single(inputService.LastRequest!.Actions);
+        Assert.Equal(InputActionTypeValues.Type, action.Type);
+        Assert.Equal("typed fallback text", action.Text);
+        Assert.Equal(101, payload.GetProperty("targetHwnd").GetInt64());
+        Assert.False(payload.TryGetProperty("elementIndex", out JsonElement elementIndex) && elementIndex.ValueKind != JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerUsesElementScopedFocusedFallbackForWeakFocusedElement()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedWeakStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-element-focused-fallback-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, elementIndex = 1, text = "typed fallback text", allowFocusedFallback = true, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: CreateFocusedWeakSnapshotRoot(hasKeyboardFocus: true),
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.VerifyNeeded,
+                    Decision: InputStatusValues.VerifyNeeded,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 1)));
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: 1,
+                Text: "typed fallback text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
+        Assert.NotNull(inputService.LastRequest);
+        InputAction action = Assert.Single(inputService.LastRequest!.Actions);
+        Assert.Equal(InputActionTypeValues.Type, action.Type);
+        Assert.Equal("typed fallback text", action.Text);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerFocusedFallbackDoesNotPromoteDispatchOnlyDone()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedWeakStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-focused-fallback-done-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, text = "typed fallback text", allowFocusedFallback = true, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: CreateFocusedWeakSnapshotRoot(hasKeyboardFocus: true),
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.Done,
+                    Decision: InputStatusValues.Done,
+                    ResultMode: InputResultModeValues.PostconditionVerified,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 1)));
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Text: "typed fallback text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.NotNull(inputService.LastRequest);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerKeepsWeakFocusedElementUnavailableWithoutFocusedFallbackOptIn()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedWeakStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-focused-weak-default-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, text = "typed fallback text" },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(StateToken: token, ElementIndex: null, Text: "typed fallback text", Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.UnsupportedAction, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerFocusedFallbackObservabilityAvoidsRawTextClipboardAndPaste()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-type-text-focused-fallback-observability-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            ComputerUseWinStateStore stateStore = new();
+            string token = stateStore.Create(CreateFocusedWeakStoredState());
+            InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-focused-fallback-observability-tests"));
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinTypeText,
+                new { stateToken = token, text = "secret fallback text", allowFocusedFallback = true, confirm = true },
+                sessionManager.GetSnapshot());
+            FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+            FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+                Task.FromResult(
+                    new UiaSnapshotResult(
+                        Status: UiaSnapshotStatusValues.Done,
+                        Window: CreateObservedWindow(window),
+                        Root: CreateFocusedWeakSnapshotRoot(hasKeyboardFocus: true),
+                        RequestedDepth: request.Depth,
+                        RequestedMaxNodes: request.MaxNodes,
+                        CapturedAtUtc: DateTimeOffset.UtcNow)));
+            FakeInputService inputService = new((request, _, _) =>
+                Task.FromResult(
+                    new InputResult(
+                        Status: InputStatusValues.VerifyNeeded,
+                        Decision: InputStatusValues.VerifyNeeded,
+                        TargetHwnd: request.Hwnd,
+                        CompletedActionCount: 1)));
+            ComputerUseWinTypeTextHandler handler = new(
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+                new ComputerUseWinTypeTextExecutionCoordinator(
+                    activationService,
+                    uiAutomationService,
+                    inputService));
+
+            _ = await handler.ExecuteAsync(
+                invocation,
+                new ComputerUseWinTypeTextRequest(
+                    StateToken: token,
+                    ElementIndex: null,
+                    Text: "secret fallback text",
+                    Confirm: true,
+                    AllowFocusedFallback: true),
+                CancellationToken.None);
+
+            string actionEvent = File.ReadLines(options.EventsPath)
+                .Single(line => line.Contains("\"event_name\":\"computer_use_win.action.completed\"", StringComparison.Ordinal));
+            Assert.Contains("\"fallback_used\":\"true\"", actionEvent, StringComparison.Ordinal);
+            Assert.Contains("\"confirmation_required\":\"true\"", actionEvent, StringComparison.Ordinal);
+            Assert.Contains("\"target_mode\":\"focused_fallback\"", actionEvent, StringComparison.Ordinal);
+            Assert.Contains("\"risk_class\":\"focused_text_fallback\"", actionEvent, StringComparison.Ordinal);
+            Assert.Contains("\"dispatch_path\":\"win32_sendinput_unicode\"", actionEvent, StringComparison.Ordinal);
+            Assert.DoesNotContain("secret fallback text", actionEvent, StringComparison.Ordinal);
+            Assert.DoesNotContain("clipboard", actionEvent, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("paste", actionEvent, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerRejectsFocusedFallbackWhenFreshFocusProofIsMissing()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedWeakStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-focused-fallback-proof-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, text = "typed fallback text", allowFocusedFallback = true, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(window),
+                    Root: CreateFocusedWeakSnapshotRoot(hasKeyboardFocus: false),
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        ModelContextProtocol.Protocol.CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Text: "typed fallback text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.StaleState, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
     public async Task ScrollHandlerReturnsUnsupportedActionForNonScrollableStoredElement()
     {
         ComputerUseWinStateStore stateStore = new();
@@ -3572,6 +3882,26 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
             CapturedAtUtc: DateTimeOffset.UtcNow);
 
+    private static ComputerUseWinStoredState CreateFocusedWeakStoredState() =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: CreateCaptureReference(),
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:weak-focused",
+                    Name: "Custom canvas text target",
+                    AutomationId: "CustomCanvasTextTarget",
+                    ControlType: "document",
+                    Bounds: new Bounds(10, 20, 180, 60),
+                    HasKeyboardFocus: true,
+                    Actions: [ToolNames.ComputerUseWinClick]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
     private static ComputerUseWinStoredState CreateScrollableStoredState() =>
         new(
             CreateSession(),
@@ -3669,6 +3999,27 @@ public sealed class ComputerUseWinActionAndProjectionTests
                     BoundingRectangle = new Bounds(220, 40, 320, 140),
                     IsEnabled = true,
                     IsOffscreen = false,
+                },
+            ],
+        };
+
+    private static UiaElementSnapshot CreateFocusedWeakSnapshotRoot(bool hasKeyboardFocus) =>
+        new()
+        {
+            ElementId = "root",
+            ControlType = "window",
+            Children =
+            [
+                new UiaElementSnapshot
+                {
+                    ElementId = "path:weak-focused",
+                    ControlType = "document",
+                    Name = "Custom canvas text target",
+                    AutomationId = "CustomCanvasTextTarget",
+                    BoundingRectangle = new Bounds(10, 20, 180, 60),
+                    IsEnabled = true,
+                    IsOffscreen = false,
+                    HasKeyboardFocus = hasKeyboardFocus,
                 },
             ],
         };

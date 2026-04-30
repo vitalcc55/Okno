@@ -32,6 +32,9 @@ public sealed class ToolContractManifestTests
     {
         Assert.Contains("set_value", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
         Assert.Contains("type_text", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.Contains("allowFocusedFallback", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.Contains("confirm=true", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.Contains("clipboard-default", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
         Assert.Contains("perform_secondary_action", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
         Assert.DoesNotContain("`perform_secondary_action` и `drag` закреплены", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
     }
