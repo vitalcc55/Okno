@@ -410,7 +410,89 @@ OpenAI sample repos were **not** present in local `references/repos` during this
 
 ## 10. Delivery packages
 
+### Stage execution protocol
+
+- [ ] Work strictly in order: Stage 0 (`Package A`) -> Stage 1 (`Package B`) -> Stage 2 (`Package C`) -> Stage 3 (`Package D`) -> Stage 4 (`Package E`) -> Stage 5 (full closure).
+- [ ] Do not start a later stage until the current stage has: completed its mapped package checklist, updated its stage report, finished its stage-scoped verification, passed review approval and recorded a commit SHA.
+- [ ] Update this file after each completed subtask, not only at the end.
+- [ ] Each stage that changes behavior, contract, validation, publication, failure semantics, state semantics or docs/generated surface must use TDD where the mapped package calls for RED/GREEN work.
+
+### Review gate before each commit
+
+Before each stage commit, run at least two `gpt-5.5` review subagents:
+
+- architecture/contract reviewer;
+- tests/failure-path/docs/generated reviewer.
+
+Subagent invocation rules:
+
+- spawn fresh review subagents for the current stage;
+- do **not** fork the main implementer chat history into them: `fork_context=false`;
+- the implementer must set context explicitly in the prompt instead of relying on inherited thread history;
+- provide the exact files, diff/base-head context, checks run and source pack context needed for review in that prompt;
+- after findings, confirm or reject each finding, fix root cause for confirmed findings, verify neighboring paths, then send re-review to the same agents when practical until approval.
+
+Review prompt must include:
+
+- stage id;
+- scope;
+- acceptance criteria;
+- changed files;
+- diff/base-head context;
+- checks run;
+- official docs checked;
+- reference repos consulted when relevant;
+- explicit questions for that reviewer.
+
+Suggested prompt skeleton:
+
+```md
+Stage: `Stage N / Package X`
+Role: `architecture/contract` | `tests/failure/docs/generated`
+Scope:
+Acceptance criteria:
+Changed files:
+Base/head context:
+Checks run:
+Official docs checked:
+Reference repos checked:
+Questions for review:
+```
+
+### Stage report template
+
+```md
+#### Отчёт этапа
+
+- Статус этапа: `not_started` / `in_progress` / `blocked` / `ready_for_review` / `approved` / `committed`
+- Branch:
+- Commit SHA:
+- TDD применялся:
+- Проверки:
+- Review agents:
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`
+- Official docs checked:
+- Reference repos checked:
+- Подтверждённые замечания:
+- Отклонённые замечания:
+- Исправленные root causes:
+- Проверенные соседние paths:
+- Остаточные риски:
+- Разблокировка следующего этапа:
+```
+
+### Stage mapping
+
+- Stage 0 = `Package A`
+- Stage 1 = `Package B`
+- Stage 2 = `Package C`
+- Stage 3 = `Package D`
+- Stage 4 = `Package E`
+- Stage 5 = final closure after `Package E`
+
 ### Package A: Baseline and decision freeze
+
+**Stage mapping:** `Stage 0`
 
 **Purpose**
 
@@ -434,7 +516,11 @@ OpenAI sample repos were **not** present in local `references/repos` during this
 - another agent can start Package B without rediscovering repo structure or source pack;
 - design forks above are either frozen or reduced to one narrow spike.
 
+**Stage gate:** before leaving Stage 0, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
+
 ### Package B: Focused `type_text` fallback
+
+**Stage mapping:** `Stage 1`
 
 **Intent**
 
@@ -472,7 +558,11 @@ OpenAI sample repos were **not** present in local `references/repos` during this
 - stale/foreground/focus-proof failures remain structured failures;
 - no implicit semantic upgrade to `done`.
 
+**Stage gate:** before leaving Stage 1, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
+
 ### Package C: Successor-state / action+observe
+
+**Stage mapping:** `Stage 2`
 
 **Intent**
 
@@ -514,7 +604,11 @@ OpenAI sample repos were **not** present in local `references/repos` during this
 - low-confidence top-level status may still remain `verify_needed` even when `successorState` is present; that status now means semantic conservatism, not “you must immediately call `get_app_state` again”.
 - if successor observe fails after a committed action, keep the ordinary action result semantics and leave `refreshStateRecommended=true`.
 
+**Stage gate:** before leaving Stage 2, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
+
 ### Package D: Public instance continuity UX
+
+**Stage mapping:** `Stage 3`
 
 **Intent**
 
@@ -548,7 +642,11 @@ OpenAI sample repos were **not** present in local `references/repos` during this
 - lower `list_apps` churn for steady windows;
 - unchanged fail-closed behavior on ambiguity or replacement.
 
+**Stage gate:** before leaving Stage 3, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
+
 ### Package E: Verification, docs and install-surface sync
+
+**Stage mapping:** `Stage 4`
 
 **Intent**
 
@@ -572,6 +670,31 @@ OpenAI sample repos were **not** present in local `references/repos` during this
 - full sequential contour passes;
 - fresh-host/publication proof stays green if schemas or profile wording changed;
 - docs explain successor-state and continuity semantics without pretending broader OCR/clipboard work.
+
+**Stage gate:** before leaving Stage 4, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
+
+### Stage 5: Full closure
+
+**Mapped scope**
+
+- final closure after Stages 0-4 are green and committed.
+
+**Steps**
+
+- [ ] Move or copy the active plan to `docs/exec-plans/completed/` with final status.
+- [ ] Sync roadmap/spec/architecture/plugin/generated docs in the same cycle.
+- [ ] Run full sequential contour:
+  `scripts/build.ps1` -> `scripts/test.ps1` -> `scripts/smoke.ps1` -> `scripts/refresh-generated-docs.ps1` -> `scripts/codex/verify.ps1`.
+- [ ] Run full-branch review against `main` with architecture/contract and tests/failure/docs/generated subagents, again with explicit-prompt/no-fork context.
+- [ ] Prepare the closure report in the product-ready format requested by this plan.
+
+**Acceptance criteria**
+
+- [ ] Shipped vs out-of-scope slices are listed explicitly.
+- [ ] Final docs/generated/plugin surface matches the real public profile and verification results.
+- [ ] Install/publication proof covers cache-installed copy when public surface wording or behavior changed.
+- [ ] Residual risks and next work item are explicit.
+- [ ] Review/re-review approval from two `gpt-5.5` agents is recorded before the closure commit.
 
 ## 11. Test ladder
 
@@ -658,14 +781,14 @@ When implementation starts, the agent must sync all impacted docs in the same cy
 
 ## 15. Recommended implementation sequence
 
-1. Freeze Package A decisions in code comments/tests before any behavior change.
-2. Start Package D unit tests first if selector reuse is chosen as the lowest-risk continuity win.
-3. Implement Package B with strict TDD on contract, failure taxonomy and helper-backed integration proof.
-4. Only after B is green, extract shared observed-state materializer for Package C.
-5. Land `observeAfter` first on one action pair (`click`, `type_text`) before widening to `press_key` / `scroll` / `drag`.
-6. Extend smoke helper only after contract/unit tests for each slice are already red and specified.
-7. Run the full sequential contour only after Packages B/C/D are individually green at L1 and L2.
-8. Close with docs/generated sync and move this plan to `completed`.
+1. Execute strictly in Stage order: `Stage 0 -> Stage 1 -> Stage 2 -> Stage 3 -> Stage 4 -> Stage 5`.
+2. Keep package scope narrow inside each stage; if a new prerequisite is discovered, record it in the stage report instead of silently pulling later-stage work forward.
+3. Implement `Package B` with strict TDD on contract, failure taxonomy and helper-backed integration proof before widening any successor-state work.
+4. Only after `Package B` is green, extract shared observed-state materializer for `Package C`.
+5. Inside `Package C`, land `observeAfter` first on one action pair (`click`, `type_text`) before widening to `press_key` / `scroll` / `drag`.
+6. Extend smoke helper only after contract/unit tests for the current stage are already red and specified.
+7. Run the full sequential contour only in `Stage 4` / `Stage 5`, not as a substitute for stage-scoped verification earlier.
+8. Close with docs/generated sync, full-branch review and completed-plan archival in `Stage 5`.
 
 ## 16. Decision summary
 

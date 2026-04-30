@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-04-30
+
+- Active exec-plan [computer-use-win-screenshot-first-hardening](docs/exec-plans/active/computer-use-win-screenshot-first-hardening.md) получил stage-by-stage execution protocol по образцу completed wave plan: strict stage order, mandatory pre-commit review gate с двумя `gpt-5.5` subagents, stage report template, explicit stage mapping для `Package A-E` и отдельный full-closure stage. Дополнительно зафиксировано новое ограничение для implementer workflow: review subagents запускаются без форка истории основного implementer chat (`fork_context=false`), а весь контекст передаётся им явным prompt-ом.
+
 ## 2026-04-29
 
 - Добавлен active exec-plan для следующего `computer-use-win` workstream: [computer-use-win-screenshot-first-hardening](docs/exec-plans/active/computer-use-win-screenshot-first-hardening.md) фиксирует current repo fit, exact source pack, official OpenAI/MCP/Microsoft constraints, file-level integration map и decision freeze для трёх связанных follow-up slices: focused poor-UIA `type_text` fallback, successor-state / action+observe и continuity UX без ослабления strict discovery proof.
