@@ -429,8 +429,15 @@ Subagent invocation rules:
 - spawn fresh review subagents for the current stage;
 - do **not** fork the main implementer chat history into them: `fork_context=false`;
 - the implementer must set context explicitly in the prompt instead of relying on inherited thread history;
+- every review subagent prompt must include the sandbox-mode addendum below verbatim;
 - provide the exact files, diff/base-head context, checks run and source pack context needed for review in that prompt;
 - after findings, confirm or reject each finding, fix root cause for confirmed findings, verify neighboring paths, then send re-review to the same agents when practical until approval.
+
+Mandatory review prompt sandbox addendum:
+
+```md
+Это review в sandbox-режиме: не запускай bootstrap, verify, dotnet restore, dotnet test, сборку, smoke, линтеры и любые тяжёлые проверки, если я отдельно не попрошу; считай, что такие прогоны здесь нерелевантны или ненадёжны, и делай выводы только по статическому анализу diff, кода, тестов, docs и официальной документации. Если для подтверждения замечания очень нужен runtime-сигнал, сначала коротко укажи, зачем именно он нужен, но ничего не запускай без отдельного разрешения, не запрашивай разрешения на повышение прав.
+```
 
 Review prompt must include:
 
@@ -517,6 +524,33 @@ Questions for review:
 - design forks above are either frozen or reduced to one narrow spike.
 
 **Stage gate:** before leaving Stage 0, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
+
+#### Stage 0 checklist
+
+- [x] Подтверждён baseline ветки и worktree через `git status --short --branch`: `codex/computer-use-win-screenshot-first-hardening`, clean до Stage 0 правок.
+- [x] Выполнен Codex harness handshake: `scripts/codex/bootstrap.ps1`, затем `scripts/codex/verify.ps1`.
+- [x] Подтверждено, что design decisions остаются frozen для `allowFocusedFallback`, `observeAfter`, selector reuse и screenshot preview boundary.
+- [x] Подтверждено, что Stage 0 не меняет runtime behavior, public schemas, generated contracts или plugin install surface.
+- [x] Отчёт Stage 0 заполнен до review gate.
+- [x] По прямому user request добавлен mandatory sandbox-mode addendum для всех будущих review subagent prompts.
+
+#### Отчёт этапа
+
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: `pending_until_commit`
+- TDD применялся: `нет`, Stage 0 только фиксирует baseline/design freeze и не меняет runtime behavior
+- Проверки: `scripts/codex/bootstrap.ps1` -> success; `scripts/codex/verify.ps1` -> success, build `0 warnings / 0 errors`, runtime tests `669/669`, integration tests `357/357`, smoke run `20260430T105948366`, generated-docs refresh completed; после verify у generated docs не было content diff, а EOL-only status очищен через `git add --renormalize`
+- Review agents: `James -> approve`, `Locke -> approve`; после review по прямому user request добавлен mandatory sandbox-mode addendum для будущих review subagents
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`
+- Official docs checked: OpenAI Docs MCP `tools-computer-use#4-capture-and-return-the-updated-screenshot`, OpenAI Apps SDK MCP server concept, OpenAI Codex MCP server guide; MCP server tools spec `2025-11-25`; Microsoft `GetForegroundWindow`
+- Reference repos checked: `not_applicable` для Stage 0; implementation pattern comparison не нужен до Package B
+- Подтверждённые замечания: `none`
+- Отклонённые замечания: `none`
+- Исправленные root causes: `none`
+- Проверенные соседние paths: `docs/generated/computer-use-win-interfaces.*`, `docs/generated/project-interfaces.*`, `docs/generated/test-matrix.md`, `docs/CHANGELOG.md`, `.tmp/.codex/task_state/latest.md`; review agents дополнительно подтвердили, что `docs/generated/*` не требует Stage 0 commit, потому что content diff отсутствует
+- Остаточные риски: focused fallback proof всё ещё требует Package B spike/test decision; successor-state result shaping и selector reuse остаются нереализованными до Packages C/D
+- Разблокировка следующего этапа: после review approval и dedicated Stage 0 commit начать Package B с TDD RED tests для explicit `allowFocusedFallback` opt-in и `confirm=true`
 
 ### Package B: Focused `type_text` fallback
 

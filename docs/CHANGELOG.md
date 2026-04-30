@@ -4,6 +4,8 @@
 
 ## 2026-04-30
 
+- Stage 0 для active exec-plan [computer-use-win-screenshot-first-hardening](docs/exec-plans/active/computer-use-win-screenshot-first-hardening.md) переведён в review-ready baseline: подтверждена ветка `codex/computer-use-win-screenshot-first-hardening`, выполнен harness handshake `scripts/codex/bootstrap.ps1` -> `scripts/codex/verify.ps1`, сохранён design freeze для focused `type_text` fallback, `observeAfter` successor-state и strict selector reuse без runtime/schema изменений.
+- Review-gate protocol того же active exec-plan дополнительно ограничен sandbox-mode addendum для всех будущих review subagents: review prompts теперь обязаны запрещать bootstrap/verify/dotnet restore/test/build/smoke/linters и любые тяжёлые проверки без отдельного запроса, а reviewer выводы должны опираться на статический анализ diff, кода, тестов, docs и официальной документации.
 - Active exec-plan [computer-use-win-screenshot-first-hardening](docs/exec-plans/active/computer-use-win-screenshot-first-hardening.md) получил stage-by-stage execution protocol по образцу completed wave plan: strict stage order, mandatory pre-commit review gate с двумя `gpt-5.5` subagents, stage report template, explicit stage mapping для `Package A-E` и отдельный full-closure stage. Дополнительно зафиксировано новое ограничение для implementer workflow: review subagents запускаются без форка истории основного implementer chat (`fork_context=false`), а весь контекст передаётся им явным prompt-ом.
 
 ## 2026-04-29
