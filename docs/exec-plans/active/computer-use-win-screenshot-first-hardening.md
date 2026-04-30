@@ -733,9 +733,9 @@ Questions for review:
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-screenshot-first-hardening`
-- Commit SHA: `pending`
+- Commit SHA: `a76effd`
 - TDD применялся: да; RED сначала падал на repeated unchanged discovery snapshot (`list_apps` и direct catalog) из-за mint нового `windowId`, затем GREEN подтвердил strict selector reuse без public schema changes.
 - Проверки:
   - RED `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ListAppsReusesWindowIdsForUnchangedDiscoverySnapshot|FullyQualifiedName~ExecutionTargetCatalogReusesWindowIdAcrossStrictDiscoveryMatch|FullyQualifiedName~ExecutionTargetCatalogIssuesNewWindowIdWhenDiscoverySnapshotDrifts|FullyQualifiedName~ExecutionTargetCatalogDoesNotReuseWindowIdForReusedHwndReplacement"` failed `2/4` on unchanged selector churn.
@@ -752,7 +752,7 @@ Questions for review:
 - Исправленные root causes: added duplicate-current-batch regression and disabled previous-entry reuse when more than one pending target would reuse the same latest-published `windowId`.
 - Проверенные соседние paths: `list_apps` public payload, direct execution target catalog reuse, drifted discovery snapshot, reused `HWND` replacement, duplicate-current-batch ambiguity, existing catalog overflow/invalidation tests, explicit `hwnd` and attached fallback target resolver behavior.
 - Остаточные риски: full docs/generated/install contour remains Stage 4/5 scope.
-- Разблокировка следующего этапа: blocked until Stage 3 commit SHA is recorded.
+- Разблокировка следующего этапа: Stage 4 / Package E may start after this metadata update is committed.
 
 **Stage gate:** before leaving Stage 3, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
 
