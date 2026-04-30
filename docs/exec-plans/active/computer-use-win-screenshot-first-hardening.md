@@ -536,9 +536,9 @@ Questions for review:
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-screenshot-first-hardening`
-- Commit SHA: `pending_until_commit`
+- Commit SHA: `0e59a3d`
 - TDD применялся: `нет`, Stage 0 только фиксирует baseline/design freeze и не меняет runtime behavior
 - Проверки: `scripts/codex/bootstrap.ps1` -> success; `scripts/codex/verify.ps1` -> success, build `0 warnings / 0 errors`, runtime tests `669/669`, integration tests `357/357`, smoke run `20260430T105948366`, generated-docs refresh completed; после verify у generated docs не было content diff, а EOL-only status очищен через `git add --renormalize`
 - Review agents: `James -> approve`, `Locke -> approve`; после review по прямому user request добавлен mandatory sandbox-mode addendum для будущих review subagents
