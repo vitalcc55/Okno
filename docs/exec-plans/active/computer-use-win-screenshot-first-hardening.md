@@ -609,9 +609,9 @@ Questions for review:
 
 #### Отчёт этапа
 
-- Статус этапа: `approved`
+- Статус этапа: `committed`
 - Branch: `codex/computer-use-win-screenshot-first-hardening`
-- Commit SHA: `pending`
+- Commit SHA: `8ab34f2`
 - TDD применялся: `да`; RED зафиксирован для request validation/schema, focused fallback behavior, stale focus-proof failure, audit clipboard/paste guard, no optimistic `done`, manifest wording и helper-backed MCP flow.
 - Проверки: RED `TypeTextHandlerFocusedFallbackDoesNotPromoteDispatchOnlyDone` -> failed `done` vs `verify_needed`; RED `ToolContractManifestTests.ComputerUseWinContractNotesReflectShippedSecondaryAction` -> missing `allowFocusedFallback`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinActionAndProjectionTests.TypeTextHandler"` -> `12/12`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinArchitectureTests.TypeTextValidatorRequiresConfirmForFocusedFallbackOptIn|FullyQualifiedName~ComputerUseWinArchitectureTests.ComputerUseWinTypeTextToolSchemaExposesFocusedFallbackOptIn"` -> `2/2`; GREEN `dotnet test .\tests\WinBridge.Runtime.Tests\WinBridge.Runtime.Tests.csproj --filter "FullyQualifiedName~ToolContractManifestTests.ComputerUseWinContractNotesReflectShippedSecondaryAction|FullyQualifiedName~AuditLogTests.BeginInvocationRedactsComputerUseWinTypeTextRequestSummary"` -> `2/2`; GREEN `dotnet test .\tests\WinBridge.Runtime.Tests\WinBridge.Runtime.Tests.csproj --filter "FullyQualifiedName~ToolContractExporterTests"` -> `11/11`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~McpProtocolSmokeTests.ComputerUseWinTypeText"` -> `2/2`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~McpProtocolSmokeTests.ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools"` -> `1/1`; GREEN `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinInstallSurfaceTests.ComputerUseWinPluginReadmeDocumentsCurrentShippedToolSurface"` -> `1/1`; `scripts/refresh-generated-docs.ps1` -> success, build `0 warnings / 0 errors`; `git diff --check` -> success with generated-doc line-ending normalization warnings only.
 - Review agents: `Meitner -> approve/no P0-P3`; `Herschel -> approve/no P0-P3 after P2 fix`
@@ -623,7 +623,7 @@ Questions for review:
 - Исправленные root causes: generated `computer-use-win-interfaces.*` refreshed; plugin README updated; product/architecture docs updated to mark focused fallback shipped; install-surface README guard added; direct `elementIndex + allowFocusedFallback` regression test added.
 - Проверенные соседние paths: normal focused-editable `type_text` route, element-scoped fallback route, schema binder invalid-request path, manifest/exporter tests, audit redaction, MCP `tools/list` schema exposure, plugin README install-surface guard, helper-backed standard type_text MCP story, helper-backed poor-UIA fallback MCP story.
 - Остаточные риски: full sequential contour and fresh cache-installed publication proof remain Stage 4/5; broad OCR, clipboard, region capture and successor-state remain out of Package B.
-- Разблокировка следующего этапа: dedicated Stage 1 commit before starting Stage 2 / Package C.
+- Разблокировка следующего этапа: Stage 2 / Package C may start after this metadata update is committed.
 
 ### Package C: Successor-state / action+observe
 
