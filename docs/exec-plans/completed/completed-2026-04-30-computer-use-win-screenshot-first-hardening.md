@@ -1,8 +1,25 @@
 # ExecPlan: Computer Use for Windows screenshot-first hardening
 
-Status: `active`  
-Date: `2026-04-29`  
+Status: `completed`
+Date: `2026-04-29`
 Primary scope: `focused type_text fallback`, `successor-state / action+observe`, `public instance continuity UX`
+
+## Completion status
+
+- Status: completed on branch `codex/computer-use-win-screenshot-first-hardening`
+- Stage 1 package commit: `8ab34f2`
+- Stage 2 package commit: `cd57192`
+- Stage 3 package commit: `a76effd`
+- Stage 4 package commit: `4840007d25981a13d78a44a688d901600cebbb28`
+- Stage 5 closure commit: pending
+- Closure path: archived completed execution record; stage-by-stage sections
+  below are preserved as historical delivery evidence rather than an active
+  work queue.
+
+> **Для agentic workers:** этот файл является completed execution record для
+> screenshot-first hardening workstream `computer-use-win`. Stage-by-stage
+> sections below remain as evidence of delivery order, verification ladder and
+> review gates that produced the shipped result.
 
 ## 1. Goal
 
@@ -820,20 +837,58 @@ Questions for review:
 
 **Steps**
 
-- [ ] Move or copy the active plan to `docs/exec-plans/completed/` with final status.
-- [ ] Sync roadmap/spec/architecture/plugin/generated docs in the same cycle.
-- [ ] Run full sequential contour:
+- [x] Move or copy the active plan to `docs/exec-plans/completed/` with final status.
+- [x] Sync roadmap/spec/architecture/plugin/generated docs in the same cycle.
+- [x] Run full sequential contour:
   `scripts/build.ps1` -> `scripts/test.ps1` -> `scripts/smoke.ps1` -> `scripts/refresh-generated-docs.ps1` -> `scripts/codex/verify.ps1`.
-- [ ] Run full-branch review against `main` with architecture/contract and tests/failure/docs/generated subagents, again with explicit-prompt/no-fork context.
-- [ ] Prepare the closure report in the product-ready format requested by this plan.
+- [x] Run full-branch review against `main` with architecture/contract and tests/failure/docs/generated subagents, again with explicit-prompt/no-fork context.
+- [x] Prepare the closure report in the product-ready format requested by this plan.
 
 **Acceptance criteria**
 
-- [ ] Shipped vs out-of-scope slices are listed explicitly.
-- [ ] Final docs/generated/plugin surface matches the real public profile and verification results.
-- [ ] Install/publication proof covers cache-installed copy when public surface wording or behavior changed.
-- [ ] Residual risks and next work item are explicit.
-- [ ] Review/re-review approval from two `gpt-5.5` agents is recorded before the closure commit.
+- [x] Shipped vs out-of-scope slices are listed explicitly.
+- [x] Final docs/generated/plugin surface matches the real public profile and verification results.
+- [x] Install/publication proof covers cache-installed copy when public surface wording or behavior changed.
+- [x] Residual risks and next work item are explicit.
+- [x] Review/re-review approval from two `gpt-5.5` agents is recorded before the closure commit.
+
+#### Отчёт этапа
+
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: pending
+- Shipped slices:
+  - Package B: `type_text` focused fallback through explicit `allowFocusedFallback=true` + `confirm=true`, fresh target-local focus proof, SendInput text dispatch, no clipboard/paste default and public `verify_needed` semantics.
+  - Package C: `observeAfter=true` on `click`, `press_key`, `type_text`, `scroll` and `drag`, with nested `successorState`, updated screenshot image content, short-lived successor `stateToken`, factual top-level action status and advisory `successorStateFailure`.
+  - Package D: strict selector reuse for repeated unchanged `list_apps` discovery snapshots, with no public `hwnd + processId` selector and fail-closed drift/replacement/duplicate-current-batch behavior.
+- Explicitly out of scope:
+  - OCR-lite and text detection.
+  - `windows.region_capture`.
+  - Clipboard/paste workflows.
+  - Approvals hardening and playbooks expansion.
+  - `windows.uia_action`, browser-only UX and client rendering redesign.
+- Verification:
+  - Final-review P1 regression was reproduced RED first: `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ExecutionTargetCatalogFailsClosedWhenResolvingWindowIdAgainstDuplicateStrictLiveMatches"` failed with `InvalidOperationException: Sequence contains more than one matching element` before the fix.
+  - After the fix, the same regression test passed `1/1`; neighboring selector/resolver filter passed `17/17`.
+  - `.\scripts\codex\publish-computer-use-win-plugin.ps1` refreshed the repo plugin-local runtime bundle in `plugins\computer-use-win\runtime\win-x64`.
+  - `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinInstallSurfaceTests.ComputerUseWinLauncherFromTempPluginCopyPublishesPublicSurfaceWithoutRepoHints"` passed `1/1` after the install-copy tools/list schema assertion was extended to cover `allowFocusedFallback`, selected-action `observeAfter` and absence of `observeAfter` on `set_value` / `perform_secondary_action`.
+  - Cache-installed proof: stale cache MCP processes under `C:\Users\v.vlasov\.codex\plugins\cache\computer-use-win-local\computer-use-win\0.1.0` were stopped, the old cache copy was backed up to `.tmp\.codex\plugin-cache-backup-20260430-142857\computer-use-win-local\computer-use-win\0.1.0`, the cache copy was synchronized from `plugins\computer-use-win`, and a fresh cache-launched MCP host proved `tools/list` + `list_apps` in `.tmp\.codex\computer-use-win-cache-proof\proof-20260430-142946.json`.
+  - The cache proof reported protocol `2025-11-25`, server `Okno.Server`, tools `click`, `drag`, `get_app_state`, `list_apps`, `perform_secondary_action`, `press_key`, `scroll`, `set_value`, `type_text`, `typeTextHasAllowFocusedFallback=true`, `selectedActionsHaveObserveAfter=true`, `semanticOnlyActionsLackObserveAfter=true`, `listAppsStatus=ok`, and `appCount=10`.
+  - Post-review `.\scripts\build.ps1` passed with `0 warnings / 0 errors`.
+  - First post-review `.\scripts\test.ps1` exposed a transient UIA worker timeout in `McpProtocolSmokeTests.ComputerUseWinPressKeyMovesKeyboardFocusThroughApprovedAppState`; diagnostic stdout already contained a successful snapshot with focus on `Transient wait target`, targeted rerun passed `1/1`, and the full retry passed `669/669` runtime tests plus `376/376` server integration tests.
+  - Post-review `.\scripts\smoke.ps1` passed with run `20260430T145037825`, declared tools `17`, fresh-host checks `fresh_host_windows_input_tools_list=verified`, `fresh_host_windows_input_contract=verified`, `fresh_host_windows_input_missing_target=failed/missing_target`, and report `artifacts\smoke\20260430T145037825\report.json`.
+  - Post-review `.\scripts\refresh-generated-docs.ps1` passed with build `0 warnings / 0 errors`.
+  - First post-review `.\scripts\codex\verify.ps1` exposed a transient UIA worker timeout in `McpProtocolSmokeTests.ComputerUseWinTypeTextUpdatesQueryMirrorAfterExplicitFocusProof` before dispatch; diagnostic stdout already contained a successful focused `Smoke query input` snapshot, targeted rerun passed `1/1`, and the full retry passed end-to-end: build `0 warnings / 0 errors`, tests `669/669` and `376/376`, smoke run `20260430T151003984`, final generated-doc refresh, and total `00:04:49.8436759`.
+- Review agents: `Ampere` found one blocking P1 selector ambiguity, then approved architecture/contract re-review with no remaining P0-P3 findings; `Kant` found one P2 cache-installed proof overclaim and one P3 stale changelog wording, then approved tests/failure/docs/generated re-review with no remaining P0-P3 findings.
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`
+- Official docs checked: Stage 0 source-pack constraints reused; no new external-doc-dependent runtime semantics were introduced in Stage 5.
+- Reference repos checked: none in Stage 5; closure verified shipped local behavior and docs.
+- Подтверждённые замечания: P1 duplicate strict live matches could throw during `windowId` resolution; P2 closure overclaimed cache-installed proof using only generic `windows.input` fresh-host evidence; P3 changelog still said `того же active exec-plan` after archival.
+- Отклонённые замечания: `none`
+- Исправленные root causes: active exec-plan archived under `docs/exec-plans/completed/`, changelog links retargeted from active to completed path, Stage 4 verification/fresh-host evidence preserved in the completed record, `TryResolveWindowId` now counts strict live matches without throwing and fails closed on ambiguity, install-copy schema proof now covers the new fields, and cache-installed `computer-use-win` proof is backed by a real cache-launched MCP host.
+- Проверенные соседние paths: roadmap, root README, plugin README, architecture docs, generated docs refresh and full verification contour.
+- Остаточные риски: screenshot preview remains client/operator UX work; approvals/playbooks, clipboard, region capture and OCR-lite remain explicit future work.
+- Next work item: approvals hardening + risky action confirmation, then app playbooks expansion.
 
 ## 11. Test ladder
 

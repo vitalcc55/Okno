@@ -2973,6 +2973,33 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public void ExecutionTargetCatalogFailsClosedWhenResolvingWindowIdAgainstDuplicateStrictLiveMatches()
+    {
+        WindowDescriptor originalWindow = CreateWindow(hwnd: 101, title: "Window A", processName: "explorer", processId: 1001, isForeground: false);
+        WindowDescriptor duplicateWindow = originalWindow with { };
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+
+        ComputerUseWinExecutionTarget originalTarget = Assert.Single(executionTargetCatalog.Materialize([originalWindow]));
+
+        Exception? exception = Record.Exception(() =>
+        {
+            bool resolved = executionTargetCatalog.TryResolveWindowId(
+                originalTarget.PublicWindowId!,
+                [originalWindow, duplicateWindow],
+                out ComputerUseWinExecutionTarget? resolvedTarget,
+                out WindowDescriptor? failureWindow,
+                out bool continuityFailed);
+
+            Assert.False(resolved);
+            Assert.Null(resolvedTarget);
+            Assert.NotNull(failureWindow);
+            Assert.True(continuityFailed);
+        });
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void ExecutionTargetCatalogPreservesLatestBatchWhenOverflowEvictsOlderGeneration()
     {
         IReadOnlyList<WindowDescriptor> firstBatch =

@@ -763,15 +763,43 @@ public sealed class ComputerUseWinInstallSurfaceTests
                     ],
                     toolNames);
 
-                JsonElement getAppStateDescriptor = toolsResponse.RootElement
+                JsonElement tools = toolsResponse.RootElement
                     .GetProperty("result")
-                    .GetProperty("tools")
-                    .EnumerateArray()
-                    .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinGetAppState);
+                    .GetProperty("tools");
+                JsonElement getAppStateDescriptor = GetToolDescriptor(tools, ToolNames.ComputerUseWinGetAppState);
                 JsonElement properties = getAppStateDescriptor.GetProperty("inputSchema").GetProperty("properties");
                 Assert.True(properties.TryGetProperty("windowId", out _));
                 Assert.True(properties.TryGetProperty("hwnd", out _));
                 Assert.False(properties.TryGetProperty("appId", out _));
+
+                JsonElement typeTextProperties = GetToolDescriptor(tools, ToolNames.ComputerUseWinTypeText)
+                    .GetProperty("inputSchema")
+                    .GetProperty("properties");
+                Assert.True(typeTextProperties.TryGetProperty("allowFocusedFallback", out _));
+                Assert.True(typeTextProperties.TryGetProperty("observeAfter", out _));
+
+                foreach (string actionName in new[]
+                {
+                    ToolNames.ComputerUseWinClick,
+                    ToolNames.ComputerUseWinDrag,
+                    ToolNames.ComputerUseWinPressKey,
+                    ToolNames.ComputerUseWinScroll,
+                })
+                {
+                    JsonElement actionProperties = GetToolDescriptor(tools, actionName)
+                        .GetProperty("inputSchema")
+                        .GetProperty("properties");
+                    Assert.True(actionProperties.TryGetProperty("observeAfter", out _));
+                }
+
+                Assert.False(GetToolDescriptor(tools, ToolNames.ComputerUseWinSetValue)
+                    .GetProperty("inputSchema")
+                    .GetProperty("properties")
+                    .TryGetProperty("observeAfter", out _));
+                Assert.False(GetToolDescriptor(tools, ToolNames.ComputerUseWinPerformSecondaryAction)
+                    .GetProperty("inputSchema")
+                    .GetProperty("properties")
+                    .TryGetProperty("observeAfter", out _));
 
                 using JsonDocument listAppsResponse = await session.SendRequestAsync(
                     "tools/call",
@@ -804,6 +832,10 @@ public sealed class ComputerUseWinInstallSurfaceTests
             DeleteDirectoryIfExists(tempPluginRoot);
         }
     }
+
+    private static JsonElement GetToolDescriptor(JsonElement tools, string toolName) =>
+        tools.EnumerateArray()
+            .Single(tool => string.Equals(tool.GetProperty("name").GetString(), toolName, StringComparison.Ordinal));
 
     [Fact]
     public void ComputerUseWinPluginReadmeDocumentsCurrentShippedToolSurface()

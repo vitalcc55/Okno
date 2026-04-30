@@ -117,11 +117,27 @@ internal sealed class ComputerUseWinExecutionTargetCatalog
         }
 
         WindowDescriptor discoveredWindow = entry!.Window;
-        WindowDescriptor? liveWindow = liveWindows.SingleOrDefault(item =>
-            ComputerUseWinWindowContinuityProof.MatchesDiscoverySelector(item, discoveredWindow));
+        WindowDescriptor? liveWindow = null;
+        foreach (WindowDescriptor item in liveWindows)
+        {
+            if (!ComputerUseWinWindowContinuityProof.MatchesDiscoverySelector(item, discoveredWindow))
+            {
+                continue;
+            }
+
+            if (liveWindow is not null)
+            {
+                failureWindow = liveWindow;
+                continuityFailed = true;
+                return false;
+            }
+
+            liveWindow = item;
+        }
+
         if (liveWindow is null)
         {
-            failureWindow = liveWindows.SingleOrDefault(item => item.Hwnd == discoveredWindow.Hwnd);
+            failureWindow = liveWindows.FirstOrDefault(item => item.Hwnd == discoveredWindow.Hwnd);
             continuityFailed = failureWindow is not null;
             return false;
         }
