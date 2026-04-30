@@ -74,11 +74,10 @@ Skill требует state-first discipline:
   `stateToken` и screenshot image block. Это снижает loop cost, но не меняет
   честный top-level action status; failed successor observe остаётся advisory
   `successorStateFailure`.
-- следующий UX follow-up — public instance continuity, чтобы strict
-  `windowId` semantics давали меньше churn при повторных discovery loops.
-- `windowId` safety semantics не нужно размывать до `hwnd + processId`, но
-  continuity UX нужно усиливать отдельно, чтобы агент меньше тратил turns на
-  повторные `list_apps` loops.
+- public instance continuity уже снижает churn: repeated unchanged
+  `list_apps` snapshots переиспользуют прежний runtime-owned `windowId`;
+  drift/replacement paths всё ещё fail-close, а `hwnd + processId` не стал
+  public selector.
 - `get_app_state` уже возвращает screenshot bytes в MCP result и локальный
   artifact, но если конкретный client не рендерит image block inline,
   screenshot preview hint остаётся отдельным UX hardening item, а не поводом

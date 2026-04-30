@@ -783,6 +783,33 @@ Questions for review:
 - fresh-host/publication proof stays green if schemas or profile wording changed;
 - docs explain successor-state and continuity semantics without pretending broader OCR/clipboard work.
 
+#### Отчёт этапа
+
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: pending
+- TDD применялся: `not_applicable` для docs/verification sync; regression fix for the Stage 2 test marker was driven by the failing full test contour and verified by a targeted test before the full contour was rerun.
+- Проверки:
+  - `.\scripts\build.ps1` passed with `0 warnings / 0 errors`.
+  - Initial `.\scripts\test.ps1` exposed one Stage 2 accidental test-marker drift in `ClickExecutionCoordinatorReappliesConfirmationAfterRetryReresolution`; targeted diagnosis confirmed the second fresh UIA snapshot had to stay risky (`Name = "Delete item"`, `AutomationId = "DeleteButton"`), and the test was restored.
+  - `dotnet test .\tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ClickExecutionCoordinatorReappliesConfirmationAfterRetryReresolution"` passed `1/1` after the marker fix.
+  - Re-run `.\scripts\build.ps1` passed with `0 warnings / 0 errors`.
+  - Re-run `.\scripts\test.ps1` passed `669/669` runtime tests and `375/375` server integration tests.
+  - `.\scripts\smoke.ps1` passed with smoke run `20260430T131856610`, declared tools `17`, and report `artifacts\smoke\20260430T131856610\report.json`.
+  - Fresh-host/publication evidence is covered by the same smoke/publication contour: `fresh_host_windows_input_tools_list=verified`, `fresh_host_windows_input_contract=verified`, `fresh_host_windows_input_missing_target=failed/missing_target`, and declared tool count stayed `17`.
+  - `.\scripts\refresh-generated-docs.ps1` passed with build `0 warnings / 0 errors`; generated docs stayed unchanged after the current code/doc sync.
+  - `.\scripts\codex\verify.ps1` passed end-to-end: build `0 warnings / 0 errors`, tests `669/669` and `375/375`, smoke run `20260430T132553203`, and final generated-doc refresh.
+- Review agents: `Socrates` (architecture/contract) approved initial review with non-blocking P3 docs fixes and approved re-review; `Fermat` (tests/failure/docs/generated) requested one P2 report-evidence fix and one P3 drag-docs fix, then approved re-review with no remaining P0-P3 findings.
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`
+- Official docs checked: Stage 0 source-pack constraints reused; Stage 4 changed repo-local docs/verification/install-surface wording only and did not require fresh online lookup.
+- Reference repos checked: none for Stage 4; no new runtime behavior was introduced.
+- Подтверждённые замечания: P3 stale roadmap date, P3 missing Stage 4 changelog entry, P2 Stage 4 report did not spell out fresh-host/publication evidence, P3 drag docs still implied fresh `get_app_state` was always required even when `observeAfter=true` succeeds.
+- Отклонённые замечания: none.
+- Исправленные root causes: restored the risky re-resolution test marker accidentally weakened during Stage 2 from `Continue` / `ContinueButton` back to `Delete item` / `DeleteButton`; updated roadmap date, changelog Stage 4 entry, fresh-host/publication evidence in this report and drag no-`observeAfter` wording.
+- Проверенные соседние paths: full build/test/smoke/generated-doc/verify contour, plugin README wording, root README wording, roadmap and architecture docs for successor-state / selector-continuity language.
+- Остаточные риски: final closure still needs completed-plan archival, Stage 5 full sequential contour and full-branch review before closure commit.
+- Разблокировка следующего этапа: Stage 5 may start after Stage 4 review approval and commit.
+
 **Stage gate:** before leaving Stage 4, fill the stage report, run the two required `gpt-5.5` review subagents with explicit-prompt/no-fork context, then create a dedicated commit.
 
 ### Stage 5: Full closure

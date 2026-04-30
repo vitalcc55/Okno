@@ -34,7 +34,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 ## 3. Текущее состояние репозитория
 
-По состоянию на `2026-04-29` проект уже давно не находится в фазе ранней заготовки.
+По состоянию на `2026-04-30` проект уже давно не находится в фазе ранней заготовки.
 
 Что фактически уже есть:
 
@@ -61,7 +61,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 | 06 | `okno.health` + runtime guard layer + safety baseline | readiness snapshot, shared gate, dry-run/confirmation model, redaction-first launch/input/clipboard baseline | `реализовано` | `95%` | `Ядро` |
 | 07 | `src/WinBridge.Runtime.Windows.Launch` + `windows.launch_process` | direct process launch через `ProcessStartInfo`, preview, factual result modes, launch artifacts | `реализовано` | `90%` | `Ядро` |
 | 08 | `src/WinBridge.Runtime.Windows.Launch` + `windows.open_target` | shell-open для `document` / `folder` / `url(http/https)`, safe preview, factual result, open-target artifacts | `реализовано` | `90%` | `Ядро` |
-| 09 | `plugins/computer-use-win` + `src/WinBridge.Server/ComputerUse` | public-facing Codex operator surface `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag` поверх внутреннего Okno engine, отдельный publication profile и self-contained plugin-local install artifact | `частично` | `92%` | `R2-следом` |
+| 09 | `plugins/computer-use-win` + `src/WinBridge.Server/ComputerUse` | public-facing Codex operator surface `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag` поверх внутреннего Okno engine, runtime-owned strict `windowId` continuity reuse для unchanged discovery snapshots, отдельный publication profile и self-contained plugin-local install artifact | `частично` | `95%` | `R2-следом` |
 | 10 | `src/WinBridge.Runtime.Windows.Input` + public Computer Use action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) | текущая global action wave для `computer-use-win`; весь целевой action set уже shipped в public callable surface, а `drag` больше не остаётся deferred: runtime/input path materialize-ит separate source/destination proof, factual move/down/move/up dispatch, helper smoke и install/publication proof | `реализовано` | `93%` | `R2-следом` |
 | 11 | `plugins/computer-use-win` + focused `type_text` fallback follow-up | explicit `allowFocusedFallback=true` keyboard-focus fallback for poor-UIA apps after screenshot-first navigation, only with `confirm=true`, fresh focus proof, no clipboard default and public `verify_needed` semantics | `реализовано` | `100%` | `R2-следом` |
 | 12 | `plugins/computer-use-win` + successor-state/action+observe follow-up | explicit `observeAfter=true` post-action reobserve path для `click`, `press_key`, `type_text`, `scroll` и `drag`: nested `successorState`, updated screenshot image block, новый short-lived `stateToken`, factual top-level action status и advisory `successorStateFailure` без optimistic semantic proof | `реализовано` | `100%` | `R2-следом` |
@@ -78,15 +78,14 @@ _Живой delivery roadmap проекта: текущий capability map, по
 
 Текущий practical order такой:
 
-1. public instance continuity UX without weakening strict discovery proof
-2. app approvals hardening + risky action confirmation
-3. app playbooks expansion
-4. `windows.region_capture`
-5. `windows.clipboard_get` / `windows.clipboard_set`
-6. `windows.uia_action`
-7. `windows.dialog`
-8. `windows.surface_lifecycle`
-9. `windows.menu` / `windows.taskbar` / `windows.tray`
+1. app approvals hardening + risky action confirmation
+2. app playbooks expansion
+3. `windows.region_capture`
+4. `windows.clipboard_get` / `windows.clipboard_set`
+5. `windows.uia_action`
+6. `windows.dialog`
+7. `windows.surface_lifecycle`
+8. `windows.menu` / `windows.taskbar` / `windows.tray`
 
 Почему именно так:
 
@@ -94,7 +93,7 @@ _Живой delivery roadmap проекта: текущий capability map, по
 - official OpenAI `computer use` loop делает input vocabulary и quiet action semantics важнее, чем поздние shell niceties;
 - focused poor-UIA text-entry gap уже закрыт narrow `type_text` fallback slice через explicit `allowFocusedFallback=true` + `confirm=true`, fresh focus proof, no clipboard default и public `verify_needed`;
 - successor-state / action+observe gap тоже закрыт explicit `observeAfter=true` path: честный `verify_needed` больше не обязан автоматически означать полный следующий `get_app_state`, если runtime уже вернул nested `successorState` и screenshot image block;
-- live product feedback по `windowId` churn тоже подтверждает направление: strict discovery-scoped selector semantics остаются правильными по safety, но следующий UX шаг должен уменьшать лишние `list_apps` refresh loops без перехода к наивному public id на базе `hwnd + processId`;
+- live product feedback по `windowId` churn уже закрыт strict selector reuse: repeated unchanged `list_apps` snapshots сохраняют прежний runtime-owned `windowId`, а drift/replacement paths всё ещё fail-close без перехода к наивному public id на базе `hwnd + processId`;
 - shipped focused fallback сохраняет boundary: screenshot-first navigation в poor-UIA apps работает, text entry без editable proof допускается только с explicit keyboard-focus fallback, а clipboard или broad shell hacks остаются отдельными later slices;
 - reference repos и текущий `observe/capture` stack показывают, что narrow `region_capture` даёт более дешёвый verify-after-action loop и полезен как мост к visual fallback, не размывая capture family в OCR/browser subsystem;
 - уже shipped `launch_process` и `open_target` закрыли start/open baseline, поэтому next product value теперь в action layer;

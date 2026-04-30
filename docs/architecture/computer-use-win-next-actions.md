@@ -101,6 +101,12 @@ click/scroll/type paths.
 `done` / `verify_needed`, уменьшая ручной `action -> get_app_state` cost без
 превращения `verify_needed` в optimistic `done`.
 
+Третий quality gap после wave closure закрыт без ослабления selector model:
+repeated unchanged `list_apps` discovery snapshots теперь переиспользуют
+runtime-owned `windowId`, но только при strict discovery proof; drifted
+snapshots, reused `HWND` replacements и duplicate-current-batch ambiguity
+остаются fail-closed через новый selector или отсутствие reuse.
+
 ## Контракт действий
 
 Все новые действия должны требовать `stateToken`. Ни одно действие не должно
@@ -209,14 +215,16 @@ context-menu/right-click fallback, пока нет отдельного evidence
 - coordinate drag всегда high-risk и должен требовать explicit confirmation;
 - drag не должен появляться раньше, чем click/scroll/type paths уже имеют
   общий lifecycle owner;
-- после dispatch всегда рекомендуется fresh `get_app_state`.
+- без `observeAfter=true` после dispatch рекомендуется fresh `get_app_state`.
 
 Текущий `drag` v1 уже shipped: runtime отдельно пере-подтверждает source и
 destination endpoints, element endpoints проходят fresh UIA revalidation,
 coordinate endpoints требуют explicit confirmation и geometry proof, а factual
 Win32 dispatch идёт через `move -> button_down -> move/path -> button_up`.
 Generic drag path не претендует на semantic postcondition proof и поэтому по
-умолчанию возвращает `verify_needed` с рекомендацией fresh `get_app_state`.
+умолчанию возвращает `verify_needed`; если `observeAfter=true` не был запрошен
+или successor observe failed advisory, следующий шаг должен получить fresh state
+через обычный `get_app_state`.
 
 ## Отдельный курсор агента
 

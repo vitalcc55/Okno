@@ -3831,8 +3831,8 @@ public sealed class ComputerUseWinActionAndProjectionTests
                 {
                     ElementId = "path:0",
                     ControlType = "button",
-                    Name = "Continue",
-                    AutomationId = "ContinueButton",
+                    Name = "Delete item",
+                    AutomationId = "DeleteButton",
                     BoundingRectangle = new Bounds(200, 200, 240, 240),
                     IsEnabled = true,
                     IsOffscreen = false,

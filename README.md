@@ -115,15 +115,16 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
 Текущий product gap после shipped action wave:
 
 - poor-UIA apps могут уже проходить screenshot-first navigation и coordinate/semantic actions;
-- но text entry без доказанного editable UIA proof по-прежнему fail-close-ится;
-- следующий узкий follow-up здесь — keyboard-focus fallback для `type_text` в
-  poor-UIA apps, только с explicit confirmation/proof, без clipboard default и
-  с честным `verify_needed`.
-- следующий UX follow-up после этого — successor-state / action+observe
-  shaping, чтобы агенту не приходилось всегда крутить полный
-  `action -> get_app_state` loop после честного `verify_needed`;
-- continuity/identity UX тоже остаётся отдельным gap: `windowId` нужно делать
-  удобнее для агента без ослабления strict discovery proof и без наивного
+- text entry без доказанного editable UIA proof теперь доступен только через
+  explicit `allowFocusedFallback=true` + `confirm=true`, fresh focus proof,
+  без clipboard default и с честным `verify_needed`;
+- successor-state / action+observe закрыт explicit `observeAfter=true` на
+  поддерживаемых actions: result может включать nested `successorState`,
+  новый short-lived `stateToken` и screenshot image block без optimistic
+  semantic success;
+- continuity/identity UX снижает churn без ослабления proof: repeated
+  unchanged `list_apps` snapshots переиспользуют strict runtime-owned
+  `windowId`, а drift/replacement paths всё ещё fail-close без наивного
   публичного `hwnd + processId`.
 
 Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после изменения runtime/layout или после reinstall нужно заново materialize-ить plugin-local runtime bundle командой `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex. Repo-root hint больше не входит в public install path `computer-use-win`.
