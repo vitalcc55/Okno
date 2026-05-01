@@ -17,7 +17,7 @@ internal sealed record ComputerUseWinTypeTextPayload(
 internal static class ComputerUseWinTypeTextContract
 {
     internal static IReadOnlyList<string> AllowedCoordinateSpaceValues { get; } =
-        [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels];
+        [InputCoordinateSpaceValues.CapturePixels];
 
     public static string? ValidateRequest(ComputerUseWinTypeTextRequest request) =>
         TryParse(request, out _, out string? failure) ? null : failure;
@@ -46,6 +46,17 @@ internal static class ComputerUseWinTypeTextContract
         {
             failure = pointFailure;
             return false;
+        }
+
+        if (request.Point is not null && request.CoordinateSpace is string rawCoordinateSpace)
+        {
+            string coordinateSpaceValue = rawCoordinateSpace.Trim();
+            if (coordinateSpaceValue.Length > 0
+                && !string.Equals(coordinateSpaceValue, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
+            {
+                failure = "Coordinate-confirmed type_text fallback поддерживает только coordinateSpace=capture_pixels.";
+                return false;
+            }
         }
 
         if (!ComputerUseWinCoordinateSpaceContract.TryNormalize(

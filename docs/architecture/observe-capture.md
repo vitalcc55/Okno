@@ -50,7 +50,9 @@
 - coordinate-confirmed `type_text` использует тот же capture proof family:
   request `point` по умолчанию трактуется как `capture_pixels`, сверяется с
   `captureReference` и raster bounds из последнего `get_app_state`, а затем
-  dispatch-ится как click+type. Это не region capture, OCR и не reuse прошлой
+  dispatch-ится как click+type. `screen` coordinate space для этой typing ветки
+  intentionally не поддерживается, чтобы fallback оставался привязан к свежей
+  screenshot/capture geometry. Это не region capture, OCR и не reuse прошлой
   click-точки; proof остаётся в state/capture geometry layer.
 
 ## Что реализовано

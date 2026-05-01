@@ -32,13 +32,7 @@ internal sealed class ComputerUseWinTypeTextHandler(
             return ComputerUseWinStoredStateValidationMode.SemanticElementAction;
         }
 
-        string coordinateSpace = ComputerUseWinCoordinateSpaceContract.DetermineValidationModeCoordinateSpace(
-            request.CoordinateSpace,
-            ComputerUseWinTypeTextContract.AllowedCoordinateSpaceValues,
-            InputCoordinateSpaceValues.CapturePixels);
-        return string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
-            ? ComputerUseWinStoredStateValidationMode.CoordinateCapturePixelsAction
-            : ComputerUseWinStoredStateValidationMode.CoordinateScreenAction;
+        return ComputerUseWinStoredStateValidationMode.CoordinateCapturePixelsAction;
     }
 
     private static ComputerUseWinActionObservabilityContext CreateObservabilityContext(

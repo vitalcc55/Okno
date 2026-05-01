@@ -18,7 +18,7 @@ description: "Workflow для работы с Computer Use for Windows в это
 - Каждый GUI turn начинай с `get_app_state`.
 - Предпочитай `elementIndex` над coordinate click, если index доступен.
 - После action используй `observeAfter=true` на поддерживаемых actions, делай повторный `get_app_state` или явную verify-step, а не гадай по результату.
-- `type_text(allowFocusedFallback=true)` используй только с `confirm=true`: либо для уже focused poor-UIA text target с fresh target-local proof, либо с explicit `point`/`coordinateSpace` из последнего screenshot state для coordinate-confirmed fallback. Это не generic ввод в любой focused clickable control и не hidden clipboard path.
+- `type_text(allowFocusedFallback=true)` используй только с `confirm=true`: либо для уже focused poor-UIA text target с fresh target-local proof, либо с explicit `point` из последнего screenshot state в `capture_pixels` coordinate space для coordinate-confirmed fallback. Это не generic ввод в любой focused clickable control, не raw screen-coordinate typing и не hidden clipboard path.
 - Для coordinate-confirmed Class C path вызывай `type_text` явно:
   `point={x,y}`, `coordinateSpace="capture_pixels"`, `allowFocusedFallback=true`,
   `confirm=true`, `observeAfter=true`; считай `verify_needed` dispatch-only

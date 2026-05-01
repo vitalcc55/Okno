@@ -69,7 +69,9 @@ Skill требует state-first discipline:
   target-local focus proof и text-entry-like candidate (`edit` либо
   `document`/`custom` с tokenized text/input/edit/query/search-box hint), а
   coordinate-confirmed fallback требует explicit `point` из последнего
-  screenshot/capture state и optional `coordinateSpace`. Coordinate-confirmed
+  screenshot/capture state в `capture_pixels` coordinate space; `coordinateSpace`
+  можно не передавать, потому что default уже `capture_pixels`, а `screen`
+  для этой typing ветки reject-ится. Coordinate-confirmed
   ветка делает click+type в одном SendInput batch, остаётся
   `verify_needed`/dispatch-only и не разрешает hidden clipboard, OCR,
   region_capture или generic ввод в любое focused окно;

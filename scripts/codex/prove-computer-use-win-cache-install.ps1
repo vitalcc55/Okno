@@ -492,6 +492,15 @@ try {
     Assert-Condition -Condition (Test-Property -Object $typeTextTool.inputSchema.properties -Name 'observeAfter') -Message 'type_text schema is missing observeAfter.'
     Assert-Condition -Condition (Test-Property -Object $typeTextTool.inputSchema.properties -Name 'point') -Message 'type_text schema is missing point.'
     Assert-Condition -Condition (Test-Property -Object $typeTextTool.inputSchema.properties -Name 'coordinateSpace') -Message 'type_text schema is missing coordinateSpace.'
+    $typeTextCoordinateSpaces = @(
+        $typeTextTool.inputSchema.properties.coordinateSpace.enum |
+            ForEach-Object { [string]$_ } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    Assert-Condition -Condition (
+        $typeTextCoordinateSpaces.Count -eq 1 -and
+        $typeTextCoordinateSpaces[0] -eq 'capture_pixels'
+    ) -Message "type_text coordinateSpace enum must be capture_pixels-only, got: $($typeTextCoordinateSpaces -join ', ')."
 
     foreach ($toolName in @('click', 'press_key', 'scroll', 'drag')) {
         $tool = @($tools | Where-Object { $_.name -eq $toolName })[0]
@@ -547,6 +556,7 @@ try {
         typeTextHasAllowFocusedFallback = $true
         typeTextHasPoint = $true
         typeTextHasCoordinateSpace = $true
+        typeTextCoordinateSpaceValues = $typeTextCoordinateSpaces
         selectedActionsHaveObserveAfter = $true
         semanticOnlyActionsLackObserveAfter = $true
         listAppsStatus = $listAppsStatus

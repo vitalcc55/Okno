@@ -778,7 +778,16 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 Assert.True(typeTextProperties.TryGetProperty("allowFocusedFallback", out _));
                 Assert.True(typeTextProperties.TryGetProperty("observeAfter", out _));
                 Assert.True(typeTextProperties.TryGetProperty("point", out _));
-                Assert.True(typeTextProperties.TryGetProperty("coordinateSpace", out _));
+                Assert.True(typeTextProperties.TryGetProperty("coordinateSpace", out JsonElement typeTextCoordinateSpace));
+                Assert.Equal(
+                    [InputCoordinateSpaceValues.CapturePixels],
+                    typeTextCoordinateSpace
+                        .GetProperty("enum")
+                        .EnumerateArray()
+                        .Select(item => item.GetString())
+                        .Where(static item => item is not null)
+                        .Cast<string>()
+                        .ToArray());
 
                 foreach (string actionName in new[]
                 {

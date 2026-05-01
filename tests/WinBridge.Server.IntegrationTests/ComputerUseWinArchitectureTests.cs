@@ -376,6 +376,23 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void TypeTextValidatorRejectsScreenCoordinateSpaceForCoordinateConfirmedFallback()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Point: new InputPoint(10, 20),
+                CoordinateSpace: InputCoordinateSpaceValues.Screen,
+                Text: "typed text",
+                Confirm: true,
+                AllowFocusedFallback: true));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("capture_pixels", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TypeTextValidatorRejectsCoordinatePointWithoutFocusedFallbackOptIn()
     {
         string? failure = ComputerUseWinRequestContractValidator.Validate(
@@ -1412,7 +1429,7 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Equal("boolean", properties.GetProperty("confirm").GetProperty("type").GetString());
         Assert.Equal("object", properties.GetProperty("point").GetProperty("type").GetString());
         Assert.Equal(
-            [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+            [InputCoordinateSpaceValues.CapturePixels],
             properties.GetProperty("coordinateSpace")
                 .GetProperty("enum")
                 .EnumerateArray()

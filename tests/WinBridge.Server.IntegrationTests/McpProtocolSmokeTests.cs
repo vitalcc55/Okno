@@ -386,7 +386,7 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal("boolean", typeTextProperties.GetProperty("confirm").GetProperty("type").GetString());
             Assert.Equal("object", typeTextProperties.GetProperty("point").GetProperty("type").GetString());
             Assert.Equal(
-                [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+                [InputCoordinateSpaceValues.CapturePixels],
                 typeTextProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
             Assert.Equal("boolean", clickProperties.GetProperty("observeAfter").GetProperty("type").GetString());
             Assert.Equal("boolean", pressKeyProperties.GetProperty("observeAfter").GetProperty("type").GetString());

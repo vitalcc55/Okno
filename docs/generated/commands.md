@@ -18,7 +18,7 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/resolve-okno-test-bundle.ps1` | resolve or materialize the effective staged bundle for the current verification context |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/resolve-okno-server-launch-target.ps1` | resolve the effective staged Windows launch target from pinned `artifacts_root` (`Okno.Server.exe` preferred, `dotnet + .dll` fallback) |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1` | publish self-contained `computer-use-win` runtime bundle into `plugins/computer-use-win/runtime/win-x64/` |
-| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema/list_apps surface matches the repo plugin copy and runtime bundle is fresh for current publication inputs |
+| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema/list_apps surface matches the repo plugin copy, `type_text.coordinateSpace` is capture_pixels-only, and runtime bundle is fresh for current publication inputs |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1` | stamp repo-root hint into internal okno plugin install surface before reinstall or refresh |
 | `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |

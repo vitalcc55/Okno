@@ -17,6 +17,11 @@ Primary scope: `focused type_text fallback`, `successor-state / action+observe`,
 - Stage 8 closure path: cache-installed Telegram product acceptance passed,
   full sequential contour passed, and this reopened execution record is archived
   back under `docs/exec-plans/completed/`.
+- Post-closure review hardening: coordinate-confirmed `type_text` fallback is
+  narrowed to `capture_pixels` only, closing raw screen-coordinate typing drift
+  without adding OCR, region/text detection or hidden previous-click reuse.
+  Targeted tests, generated-doc refresh, cache-installed proof and full
+  `scripts/codex/verify.ps1` passed after this narrowing.
 - Historical stages `0-5` remain delivery evidence from the first closure;
   reopened stages `6-8` close the Telegram/Qt Class C text-entry gap.
 
@@ -1274,8 +1279,8 @@ Win32 focus proof и explicit coordinate-confirmed typing model.
   - P3 Stage report traceability drift: this report did not initially record the generated test-matrix finding and fix.
 - Отклонённые замечания:
   - P2 explicit JSON `point:null` allegedly passed as an absent selector. Static review hypothesis was rejected by targeted binder tests: `click`, `type_text`, `scroll` and `drag` all fail before dispatch with point-object binding errors.
-- Исправленные root causes: implemented explicit coordinate-confirmed proof branch instead of broadening target-local focused fallback; added public schema/validator/runtime/tests/docs/install-proof script support for `point` and `coordinateSpace`; corrected product docs boundary so Stage 7 is repo/helper implementation while Stage 8 remains cache-installed Telegram acceptance; added concrete operator invocation and visible-text-before-send guidance; changed shared public point schema to non-null object so optional point fields are omitted when absent and explicit null no longer appears valid in tools/list; updated the generated-docs source generator and refreshed `docs/generated/test-matrix.md` so test-matrix coverage matches proof-script behavior; updated this stage report to preserve review traceability.
-- Проверенные соседние paths: normal focused-editable `type_text`; existing focused weak-child fallback; coordinate-confirmed capture path; missing `confirm`; missing `allowFocusedFallback`; `elementIndex + point`; unsupported `coordinateSpace`; malformed point; explicit JSON null point for `click`, `type_text`, `scroll`, `drag.fromPoint` and `drag.toPoint`; missing capture reference; point out of bounds; failed dispatch with `observeAfter`; action event/artifact redaction; helper smoke Class C path; installed plugin tools/list schema; generated test-matrix source and generated artifact; roadmap/changelog/plugin README/skill wording for Stage 7 vs Stage 8 acceptance split; shared point schema for `click`, `type_text`, `scroll`, `drag.fromPoint` and `drag.toPoint`.
+- Исправленные root causes: implemented explicit coordinate-confirmed proof branch instead of broadening target-local focused fallback; added public schema/validator/runtime/tests/docs/install-proof script support for `point` and `coordinateSpace`; corrected product docs boundary so Stage 7 is repo/helper implementation while Stage 8 remains cache-installed Telegram acceptance; added concrete operator invocation and visible-text-before-send guidance; changed shared public point schema to non-null object so optional point fields are omitted when absent and explicit null no longer appears valid in tools/list; updated the generated-docs source generator and refreshed `docs/generated/test-matrix.md` so test-matrix coverage matches proof-script behavior; post-closure review then narrowed `type_text(point)` to `coordinateSpace=capture_pixels` only so the weakest typing branch stays tied to fresh screenshot/capture geometry rather than raw screen coordinates; updated this stage report to preserve review traceability.
+- Проверенные соседние paths: normal focused-editable `type_text`; existing focused weak-child fallback; coordinate-confirmed capture path; rejected coordinate-confirmed `screen` path; missing `confirm`; missing `allowFocusedFallback`; `elementIndex + point`; unsupported `coordinateSpace`; malformed point; explicit JSON null point for `click`, `type_text`, `scroll`, `drag.fromPoint` and `drag.toPoint`; missing capture reference; point out of bounds; failed dispatch with `observeAfter`; action event/artifact redaction; helper smoke Class C path; installed plugin tools/list schema; generated test-matrix source and generated artifact; roadmap/changelog/plugin README/skill wording for Stage 7 vs Stage 8 acceptance split; shared point schema for `click`, `type_text`, `scroll`, `drag.fromPoint` and `drag.toPoint`.
 - Остаточные риски: at Stage 7 time real Telegram product acceptance still required Stage 8; Stage 8 later passed that cache-installed product proof. Coordinate-confirmed typing still proves locality and dispatch, not semantic text outcome, so public result remains `verify_needed`.
 - Разблокировка следующего этапа: after three-agent review/re-review approval and Stage 7 commit, start Stage 8 publish/cache proof and real Telegram acceptance.
 
@@ -1351,7 +1356,7 @@ through the plugin MCP surface, not only through helper fixtures.
     `scripts\smoke.ps1` -> run `20260501T180758435`;
     `scripts\refresh-generated-docs.ps1` -> build `0 warnings / 0 errors`;
     `scripts\codex\verify.ps1` -> build `0 warnings / 0 errors`, tests `669/669` + `426/426`, smoke run `20260501T181150187`, total `00:03:33.7483261`.
-- Review agents: `Hegel` (architecture/contract), `Popper` (tests/failure/docs/generated), `Euler` (product acceptance/publication proof). All three completed Stage 8 full-branch static review; no P0/P1/P2 runtime, contract, publication or acceptance findings remained.
+- Review agents: `Hegel` (architecture/contract), `Popper` (tests/failure/docs/generated), `Euler` (product acceptance/publication proof). All three completed Stage 8 full-branch static review; one later post-closure P2 architecture/contract finding was confirmed and closed in the hardening report below.
 - Subagent context mode: `explicit_prompt_only` / `fork_context=false`; sandbox/static-analysis appendix included.
 - Official docs checked: not rechecked in Stage 8 so far.
 - Reference repos checked: none.
@@ -1364,12 +1369,57 @@ through the plugin MCP surface, not only through helper fixtures.
 - Class coverage:
   - Class `A` semantic editable path remains covered by existing `set_value` / proof-backed `type_text`.
   - Class `B` focused weak-child fallback remains covered by existing `allowFocusedFallback=true` fresh target-local focus proof.
-  - Class `C` top-level-only Qt/custom UI focus is now covered by explicit coordinate-confirmed `type_text(point, coordinateSpace, allowFocusedFallback=true, confirm=true)`, with Telegram product proof.
+  - Class `C` top-level-only Qt/custom UI focus is now covered by explicit coordinate-confirmed `type_text(point, coordinateSpace=capture_pixels, allowFocusedFallback=true, confirm=true)`, with Telegram product proof.
   - Class `D/E` broad OCR/text detection and region detection remain intentionally out of scope.
   - Class `F` bounded focus-settle/reobserve remains deferred; Stage 7/8 did not add hidden settle/retry behavior.
 - Остаточные риски: coordinate-confirmed typing still proves bounded point locality and dispatch, not semantic text outcome; public result remains `verify_needed`, and visible successor screenshot remains the acceptance proof. Screenshot preview UX outside runtime remains client/operator work.
 - Разблокировка следующего этапа:
   - Stage 8 product proof, full sequential contour, full-branch review and completed-plan archival are complete. Next product work returns to approvals hardening / playbooks, with `windows.region_capture` still a separate later slice.
+
+#### Post-closure review hardening report
+
+- Статус: `implemented_verified`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: recorded by the follow-up hardening commit after this report.
+- TDD применялся:
+  - RED observed before implementation: `TypeTextValidatorRejectsScreenCoordinateSpaceForCoordinateConfirmedFallback` failed because `screen` was still accepted, and `ComputerUseWinTypeTextToolSchemaExposesFocusedFallbackOptIn` failed because schema still exposed `[screen, capture_pixels]`.
+  - GREEN after implementation: targeted validator/schema/runtime/install-surface tests passed.
+- Подтверждённые замечания:
+  - P2 raw screen-coordinate typing drift: confirmed. The coordinate-confirmed `type_text(point)` branch was wider than the intended screenshot-first proof model because it accepted `coordinateSpace=screen`.
+  - P2 text-entry-area proof concern: accepted as a contract-honesty boundary, not as a request to add OCR/region/text detection. Runtime cannot truthfully prove "text-entry-like area" for Telegram/Qt Class C without a new visual/text detector layer, and that layer remains explicitly out of scope for this workstream.
+  - P3 root README stale wording: confirmed. The plugin README and architecture docs described the shipped coordinate-confirmed path, but the repo-root README still described only the focused proof branch.
+- Исправленные root causes:
+  - Public contract, MCP schema and validator now expose/accept only `coordinateSpace=capture_pixels` for `type_text(point)`.
+  - Handler always uses `CoordinateCapturePixelsAction` validation for coordinate-confirmed typing.
+  - Coordinator requires a fresh `CaptureReference`, enforces raster bounds, always dispatches the click action with that capture reference, and records only `dispatch_path=capture_pixels_text_input`.
+  - Publication proof script now asserts the installed `type_text.coordinateSpace` enum is exactly `capture_pixels`.
+  - Docs/generated/plugin/operator wording now says coordinate-confirmed typing is screenshot-derived capture geometry + confirmed click/type dispatch, not semantic text-entry proof and not raw screen-coordinate typing.
+  - Root README now names both allowed fallback branches and keeps the same `capture_pixels`-only / `verify_needed` boundary as the plugin README.
+- Проверенные соседние paths:
+  - normal focused-editable `type_text`;
+  - existing focused weak-child fallback;
+  - coordinate-confirmed `capture_pixels` fallback;
+  - rejected `screen` coordinate-confirmed fallback before activation/UIA/input dispatch;
+  - `click` and `drag` coordinate schemas, which intentionally still support `screen` outside the weaker text-entry fallback;
+  - missing capture reference, point out of bounds, failed dispatch, `observeAfter` successor-state and audit/redaction paths;
+  - generated interface docs, test matrix, plugin README/skill and cache-installed proof script.
+  - root README public summary.
+- Тесты:
+  - Added validator/schema/runtime/install-surface coverage for rejecting `screen` on `type_text(point)`.
+  - No text-entry-area detector test was added because the product contract intentionally does not claim semantic text-entry detection for Class C; the safety invariant is capture-reference locality + explicit confirmation + `verify_needed` + successor screenshot proof.
+- Проверки:
+  - GREEN targeted server tests for validator/schema/MCP tools list.
+  - GREEN targeted server tests for runtime reject-before-dispatch and existing Class C capture path.
+  - GREEN temp plugin install-surface test.
+  - GREEN runtime tooling tests for manifest/exporter.
+  - GREEN runtime audit tests.
+  - GREEN `scripts\refresh-generated-docs.ps1`.
+  - GREEN cache-installed proof before commit: exact nine-tool surface, repo/cache digest equality, `typeTextCoordinateSpaceValues=["capture_pixels"]`; `publicationAcceptanceEligible=false` only because runtime-affecting files were intentionally still uncommitted at that point.
+  - GREEN `git diff --check`.
+  - GREEN `scripts\codex\verify.ps1`: runtime `669/669`, integration `428/428`, smoke run `20260501T195052457`, total `00:03:32.3868750`.
+- Остаточные риски:
+  - Coordinate-confirmed typing still proves bounded screenshot point locality and dispatch, not semantic text entry. This is deliberate and remains surfaced as `verify_needed`.
+  - Future text-entry-area detection, OCR-lite, region capture, and richer preview UX remain separate scoped work.
 
 ## 11. Test ladder
 
@@ -1479,7 +1529,7 @@ When implementation starts, the agent must sync all impacted docs in the same cy
 
 ## 16. Decision summary
 
-- `type_text` fallback: same tool, explicit `allowFocusedFallback`, mandatory `confirm`, default `verify_needed`; current shipped paths are proof-backed focused editable/focused weak-child fallback plus explicit coordinate-confirmed `point`/`coordinateSpace` fallback for Class `C` top-level-only Qt/custom UI cases.
+- `type_text` fallback: same tool, explicit `allowFocusedFallback`, mandatory `confirm`, default `verify_needed`; current shipped paths are proof-backed focused editable/focused weak-child fallback plus explicit coordinate-confirmed `capture_pixels` point fallback for Class `C` top-level-only Qt/custom UI cases.
 - action+observe: same tools, explicit `observeAfter`, shared post-action observer, nested `successorState`, additive image content; successful successor observe satisfies immediate refresh need even if top-level status remains `verify_needed`.
 - continuity UX: reduce selector churn by reusing `windowId` only across repeated strict discovery matches; no public `hwnd + processId` selector.
 - screenshot preview: runtime already correct; treat preview as client/operator UX unless an additive hint is strictly needed.

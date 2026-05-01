@@ -146,38 +146,35 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
     {
         InputPoint point = payload.Point!;
         string coordinateSpace = payload.CoordinateSpace ?? InputCoordinateSpaceValues.CapturePixels;
-        string dispatchPath = DetermineCoordinateConfirmedDispatchPath(coordinateSpace);
+        const string dispatchPath = "capture_pixels_text_input";
 
-        if (string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
+        if (state.CaptureReference is null)
         {
-            if (state.CaptureReference is null)
-            {
-                return ComputerUseWinActionExecutionOutcome.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
-                        "Coordinate-confirmed type_text fallback требует актуальный get_app_state со свежим capture proof."),
-                    ComputerUseWinActionLifecyclePhase.BeforeActivation,
-                    confirmationRequired: true,
-                    riskClass: CoordinateConfirmedFallbackRiskClass,
-                    dispatchPath: dispatchPath,
-                    fallbackUsed: true);
-            }
+            return ComputerUseWinActionExecutionOutcome.Failure(
+                ComputerUseWinFailureDetails.Expected(
+                    ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
+                    "Coordinate-confirmed type_text fallback требует актуальный get_app_state со свежим capture_pixels proof."),
+                ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                confirmationRequired: true,
+                riskClass: CoordinateConfirmedFallbackRiskClass,
+                dispatchPath: dispatchPath,
+                fallbackUsed: true);
+        }
 
-            if (point.X < 0
-                || point.Y < 0
-                || point.X >= state.CaptureReference.PixelWidth
-                || point.Y >= state.CaptureReference.PixelHeight)
-            {
-                return ComputerUseWinActionExecutionOutcome.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.PointOutOfBounds,
-                        "Указанная type_text capture_pixels point выходит за пределы capture raster из последнего get_app_state; скорректируй point перед retry."),
-                    ComputerUseWinActionLifecyclePhase.BeforeActivation,
-                    confirmationRequired: true,
-                    riskClass: CoordinateConfirmedFallbackRiskClass,
-                    dispatchPath: dispatchPath,
-                    fallbackUsed: true);
-            }
+        if (point.X < 0
+            || point.Y < 0
+            || point.X >= state.CaptureReference.PixelWidth
+            || point.Y >= state.CaptureReference.PixelHeight)
+        {
+            return ComputerUseWinActionExecutionOutcome.Failure(
+                ComputerUseWinFailureDetails.Expected(
+                    ComputerUseWinFailureCodeValues.PointOutOfBounds,
+                    "Указанная type_text capture_pixels point выходит за пределы capture raster из последнего get_app_state; скорректируй point перед retry."),
+                ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                confirmationRequired: true,
+                riskClass: CoordinateConfirmedFallbackRiskClass,
+                dispatchPath: dispatchPath,
+                fallbackUsed: true);
         }
 
         ActivateWindowResult activation = await windowActivationService.ActivateAsync(state.Window, cancellationToken).ConfigureAwait(false);
@@ -345,9 +342,7 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
                         CoordinateSpace = coordinateSpace,
                         Point = point,
                         Button = InputButtonValues.Left,
-                        CaptureReference = string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
-                            ? state.CaptureReference
-                            : null,
+                        CaptureReference = state.CaptureReference,
                     },
                     new InputAction
                     {
@@ -469,8 +464,4 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
         };
     }
 
-    private static string DetermineCoordinateConfirmedDispatchPath(string coordinateSpace) =>
-        string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
-            ? "capture_pixels_text_input"
-            : "screen_text_input";
 }

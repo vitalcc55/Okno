@@ -2120,6 +2120,48 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task TypeTextHandlerRejectsScreenCoordinateConfirmedFallbackBeforeDispatch()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateClassCCoordinateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-coordinate-screen-reject-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, point = new { x = 30, y = 40 }, coordinateSpace = "screen", text = "coordinate typed text", allowFocusedFallback = true, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Point: new InputPoint(30, 40),
+                CoordinateSpace: InputCoordinateSpaceValues.Screen,
+                Text: "coordinate typed text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        Assert.Contains("capture_pixels", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, inputService.Calls);
+        Assert.Null(activationService.LastHwnd);
+    }
+
+    [Fact]
     public async Task TypeTextHandlerRejectsCoordinateConfirmedFallbackWithoutCaptureReferenceBeforeDispatch()
     {
         ComputerUseWinStateStore stateStore = new();
