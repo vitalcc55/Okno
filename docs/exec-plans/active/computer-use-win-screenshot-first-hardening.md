@@ -1074,38 +1074,87 @@ Win32 focus proof и explicit coordinate-confirmed typing model.
 
 **Steps:**
 
-- [ ] Re-run the Telegram product diagnosis through cache-installed
+- [x] Re-run the Telegram product diagnosis through cache-installed
   `computer-use-win`, not repo-internal seams, and save the proof artifact
   paths in the stage report.
-- [ ] Compare three signals after the input click:
+- [x] Compare three signals after the input click:
   UIA focused element, Win32 GUI-thread focus/caret, and current
   `type_text` eligibility.
-- [ ] Map the observed behavior onto classes `A-F` above and record which
+- [x] Map the observed behavior onto classes `A-F` above and record which
   classes are already covered, which are newly targeted, and which must remain
   unsupported.
-- [ ] Close the fork:
+- [x] Close the fork:
   `additional honest focus branch` vs `explicit coordinate-confirmed typing`.
-- [ ] Decide whether bounded focus-settle / reobserve is required as a
+- [x] Decide whether bounded focus-settle / reobserve is required as a
   cross-cutting mitigation for class `F`, and if yes keep it narrow and
   explicit.
-- [ ] Reject any design that relies on hidden last-click reuse, blind active
+- [x] Reject any design that relies on hidden last-click reuse, blind active
   window typing, clipboard/paste, OCR or screenshot text detection.
-- [ ] Fill stage report, run review/re-review and commit the decision before
+- [x] Fill stage report, run review/re-review and commit the decision before
   Stage 7 implementation starts.
 
 **Acceptance criteria:**
 
-- [ ] Root cause is explicit: current Telegram failure is classified as
+- [x] Root cause is explicit: current Telegram failure is classified as
   `missing target-local proof`, not as generic navigation or selector failure.
-- [ ] The follow-up contract fork is frozen before code changes.
-- [ ] If top-level-only focus/no-caret remains true, Stage 7 does not claim a
+- [x] The follow-up contract fork is frozen before code changes.
+- [x] If top-level-only focus/no-caret remains true, Stage 7 does not claim a
   fake child-focus proof.
-- [ ] The resulting Stage 6 decision explicitly states which classes from
+- [x] The resulting Stage 6 decision explicitly states which classes from
   `A-F` Stage 7 is expected to close and which remain intentionally out of
   scope.
-- [ ] The exact Telegram acceptance target is explicit in the report:
-  reach `Польза -> Рабочий👷‍♂️`, enter `Тест MPC`, and complete the same
-  product path through the plugin MCP surface.
+- [x] The exact Telegram acceptance target is explicit in the report:
+  reach `Польза -> Рабочий👷‍♂️`, make `Тест MPC` visible in the input field,
+  then execute a separate explicit send step through the plugin MCP surface.
+
+#### Отчёт этапа
+
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: `pending`
+- TDD применялся: нет, Stage 6 является proof-fork/diagnosis gate без runtime behavior changes.
+- Проверки:
+  - `scripts/codex/bootstrap.ps1`
+  - cache-installed `computer-use-win` `list_apps`
+  - cache-installed `computer-use-win` `get_app_state(windowId, maxNodes=512)`
+  - cache-installed `computer-use-win` coordinate click probe against Telegram input area
+  - Win32 foreground GUI-thread probe via `GetForegroundWindow`, `GetWindowThreadProcessId`, `GetGUIThreadInfo`
+- Proof artifacts:
+  - `.tmp/.codex/telegram-stage6-proof/proof-20260501-telegram-class-c.json`
+- Review agents:
+  - `Boole` / `019de3a6-02ee-71a1-bca1-42588033cf63`: Stage 6 static review found process/provenance wording issues.
+  - `Nietzsche` / `019de3a6-04cb-7c72-8930-df5f1fd8184a`: Stage 6 static review found premature gate closure and acceptance-boundary wording issues.
+  - `Planck` / `019de3a6-0648-7ac0-b710-cada9e44ccaa`: Stage 6 static review found diagnosis-vs-fix wording issue.
+  - Final re-review: all three agents returned `approve` after stale branch/status/smoke/acceptance/proof wording was corrected.
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`
+- Official docs checked:
+  - Microsoft `GetGUIThreadInfo`
+  - Microsoft `GUITHREADINFO`
+  - Microsoft `GetFocus`
+  - Microsoft `GetCaretPos`
+  - Qt accessibility for custom widgets
+- Reference repos checked:
+  - не требовались для Stage 6 decision gate; existing source-pack conclusions remain unchanged.
+- Подтверждённые замечания:
+  - Telegram/Qt remains Class `C`: UIA publishes only top-level window/menu/generic groups; no usable editable child is available.
+  - Win32 GUI-thread proof shows top-level-only focus: `hwndFocus == hwndActive == Telegram top-level Qt51518QWindowIcon`, `hwndCaret == 0`.
+  - Current `allowFocusedFallback` correctly fail-closes because it requires a target-local focused child and no such child exists.
+- Отклонённые замечания:
+  - This is not a navigation, selector or `observeAfter` regression; the remaining blocker is text-entry locality proof.
+  - This must not be solved by pretending Telegram has child-focus proof.
+- Замороженное решение / выбранная ветка:
+  - Stage 6 freezes the root-cause branch before code: implement explicit coordinate-confirmed typing inside `type_text`.
+- Проверенные соседние paths:
+  - Class `A` semantic editable path remains owned by `set_value` / normal focused editable `type_text`.
+  - Class `B` weak focused child path remains owned by existing `allowFocusedFallback`.
+  - Class `F` bounded focus-settle/reobserve is not selected by Stage 6 and remains deferred; Stage 7 must not add hidden settle/retry behavior.
+  - Class `D` accessibility enablement/toggles and Class `E` no-locality-proof surfaces remain out of scope.
+- Остаточные риски:
+  - Coordinate-confirmed typing still proves dispatch and locality, not semantic text outcome; public result must remain `verify_needed`.
+  - Real Telegram product acceptance can still fail because of runtime/input environment and must be proven through cache-installed plugin in Stage 8.
+- Разблокировка следующего этапа:
+  - Stage 7 may implement only Branch `B` from this report: explicit coordinate-confirmed typing, with explicit request point/geometry proof and no hidden last-click reuse.
+  - Stage 6 is approved for decision commit; after commit, Stage 7 may start.
 
 ### Stage 7: Cross-app poor-UIA text-entry implementation
 
@@ -1135,27 +1184,31 @@ Win32 focus proof и explicit coordinate-confirmed typing model.
 - no clipboard/paste default;
 - no OCR-lite or screenshot text detection;
 - no blind typing into whichever window is currently foreground;
-- no hidden reuse of the previous click unless Stage 6 explicitly proves that a
-  hidden lineage model is safe enough; default preference is explicit request
-  proof;
+- no hidden reuse of the previous click; the weaker path must carry explicit
+  request point/geometry proof that runtime revalidates against the current
+  observed window;
 - `confirm=true` remains mandatory for the weaker path;
 - top-level success stays `verify_needed`;
 - `observeAfter=true` remains additive and does not upgrade semantic certainty.
 
-**Implementation branches allowed by Stage 6:**
+**Implementation branch selected by Stage 6:**
 
-- Branch A: additional honest focus proof inside current
-  `allowFocusedFallback`, only if Win32/UIA signals can prove a target-local
-  text-entry boundary in the same top-level window.
-- Branch B: explicit coordinate-confirmed typing model inside `type_text`,
+- Selected branch: explicit coordinate-confirmed typing model inside `type_text`,
   only if the request carries explicit point/geometry proof and the runtime
   revalidates it against the current observed window; this branch must not rely
   on opaque hidden memory of the previous click alone.
+- Rejected branch for this reopen: additional honest focus proof inside current
+  `allowFocusedFallback`, because Stage 6 evidence shows top-level-only Qt focus
+  with no child/caret boundary.
+- Deferred branch: bounded focus-settle/reobserve for Class `F`; do not add it
+  in Stage 7 without a new explicit stage decision.
 
 **Class coverage target:**
 
 - preserve Class `A`;
-- close at least one reusable root-cause family among `B`, `C`, `F`;
+- close reusable root-cause family `C`;
+- preserve existing Class `B` coverage without broadening it;
+- defer Class `F` settle/reobserve;
 - do not pretend to close `D` or `E` unless Stage 6 evidence actually proves
   that the same branch covers them honestly.
 
@@ -1206,8 +1259,10 @@ through the plugin MCP surface, not only through helper fixtures.
 - [ ] Run the real product scenario through cache-installed
   `computer-use-win`:
   `list_apps -> get_app_state -> click(Pольза) -> click(Рабочий👷‍♂️) -> type_text(...)`
-  and, if the acceptance target requires it, `press_key(Enter)` or equivalent
-  explicit send step.
+  and prove that `Тест MPC` is visible in the input field before any send step.
+- [ ] After visible text proof passes, run a separate explicit send step
+  (`press_key(Enter)` or equivalent) and record its outcome separately from the
+  coordinate-confirmed typing proof.
 - [ ] Save a proof artifact that includes tool-level outcomes, image-bearing
   successor state evidence and cache-installed provenance.
 - [ ] Record a class-coverage matrix in the stage report:
@@ -1232,9 +1287,11 @@ through the plugin MCP surface, not only through helper fixtures.
   focused fallback path,
   any new coordinate-confirmed or settle/reobserve path,
   and still-unsupported classes.
-- [ ] The closure report explicitly states whether the acceptance target is
-  `text entered and visible` or `message sent`; default target for this reopen
-  is the user-tested `Тест MPC` scenario end-to-end.
+- [ ] The closure report records two ordered outcomes:
+  first, visible text proof (`Тест MPC` is present in the Telegram input field);
+  second, the separate explicit send-step result. Coordinate-confirmed typing is
+  accepted only by the visible-text proof, while the send step is reported as an
+  additional product outcome.
 - [ ] Cache-installed proof and docs reflect the true acceptance boundary.
 - [ ] Residual risks are explicit and no new broad workstream is smuggled into
   the branch.
@@ -1261,8 +1318,9 @@ through the plugin MCP surface, not only through helper fixtures.
 
 ### L3: real smoke
 
-- extend helper app with one poor-UIA typing target that can receive focus and visible text changes but does not expose current writable UIA proof;
+- extend helper app with one Class `C` poor-UIA typing target that visually accepts text after explicit point/geometry targeting but does not expose focused child/caret or current writable UIA proof;
 - keep existing semantic textbox for current `set_value` / `type_text` path so new fallback does not erase the old proof-backed route;
+- keep the existing Class `B` focused weak-child target so the current `allowFocusedFallback` path does not regress;
 - add one explicit smoke story for `observeAfter=true` with post-action updated screenshot;
 - keep current drag/scroll/selectors smoke stories intact.
 
@@ -1270,8 +1328,9 @@ through the plugin MCP surface, not only through helper fixtures.
 
 ### New smoke stories to add
 
-1. `get_app_state -> click/focus poor-UIA target -> get_app_state -> type_text(allowFocusedFallback=true, confirm=true) -> get_app_state`
-   at minimum this covers the no-`elementIndex` focused fallback path; if `v1` also accepts coarse/focusable `elementIndex`, add a paired story for that stronger-localization branch.
+1. Class `C` coordinate-confirmed typing:
+   `get_app_state -> type_text(point, coordinateSpace=capture_pixels, allowFocusedFallback=true, confirm=true, observeAfter=true) -> successorState/get_app_state`
+   and assert that the helper mirror shows the typed text without relying on focused child/caret proof.
 2. `get_app_state -> click(..., observeAfter=true)` and assert:
    updated screenshot image block exists,
    successor state payload exists,
@@ -1282,7 +1341,8 @@ through the plugin MCP surface, not only through helper fixtures.
 
 ### Helper requirements
 
-- add one focusable custom control or owner-drawn target that visually mirrors typed text but does not publish the same strong UIA writable proof as the standard textbox;
+- add one top-level-only or owner-drawn Class `C` target that visually mirrors typed text after coordinate-confirmed typing but does not publish focused child/caret or strong writable UIA proof;
+- keep the existing focusable weak-child control as Class `B` regression coverage;
 - keep deterministic mirror labels so smoke can verify visible outcome without OCR.
 
 ### Reopened product acceptance proof
@@ -1292,6 +1352,8 @@ through the plugin MCP surface, not only through helper fixtures.
   Telegram through the plugin MCP surface, because the remaining gap is
   explicitly Qt/poor-UIA text entry rather than generic screenshot-first
   navigation.
+- Telegram proof is ordered: first prove visible `Тест MPC` in the input field,
+  then record the separate explicit send-step result.
 
 ## 13. Docs / generated sync
 
@@ -1346,5 +1408,5 @@ When implementation starts, the agent must sync all impacted docs in the same cy
 - action+observe: same tools, explicit `observeAfter`, shared post-action observer, nested `successorState`, additive image content; successful successor observe satisfies immediate refresh need even if top-level status remains `verify_needed`.
 - continuity UX: reduce selector churn by reusing `windowId` only across repeated strict discovery matches; no public `hwnd + processId` selector.
 - screenshot preview: runtime already correct; treat preview as client/operator UX unless an additive hint is strictly needed.
-- reopened unresolved fork: Telegram currently gives top-level Qt focus with no target-local focused child and no caret after the input click; Stage 6 must decide whether that is solvable by honest extra focus proof or requires an explicit coordinate-confirmed typing contract.
-- reopened root-cause target: close a reusable family of poor-UIA text-entry failures (`weak child focus`, `top-level-only focus with fresh coordinate evidence`, and possibly `bounded focus-settle`) without collapsing into blind active-window typing.
+- reopened fork closed by Stage 6: Telegram gives top-level Qt focus with no target-local focused child and no caret, so Stage 7 implements explicit coordinate-confirmed typing inside `type_text` instead of fake child-focus proof.
+- reopened root-cause target: close reusable Class `C` poor-UIA text-entry failures (`top-level-only focus with fresh coordinate evidence`), preserve existing Class `A`/`B` paths, defer Class `F` bounded settle/reobserve, and keep Class `D`/`E` out of scope without collapsing into blind active-window typing.
