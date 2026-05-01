@@ -203,17 +203,7 @@ internal static class ComputerUseWinToolRegistration
             });
 
     private static JsonObject CreatePointSchema(string propertyName = "point") =>
-        new()
-        {
-            ["type"] = CreateTypeSet("object", "null"),
-            ["properties"] = new JsonObject
-            {
-                ["x"] = new JsonObject { ["type"] = "integer" },
-                ["y"] = new JsonObject { ["type"] = "integer" },
-            },
-            ["required"] = CreateStringArray("x", "y"),
-            ["additionalProperties"] = false,
-        };
+        ComputerUseWinPointContract.CreateRequiredSchema();
 
     private static JsonArray CreateTypeSet(params string[] values)
     {
@@ -351,6 +341,8 @@ internal static class ComputerUseWinToolRegistration
                         ["type"] = CreateTypeSet("integer", "null"),
                         ["minimum"] = 1,
                     },
+                    ["point"] = CreatePointSchema(),
+                    ["coordinateSpace"] = CreateNullableStringEnumSchema(ComputerUseWinTypeTextContract.AllowedCoordinateSpaceValues),
                     ["text"] = new JsonObject
                     {
                         ["type"] = "string",

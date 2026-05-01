@@ -384,6 +384,10 @@ public sealed class McpProtocolSmokeTests
             Assert.Equal("string", typeTextProperties.GetProperty("text").GetProperty("type").GetString());
             Assert.Equal("boolean", typeTextProperties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
             Assert.Equal("boolean", typeTextProperties.GetProperty("confirm").GetProperty("type").GetString());
+            Assert.Equal("object", typeTextProperties.GetProperty("point").GetProperty("type").GetString());
+            Assert.Equal(
+                [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+                typeTextProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
             Assert.Equal("boolean", clickProperties.GetProperty("observeAfter").GetProperty("type").GetString());
             Assert.Equal("boolean", pressKeyProperties.GetProperty("observeAfter").GetProperty("type").GetString());
             Assert.Equal("boolean", dragProperties.GetProperty("observeAfter").GetProperty("type").GetString());
@@ -1070,6 +1074,131 @@ public sealed class McpProtocolSmokeTests
             Assert.Contains(
                 finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
                 element => string.Equals(element.GetProperty("name").GetString(), "Poor UIA mirror: fallback typed text", StringComparison.Ordinal));
+        }
+        finally
+        {
+            process.StandardInput.Close();
+            await WaitForExitAsync(process);
+            await StopHelperWindowAsync(helper);
+        }
+    }
+
+    [Fact]
+    public async Task ComputerUseWinTypeTextCoordinateConfirmedFallbackUpdatesMirror()
+    {
+        using Process helper = StartHelperWindow(
+            title: $"Okno Smoke Helper Coordinate Fallback {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = await WaitForMainWindowAsync(helper);
+        await Task.Delay(750);
+        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+
+        await using StreamWriter writer = process.StandardInput;
+        using StreamReader reader = process.StandardOutput;
+        McpRequestSession session = new(reader, writer);
+
+        try
+        {
+            using JsonDocument initializeResponse = await session.SendRequestAsync(
+                "initialize",
+                new
+                {
+                    protocolVersion = "2025-11-25",
+                    capabilities = new { },
+                    clientInfo = new
+                    {
+                        name = "Okno.IntegrationTests",
+                        version = "0.1.0",
+                    },
+                },
+                "initialize");
+
+            await session.SendNotificationAsync("notifications/initialized");
+
+            using JsonDocument firstStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+            string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+            JsonElement coordinateTarget = firstStatePayload
+                .GetProperty("accessibilityTree")
+                .EnumerateArray()
+                .First(element =>
+                    string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed text target", StringComparison.Ordinal));
+            Assert.False(coordinateTarget.GetProperty("hasKeyboardFocus").GetBoolean());
+            string?[] coordinateTargetActions = coordinateTarget.GetProperty("actions").EnumerateArray()
+                .Select(item => item.GetString())
+                .ToArray();
+            Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, coordinateTargetActions);
+
+            Assert.DoesNotContain(
+                firstStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+                element =>
+                    element.GetProperty("hasKeyboardFocus").GetBoolean()
+                    && string.Equals(
+                        element.GetProperty("name").GetString(),
+                        "Coordinate-confirmed text target",
+                        StringComparison.Ordinal));
+
+            (int pointX, int pointY) = GetCaptureRelativeCenterPoint(firstStatePayload, coordinateTarget);
+
+            using JsonDocument typeTextResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinTypeText,
+                new
+                {
+                    stateToken = firstStateToken,
+                    point = new { x = pointX, y = pointY },
+                    text = "coordinate smoke text",
+                    allowFocusedFallback = true,
+                    confirm = true,
+                    observeAfter = true,
+                });
+
+            JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
+            Assert.False(typeTextPayload.GetProperty("refreshStateRecommended").GetBoolean());
+            Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+            Assert.Contains(
+                typeTextResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
+                block => block.GetProperty("type").GetString() == "image");
+            JsonElement successorState = typeTextPayload.GetProperty("successorState");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
+            string successorToken = successorState.GetProperty("stateToken").GetString()!;
+            Assert.NotEqual(firstStateToken, successorToken);
+            Assert.Contains(
+                successorState.GetProperty("accessibilityTree").EnumerateArray(),
+                element => string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed mirror: coordinate smoke text", StringComparison.Ordinal));
+
+            using JsonDocument followUpResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinPressKey,
+                new
+                {
+                    stateToken = successorToken,
+                    key = "tab",
+                });
+
+            JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
+
+            using JsonDocument finalStateResponse = await session.CallToolAsync(
+                ToolNames.ComputerUseWinGetAppState,
+                new
+                {
+                    hwnd = helperHwnd,
+                    confirm = true,
+                });
+
+            JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+            Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
+            Assert.Contains(
+                finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+                element => string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed mirror: coordinate smoke text", StringComparison.Ordinal));
         }
         finally
         {
@@ -2936,6 +3065,19 @@ public sealed class McpProtocolSmokeTests
 
         match = default;
         return false;
+    }
+
+    private static (int X, int Y) GetCaptureRelativeCenterPoint(JsonElement appStatePayload, JsonElement element)
+    {
+        JsonElement elementBounds = element.GetProperty("bounds");
+        JsonElement captureBounds = appStatePayload.GetProperty("capture").GetProperty("bounds");
+        int centerX = (elementBounds.GetProperty("left").GetInt32() + elementBounds.GetProperty("right").GetInt32()) / 2;
+        int centerY = (elementBounds.GetProperty("top").GetInt32() + elementBounds.GetProperty("bottom").GetInt32()) / 2;
+        int x = centerX - captureBounds.GetProperty("left").GetInt32();
+        int y = centerY - captureBounds.GetProperty("top").GetInt32();
+        Assert.InRange(x, 0, appStatePayload.GetProperty("capture").GetProperty("pixelWidth").GetInt32() - 1);
+        Assert.InRange(y, 0, appStatePayload.GetProperty("capture").GetProperty("pixelHeight").GetInt32() - 1);
+        return (x, y);
     }
 
     private static void AssertHealthReadinessShape(JsonElement healthRoot)

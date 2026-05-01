@@ -341,6 +341,152 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void TypeTextValidatorAllowsCoordinateConfirmedFallbackWithExplicitPoint()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Point: new InputPoint(10, 20),
+                CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                Text: "typed text",
+                Confirm: true,
+                AllowFocusedFallback: true));
+
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public void TypeTextContractDefaultsCoordinateConfirmedFallbackToCapturePixels()
+    {
+        bool parsed = ComputerUseWinTypeTextContract.TryParse(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Point: new InputPoint(10, 20),
+                CoordinateSpace: null,
+                Text: "typed text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            out ComputerUseWinTypeTextPayload? payload,
+            out string? failure);
+
+        Assert.True(parsed, failure);
+        Assert.Equal(InputCoordinateSpaceValues.CapturePixels, payload!.CoordinateSpace);
+    }
+
+    [Fact]
+    public void TypeTextValidatorRejectsCoordinatePointWithoutFocusedFallbackOptIn()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Point: new InputPoint(10, 20),
+                CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                Text: "typed text",
+                Confirm: true,
+                AllowFocusedFallback: false));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("allowFocusedFallback", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TypeTextValidatorRejectsCoordinatePointWithoutConfirm()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Point: new InputPoint(10, 20),
+                CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                Text: "typed text",
+                Confirm: false,
+                AllowFocusedFallback: true));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("confirm", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TypeTextValidatorRejectsConflictingElementAndPointSelectors()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: 1,
+                Point: new InputPoint(10, 20),
+                CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                Text: "typed text",
+                Confirm: true,
+                AllowFocusedFallback: true));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("point", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TypeTextValidatorRejectsCoordinateSpaceWithoutPoint()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Point: null,
+                CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                Text: "typed text",
+                Confirm: true,
+                AllowFocusedFallback: true));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("coordinateSpace", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TypeTextValidatorRejectsUnsupportedCoordinateSpace()
+    {
+        string? failure = ComputerUseWinRequestContractValidator.Validate(
+            new ComputerUseWinTypeTextRequest(
+                StateToken: "token-1",
+                ElementIndex: null,
+                Point: new InputPoint(10, 20),
+                CoordinateSpace: "bogus",
+                Text: "typed text",
+                Confirm: true,
+                AllowFocusedFallback: true));
+
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+        Assert.Contains("coordinateSpace", failure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TypeTextBinderRejectsMalformedCoordinatePointBeforeDispatch()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true},"text":"typed text","allowFocusedFallback":true,"confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["text"] = document.RootElement.GetProperty("text").Clone(),
+            ["allowFocusedFallback"] = document.RootElement.GetProperty("allowFocusedFallback").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinTypeTextRequest(),
+            out ComputerUseWinTypeTextRequest request,
+            out string? reason,
+            static value => ComputerUseWinRequestContractValidator.Validate(value));
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinTypeTextRequest(), request);
+        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("unmapped", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ScrollValidatorRejectsSelectorlessRequest()
     {
         string? failure = ComputerUseWinRequestContractValidator.Validate(
@@ -685,6 +831,56 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
+    public void ToolRequestBinderRejectsExplicitNullPointForComputerUseClick()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":null,"confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinClickRequest(),
+            out ComputerUseWinClickRequest request,
+            out string? reason,
+            ComputerUseWinRequestContractValidator.Validate);
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinClickRequest(), request);
+        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("JSON object", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsExplicitNullPointForComputerUseTypeText()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":null,"text":"typed text","allowFocusedFallback":true,"confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["text"] = document.RootElement.GetProperty("text").Clone(),
+            ["allowFocusedFallback"] = document.RootElement.GetProperty("allowFocusedFallback").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinTypeTextRequest(),
+            out ComputerUseWinTypeTextRequest request,
+            out string? reason,
+            ComputerUseWinRequestContractValidator.Validate);
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinTypeTextRequest(), request);
+        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("JSON object", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ToolRequestBinderRejectsNestedAdditionalPropertiesForComputerUseScrollPoint()
     {
         using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true},"direction":"down","confirm":true}""");
@@ -707,6 +903,31 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Equal(new ComputerUseWinScrollRequest(), request);
         Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("extra", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsExplicitNullPointForComputerUseScroll()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":null,"direction":"down","confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["point"] = document.RootElement.GetProperty("point").Clone(),
+            ["direction"] = document.RootElement.GetProperty("direction").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinScrollRequest(),
+            out ComputerUseWinScrollRequest request,
+            out string? reason,
+            ComputerUseWinRequestContractValidator.Validate);
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinScrollRequest(), request);
+        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("JSON object", reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -830,6 +1051,31 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.False(success);
         Assert.Equal(new ComputerUseWinDragRequest(), request);
         Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolRequestBinderRejectsExplicitNullPointsForComputerUseDrag()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","fromPoint":null,"toPoint":null,"confirm":true}""");
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
+        {
+            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
+            ["fromPoint"] = document.RootElement.GetProperty("fromPoint").Clone(),
+            ["toPoint"] = document.RootElement.GetProperty("toPoint").Clone(),
+            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
+        };
+
+        bool success = ToolRequestBinder.TryBind(
+            arguments,
+            fallbackRequest: new ComputerUseWinDragRequest(),
+            out ComputerUseWinDragRequest request,
+            out string? reason,
+            ComputerUseWinRequestContractValidator.Validate);
+
+        Assert.False(success);
+        Assert.Equal(new ComputerUseWinDragRequest(), request);
+        Assert.Contains("fromPoint", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("JSON object", reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1114,6 +1360,7 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Equal(
             [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
             coordinateSpace.GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+        Assert.Equal("object", properties.GetProperty("point").GetProperty("type").GetString());
     }
 
     [Fact]
@@ -1163,6 +1410,16 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Equal(["stateToken", "text"], required);
         Assert.Equal("boolean", properties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
         Assert.Equal("boolean", properties.GetProperty("confirm").GetProperty("type").GetString());
+        Assert.Equal("object", properties.GetProperty("point").GetProperty("type").GetString());
+        Assert.Equal(
+            [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+            properties.GetProperty("coordinateSpace")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(item => item.GetString())
+                .Where(static item => item is not null)
+                .Cast<string>()
+                .ToArray());
     }
 
     [Fact]
@@ -1213,6 +1470,7 @@ public sealed class ComputerUseWinArchitectureTests
         JsonElement properties = inputSchema.GetProperty("properties");
 
         Assert.Equal(10, properties.GetProperty("pages").GetProperty("maximum").GetInt32());
+        Assert.Equal("object", properties.GetProperty("point").GetProperty("type").GetString());
 
         JsonElement[] selectorModes = [.. inputSchema.GetProperty("oneOf").EnumerateArray()];
         JsonElement elementBranch = selectorModes.Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
@@ -1257,6 +1515,8 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Equal("object", sourcePointBranch.GetProperty("properties").GetProperty("fromPoint").GetProperty("type").GetString());
         Assert.Equal("integer", destinationBranch.GetProperty("properties").GetProperty("toElementIndex").GetProperty("type").GetString());
         Assert.Equal("object", destinationPointBranch.GetProperty("properties").GetProperty("toPoint").GetProperty("type").GetString());
+        Assert.Equal("object", properties.GetProperty("fromPoint").GetProperty("type").GetString());
+        Assert.Equal("object", properties.GetProperty("toPoint").GetProperty("type").GetString());
         Assert.Equal(@".*\S.*", properties.GetProperty("stateToken").GetProperty("pattern").GetString());
     }
 

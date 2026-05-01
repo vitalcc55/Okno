@@ -1214,38 +1214,69 @@ Win32 focus proof и explicit coordinate-confirmed typing model.
 
 **Steps:**
 
-- [ ] TDD RED for the Telegram-like Class `C` case where UIA shows no usable
+- [x] TDD RED for the Telegram-like Class `C` case where UIA shows no usable
   editable child after a successful input click.
-- [ ] TDD RED for at least one non-Telegram representative of the same
+- [x] TDD RED for at least one non-Telegram representative of the same
   root-cause family, using helper/integration fixtures rather than only naming
   Telegram in tests.
-- [ ] TDD RED for stale geometry / wrong target / missing `confirm` /
+- [x] TDD RED for stale geometry / wrong target / missing `confirm` /
   missing explicit proof on the chosen weaker branch.
-- [ ] If Stage 6 selected a Class `F` settle/reobserve mitigation, add RED
-  tests for bounded focus-settle timing and fail-close behavior.
-- [ ] Implement the chosen Stage 6 branch without widening normal
+- [x] Stage 6 did not select a Class `F` settle/reobserve mitigation; no
+  bounded focus-settle tests or behavior were added in Stage 7.
+- [x] Implement the chosen Stage 6 branch without widening normal
   `type_text` semantics.
-- [ ] Add safe observability markers that distinguish the new branch from the
+- [x] Add safe observability markers that distinguish the new branch from the
   existing focused fallback, without leaking raw points or raw text.
-- [ ] Extend helper/integration coverage so the exact proof class is tested,
+- [x] Extend helper/integration coverage so the exact proof class is tested,
   not only easier surrogate controls, and the branch is named/documented by
   proof class rather than by Telegram.
-- [ ] Refresh generated docs and product docs only after GREEN runtime and
+- [x] Refresh generated docs and product docs only after GREEN runtime and
   public handler proof.
 - [ ] Run review/re-review and commit.
 
 **Acceptance criteria:**
 
-- [ ] The chosen branch is documented and tested as a root-cause-family
+- [x] The chosen branch is documented and tested as a root-cause-family
   solution, not as a Telegram-only exception.
-- [ ] Telegram-like Class `C` no-child-focus case no longer fails only because
+- [x] Telegram-like Class `C` no-child-focus case no longer fails only because
   the current `focused target-local element` gate is too narrow.
-- [ ] At least one additional representative of the same class family is
+- [x] At least one additional representative of the same class family is
   covered by tests or helper proof.
-- [ ] No hidden typing into arbitrary active windows is introduced.
-- [ ] No clipboard/OCR/browser-preview work is added.
-- [ ] Public tool count remains unchanged.
-- [ ] Action result remains conservative (`verify_needed`) on the weaker path.
+- [x] No hidden typing into arbitrary active windows is introduced.
+- [x] No clipboard/OCR/browser-preview work is added.
+- [x] Public tool count remains unchanged.
+- [x] Action result remains conservative (`verify_needed`) on the weaker path.
+
+#### Отчёт этапа
+
+- Статус этапа: `ready_for_commit`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: pending
+- TDD применялся: yes; RED was observed before `ComputerUseWinTypeTextRequest.Point` existed, then GREEN implementation landed. Review hypothesis for explicit JSON null point was also converted into regression tests; the runtime already rejected that shape at binding, so no production fix was needed.
+- Проверки:
+  - RED `dotnet test tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~TypeTextValidatorAllowsCoordinateConfirmedFallbackWithExplicitPoint|FullyQualifiedName~TypeTextHandlerUsesCoordinateConfirmedFallbackForTopLevelOnlyClassC"` -> expected compile failure `CS1739` before `Point`.
+  - GREEN `dotnet test tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinTypeTextCoordinateConfirmedFallbackUpdatesMirror"` -> `1/1`.
+  - GREEN `dotnet test tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~TypeText|FullyQualifiedName~ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools"` -> `45/45`.
+  - GREEN `dotnet test tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinLauncherFromTempPluginCopyPublishesPublicSurfaceWithoutRepoHints"` -> `1/1`.
+  - GREEN `dotnet test tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ToolRequestBinderRejectsExplicitNullPoint"` -> `4/4`.
+  - GREEN `dotnet test tests\WinBridge.Runtime.Tests\WinBridge.Runtime.Tests.csproj --no-restore --filter "FullyQualifiedName~ToolContractManifest|FullyQualifiedName~BeginInvocationRedactsComputerUseWinTypeTextRequestSummary"` -> `22/22`.
+  - GREEN `scripts\refresh-generated-docs.ps1` -> build success, `0 warnings / 0 errors`.
+- Review agents: architecture/contract approved; product/publication approved, then raised one docs traceability P3 on re-review; tests/failure/docs found one generated test-matrix P3 and one explicit-null hypothesis that was rejected by binding evidence and regression tests. Per user direction, docs-only P3 was fixed in Stage report without another agent loop.
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`
+- Official docs checked: Stage 6 decision evidence remains based on Microsoft `GetGUIThreadInfo`, `GetFocus`, `GetCaretPos`, `SendInput` semantics and Qt custom widget accessibility framing.
+- Reference repos checked: not rechecked in Stage 7; Stage 6 froze this branch from live product proof and existing source pack.
+- Подтверждённые замечания:
+  - P2 roadmap overclaimed Stage 7 as fully product-accepted poor-UIA text-entry closure before Stage 8 cache-installed Telegram proof.
+  - P3 plugin/operator docs lacked the exact coordinate-confirmed `type_text(point, coordinateSpace="capture_pixels", allowFocusedFallback=true, confirm=true, observeAfter=true)` invocation and verify/send split.
+  - P2 public point schema mismatch: top-level `point`/`fromPoint`/`toPoint` properties were advertised as nullable even though the binder/runtime treats explicit JSON `null` as invalid point payload rather than absence.
+  - P3 generated test-matrix drift: `scripts/refresh-generated-docs.ps1` / `docs/generated/test-matrix.md` named only focused `type_text` fallback and omitted `type_text.point` / `type_text.coordinateSpace` install-proof coverage.
+  - P3 Stage report traceability drift: this report did not initially record the generated test-matrix finding and fix.
+- Отклонённые замечания:
+  - P2 explicit JSON `point:null` allegedly passed as an absent selector. Static review hypothesis was rejected by targeted binder tests: `click`, `type_text`, `scroll` and `drag` all fail before dispatch with point-object binding errors.
+- Исправленные root causes: implemented explicit coordinate-confirmed proof branch instead of broadening target-local focused fallback; added public schema/validator/runtime/tests/docs/install-proof script support for `point` and `coordinateSpace`; corrected product docs boundary so Stage 7 is repo/helper implementation while Stage 8 remains cache-installed Telegram acceptance; added concrete operator invocation and visible-text-before-send guidance; changed shared public point schema to non-null object so optional point fields are omitted when absent and explicit null no longer appears valid in tools/list; updated the generated-docs source generator and refreshed `docs/generated/test-matrix.md` so test-matrix coverage matches proof-script behavior; updated this stage report to preserve review traceability.
+- Проверенные соседние paths: normal focused-editable `type_text`; existing focused weak-child fallback; coordinate-confirmed capture path; missing `confirm`; missing `allowFocusedFallback`; `elementIndex + point`; unsupported `coordinateSpace`; malformed point; explicit JSON null point for `click`, `type_text`, `scroll`, `drag.fromPoint` and `drag.toPoint`; missing capture reference; point out of bounds; failed dispatch with `observeAfter`; action event/artifact redaction; helper smoke Class C path; installed plugin tools/list schema; generated test-matrix source and generated artifact; roadmap/changelog/plugin README/skill wording for Stage 7 vs Stage 8 acceptance split; shared point schema for `click`, `type_text`, `scroll`, `drag.fromPoint` and `drag.toPoint`.
+- Остаточные риски: real Telegram product acceptance still pending Stage 8; coordinate-confirmed typing proves locality and dispatch, not semantic text outcome, so public result remains `verify_needed`.
+- Разблокировка следующего этапа: after three-agent review/re-review approval and Stage 7 commit, start Stage 8 publish/cache proof and real Telegram acceptance.
 
 ### Stage 8: Real Telegram product acceptance and re-closure
 

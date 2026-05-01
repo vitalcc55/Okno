@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-05-01
+
+- Reopened Stage 7 для `computer-use-win-screenshot-first-hardening` реализует repo-side explicit coordinate-confirmed `type_text` fallback для Telegram/Qt Class C poor-UIA text entry: public `type_text` получил `point` и `coordinateSpace`, validator требует `allowFocusedFallback=true` + `confirm=true`, запрещает `elementIndex + point`, default-ит `coordinateSpace` в `capture_pixels`, а runtime dispatch-ит coordinate click + text в одном `SendInput` batch и сохраняет result как `verify_needed`. Новый path не добавляет clipboard/OCR/region_capture, не переиспользует hidden previous click и не притворяется, что top-level Qt focus стал child/caret proof; observability пишет safe `target_mode=coordinate_confirmed_fallback`, `risk_class=coordinate_confirmed_text_fallback` и dispatch path без raw text/raw point. Integration, smoke helper, install-surface proof script, plugin docs, architecture docs and roadmap синхронизированы под новый explicit point proof path; cache-installed Telegram product acceptance остаётся отдельным Stage 8 gate.
+
 ## 2026-04-30
 
 - Completed screenshot-first hardening plan returned from `completed/` back into `active/` as a reopened continuation because real Telegram/Qt product acceptance still fails on poor-UIA text entry. The reopened active plan now carries direct product diagnosis from cache-installed `computer-use-win`, Win32 `GetGUIThreadInfo` evidence (`top-level Qt focus`, `no caret`) and new follow-up stages `6-8` for proof-fork closure, Telegram text-entry implementation and real Telegram product acceptance before re-closing the workstream.

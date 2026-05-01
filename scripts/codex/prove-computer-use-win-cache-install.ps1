@@ -490,6 +490,8 @@ try {
     $typeTextTool = @($tools | Where-Object { $_.name -eq 'type_text' })[0]
     Assert-Condition -Condition (Test-Property -Object $typeTextTool.inputSchema.properties -Name 'allowFocusedFallback') -Message 'type_text schema is missing allowFocusedFallback.'
     Assert-Condition -Condition (Test-Property -Object $typeTextTool.inputSchema.properties -Name 'observeAfter') -Message 'type_text schema is missing observeAfter.'
+    Assert-Condition -Condition (Test-Property -Object $typeTextTool.inputSchema.properties -Name 'point') -Message 'type_text schema is missing point.'
+    Assert-Condition -Condition (Test-Property -Object $typeTextTool.inputSchema.properties -Name 'coordinateSpace') -Message 'type_text schema is missing coordinateSpace.'
 
     foreach ($toolName in @('click', 'press_key', 'scroll', 'drag')) {
         $tool = @($tools | Where-Object { $_.name -eq $toolName })[0]
@@ -543,6 +545,8 @@ try {
         server = [string]$initializeCall.Json.result.serverInfo.name
         tools = $toolNames
         typeTextHasAllowFocusedFallback = $true
+        typeTextHasPoint = $true
+        typeTextHasCoordinateSpace = $true
         selectedActionsHaveObserveAfter = $true
         semanticOnlyActionsLackObserveAfter = $true
         listAppsStatus = $listAppsStatus

@@ -4,13 +4,21 @@ namespace WinBridge.Server.ComputerUse;
 
 internal sealed record ComputerUseWinTypeTextPayload(
     string Text,
+    InputPoint? Point,
+    string? CoordinateSpace,
     int TextLength,
     string TextBucket,
     bool ContainsNewline,
-    bool WhitespaceOnly);
+    bool WhitespaceOnly)
+{
+    public bool UsesCoordinateConfirmedFallback => Point is not null;
+}
 
 internal static class ComputerUseWinTypeTextContract
 {
+    internal static IReadOnlyList<string> AllowedCoordinateSpaceValues { get; } =
+        [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels];
+
     public static string? ValidateRequest(ComputerUseWinTypeTextRequest request) =>
         TryParse(request, out _, out string? failure) ? null : failure;
 
@@ -33,6 +41,43 @@ internal static class ComputerUseWinTypeTextContract
             return false;
         }
 
+        string? pointFailure = ComputerUseWinPointContract.Validate(request.Point, "point");
+        if (pointFailure is not null)
+        {
+            failure = pointFailure;
+            return false;
+        }
+
+        if (!ComputerUseWinCoordinateSpaceContract.TryNormalize(
+                request.CoordinateSpace,
+                "coordinateSpace",
+                AllowedCoordinateSpaceValues,
+                request.Point is null ? null : InputCoordinateSpaceValues.CapturePixels,
+                out string? coordinateSpace,
+                out string? coordinateSpaceFailure))
+        {
+            failure = coordinateSpaceFailure;
+            return false;
+        }
+
+        if (request.ElementIndex is not null && request.Point is not null)
+        {
+            failure = "Для type_text нужно передать либо elementIndex, либо point, но не оба селектора сразу.";
+            return false;
+        }
+
+        if (request.Point is null && request.CoordinateSpace is not null)
+        {
+            failure = "Параметр coordinateSpace для type_text допустим только вместе с point.";
+            return false;
+        }
+
+        if (request.Point is not null && !request.AllowFocusedFallback)
+        {
+            failure = "Coordinate-confirmed type_text fallback требует allowFocusedFallback=true.";
+            return false;
+        }
+
         if (request.Text is null || request.Text.Length == 0)
         {
             failure = "Параметр text обязателен для type_text и не должен быть пустой строкой.";
@@ -47,6 +92,8 @@ internal static class ComputerUseWinTypeTextContract
 
         payload = new(
             Text: request.Text,
+            Point: request.Point,
+            CoordinateSpace: coordinateSpace,
             TextLength: request.Text.Length,
             TextBucket: ClassifyTextBucket(request.Text.Length),
             ContainsNewline: request.Text.Contains('\r') || request.Text.Contains('\n'),

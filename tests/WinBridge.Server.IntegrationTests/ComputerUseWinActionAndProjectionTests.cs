@@ -2058,6 +2058,211 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task TypeTextHandlerUsesCoordinateConfirmedFallbackForTopLevelOnlyClassC()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateClassCCoordinateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-coordinate-confirmed-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, point = new { x = 30, y = 40 }, text = "coordinate typed text", allowFocusedFallback = true, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.Done,
+                    Decision: InputStatusValues.Done,
+                    ResultMode: InputResultModeValues.DispatchOnly,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 2)));
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Point: new InputPoint(30, 40),
+                CoordinateSpace: null,
+                Text: "coordinate typed text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, payload.GetProperty("status").GetString());
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.NotNull(inputService.LastRequest);
+        Assert.Equal(101, inputService.LastRequest!.Hwnd);
+        Assert.Collection(
+            inputService.LastRequest.Actions,
+            clickAction =>
+            {
+                Assert.Equal(InputActionTypeValues.Click, clickAction.Type);
+                Assert.Equal(InputCoordinateSpaceValues.CapturePixels, clickAction.CoordinateSpace);
+                Assert.Equal(30, clickAction.Point!.X);
+                Assert.Equal(40, clickAction.Point.Y);
+                Assert.NotNull(clickAction.CaptureReference);
+            },
+            typeAction =>
+            {
+                Assert.Equal(InputActionTypeValues.Type, typeAction.Type);
+                Assert.Equal("coordinate typed text", typeAction.Text);
+            });
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerRejectsCoordinateConfirmedFallbackWithoutCaptureReferenceBeforeDispatch()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateClassCCoordinateStoredState(useDefaultCaptureReference: false));
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-coordinate-missing-capture-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, point = new { x = 30, y = 40 }, text = "coordinate typed text", allowFocusedFallback = true, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Point: new InputPoint(30, 40),
+                CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                Text: "coordinate typed text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.CaptureReferenceRequired, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerRejectsCoordinateConfirmedFallbackWhenPointIsOutOfCaptureBounds()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateClassCCoordinateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-coordinate-out-of-bounds-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, point = new { x = 9999, y = 40 }, text = "coordinate typed text", allowFocusedFallback = true, confirm = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new();
+        FakeInputService inputService = new();
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Point: new InputPoint(9999, 40),
+                CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                Text: "coordinate typed text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.PointOutOfBounds, payload.GetProperty("failureCode").GetString());
+        Assert.Equal(0, uiAutomationService.Calls);
+        Assert.Equal(0, inputService.Calls);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerDoesNotObserveAfterFailedCoordinateConfirmedDispatch()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateClassCCoordinateStoredState());
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-coordinate-failed-dispatch-tests"));
+        using AuditInvocationScope invocation = CreateAuditLog().BeginInvocation(
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, point = new { x = 30, y = 40 }, text = "coordinate typed text", allowFocusedFallback = true, confirm = true, observeAfter = true },
+            sessionManager.GetSnapshot());
+        FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+        FakeUiAutomationService uiAutomationService = new((_, _, _) =>
+            Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Done,
+                    Window: CreateObservedWindow(CreateWindow()),
+                    Root: CreateClickSnapshotRoot(),
+                    RequestedDepth: UiaSnapshotDefaults.Depth,
+                    RequestedMaxNodes: 768,
+                    CapturedAtUtc: DateTimeOffset.UtcNow)));
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.Failed,
+                    Decision: InputStatusValues.Failed,
+                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                    Reason: "dispatch failed",
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 0)));
+        ComputerUseWinTypeTextHandler handler = new(
+            new ComputerUseWinActionRequestExecutor(
+                new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()])),
+                new ComputerUseWinAppStateObserver(
+                    new SuccessfulComputerUseWinCaptureService(),
+                    uiAutomationService,
+                    new EmptyInstructionProvider()),
+                stateStore,
+                sessionManager),
+            new ComputerUseWinTypeTextExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                inputService));
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Point: new InputPoint(30, 40),
+                CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                Text: "coordinate typed text",
+                Confirm: true,
+                AllowFocusedFallback: true,
+                ObserveAfter: true),
+            CancellationToken.None);
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.False(payload.TryGetProperty("successorState", out _));
+        Assert.False(payload.TryGetProperty("successorStateFailure", out _));
+        Assert.Equal(0, uiAutomationService.Calls);
+    }
+
+    [Fact]
     public async Task TypeTextHandlerKeepsWeakFocusedElementUnavailableWithoutFocusedFallbackOptIn()
     {
         ComputerUseWinStateStore stateStore = new();
@@ -2308,6 +2513,80 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Assert.DoesNotContain("secret fallback text", actionEvent, StringComparison.Ordinal);
             Assert.DoesNotContain("clipboard", actionEvent, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("paste", actionEvent, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerCoordinateConfirmedFallbackObservabilityAvoidsRawTextAndPoint()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            AuditLogOptions options = CreateAuditOptions(root, "computer-use-win-type-text-coordinate-fallback-observability-tests");
+            AuditLog auditLog = new(options, TimeProvider.System);
+            ComputerUseWinStateStore stateStore = new();
+            string token = stateStore.Create(CreateClassCCoordinateStoredState());
+            InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("computer-use-win-type-text-coordinate-fallback-observability-tests"));
+            using AuditInvocationScope invocation = auditLog.BeginInvocation(
+                ToolNames.ComputerUseWinTypeText,
+                new { stateToken = token, point = new { x = 30, y = 40 }, text = "secret coordinate text", allowFocusedFallback = true, confirm = true },
+                sessionManager.GetSnapshot());
+            FakeWindowActivationService activationService = new(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true));
+            FakeUiAutomationService uiAutomationService = new();
+            FakeInputService inputService = new((request, _, _) =>
+                Task.FromResult(
+                    new InputResult(
+                        Status: InputStatusValues.VerifyNeeded,
+                        Decision: InputStatusValues.VerifyNeeded,
+                        TargetHwnd: request.Hwnd,
+                        CompletedActionCount: 2)));
+            ComputerUseWinTypeTextHandler handler = new(
+                new ComputerUseWinActionRequestExecutor(
+                    new ComputerUseWinStoredStateResolver(stateStore, new FakeListAppsWindowManager([CreateWindow()]))),
+                new ComputerUseWinTypeTextExecutionCoordinator(
+                    activationService,
+                    uiAutomationService,
+                    inputService));
+
+            _ = await handler.ExecuteAsync(
+                invocation,
+                new ComputerUseWinTypeTextRequest(
+                    StateToken: token,
+                    ElementIndex: null,
+                    Point: new InputPoint(30, 40),
+                    CoordinateSpace: InputCoordinateSpaceValues.CapturePixels,
+                    Text: "secret coordinate text",
+                    Confirm: true,
+                    AllowFocusedFallback: true),
+                CancellationToken.None);
+
+            string actionEvent = File.ReadLines(options.EventsPath)
+                .Single(line => line.Contains("\"event_name\":\"computer_use_win.action.completed\"", StringComparison.Ordinal));
+            Assert.Contains("\"fallback_used\":\"true\"", actionEvent, StringComparison.Ordinal);
+            Assert.Contains("\"target_mode\":\"coordinate_confirmed_fallback\"", actionEvent, StringComparison.Ordinal);
+            Assert.Contains("\"risk_class\":\"coordinate_confirmed_text_fallback\"", actionEvent, StringComparison.Ordinal);
+            Assert.Contains("\"dispatch_path\":\"capture_pixels_text_input\"", actionEvent, StringComparison.Ordinal);
+            Assert.DoesNotContain("secret coordinate text", actionEvent, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"point\"", actionEvent, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("clipboard", actionEvent, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("paste", actionEvent, StringComparison.OrdinalIgnoreCase);
+
+            string actionArtifactPath = Directory
+                .GetFiles(Path.Combine(options.RunDirectory, "computer-use-win"), "action-*.json", SearchOption.TopDirectoryOnly)
+                .Single();
+            string actionArtifact = File.ReadAllText(actionArtifactPath);
+            Assert.Contains("\"target_mode\": \"coordinate_confirmed_fallback\"", actionArtifact, StringComparison.Ordinal);
+            Assert.DoesNotContain("secret coordinate text", actionArtifact, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"point\"", actionArtifact, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -4799,6 +5078,37 @@ public sealed class ComputerUseWinActionAndProjectionTests
                     Bounds: new Bounds(10, 20, 180, 60),
                     HasKeyboardFocus: true,
                     Actions: [ToolNames.ComputerUseWinClick]),
+            },
+            Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static ComputerUseWinStoredState CreateClassCCoordinateStoredState(
+        InputCaptureReference? captureReference = null,
+        bool useDefaultCaptureReference = true) =>
+        new(
+            CreateSession(),
+            CreateWindow(),
+            CaptureReference: useDefaultCaptureReference ? captureReference ?? CreateCaptureReference() : captureReference,
+            Elements: new Dictionary<int, ComputerUseWinStoredElement>
+            {
+                [1] = new(
+                    Index: 1,
+                    ElementId: "path:top-level-window",
+                    Name: "Telegram",
+                    AutomationId: null,
+                    ControlType: "window",
+                    Bounds: new Bounds(0, 0, 260, 180),
+                    HasKeyboardFocus: true,
+                    Actions: [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinDrag, ToolNames.ComputerUseWinSetValue]),
+                [2] = new(
+                    Index: 2,
+                    ElementId: "path:generic-content",
+                    Name: null,
+                    AutomationId: null,
+                    ControlType: "group",
+                    Bounds: new Bounds(0, 40, 260, 180),
+                    HasKeyboardFocus: false,
+                    Actions: [ToolNames.ComputerUseWinClick, ToolNames.ComputerUseWinDrag, ToolNames.ComputerUseWinSetValue]),
             },
             Observation: new ComputerUseWinObservationEnvelope(UiaSnapshotDefaults.Depth, 768),
             CapturedAtUtc: DateTimeOffset.UtcNow);

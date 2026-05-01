@@ -77,6 +77,8 @@ internal static class Program
         private readonly Label _queryMirrorLabel;
         private readonly PoorUiaTextTargetControl _poorUiaTextTarget;
         private readonly Label _poorUiaMirrorLabel;
+        private readonly CoordinateConfirmedTextTargetControl _coordinateConfirmedTextTarget;
+        private readonly Label _coordinateConfirmedMirrorLabel;
         private readonly NumericUpDown _rangeInput;
         private readonly Label _rangeMirrorLabel;
         private readonly MirrorScrollListBox _scrollListBox;
@@ -96,13 +98,15 @@ internal static class Program
         private int _remainingVisualTransitions;
         private bool _visualPhase;
         private bool _dragInProgress;
+        private bool _coordinateConfirmedTextArmed;
 
         public SmokeWindowForm(string title, int lifetimeMs, int visualBurstMs)
         {
             Text = title;
             StartPosition = FormStartPosition.Manual;
-            Bounds = new Rectangle(120, 120, 520, 560);
+            Bounds = new Rectangle(120, 120, 520, 640);
             ShowInTaskbar = true;
+            KeyPreview = true;
             _runButton = CreateRunButton();
             _transientWaitButton = CreateTransientWaitButton();
             _rememberCheckBox = CreateRememberCheckBox();
@@ -110,6 +114,8 @@ internal static class Program
             _queryMirrorLabel = CreateQueryMirrorLabel(_queryTextBox.Text);
             _poorUiaTextTarget = CreatePoorUiaTextTarget();
             _poorUiaMirrorLabel = CreatePoorUiaMirrorLabel(_poorUiaTextTarget.TypedText);
+            _coordinateConfirmedTextTarget = CreateCoordinateConfirmedTextTarget();
+            _coordinateConfirmedMirrorLabel = CreateCoordinateConfirmedMirrorLabel(_coordinateConfirmedTextTarget.TypedText);
             _rangeInput = CreateRangeInput();
             _rangeMirrorLabel = CreateRangeMirrorLabel(_rangeInput.Value);
             _scrollListBox = CreateScrollListBox();
@@ -129,6 +135,8 @@ internal static class Program
             _queryTextBox.Enter += (_, _) => QueueSelectAllInQueryTextBox();
             _queryTextBox.MouseUp += (_, _) => QueueSelectAllInQueryTextBox();
             _poorUiaTextTarget.TypedTextChanged += (_, _) => UpdatePoorUiaMirror();
+            _coordinateConfirmedTextTarget.TargetActivated += (_, _) => ArmCoordinateConfirmedTextTarget();
+            _coordinateConfirmedTextTarget.TypedTextChanged += (_, _) => UpdateCoordinateConfirmedMirror();
             _rememberCheckBox.CheckedChanged += (_, _) => UpdateRememberSemanticSelectionName();
             _rangeInput.ValueChanged += (_, _) => UpdateRangeMirror();
             _scrollListBox.TopVisibleItemChanged += (_, _) => UpdateScrollMirror();
@@ -140,6 +148,8 @@ internal static class Program
             Controls.Add(_queryMirrorLabel);
             Controls.Add(_poorUiaTextTarget);
             Controls.Add(_poorUiaMirrorLabel);
+            Controls.Add(_coordinateConfirmedTextTarget);
+            Controls.Add(_coordinateConfirmedMirrorLabel);
             Controls.Add(_rangeInput);
             Controls.Add(_rangeMirrorLabel);
             Controls.Add(CreateTreeView());
@@ -228,6 +238,24 @@ internal static class Program
                 BackColor = Color.White,
             };
 
+        private static CoordinateConfirmedTextTargetControl CreateCoordinateConfirmedTextTarget() =>
+            new()
+            {
+                Name = "CoordinateConfirmedTextTarget",
+                AccessibleName = "Coordinate-confirmed text target",
+                Bounds = new Rectangle(24, 388, 220, 34),
+            };
+
+        private static Label CreateCoordinateConfirmedMirrorLabel(string initialText) =>
+            new()
+            {
+                Name = "CoordinateConfirmedMirrorLabel",
+                AccessibleName = $"Coordinate-confirmed mirror: {initialText}",
+                Text = $"Coordinate-confirmed mirror: {initialText}",
+                Bounds = new Rectangle(24, 428, 220, 24),
+                BackColor = Color.White,
+            };
+
         private static NumericUpDown CreateRangeInput() =>
             new()
             {
@@ -282,7 +310,7 @@ internal static class Program
                 Name = "DragSourceTokenButton",
                 AccessibleName = "Drag source token",
                 Text = "Drag source token",
-                Bounds = new Rectangle(24, 436, 140, 36),
+                Bounds = new Rectangle(24, 520, 140, 36),
                 UseVisualStyleBackColor = true,
             };
 
@@ -291,7 +319,7 @@ internal static class Program
             {
                 Name = "DragDestinationTargetPanel",
                 AccessibleName = "Drag destination target: empty",
-                Bounds = new Rectangle(220, 432, 180, 72),
+                Bounds = new Rectangle(220, 516, 180, 72),
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = Color.LightSteelBlue,
             };
@@ -302,7 +330,7 @@ internal static class Program
                 Name = "DragMirrorLabel",
                 AccessibleName = "Drag mirror: ready",
                 Text = "Drag mirror: ready",
-                Bounds = new Rectangle(24, 488, 180, 24),
+                Bounds = new Rectangle(24, 572, 180, 24),
                 BackColor = Color.White,
             };
 
@@ -385,6 +413,21 @@ internal static class Program
             string mirrorText = $"Poor UIA mirror: {_poorUiaTextTarget.TypedText}";
             _poorUiaMirrorLabel.Text = mirrorText;
             _poorUiaMirrorLabel.AccessibleName = mirrorText;
+        }
+
+        private void UpdateCoordinateConfirmedMirror()
+        {
+            string mirrorText = $"Coordinate-confirmed mirror: {_coordinateConfirmedTextTarget.TypedText}";
+            _coordinateConfirmedMirrorLabel.Text = mirrorText;
+            _coordinateConfirmedMirrorLabel.AccessibleName = mirrorText;
+        }
+
+        private void ArmCoordinateConfirmedTextTarget()
+        {
+            _coordinateConfirmedTextArmed = true;
+            _coordinateConfirmedTextTarget.SetArmed(true);
+            ActiveControl = null;
+            Focus();
         }
 
         private void UpdateRememberSemanticSelectionName()
@@ -595,6 +638,28 @@ internal static class Program
 
             base.WndProc(ref m);
         }
+
+        protected override void OnKeyPress(KeyPressEventArgs e)
+        {
+            if (_coordinateConfirmedTextArmed)
+            {
+                if (e.KeyChar == '\b')
+                {
+                    _coordinateConfirmedTextTarget.DeleteLastCharacter();
+                    e.Handled = true;
+                    return;
+                }
+
+                if (!char.IsControl(e.KeyChar))
+                {
+                    _coordinateConfirmedTextTarget.AppendCharacter(e.KeyChar);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            base.OnKeyPress(e);
+        }
     }
 
     private sealed class MirrorScrollListBox : ListBox
@@ -715,6 +780,89 @@ internal static class Program
             TextRenderer.DrawText(
                 e.Graphics,
                 string.IsNullOrEmpty(_typedText) ? "poor UIA target" : _typedText,
+                Font,
+                new Rectangle(6, 6, Width - 12, Height - 12),
+                SystemColors.WindowText,
+                TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+        }
+
+        private void NotifyTypedTextChanged()
+        {
+            Invalidate();
+            TypedTextChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private sealed class CoordinateConfirmedTextTargetControl : Control
+    {
+        private string _typedText = string.Empty;
+        private bool _armed;
+
+        public CoordinateConfirmedTextTargetControl()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+            TabStop = false;
+            AccessibleRole = AccessibleRole.Graphic;
+            BackColor = Color.White;
+        }
+
+        public event EventHandler? TargetActivated;
+
+        public event EventHandler? TypedTextChanged;
+
+        public string TypedText => _typedText;
+
+        public void SetArmed(bool armed)
+        {
+            if (_armed == armed)
+            {
+                return;
+            }
+
+            _armed = armed;
+            Invalidate();
+        }
+
+        public void AppendCharacter(char value)
+        {
+            _typedText += value;
+            NotifyTypedTextChanged();
+        }
+
+        public void DeleteLastCharacter()
+        {
+            if (_typedText.Length == 0)
+            {
+                return;
+            }
+
+            _typedText = _typedText[..^1];
+            NotifyTypedTextChanged();
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            TargetActivated?.Invoke(this, EventArgs.Empty);
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            TargetActivated?.Invoke(this, EventArgs.Empty);
+            base.OnMouseUp(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            Color borderColor = _armed ? Color.DarkGreen : Color.Gray;
+            using Pen borderPen = new(borderColor, _armed ? 2 : 1);
+            Rectangle border = new(0, 0, Width - 1, Height - 1);
+            e.Graphics.FillRectangle(SystemBrushes.Window, ClientRectangle);
+            e.Graphics.DrawRectangle(borderPen, border);
+            TextRenderer.DrawText(
+                e.Graphics,
+                string.IsNullOrEmpty(_typedText) ? "coordinate text target" : _typedText,
                 Font,
                 new Rectangle(6, 6, Width - 12, Height - 12),
                 SystemColors.WindowText,

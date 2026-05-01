@@ -104,6 +104,8 @@ public sealed record ComputerUseWinClickRequest(
 public sealed record ComputerUseWinTypeTextRequest(
     string? StateToken = null,
     int? ElementIndex = null,
+    InputPoint? Point = null,
+    string? CoordinateSpace = null,
     string? Text = null,
     bool Confirm = false,
     bool AllowFocusedFallback = false,

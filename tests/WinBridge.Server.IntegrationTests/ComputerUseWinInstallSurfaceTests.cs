@@ -777,6 +777,8 @@ public sealed class ComputerUseWinInstallSurfaceTests
                     .GetProperty("properties");
                 Assert.True(typeTextProperties.TryGetProperty("allowFocusedFallback", out _));
                 Assert.True(typeTextProperties.TryGetProperty("observeAfter", out _));
+                Assert.True(typeTextProperties.TryGetProperty("point", out _));
+                Assert.True(typeTextProperties.TryGetProperty("coordinateSpace", out _));
 
                 foreach (string actionName in new[]
                 {

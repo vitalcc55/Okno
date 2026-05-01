@@ -2,6 +2,7 @@ using ModelContextProtocol.Protocol;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Tooling;
+using WinBridge.Runtime.Windows.Input;
 
 namespace WinBridge.Server.ComputerUse;
 
@@ -18,11 +19,27 @@ internal sealed class ComputerUseWinTypeTextHandler(
             ToolNames.ComputerUseWinTypeText,
             request.StateToken,
             request.ElementIndex,
-            ComputerUseWinStoredStateValidationMode.SemanticElementAction,
+            DetermineValidationMode(request),
             (resolvedState, ct) => typeTextExecutionCoordinator.ExecuteAsync(resolvedState, request, ct),
             (resolvedState, outcome) => CreateObservabilityContext(resolvedState, request, outcome),
             cancellationToken,
             observeAfter: request.ObserveAfter);
+
+    private static ComputerUseWinStoredStateValidationMode DetermineValidationMode(ComputerUseWinTypeTextRequest request)
+    {
+        if (request.Point is null)
+        {
+            return ComputerUseWinStoredStateValidationMode.SemanticElementAction;
+        }
+
+        string coordinateSpace = ComputerUseWinCoordinateSpaceContract.DetermineValidationModeCoordinateSpace(
+            request.CoordinateSpace,
+            ComputerUseWinTypeTextContract.AllowedCoordinateSpaceValues,
+            InputCoordinateSpaceValues.CapturePixels);
+        return string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
+            ? ComputerUseWinStoredStateValidationMode.CoordinateCapturePixelsAction
+            : ComputerUseWinStoredStateValidationMode.CoordinateScreenAction;
+    }
 
     private static ComputerUseWinActionObservabilityContext CreateObservabilityContext(
         ComputerUseWinStoredState resolvedState,
@@ -38,11 +55,13 @@ internal sealed class ComputerUseWinTypeTextHandler(
             WindowIdPresent: !string.IsNullOrWhiteSpace(resolvedState.Session.WindowId),
             StateTokenPresent: !string.IsNullOrWhiteSpace(request.StateToken),
             TargetMode: outcome.FallbackUsed
-                ? request.ElementIndex is null ? "focused_fallback" : "element_focused_fallback"
+                ? request.Point is not null
+                    ? "coordinate_confirmed_fallback"
+                    : request.ElementIndex is null ? "focused_fallback" : "element_focused_fallback"
                 : request.ElementIndex is null ? "focused_editable" : "element_index",
             ElementIndexPresent: request.ElementIndex is not null,
-            CoordinateSpace: null,
-            CaptureReferencePresent: false,
+            CoordinateSpace: parsed ? payload!.CoordinateSpace : request.CoordinateSpace,
+            CaptureReferencePresent: request.Point is not null && resolvedState.CaptureReference is not null,
             ConfirmationRequired: outcome.ConfirmationRequired,
             Confirmed: request.Confirm,
             RiskClass: outcome.RiskClass,

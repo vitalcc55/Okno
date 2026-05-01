@@ -64,12 +64,34 @@ Skill требует state-first discipline:
 
 - poor-UIA apps уже могут проходить screenshot-first navigation и subsequent
   actions;
-- `type_text` теперь имеет explicit `allowFocusedFallback=true` path для уже
-  focused poor-UIA text target: он требует `confirm=true`, fresh target-local
-  focus proof и text-entry-like candidate (`edit` либо `document`/`custom` с
-  tokenized text/input/edit/query/search-box hint). Это не разрешает ввод в произвольный
-  focused clickable control; результат остаётся `verify_needed`/SendInput route
-  без clipboard default и hidden focus guessing;
+- `type_text` теперь имеет explicit `allowFocusedFallback=true` paths для
+  poor-UIA text targets: focused fallback требует `confirm=true`, fresh
+  target-local focus proof и text-entry-like candidate (`edit` либо
+  `document`/`custom` с tokenized text/input/edit/query/search-box hint), а
+  coordinate-confirmed fallback требует explicit `point` из последнего
+  screenshot/capture state и optional `coordinateSpace`. Coordinate-confirmed
+  ветка делает click+type в одном SendInput batch, остаётся
+  `verify_needed`/dispatch-only и не разрешает hidden clipboard, OCR,
+  region_capture или generic ввод в любое focused окно;
+- для Class C / Qt-like targets операторский loop должен быть явным:
+
+  ```json
+  {
+    "stateToken": "<latest get_app_state token>",
+    "point": { "x": 386, "y": 805 },
+    "coordinateSpace": "capture_pixels",
+    "text": "Тест MPC",
+    "allowFocusedFallback": true,
+    "confirm": true,
+    "observeAfter": true
+  }
+  ```
+
+  `point` берётся из последнего screenshot/capture state. `verify_needed`
+  означает честный dispatch-only result, а не semantic proof; после ответа
+  нужно смотреть `successorState`/image block или новый `get_app_state`.
+  Отправку сообщения (`press_key(Enter)` или equivalent) делать отдельным
+  подтверждённым шагом только после видимого текста в поле ввода.
 - `click`, `press_key`, `type_text`, `scroll` и `drag` теперь поддерживают
   explicit `observeAfter=true`: после committed `done` / `verify_needed`
   action result может включать nested `successorState`, новый short-lived

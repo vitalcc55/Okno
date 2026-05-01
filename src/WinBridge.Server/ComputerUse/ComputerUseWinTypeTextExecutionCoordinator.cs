@@ -13,6 +13,7 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
     private const string DispatchPath = "win32_sendinput_unicode";
     private const string RiskClass = "text_input";
     private const string FocusedFallbackRiskClass = "focused_text_fallback";
+    private const string CoordinateConfirmedFallbackRiskClass = "coordinate_confirmed_text_fallback";
 
     public async Task<ComputerUseWinActionExecutionOutcome> ExecuteAsync(
         ComputerUseWinStoredState state,
@@ -33,6 +34,15 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
                 dispatchPath: null);
         }
 
+        ComputerUseWinTypeTextPayload parsedPayload = payload!;
+        if (parsedPayload.UsesCoordinateConfirmedFallback)
+        {
+            return await ExecuteCoordinateConfirmedFallbackAsync(
+                state,
+                parsedPayload,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         if (!TryResolveStoredTarget(state, request, out ComputerUseWinStoredElement? storedTarget, out string? storedTargetFailureCode, out string? storedTargetReason))
         {
             return ComputerUseWinActionExecutionOutcome.Failure(
@@ -45,7 +55,6 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
                 dispatchPath: null);
         }
 
-        ComputerUseWinTypeTextPayload parsedPayload = payload!;
         ComputerUseWinStoredElement resolvedStoredTarget = storedTarget!;
         bool focusedFallbackUsed = request.AllowFocusedFallback
             && !ComputerUseWinActionability.IsTypeTextActionable(resolvedStoredTarget);
@@ -127,6 +136,100 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
             riskClass: riskClass,
             dispatchPath: DispatchPath,
             fallbackUsed: focusedFallbackUsed,
+            successorObservationWindow: resolvedState.Window);
+    }
+
+    private async Task<ComputerUseWinActionExecutionOutcome> ExecuteCoordinateConfirmedFallbackAsync(
+        ComputerUseWinStoredState state,
+        ComputerUseWinTypeTextPayload payload,
+        CancellationToken cancellationToken)
+    {
+        InputPoint point = payload.Point!;
+        string coordinateSpace = payload.CoordinateSpace ?? InputCoordinateSpaceValues.CapturePixels;
+        string dispatchPath = DetermineCoordinateConfirmedDispatchPath(coordinateSpace);
+
+        if (string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
+        {
+            if (state.CaptureReference is null)
+            {
+                return ComputerUseWinActionExecutionOutcome.Failure(
+                    ComputerUseWinFailureDetails.Expected(
+                        ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
+                        "Coordinate-confirmed type_text fallback требует актуальный get_app_state со свежим capture proof."),
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                    confirmationRequired: true,
+                    riskClass: CoordinateConfirmedFallbackRiskClass,
+                    dispatchPath: dispatchPath,
+                    fallbackUsed: true);
+            }
+
+            if (point.X < 0
+                || point.Y < 0
+                || point.X >= state.CaptureReference.PixelWidth
+                || point.Y >= state.CaptureReference.PixelHeight)
+            {
+                return ComputerUseWinActionExecutionOutcome.Failure(
+                    ComputerUseWinFailureDetails.Expected(
+                        ComputerUseWinFailureCodeValues.PointOutOfBounds,
+                        "Указанная type_text capture_pixels point выходит за пределы capture raster из последнего get_app_state; скорректируй point перед retry."),
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                    confirmationRequired: true,
+                    riskClass: CoordinateConfirmedFallbackRiskClass,
+                    dispatchPath: dispatchPath,
+                    fallbackUsed: true);
+            }
+        }
+
+        ActivateWindowResult activation = await windowActivationService.ActivateAsync(state.Window, cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(activation.Status, ActivateWindowStatusValues.Done, StringComparison.Ordinal)
+            && !string.Equals(activation.Status, "already_active", StringComparison.Ordinal))
+        {
+            return ComputerUseWinActionExecutionOutcome.Failure(
+                ComputerUseWinActivationFailureMapper.Map(activation),
+                ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch,
+                confirmationRequired: true,
+                riskClass: CoordinateConfirmedFallbackRiskClass,
+                dispatchPath: dispatchPath,
+                fallbackUsed: true);
+        }
+
+        ComputerUseWinStoredState resolvedState = state with
+        {
+            Window = activation.Window ?? state.Window,
+        };
+
+        InputResult input = await ExecuteCoordinateConfirmedInputAsync(
+            resolvedState,
+            point,
+            coordinateSpace,
+            payload.Text,
+            cancellationToken).ConfigureAwait(false);
+        if (NeedsActivationRetry(input))
+        {
+            ActivateWindowResult retryActivation = await windowActivationService.ActivateAsync(resolvedState.Window, cancellationToken).ConfigureAwait(false);
+            if (string.Equals(retryActivation.Status, ActivateWindowStatusValues.Done, StringComparison.Ordinal)
+                || string.Equals(retryActivation.Status, "already_active", StringComparison.Ordinal))
+            {
+                resolvedState = resolvedState with
+                {
+                    Window = retryActivation.Window ?? resolvedState.Window,
+                };
+
+                input = await ExecuteCoordinateConfirmedInputAsync(
+                    resolvedState,
+                    point,
+                    coordinateSpace,
+                    payload.Text,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return ComputerUseWinActionExecutionOutcome.Success(
+            NormalizeCoordinateConfirmedFallbackResult(input),
+            confirmationRequired: true,
+            riskClass: CoordinateConfirmedFallbackRiskClass,
+            dispatchPath: dispatchPath,
+            fallbackUsed: true,
             successorObservationWindow: resolvedState.Window);
     }
 
@@ -213,6 +316,39 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
                 Hwnd = state.Session.Hwnd,
                 Actions =
                 [
+                    new InputAction
+                    {
+                        Type = InputActionTypeValues.Type,
+                        Text = text,
+                    },
+                ],
+            },
+            new InputExecutionContext(state.Window),
+            InputExecutionProfileValues.ComputerUseCore,
+            cancellationToken);
+
+    private Task<InputResult> ExecuteCoordinateConfirmedInputAsync(
+        ComputerUseWinStoredState state,
+        InputPoint point,
+        string coordinateSpace,
+        string text,
+        CancellationToken cancellationToken) =>
+        inputService.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = state.Session.Hwnd,
+                Actions =
+                [
+                    new InputAction
+                    {
+                        Type = InputActionTypeValues.Click,
+                        CoordinateSpace = coordinateSpace,
+                        Point = point,
+                        Button = InputButtonValues.Left,
+                        CaptureReference = string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
+                            ? state.CaptureReference
+                            : null,
+                    },
                     new InputAction
                     {
                         Type = InputActionTypeValues.Type,
@@ -316,4 +452,25 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
             Reason = input.Reason ?? "Focused type_text fallback dispatched через SendInput; проверь обновлённое состояние UI.",
         };
     }
+
+    private static InputResult NormalizeCoordinateConfirmedFallbackResult(InputResult input)
+    {
+        if (!string.Equals(input.Status, InputStatusValues.Done, StringComparison.Ordinal))
+        {
+            return input;
+        }
+
+        return input with
+        {
+            Status = InputStatusValues.VerifyNeeded,
+            Decision = InputStatusValues.VerifyNeeded,
+            ResultMode = InputResultModeValues.DispatchOnly,
+            Reason = input.Reason ?? "Coordinate-confirmed type_text fallback dispatched через SendInput; проверь обновлённое состояние UI.",
+        };
+    }
+
+    private static string DetermineCoordinateConfirmedDispatchPath(string coordinateSpace) =>
+        string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
+            ? "capture_pixels_text_input"
+            : "screen_text_input";
 }

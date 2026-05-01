@@ -34,6 +34,9 @@ public sealed class ToolContractManifestTests
         Assert.Contains("type_text", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
         Assert.Contains("allowFocusedFallback", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
         Assert.Contains("confirm=true", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.Contains("coordinate-confirmed", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.Contains("point", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
+        Assert.Contains("coordinateSpace", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
         Assert.Contains("clipboard-default", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
         Assert.Contains("observeAfter=true", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);
         Assert.Contains("successorState", ToolContractManifest.ComputerUseWinContractNotes, StringComparison.Ordinal);

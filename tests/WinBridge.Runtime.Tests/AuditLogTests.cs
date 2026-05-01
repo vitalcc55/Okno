@@ -369,6 +369,9 @@ public sealed class AuditLogTests
                    {
                        stateToken = "super-secret-state-token",
                        text = "  stage five raw text  ",
+                       point = new { x = 123, y = 456 },
+                       allowFocusedFallback = true,
+                       confirm = true,
                    },
                    snapshot))
         {
@@ -379,6 +382,8 @@ public sealed class AuditLogTests
         Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
         Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
         Assert.DoesNotContain("stage five raw text", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"x\":123", startedEvent, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"y\":456", startedEvent, StringComparison.Ordinal);
         Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
     }
 
