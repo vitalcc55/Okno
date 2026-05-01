@@ -1111,7 +1111,7 @@ Win32 focus proof и explicit coordinate-confirmed typing model.
 
 - Статус этапа: `approved`
 - Branch: `codex/computer-use-win-screenshot-first-hardening`
-- Commit SHA: `pending`
+- Commit SHA: `e13ff61`
 - TDD применялся: нет, Stage 6 является proof-fork/diagnosis gate без runtime behavior changes.
 - Проверки:
   - `scripts/codex/bootstrap.ps1`
