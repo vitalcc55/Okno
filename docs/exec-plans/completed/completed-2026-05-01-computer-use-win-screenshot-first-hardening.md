@@ -1,7 +1,7 @@
 # ExecPlan: Computer Use for Windows screenshot-first hardening
 
-Status: `active`
-Date: `2026-04-30`
+Status: `completed`
+Date: `2026-05-01`
 Primary scope: `focused type_text fallback`, `successor-state / action+observe`, `public instance continuity UX`
 
 ## Completion status
@@ -12,18 +12,19 @@ Primary scope: `focused type_text fallback`, `successor-state / action+observe`,
 - Stage 3 package commit: `a76effd`
 - Stage 4 package commit: `4840007d25981a13d78a44a688d901600cebbb28`
 - Stage 5 closure commit: `b92ae22b7eb17202d3f51d6c85b8223ba402594f`
-- Closure path: archived completed execution record; stage-by-stage sections
-  below are preserved as historical delivery evidence rather than an active
-  work queue.
-- Reopen path: этот active файл возвращён из completed record после product
-  feedback на реальном Telegram/Qt сценарии; historical stages `0-5` остаются
-  evidence, а живая работа продолжается новыми stages `6-8`.
+- Stage 6 decision commits: `e13ff61`, `f5a6793`
+- Stage 7 runtime implementation commit: `2526627bc91ccccc5ea5102d66cca04dfb7c24c8`
+- Stage 8 closure path: cache-installed Telegram product acceptance passed,
+  full sequential contour passed, and this reopened execution record is archived
+  back under `docs/exec-plans/completed/`.
+- Historical stages `0-5` remain delivery evidence from the first closure;
+  reopened stages `6-8` close the Telegram/Qt Class C text-entry gap.
 
-> **Для agentic workers:** этот active файл является reopened continuation
-> historical completed record для screenshot-first hardening workstream
-> `computer-use-win`. Historical stages `0-5` остаются evidence of delivery
-> order, verification ladder and review gates that produced the shipped slice;
-> active execution now continues through stages `6-8`.
+> **Для agentic workers:** этот файл является completed re-closure record
+> для screenshot-first hardening workstream `computer-use-win`. Historical
+> stages `0-5` сохраняют первый delivery contour, а reopened stages `6-8`
+> фиксируют доказательство и реализацию coordinate-confirmed text entry для
+> Telegram/Qt Class C poor-UIA сценария.
 
 ## Reopen status
 
@@ -963,7 +964,7 @@ Win32 focus proof и explicit coordinate-confirmed typing model.
 
 **Primary files / evidence owners:**
 
-- `docs/exec-plans/active/computer-use-win-screenshot-first-hardening.md`
+- `docs/exec-plans/completed/completed-2026-05-01-computer-use-win-screenshot-first-hardening.md`
 - `src/WinBridge.Server/ComputerUse/ComputerUseWinTypeTextExecutionCoordinator.cs`
 - `src/WinBridge.Server/ComputerUse/ComputerUseWinActionability.cs`
 - `src/WinBridge.Server/ComputerUse/ComputerUseWinContracts.cs`
@@ -1275,7 +1276,7 @@ Win32 focus proof и explicit coordinate-confirmed typing model.
   - P2 explicit JSON `point:null` allegedly passed as an absent selector. Static review hypothesis was rejected by targeted binder tests: `click`, `type_text`, `scroll` and `drag` all fail before dispatch with point-object binding errors.
 - Исправленные root causes: implemented explicit coordinate-confirmed proof branch instead of broadening target-local focused fallback; added public schema/validator/runtime/tests/docs/install-proof script support for `point` and `coordinateSpace`; corrected product docs boundary so Stage 7 is repo/helper implementation while Stage 8 remains cache-installed Telegram acceptance; added concrete operator invocation and visible-text-before-send guidance; changed shared public point schema to non-null object so optional point fields are omitted when absent and explicit null no longer appears valid in tools/list; updated the generated-docs source generator and refreshed `docs/generated/test-matrix.md` so test-matrix coverage matches proof-script behavior; updated this stage report to preserve review traceability.
 - Проверенные соседние paths: normal focused-editable `type_text`; existing focused weak-child fallback; coordinate-confirmed capture path; missing `confirm`; missing `allowFocusedFallback`; `elementIndex + point`; unsupported `coordinateSpace`; malformed point; explicit JSON null point for `click`, `type_text`, `scroll`, `drag.fromPoint` and `drag.toPoint`; missing capture reference; point out of bounds; failed dispatch with `observeAfter`; action event/artifact redaction; helper smoke Class C path; installed plugin tools/list schema; generated test-matrix source and generated artifact; roadmap/changelog/plugin README/skill wording for Stage 7 vs Stage 8 acceptance split; shared point schema for `click`, `type_text`, `scroll`, `drag.fromPoint` and `drag.toPoint`.
-- Остаточные риски: real Telegram product acceptance still pending Stage 8; coordinate-confirmed typing proves locality and dispatch, not semantic text outcome, so public result remains `verify_needed`.
+- Остаточные риски: at Stage 7 time real Telegram product acceptance still required Stage 8; Stage 8 later passed that cache-installed product proof. Coordinate-confirmed typing still proves locality and dispatch, not semantic text outcome, so public result remains `verify_needed`.
 - Разблокировка следующего этапа: after three-agent review/re-review approval and Stage 7 commit, start Stage 8 publish/cache proof and real Telegram acceptance.
 
 ### Stage 8: Real Telegram product acceptance and re-closure
@@ -1285,47 +1286,90 @@ through the plugin MCP surface, not only through helper fixtures.
 
 **Steps:**
 
-- [ ] Refresh/publish the plugin-local runtime bundle and synchronize the
+- [x] Refresh/publish the plugin-local runtime bundle and synchronize the
   cache-installed copy used by ordinary agents.
-- [ ] Run the real product scenario through cache-installed
+- [x] Run the real product scenario through cache-installed
   `computer-use-win`:
   `list_apps -> get_app_state -> click(Pольза) -> click(Рабочий👷‍♂️) -> type_text(...)`
   and prove that `Тест MPC` is visible in the input field before any send step.
-- [ ] After visible text proof passes, run a separate explicit send step
+- [x] After visible text proof passes, run a separate explicit send step
   (`press_key(Enter)` or equivalent) and record its outcome separately from the
   coordinate-confirmed typing proof.
-- [ ] Save a proof artifact that includes tool-level outcomes, image-bearing
+- [x] Save a proof artifact that includes tool-level outcomes, image-bearing
   successor state evidence and cache-installed provenance.
-- [ ] Record a class-coverage matrix in the stage report:
+- [x] Record a class-coverage matrix in the stage report:
   which of `A-F` are now covered, which remain intentionally unsupported, and
   which require future separate work.
-- [ ] Rerun full sequential contour:
+- [x] Rerun full sequential contour:
   `scripts/build.ps1 -> scripts/test.ps1 -> scripts/smoke.ps1 -> scripts/refresh-generated-docs.ps1 -> scripts/codex/verify.ps1`.
-- [ ] Run full-branch review against `main` with the same two `gpt-5.5`
+- [x] Run full-branch review against `main` with three `gpt-5.5`
   review roles and explicit-prompt/no-fork context.
-- [ ] Archive this active reopened plan back to `completed` only after the real
+- [x] Archive this active reopened plan back to `completed` only after the real
   Telegram acceptance target passes or after an explicit user-approved closure
   decision narrows the target.
 
 **Acceptance criteria:**
 
-- [ ] Real Telegram scenario passes as a product acceptance signal, not only
+- [x] Real Telegram scenario passes as a product acceptance signal, not only
   helper smoke.
-- [ ] Closure report names the solved root-cause family, not only the Telegram
+- [x] Closure report names the solved root-cause family, not only the Telegram
   app name.
-- [ ] Docs clearly distinguish:
+- [x] Docs clearly distinguish:
   semantic editable path,
   focused fallback path,
   any new coordinate-confirmed or settle/reobserve path,
   and still-unsupported classes.
-- [ ] The closure report records two ordered outcomes:
+- [x] The closure report records two ordered outcomes:
   first, visible text proof (`Тест MPC` is present in the Telegram input field);
   second, the separate explicit send-step result. Coordinate-confirmed typing is
   accepted only by the visible-text proof, while the send step is reported as an
   additional product outcome.
-- [ ] Cache-installed proof and docs reflect the true acceptance boundary.
-- [ ] Residual risks are explicit and no new broad workstream is smuggled into
+- [x] Cache-installed proof and docs reflect the true acceptance boundary.
+- [x] Residual risks are explicit and no new broad workstream is smuggled into
   the branch.
+
+#### Отчёт этапа
+
+- Статус этапа: `approved`
+- Branch: `codex/computer-use-win-screenshot-first-hardening`
+- Commit SHA: `2526627bc91ccccc5ea5102d66cca04dfb7c24c8` for Stage 7 runtime implementation; final Stage 8 docs/archive commit is recorded by the branch HEAD after closure.
+- TDD применялся: not applicable for Stage 8; Stage 8 is product acceptance/publication proof over Stage 7 TDD implementation.
+- Проверки:
+  - GREEN `scripts\codex\publish-computer-use-win-plugin.ps1` -> refreshed `plugins\computer-use-win\runtime\win-x64\Okno.Server.exe`.
+  - Cache sync: old cache-installed copy under `C:\Users\v.vlasov\.codex\plugins\cache\computer-use-win-local\computer-use-win\0.1.0` was backed up to `.tmp\.codex\plugin-cache-backup-20260501-174002\computer-use-win-local\computer-use-win\0.1.0`, then synchronized from `plugins\computer-use-win`.
+  - GREEN `scripts\codex\prove-computer-use-win-cache-install.ps1` -> `.tmp\.codex\computer-use-win-cache-proof\proof-20260501-174016.json`.
+  - Cache proof reported `repoHead=2526627bc91ccccc5ea5102d66cca04dfb7c24c8`, `repoWorkingTreeClean=true`, `runtimeBundleFreshForPublicationInputs=true`, `publicationAcceptanceEligible=true`, exact nine-tool public surface, `typeTextHasAllowFocusedFallback=true`, `typeTextHasPoint=true`, `typeTextHasCoordinateSpace=true`, `selectedActionsHaveObserveAfter=true`, `semanticOnlyActionsLackObserveAfter=true`, and `listAppsStatus=ok`.
+  - Fresh-session `tool_search` after Codex app restart exposed `type_text.point` and `type_text.coordinateSpace` in the ordinary plugin tool schema.
+  - Real Telegram product path through ordinary `@computer-use-win` tools:
+    `list_apps -> get_app_state -> click(point=Польза, observeAfter=true) -> click(point=Рабочий👷, observeAfter=true) -> type_text(point, coordinateSpace=capture_pixels, allowFocusedFallback=true, confirm=true, observeAfter=true)`.
+  - Visible-text proof passed: screenshot `C:\Users\v.vlasov\.codex\plugins\cache\computer-use-win-local\computer-use-win\0.1.0\artifacts\diagnostics\20260501T145832139-6f8b1\captures\window-window-66872-20260501T150152375-6517af5226c7451d9bcbef40c8da69e0.png` shows `Тест MPC` in the Telegram `Рабочий 👷` input field.
+  - Separate send step passed as an additional product outcome: `press_key(key=enter, observeAfter=true)` returned `verify_needed`, `refreshStateRecommended=false`, and screenshot `C:\Users\v.vlasov\.codex\plugins\cache\computer-use-win-local\computer-use-win\0.1.0\artifacts\diagnostics\20260501T145832139-6f8b1\captures\window-window-66872-20260501T150255817-975fbb582c13417f9eb1f2b77a233f0e.png` shows sent message `Тест MPC`.
+  - Acceptance summary artifact saved to `.tmp\.codex\telegram-acceptance\proof-20260501-180255.json`.
+  - Full sequential contour passed:
+    `scripts\build.ps1` -> build `0 warnings / 0 errors`;
+    `scripts\test.ps1` -> runtime `669/669`, integration `426/426`;
+    `scripts\smoke.ps1` -> run `20260501T180758435`;
+    `scripts\refresh-generated-docs.ps1` -> build `0 warnings / 0 errors`;
+    `scripts\codex\verify.ps1` -> build `0 warnings / 0 errors`, tests `669/669` + `426/426`, smoke run `20260501T181150187`, total `00:03:33.7483261`.
+- Review agents: `Hegel` (architecture/contract), `Popper` (tests/failure/docs/generated), `Euler` (product acceptance/publication proof). All three completed Stage 8 full-branch static review; no P0/P1/P2 runtime, contract, publication or acceptance findings remained.
+- Subagent context mode: `explicit_prompt_only` / `fork_context=false`; sandbox/static-analysis appendix included.
+- Official docs checked: not rechecked in Stage 8 so far.
+- Reference repos checked: none.
+- Подтверждённые замечания:
+  - Earlier in the same Codex thread, before app restart, `@computer-use-win` had a stale tool manifest loaded before cache synchronization. After app restart, ordinary tool discovery exposed the new schema and the product path passed.
+  - Stage 8 review found one docs-only root cause: roadmap, changelog and Stage 8 checklist still described Telegram/cache-installed acceptance as pending after the ordinary plugin proof had already passed.
+- Отклонённые замечания: none.
+- Исправленные root causes: repo plugin runtime bundle and cache-installed plugin copy were refreshed and proved through a fresh cache-launched MCP host; no runtime/schema fix was needed for the thread-local manifest cache. Closing docs were synchronized so product source-of-truth now says Stage 8 Telegram/cache-installed acceptance passed while keeping `verify_needed` / screenshot-confirmed boundary explicit.
+- Проверенные соседние paths: plugin-local publish, cache copy sync, stale cache process cleanup, cache/repo plugin digest equality, runtime bundle freshness, installed `tools/list` schema for `type_text` and selected/semantic-only actions; roadmap, changelog and Stage 8 report were checked for the same stale-pending wording class.
+- Class coverage:
+  - Class `A` semantic editable path remains covered by existing `set_value` / proof-backed `type_text`.
+  - Class `B` focused weak-child fallback remains covered by existing `allowFocusedFallback=true` fresh target-local focus proof.
+  - Class `C` top-level-only Qt/custom UI focus is now covered by explicit coordinate-confirmed `type_text(point, coordinateSpace, allowFocusedFallback=true, confirm=true)`, with Telegram product proof.
+  - Class `D/E` broad OCR/text detection and region detection remain intentionally out of scope.
+  - Class `F` bounded focus-settle/reobserve remains deferred; Stage 7/8 did not add hidden settle/retry behavior.
+- Остаточные риски: coordinate-confirmed typing still proves bounded point locality and dispatch, not semantic text outcome; public result remains `verify_needed`, and visible successor screenshot remains the acceptance proof. Screenshot preview UX outside runtime remains client/operator work.
+- Разблокировка следующего этапа:
+  - Stage 8 product proof, full sequential contour, full-branch review and completed-plan archival are complete. Next product work returns to approvals hardening / playbooks, with `windows.region_capture` still a separate later slice.
 
 ## 11. Test ladder
 
@@ -1435,7 +1479,7 @@ When implementation starts, the agent must sync all impacted docs in the same cy
 
 ## 16. Decision summary
 
-- `type_text` fallback: same tool, explicit `allowFocusedFallback`, mandatory `confirm`, default `verify_needed`; `elementIndex == null` may be the narrowest `v1`, but the plan does not freeze that as the only valid fallback shape.
+- `type_text` fallback: same tool, explicit `allowFocusedFallback`, mandatory `confirm`, default `verify_needed`; current shipped paths are proof-backed focused editable/focused weak-child fallback plus explicit coordinate-confirmed `point`/`coordinateSpace` fallback for Class `C` top-level-only Qt/custom UI cases.
 - action+observe: same tools, explicit `observeAfter`, shared post-action observer, nested `successorState`, additive image content; successful successor observe satisfies immediate refresh need even if top-level status remains `verify_needed`.
 - continuity UX: reduce selector churn by reusing `windowId` only across repeated strict discovery matches; no public `hwnd + processId` selector.
 - screenshot preview: runtime already correct; treat preview as client/operator UX unless an additive hint is strictly needed.
