@@ -1,8 +1,6 @@
 # Okno Product Docs
 
-## Статус
-
-Да, теперь продуктовую разработку можно продолжать без трёх старых markdown-файлов в корне. Их содержимое перенесено в `docs/product/`, а ссылки в repo-memory перепривязаны сюда.
+This directory is the product source of truth for `Okno`.
 
 ## Source of truth
 
@@ -11,25 +9,35 @@
 - [okno-roadmap.md](okno-roadmap.md)
 - [../generated/computer-use-win-interfaces.md](../generated/computer-use-win-interfaces.md)
 
-## Как использовать
+## How to use these docs
 
-- `okno-vision.md` — north star и архитектурный вектор продукта.
-- `okno-spec.md` — текущий продуктовый контракт.
-- `okno-roadmap.md` — порядок реализации и delivery milestones.
+- `okno-vision.md` — product direction and long-term framing
+- `okno-spec.md` — current product contract
+- `okno-roadmap.md` — delivery order and current capability map
 
 ## Transport policy
 
-- Product-ready target сейчас только `STDIO` local process.
-- HTTP/URL transport не входит в текущий delivery scope.
-- После готового и стабильного `STDIO` можно будет проектировать и добавлять HTTP-режим как отдельный этап.
+- The current product-ready target is a local `STDIO` MCP process.
+- HTTP / URL transport is not part of the current delivery scope.
+- A future HTTP mode, if it is ever added, should be designed as a separate
+  stage after the local `STDIO` story is stable.
 
 ## OpenAI interop note
 
-- `shell`, `skills`, `MCP` и `computer use` рассматриваются как соседние слои, а не как одна и та же feature под разными именами.
-- Для текущего продукта публичным Codex path становится `computer-use-win`, а `Okno` остаётся внутренним Windows-native runtime/engine.
-- Текущий локальный integration path для Codex идёт через plugin/MCP surface `computer-use-win` поверх этого репозитория; built-in OpenAI `computer use` остаётся внешней compatibility track и не меняет ближайший roadmap продукта.
-- Source of truth по этой теме лежит в [../architecture/openai-computer-use-interop.md](../architecture/openai-computer-use-interop.md) и дополняется roadmap в [okno-roadmap.md](okno-roadmap.md).
+- `shell`, `skills`, `MCP`, and `computer use` are treated as adjacent layers,
+  not as the same feature under different names.
+- For the current product, the public Codex path is `computer-use-win`, while
+  `Okno` remains the internal Windows-native runtime/engine.
+- The current local integration path for Codex goes through the
+  `computer-use-win` plugin/MCP surface on top of this repository.
+- Built-in OpenAI `computer use` remains a compatibility track, not a change to
+  the near-term product roadmap.
+- The source of truth for this topic lives in
+  [../architecture/openai-computer-use-interop.md](../architecture/openai-computer-use-interop.md)
+  and is complemented by [okno-roadmap.md](okno-roadmap.md).
 
-## Примечание о codename
+## Codename note
 
-Внутренние проекты, namespaces и часть путей пока сохраняют имя `WinBridge`. Это сознательно оставлено как внутренний codename и не считается product-facing source of truth.
+Some internal projects, namespaces, and paths still use the name `WinBridge`.
+That is an intentional internal codename and not the product-facing source of
+truth.

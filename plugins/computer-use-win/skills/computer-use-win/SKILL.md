@@ -7,38 +7,38 @@ description: "Use when an agent needs to operate Windows apps through the public
 
 ## Overview
 
-Этот skill нужен не для разработки `Okno`, а для **быстрого onboarding-а
-нового агента**, который впервые столкнулся с публичным plugin surface
-`computer-use-win`.
+This skill is not for developing `Okno`. It is for **quick onboarding of a new
+agent** that is seeing the public `computer-use-win` plugin surface for the
+first time.
 
-Главная модель работы:
+The main working model is:
 
 ```text
 list_apps -> get_app_state -> action -> verify
 ```
 
-Важно:
+Important:
 
-- работай через публичный surface `computer-use-win`, а не через внутренние
+- work through the public `computer-use-win` surface, not through internal
   `windows.*` engine tools;
-- считай продукт **screenshot-first и state-first**;
-- не путай successful dispatch с semantic success;
-- для low-confidence actions используй `observeAfter=true` или отдельный
-  повторный `get_app_state`.
+- treat the product as **screenshot-first and state-first**;
+- do not confuse successful dispatch with semantic success;
+- for low-confidence actions, use `observeAfter=true` or an explicit follow-up
+  `get_app_state`.
 
-## Когда использовать
+## When to Use
 
-- Нужно управлять Windows GUI через plugin `computer-use-win`.
-- Нужно выбрать окно, получить screenshot/state и выполнить действие.
-- Нужно понять, какой tool использовать: `click`, `set_value`, `type_text`,
-  `press_key`, `scroll`, `perform_secondary_action` или `drag`.
-- Нужно интерпретировать `verify_needed`, `successorState`,
-  `successorStateFailure`, `windowId`, `stateToken` и другие product-level
-  поля.
+- You need to operate Windows GUI through the `computer-use-win` plugin.
+- You need to choose a window, fetch screenshot/state, and perform an action.
+- You need to decide which tool to use: `click`, `set_value`, `type_text`,
+  `press_key`, `scroll`, `perform_secondary_action`, or `drag`.
+- You need to interpret `verify_needed`, `successorState`,
+  `successorStateFailure`, `windowId`, `stateToken`, and other product-level
+  fields.
 
-## Что доступно сейчас
+## What Is Available Right Now
 
-Публичный surface состоит из 9 tools:
+The public surface currently consists of 9 tools:
 
 - `list_apps`
 - `get_app_state`
@@ -50,7 +50,7 @@ list_apps -> get_app_state -> action -> verify
 - `perform_secondary_action`
 - `drag`
 
-Поддержка `observeAfter=true` сейчас есть у:
+`observeAfter=true` is currently supported by:
 
 - `click`
 - `press_key`
@@ -58,31 +58,32 @@ list_apps -> get_app_state -> action -> verify
 - `scroll`
 - `drag`
 
-Semantic-only actions без `observeAfter`:
+Semantic-only actions without `observeAfter`:
 
 - `set_value`
 - `perform_secondary_action`
 
-## С чего начинать
+## Where to Start
 
-### 1. Найди приложение
+### 1. Find the app
 
-Сначала вызови `list_apps`.
+Call `list_apps` first.
 
-Используй его, чтобы:
+Use it to:
 
-- найти нужный app group;
-- выбрать конкретное окно из `windows[]`;
-- взять `windowId` как основной public selector.
+- find the relevant app group;
+- choose the concrete window from `windows[]`;
+- take `windowId` as the main public selector.
 
-Не считай `windowId` вечным идентификатором.
-Он discovery-scoped, хотя repeated unchanged snapshots now try to reuse it.
+Do not treat `windowId` as an eternal identifier.
+It is discovery-scoped, although repeated unchanged snapshots now try to reuse
+it.
 
-### 2. Получи action-ready state
+### 2. Get action-ready state
 
-Затем вызови `get_app_state`.
+Then call `get_app_state`.
 
-Ищи в результате:
+Look for:
 
 - `session`
 - `stateToken`
@@ -91,263 +92,173 @@ Semantic-only actions без `observeAfter`:
 - `warnings`
 - screenshot image content
 
-Если клиент не показывает screenshot inline, используй `artifactPath` как
-operator/debug fallback, но source of truth для action planning всё равно
-`get_app_state`.
+If the client does not show the screenshot inline, use `artifactPath` as an
+operator/debug fallback, but `get_app_state` is still the source of truth for
+action planning.
 
-### 3. Выбери действие
+### 3. Choose the action
 
-Используй такую лестницу:
+Use this ladder:
 
-1. semantic action, если proof сильный;
-2. explicit physical path, если UIA слабый, но target хорошо локализован;
-3. после low-confidence action сразу получай новый state через
-   `observeAfter=true` или отдельный `get_app_state`.
+1. semantic action when proof is strong;
+2. explicit physical path when UIA is weak but the target is well localized;
+3. after a low-confidence action, get fresh state immediately through
+   `observeAfter=true` or a separate `get_app_state`.
 
-## Как выбирать tool
+## How to Choose a Tool
 
 ### `click`
 
-Используй:
+Use:
 
-- `elementIndex`, если semantic target доступен;
-- `point` + `confirm=true`, если нужен coordinate path.
+- `elementIndex` when a semantic target is available;
+- `point` + `confirm=true` when you need a coordinate path.
 
-Предпочитай `elementIndex`.
-Coordinate click — low-confidence path.
+Prefer `elementIndex`.
+Coordinate click is a low-confidence path.
 
 ### `set_value`
 
-Это preferred semantic path для settable controls.
+This is the preferred semantic path for settable controls.
 
-Используй его, когда:
+Use it when:
 
-- control действительно выглядит settable;
-- в tree/affordance есть strong semantic signal;
-- ты хочешь value change, а не физическую имитацию печати.
+- the control really looks settable;
+- the tree/affordance exposes a strong semantic signal;
+- you want a value change, not a physical typing simulation.
 
-Не заменяй `set_value` на `type_text`, если semantic path выглядит правдоподобным.
+Do not replace `set_value` with `type_text` if the semantic path looks
+credible.
 
 ### `type_text`
 
-Это tool для текста, но у него **несколько режимов**.
+This tool is for text, but it has **multiple modes**.
 
-#### Обычный путь
+#### Ordinary path
 
-Используй обычный `type_text`, когда:
+Use ordinary `type_text` when:
 
-- есть focused editable proof;
-- или есть сильный focused writable target.
+- there is focused editable proof;
+- or there is a strong focused writable target.
 
 #### Focused fallback
 
-Используй:
+Use:
 
 - `allowFocusedFallback=true`
 - `confirm=true`
 
-только если UIA proof слабый, но runtime всё ещё может честно доказать
-target-local focus boundary для text-entry-like target.
+only when UIA proof is weak but the runtime can still honestly prove a
+target-local focus boundary for a text-entry-like target.
 
-Это не generic ввод в любое focused окно.
+This is not generic typing into any focused window.
 
 #### Coordinate-confirmed fallback
 
-Используй explicit `point` только для poor-UIA / top-level-focus paths, когда
-другого честного text-entry proof нет.
+Use an explicit `point` only for poor-UIA / top-level-focus paths when there
+is no other honest text-entry proof.
 
-Форма:
+Form:
 
 ```json
 {
   "stateToken": "<latest token>",
   "point": { "x": 386, "y": 805 },
   "coordinateSpace": "capture_pixels",
-  "text": "Тест MPC",
+  "text": "Test MCP",
   "allowFocusedFallback": true,
   "confirm": true,
   "observeAfter": true
 }
 ```
 
-Правила:
+Rules:
 
-- `point` берётся из **последнего** screenshot/app state;
-- coordinate space для этой ветки — `capture_pixels`;
-- `screen` для этой ветки не использовать;
-- это dispatch-only path, обычно с `verify_needed`;
-- hidden clipboard/paste здесь нет.
+- take `point` from the **latest** screenshot/app state;
+- the coordinate space for this branch is `capture_pixels`;
+- do not use `screen` for this branch;
+- this is a dispatch-only path and usually returns `verify_needed`;
+- there is no hidden clipboard/paste path here.
 
 ### `press_key`
 
-Используй для:
+Use it for:
 
 - `Enter`
 - `Tab`
-- навигационных клавиш
+- navigation keys
 - modifier combos
 
-Не используй его для произвольного печатного текста, если нужен именно text insertion.
+Do not use it for arbitrary printable text when you really need text
+insertion.
 
 ### `scroll`
 
-Используй:
+Use:
 
-- semantic scroll path, если target семантически понятен;
-- `point` + `confirm=true`, если нужен coordinate wheel path.
+- a semantic scroll path when the target is semantically clear;
+- `point` + `confirm=true` when you need a coordinate wheel path.
 
-Если сразу нужен новый visual state, добавляй `observeAfter=true`.
+If you immediately need a new visual state, add `observeAfter=true`.
 
 ### `perform_secondary_action`
 
-Это semantic secondary action.
+This is a semantic secondary action.
 
-Не думай о нём как о generic right-click alias.
+Do not think of it as a generic right-click alias.
 
-Если target poor-UIA и нужен именно физический context-menu style path,
-ожидай, что этот tool может быть не тем, что тебе нужно.
+If the target is poor-UIA and you specifically need a physical context-menu
+style path, expect that this tool may not be the right one.
 
 ### `drag`
 
-Считай `drag` low-confidence physical action.
+Treat `drag` as a low-confidence physical action.
 
-Хорошая практика:
+Good practice:
 
-- делай его только на свежем state;
-- после него используй `observeAfter=true` или отдельный `get_app_state`.
+- do it only on fresh state;
+- after it, use `observeAfter=true` or a separate `get_app_state`.
 
-## Как читать результат
+## How to Read Results
 
 ### `done`
 
-Более сильный результат, но не общий default для coordinate/poor-UIA paths.
+A stronger result, but not the common default for coordinate or poor-UIA
+paths.
 
 ### `verify_needed`
 
-Это **нормальный** результат для low-confidence actions.
+This is a **normal** result for low-confidence actions.
 
-Он не означает “tool сломан”.
+It does not mean "the tool is broken."
 
-Он означает:
+It means:
 
-- dispatch произошёл;
-- но semantic outcome не доказан автоматически.
+- dispatch happened;
+- but semantic outcome was not automatically proven.
 
-Если при этом есть `successorState`, то:
+If there is also `successorState`, then:
 
-- fresh state уже получен;
-- ещё один немедленный `get_app_state` может быть не нужен;
-- но top-level action всё равно не притворяется semantic `done`.
+- fresh state has already been fetched;
+- another immediate `get_app_state` may not be necessary;
+- but the top-level action still does not pretend to be semantic `done`.
 
 ### `failed`
 
-Обычно означает:
+Usually means:
 
 - stale state;
 - missing target;
-- blocked/integrity/foreground problem;
+- blocked / integrity / foreground problem;
 - invalid request;
-- weak proof, который runtime честно не смог поднять до action-ready path.
+- weak proof that the runtime honestly could not lift into an action-ready
+  path.
 
 ### `approval_required`
 
-Не обходи это “хитрым” fallback path.
-Это отдельный product gate.
+Do not bypass this with a "clever" fallback path.
+This is a separate product gate.
 
 ### `blocked`
 
-Не автоматизируй blocked targets.
-
-## Нормальные loops
-
-### Базовый loop
-
-```text
-list_apps -> get_app_state -> click -> get_app_state
-```
-
-### Ускоренный post-action loop
-
-```text
-list_apps -> get_app_state -> action(observeAfter=true) -> successorState
-```
-
-### Poor-UIA typing loop
-
-```text
-list_apps
--> get_app_state
--> screenshot-first navigation
--> type_text(allowFocusedFallback=true, confirm=true, observeAfter=true)
--> successorState or get_app_state
-```
-
-### Coordinate-confirmed poor-UIA typing
-
-```text
-list_apps
--> get_app_state
--> choose capture_pixels point from screenshot
--> type_text(point, allowFocusedFallback=true, confirm=true, observeAfter=true)
--> successorState
--> press_key(Enter, observeAfter=true) if send/submit is still needed
-```
-
-## Что не делать
-
-- Не используй внутренние `windows.*` tools как обычный product path.
-- Не считай `hwnd + processId` публичным selector.
-- Не думай, что `verify_needed` = failure.
-- Не используй `type_text` как hidden clipboard tool.
-- Не отправляй coordinate text input в `screen` coordinates.
-- Не автоматизируй blocked targets.
-- Не считай `observeAfter=true` semantic proof сам по себе.
-- Не считай screenshot preview gap признаком отсутствия screenshot-first runtime path.
-
-## Быстрый troubleshooting
-
-- Если `windowId` перестал работать: повтори `list_apps`, потом `get_app_state`.
-- Если `stateToken` stale: получи новый `get_app_state`.
-- Если coordinate path не проходит: проверь, что point взят из последнего
-  screenshot state и что target ещё в тех же bounds.
-- Если `type_text` reject-ится: проверь, что ты не пытаешься использовать
-  focused fallback без `confirm=true`.
-- Если после action нет inline screenshot: ищи `successorState`, image content
-  block и `artifactPath`.
-
-## Для maintainers репозитория
-
-Это не основной сценарий skill, но если ты меняешь сам plugin/runtime:
-
-- runtime/server/verification changes:
-
-```powershell
-.\scripts\codex\verify.ps1
-```
-
-- свежий shipped evidence:
-
-```powershell
-.\scripts\smoke.ps1
-```
-
-- расследование падений:
-
-```powershell
-.\scripts\investigate.ps1
-```
-
-- refresh generated docs:
-
-```powershell
-.\scripts\refresh-generated-docs.ps1
-```
-
-- proof для cache-installed plugin copy:
-
-```powershell
-.\scripts\codex\prove-computer-use-win-cache-install.ps1
-```
-
-Если меняешь public contract, diagnostics schema или plugin-local install
-surface, делай docs/generated sync в том же цикле.
+Do not automate blocked targets.

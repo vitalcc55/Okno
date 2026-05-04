@@ -1,16 +1,16 @@
 {
   "name": "computer-use-win",
   "version": "0.1.0",
-  "description": "Control Windows desktop apps from Codex through Computer Use for Windows powered by Okno.",
+  "description": "Okno Computer Use for Windows: Windows desktop automation for AI agents over MCP/STDIO.",
   "author": {
     "name": "Vlasov Vitaly"
   },
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Computer Use for Windows",
-    "shortDescription": "Control Windows apps from Codex through Okno",
-    "longDescription": "Computer Use for Windows is a Codex-native Windows desktop control plugin powered by the Okno engine. It provides the public operator surface `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, and `drag` for state-first GUI work without exposing the low-level Windows engine tools as the main product UX.",
+    "displayName": "Okno: Computer Use for Windows",
+    "shortDescription": "Windows desktop automation from Codex through Okno",
+    "longDescription": "Okno: Computer Use for Windows is a Codex-native Windows desktop automation plugin backed by a local MCP server over STDIO. It provides the public operator surface `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, and `drag` for state-first GUI work without exposing low-level Windows engine tools as the main product UX.",
     "developerName": "Vlasov Vitaly",
     "category": "Productivity",
     "capabilities": [

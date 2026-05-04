@@ -1,266 +1,227 @@
-# Computer Use for Windows
+# Okno
 
-Computer Use for Windows — это локальный Codex plugin для управления Windows
-desktop apps через screenshot-first, state-first loop:
+[**English**](README.md) | [Русский](README.ru.md) | [简体中文](README.zh-CN.md)
+
+> Windows-native MCP runtime for AI agents
+>
+> **Computer Use for Windows** is Okno's first public capability for desktop
+> automation over `MCP` / `STDIO`.
+
+| Platform | Transport | Capability | Runtime | Core execution model |
+| --- | --- | --- | --- | --- |
+| Windows 11 | Local MCP over `STDIO` | `Computer Use for Windows` | C# / .NET 8 | UIA semantics + screenshot-backed verification |
+
+## Why Okno
+
+Okno turns real Windows desktop apps into an operator surface for AI agents.
+It is built for cases where shell commands, browser-only automation, or app
+APIs are not enough.
+
+The current public capability, **Computer Use for Windows**, lets an agent
+inspect windows, read action-ready state, act on the target UI, and verify the
+result instead of assuming that a dispatched click or keystroke means success.
+
+This repository is not a generic Windows scripting toolkit and not a browser
+automation project in disguise. It is a Windows-native runtime for agentic GUI
+work, with a product-ready local transport based on `MCP over STDIO`.
+
+## What Computer Use for Windows Can Do Today
+
+Today the shipped public surface can:
+
+- discover running desktop apps and windows through `list_apps`;
+- capture screenshot-backed state through `get_app_state`;
+- return an accessibility tree, geometry, `captureReference`, and a short-lived
+  `stateToken`;
+- perform `click`, `press_key`, `set_value`, `type_text`, `scroll`,
+  `perform_secondary_action`, and `drag`;
+- return `verify_needed` instead of pretending that a low-confidence action is
+  semantically complete;
+- return `successorState` on supported actions through `observeAfter=true`;
+- work with both strong-UIA applications and weaker Qt / Electron / custom GUI
+  targets through bounded physical fallback paths.
+
+## How It Works
+
+Okno runs locally on Windows as an MCP runtime. The current product-ready
+transport is **local `STDIO`**, and the current polished integration path is
+the Codex plugin shipped in this repository.
+
+`Computer Use for Windows` is the current public capability layer. Under the
+hood, it uses the Okno runtime and internal `WinBridge` engine components, but
+the public UX stays focused on a quiet operator surface instead of exposing
+raw low-level `windows.*` tools as the main product story.
+
+The normal loop is:
 
 ```text
 list_apps -> get_app_state -> action -> verify
 ```
 
-Если коротко: этот репозиторий даёт тебе installable plugin
-`computer-use-win`, который умеет находить окна, возвращать action-ready state
-со screenshot и accessibility tree, а затем выполнять `click`, `press_key`,
-`set_value`, `type_text`, `scroll`, `perform_secondary_action` и `drag`.
+In practice, that means:
 
-Внутри plugin использует `Okno` / `WinBridge` как Windows-native engine, но
-наружу публикует тихий operator surface, а не низкоуровневые `windows.*`
-engine tools.
+1. find the target window;
+2. get fresh state with screenshot and accessibility data;
+3. choose the strongest available action path;
+4. verify the result through `observeAfter=true` or a follow-up
+   `get_app_state`.
 
-## What You Get
+## Why It Is Different
 
-- находить запущенные Windows apps и их окна через `list_apps`;
-- получать screenshot-first app state через `get_app_state`;
-- возвращать `stateToken`, `captureReference`, bounds и compact accessibility
-  tree;
-- выполнять `click`, `press_key`, `set_value`, `type_text`, `scroll`,
-  `perform_secondary_action`, `drag`;
-- для low-confidence actions возвращать `verify_needed`, а не притворяться
-  semantic success;
-- на поддерживаемых actions делать post-action observe через
-  `observeAfter=true` и возвращать nested `successorState`;
-- работать не только с strong-UIA apps, но и с poor-UIA / custom GUI через
-  bounded screenshot-first + physical input paths.
+Okno is designed around four product rules.
 
-Текущий public tool surface:
+| Principle | What it means in practice |
+| --- | --- |
+| Strong semantic path | Prefer UIA-backed actions where the runtime can prove the target well. |
+| Screenshot-backed state | Screenshots are part of observation and verification, not a decorative extra. |
+| Bounded physical fallback | When UIA is weak, the runtime can still act through guarded physical input paths. |
+| Honest outcomes | Low-confidence actions return `verify_needed` instead of optimistic fake success. |
 
-- `list_apps`
-- `get_app_state`
-- `click`
-- `press_key`
-- `set_value`
-- `type_text`
-- `scroll`
-- `perform_secondary_action`
-- `drag`
+This makes Okno a better fit for real Windows GUI work than tools that only
+dispatch coordinates, and a better fit for poor-UIA targets than tools that
+assume semantic automation is reliable everywhere.
 
-Дополнительно:
+## Where It Fits Best
 
-- plugin уже умеет работать не только со strong-UIA apps, но и с poor-UIA /
-  custom GUI через bounded screenshot-first + physical input paths;
-- low-confidence actions не притворяются semantic success и честно отвечают
-  `verify_needed`;
-- поддерживаемые actions могут сразу вернуть fresh successor state через
-  `observeAfter=true`.
+Okno is a strong fit if you need:
 
-## Install
+- local Windows desktop automation for AI agents;
+- a Windows-native MCP runtime instead of a browser-only tool;
+- a Codex-friendly operator surface for real desktop apps;
+- a verification-oriented execution model for unstable or weak-semantic UI.
 
-Для текущего install-from-source path нужны:
+Okno is not the primary tool to reach for if you need:
 
-- Windows 11;
-- Codex на Windows;
-- .NET SDK `8.0.401` или совместимый по [global.json](global.json);
-- PowerShell.
+- browser-first DOM automation;
+- one-click consumer distribution with no local setup;
+- full enterprise RPA orchestration and low-code workflow tooling.
 
-### 1. Склонируй репозиторий
+## Quick Start
+
+The shortest supported path today is **Codex on Windows** with the local
+plugin shipped from this repository.
+
+### Prerequisites
+
+- Windows 11
+- Codex on Windows
+- .NET SDK `8.0.401` or compatible with [global.json](global.json)
+- PowerShell
+
+### 1. Clone the repository
 
 ```powershell
 git clone https://github.com/vitalcc55/Okno.git
 cd Okno
 ```
 
-### 2. Подготовь plugin-local runtime bundle
+### 2. Publish the plugin-local runtime bundle
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1
 ```
 
-Это materialize-ит self-contained runtime bundle в
+This materializes the self-contained runtime bundle in
 [plugins/computer-use-win/runtime/win-x64](plugins/computer-use-win/runtime/win-x64).
 
-### 3. Установи local plugin из repo marketplace
+### 3. Install the local plugin from the repository marketplace entry
 
-В репозитории уже есть local marketplace entry:
+Repository entry points:
 
-- [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json)
-- plugin id: `computer-use-win-local`
-- plugin name: `computer-use-win`
-
-Install surface самого plugin лежит здесь:
-
+- [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)
 - [plugins/computer-use-win](plugins/computer-use-win)
 - [plugins/computer-use-win/.codex-plugin/plugin.json](plugins/computer-use-win/.codex-plugin/plugin.json)
 - [plugins/computer-use-win/.mcp.json](plugins/computer-use-win/.mcp.json)
 
-### 4. Перезапусти Codex или открой новый thread
+### 4. Restart Codex or open a new thread
 
-Установленная copy plugin запускается не из repo root, а из Codex plugin cache.
-Если после install/reinstall surface выглядит stale, перезапусти Codex или
-открой новый thread.
+The installed plugin runs from the Codex plugin cache, not from the repository
+root. If the surface looks stale after reinstall, restart Codex or open a new
+thread.
 
-## Quick Start
+### 5. Run the first loop
 
-Первый рабочий flow:
+1. call `list_apps`;
+2. choose a `windowId`;
+3. call `get_app_state(windowId=...)`;
+4. act;
+5. verify with `observeAfter=true` or a new `get_app_state`.
 
-1. `list_apps`
-2. выбрать окно по `windowId`
-3. `get_app_state`
-4. выбрать действие
-5. `observeAfter=true` или новый `get_app_state`
+## Public Tool Surface
 
-Нормальный сценарий:
+| Tool | Purpose |
+| --- | --- |
+| `list_apps` | Discover running desktop apps and windows. |
+| `get_app_state` | Return screenshot-backed state, bounds, tokens, and accessibility data. |
+| `click` | Activate a semantic target or confirmed point target. |
+| `press_key` | Send explicit keyboard input. |
+| `set_value` | Use semantic value-setting paths where supported. |
+| `type_text` | Enter text through semantic or guarded fallback typing paths. |
+| `scroll` | Perform scroll actions and verify the movement path when possible. |
+| `perform_secondary_action` | Run toggle / expand-collapse style secondary semantic actions. |
+| `drag` | Perform bounded drag operations with explicit source and destination proof. |
 
-1. Вызвать `list_apps` и найти нужное окно.
-2. Вызвать `get_app_state(windowId=...)`.
-3. Посмотреть на screenshot, `bounds`, `stateToken`, `actions`,
-   accessibility tree.
-4. Если есть strong semantic target, предпочесть:
-   - `set_value`
-   - `perform_secondary_action`
-   - `click(elementIndex=...)`
-5. Если UIA слабый, использовать bounded physical path:
-   - `click(point=..., confirm=true)`
-   - `type_text(..., allowFocusedFallback=true, confirm=true)`
-6. Для low-confidence path сразу получить новый state:
-   - `observeAfter=true`
-   - или отдельный `get_app_state`
+Important runtime-facing fields:
 
-Важные поля:
+- `windowId` is a public selector for the current discovery state, not an
+  eternal window identity.
+- `stateToken` is a short-lived proof artifact for the last observation state.
+- `verify_needed` means the dispatch happened but the semantic outcome still
+  needs observation.
+- `successorState` is the fresh post-action state when `observeAfter=true`
+  succeeded.
 
-- `windowId` — public selector для текущего discovery snapshot, но не “вечный”
-  идентификатор окна.
-- `stateToken` — short-lived proof артефакт последнего observation state.
-- `verify_needed` — не ошибка; это честный ответ, что dispatch произошёл, но
-  semantic success нужно подтвердить наблюдением.
-- `successorState` — уже полученный свежий state после action, если был
-  `observeAfter=true`.
+## Trust, Safety, and Boundaries
 
-Poor-UIA / custom GUI:
+- The runtime works in a **real** Windows desktop session.
+- Physical mouse and keyboard input are shared system resources.
+- The project does not pretend to provide a second independent system cursor.
+- Weak-semantic or poor-UIA targets may require bounded physical fallback.
+- Blocked or sensitive targets still need explicit policy discipline.
+- Low-confidence actions should be treated as `dispatch + verify`, not as blind
+  success.
 
-Проект не строится вокруг предположения “UIA хороший везде”.
+## Documentation Map
 
-Для Qt / Electron / React / custom UI / weak-semantic surfaces текущая
-стратегия такая:
+If you want more than the front page:
 
-- screenshot-first observation;
-- semantic path, если proof сильный;
-- bounded physical path, если proof слабый, но target достаточно локализован;
-- no hidden clipboard default;
-- no optimistic `done` только по факту dispatch;
-- successor observation после low-confidence actions.
-
-Для `type_text` сейчас уже есть:
-
-- ordinary focused editable path;
-- focused fallback через `allowFocusedFallback=true` + `confirm=true`;
-- coordinate-confirmed path через explicit `point` в
-  `coordinateSpace="capture_pixels"` из последнего screenshot state.
-
-Это делает plugin практичнее для реальных desktop apps, но не отменяет того,
-что physical input остаётся общим ресурсом Windows-сессии.
+- product docs: [docs/product/index.md](docs/product/index.md)
+- product spec: [docs/product/okno-spec.md](docs/product/okno-spec.md)
+- roadmap: [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md)
+- product vision: [docs/product/okno-vision.md](docs/product/okno-vision.md)
+- architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
+- public capability docs:
+  [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
+- generated interfaces:
+  [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
+- commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
 
 ## Status
 
-На сегодня проект уже **годится для release в git** и **уже пригоден для
-реального использования как local Codex plugin**.
+Okno is already usable today as a local Windows plugin/runtime for Codex and
+as a local MCP surface over `STDIO`.
 
-Что уже хорошо:
+What is already strong:
 
-- это уже не research prototype;
-- plugin install surface, self-contained runtime bundle и cache-installed proof
-  в репозитории есть;
-- plugin можно поставить и использовать с другого Windows ПК;
-- public contract, install scripts и install-surface tests уже существуют.
+- the public capability is shipped and installable from source;
+- the runtime bundle and plugin install surface already exist;
+- the public contract, smoke path, and verification loop are real;
+- the runtime is past the research-prototype stage.
 
-Что пока не идеально:
+What is still intentionally honest:
 
-- install UX ещё **developer-oriented**, а не polished consumer-grade
-  one-click distribution;
-- лучший поддержанный путь сейчас — **локальный checkout репозитория**;
-- перед install/reinstall нужно materialize-ить plugin-local runtime bundle;
-- широкая end-user distribution story пока слабее, чем сам runtime/plugin
-  contract.
+- installation is still developer-oriented;
+- the best supported path is still a local repository checkout;
+- you must publish the plugin-local runtime bundle before install or reinstall;
+- one-click consumer distribution is not the current shape of the product.
 
-Честный итог:
+## License
 
-- **да**, проект уже можно публиковать и использовать;
-- **да**, его уже можно скачать как plugin source repo и запустить;
-- **нет**, это ещё не самая удобная форма для массового пользователя, который
-  ожидает “установил одним кликом и сразу всё готово”.
-
-Ограничения и безопасность:
-
-- plugin работает в **реальной** Windows desktop session;
-- он может двигать системный курсор и отправлять клавиатурный ввод;
-- built-in OpenAI `computer use` не заменяет этот plugin;
-- project не пытается строить “второй системный курсор”;
-- blocked targets и safety/policy boundaries всё ещё важны;
-- install UX пока не consumer-grade и остаётся ближе к advanced local tool.
-
-Если тебе нужна polished end-user distribution story, это ещё отдельный слой
-работы поверх текущего source repo.
-
-## Developer Links
-
-Если тебе нужен не только plugin, а сам engine/runtime:
-
-- продуктовый source of truth:
-  - [docs/product/index.md](docs/product/index.md)
-  - [docs/product/okno-spec.md](docs/product/okno-spec.md)
-  - [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md)
-  - [docs/product/okno-vision.md](docs/product/okno-vision.md)
-- архитектура:
-  - [docs/architecture/index.md](docs/architecture/index.md)
-  - [docs/architecture/computer-use-win-surface.md](docs/architecture/computer-use-win-surface.md)
-  - [docs/architecture/openai-computer-use-interop.md](docs/architecture/openai-computer-use-interop.md)
-  - [docs/architecture/reference-research-policy.md](docs/architecture/reference-research-policy.md)
-- generated maps:
-  - [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
-  - [docs/generated/commands.md](docs/generated/commands.md)
-  - [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md)
-- plugin docs:
-  - [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
-  - [plugins/computer-use-win/skills/computer-use-win/SKILL.md](plugins/computer-use-win/skills/computer-use-win/SKILL.md)
-
-### Базовые команды разработчика
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1
-powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-powershell -ExecutionPolicy Bypass -File scripts/test.ps1
-powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1
-powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
-```
-
-One-command local CI:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/ci.ps1
-```
-
-Codex-side verification:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1
-```
-
-## Лицензия
-
-Этот репозиторий лицензирован под **GNU Affero General Public License v3.0 or
+This repository is licensed under **GNU Affero General Public License v3.0 or
 later** (`AGPL-3.0-or-later`).
 
-Copyright © 2025–2026 Власов Виталий Андреевич
-<vital.cc55@gmail.com>
-
-Полный текст лицензии:
+Copyright © 2025–2026 Vlasov Vitaly
 
 - [LICENSE](LICENSE)
 - [LICENSES/AGPL-3.0-or-later.txt](LICENSES/AGPL-3.0-or-later.txt)
-
-REUSE-style metadata:
-
-- C# files в `src/**/*.cs` и `tests/**/*.cs` используют
-  `SPDX-FileCopyrightText` + `SPDX-License-Identifier`;
-- repo-level metadata лежит в
-  [REUSE.toml](REUSE.toml);
-- header check:
-  [scripts/check-csharp-license-headers.ps1](scripts/check-csharp-license-headers.ps1)
+- [REUSE.toml](REUSE.toml)

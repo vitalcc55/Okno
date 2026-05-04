@@ -1,7 +1,7 @@
 {
   "name": "computer-use-win-local",
   "interface": {
-    "displayName": "Computer Use for Windows local"
+    "displayName": "Okno: Computer Use for Windows (local)"
   },
   "plugins": [
     {

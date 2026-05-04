@@ -1,6 +1,6 @@
 interface:
-  display_name: "Computer Use for Windows"
-  short_description: "State-first workflow поверх публичного computer-use-win MCP surface"
+  display_name: "Okno: Computer Use for Windows"
+  short_description: "State-first workflow on top of the public computer-use-win MCP surface"
   brand_color: "#0F766E"
   default_prompt: "Get the current app state and click through the GUI step by step"
 policy:
