@@ -231,7 +231,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         Assert.Equal("v0.1.0", descriptor.RootElement.GetProperty("tag").GetString());
         Assert.Equal("okno-computer-use-win-runtime-0.1.0-win-x64.zip", descriptor.RootElement.GetProperty("assetName").GetString());
         Assert.Contains("/releases/download/v0.1.0/", descriptor.RootElement.GetProperty("downloadUrl").GetString(), StringComparison.Ordinal);
-        Assert.Equal("REPLACE_ON_RELEASE", descriptor.RootElement.GetProperty("sha256").GetString());
+        string sha256 = descriptor.RootElement.GetProperty("sha256").GetString()
+            ?? throw new InvalidOperationException("sha256 missing.");
+        Assert.Matches("^[0-9a-f]{64}$", sha256);
         Assert.Equal("Okno.Server.exe", descriptor.RootElement.GetProperty("serverExeRelativePath").GetString());
         Assert.Equal("okno-runtime-bundle-manifest.json", descriptor.RootElement.GetProperty("bundleManifestName").GetString());
     }
