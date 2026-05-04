@@ -110,8 +110,9 @@ plugin, который поставляется из этого репозито
 
 - Windows 11
 - Codex на Windows
-- .NET SDK `8.0.401` или совместимый с [global.json](global.json)
 - PowerShell
+- доступ к сети, если установленной копии плагина при первом запуске
+  понадобится подтянуть pinned runtime release
 
 ### 1. Склонировать репозиторий
 
@@ -120,16 +121,7 @@ git clone https://github.com/vitalcc55/Okno.git
 cd Okno
 ```
 
-### 2. Опубликовать plugin-local runtime bundle
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1
-```
-
-Команда собирает self-contained runtime bundle в
-[plugins/computer-use-win/runtime/win-x64](plugins/computer-use-win/runtime/win-x64).
-
-### 3. Установить локальный plugin из repo marketplace
+### 2. Установить локальный plugin из записи в marketplace репозитория
 
 Точки входа в репозитории:
 
@@ -138,19 +130,28 @@ powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-
 - [plugins/computer-use-win/.codex-plugin/plugin.json](plugins/computer-use-win/.codex-plugin/plugin.json)
 - [plugins/computer-use-win/.mcp.json](plugins/computer-use-win/.mcp.json)
 
-### 4. Перезапустить Codex или открыть новый thread
+### 3. Перезапустить Codex или открыть новый thread
 
 Установленный plugin запускается из Codex plugin cache, а не из корня
-репозитория. Если после переустановки surface выглядит устаревшей, перезапусти
-Codex или открой новый thread.
+репозитория. Если в установленной копии уже есть валидированный runtime bundle,
+launcher использует его напрямую. Если runtime bundle отсутствует или
+повреждён, launcher берёт pinned runtime release, описанный в
+[plugins/computer-use-win/runtime-release.json](plugins/computer-use-win/runtime-release.json),
+проверяет SHA256 и `okno-runtime-bundle-manifest.json`, и только после этого
+поднимает MCP host.
 
-### 5. Пройти первый рабочий цикл
+### 4. Пройти первый рабочий цикл
 
 1. вызвать `list_apps`;
 2. выбрать `windowId`;
 3. вызвать `get_app_state(windowId=...)`;
 4. выполнить действие;
 5. подтвердить результат через `observeAfter=true` или новый `get_app_state`.
+
+Для обычных MCP-клиентов по `STDIO` и для maintainer-сценария из исходников см.
+[docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md).
+Мейнтейнеры по-прежнему могут явно собрать plugin-local bundle командой
+`scripts/codex/publish-computer-use-win-plugin.ps1`.
 
 ## Публичный набор инструментов
 
@@ -197,6 +198,8 @@ Codex или открой новый thread.
 - architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
 - public capability docs:
   [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
+- пути установки:
+  [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)
 - generated interfaces:
   [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
 - commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
@@ -209,6 +212,7 @@ Codex и как локальную MCP surface поверх `STDIO`.
 Что уже выглядит сильно:
 
 - публичная возможность уже shipped и устанавливается из source repo;
+- для обычных MCP-клиентов уже определён release-backed runtime contract;
 - runtime bundle и plugin install surface уже существуют;
 - public contract, smoke path и verification loop реальны;
 - проект уже давно вышел из research-prototype стадии.
@@ -216,8 +220,10 @@ Codex и как локальную MCP surface поверх `STDIO`.
 Что пока честно остаётся правдой:
 
 - установка всё ещё developer-oriented;
-- лучший поддержанный путь — локальный checkout репозитория;
-- перед install/reinstall нужно публиковать plugin-local runtime bundle;
+- путь установки плагина в Codex сегодня всё ещё опирается на checkout
+  репозитория;
+- GitHub runtime releases должны существовать, прежде чем сценарий установки
+  plugin без локально собранного runtime станет основной публичной историей;
 - one-click consumer distribution пока не является текущей формой продукта.
 
 ## Лицензия

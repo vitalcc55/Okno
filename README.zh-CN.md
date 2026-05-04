@@ -99,8 +99,9 @@ Okno 的设计围绕四条产品规则展开。
 
 - Windows 11
 - Windows 上的 Codex
-- 与 [global.json](global.json) 兼容的 .NET SDK `8.0.401`
 - PowerShell
+- 如果安装后的 plugin 副本在首次启动时需要解析其 pinned runtime
+  release，则需要网络访问
 
 ### 1. 克隆仓库
 
@@ -109,17 +110,7 @@ git clone https://github.com/vitalcc55/Okno.git
 cd Okno
 ```
 
-### 2. 发布 plugin-local runtime bundle
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1
-```
-
-这会在
-[plugins/computer-use-win/runtime/win-x64](plugins/computer-use-win/runtime/win-x64)
-生成 self-contained runtime bundle。
-
-### 3. 从仓库 marketplace entry 安装本地 plugin
+### 2. 从仓库 marketplace 条目安装本地 plugin
 
 相关入口：
 
@@ -128,18 +119,28 @@ powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-
 - [plugins/computer-use-win/.codex-plugin/plugin.json](plugins/computer-use-win/.codex-plugin/plugin.json)
 - [plugins/computer-use-win/.mcp.json](plugins/computer-use-win/.mcp.json)
 
-### 4. 重启 Codex 或打开新的 thread
+### 3. 重启 Codex 或打开新的 thread
 
-安装后的 plugin 运行于 Codex plugin cache，而不是仓库根目录。如果重装后
-界面层看起来还是旧的，请重启 Codex 或打开新的 thread。
+安装后的 plugin 运行于 Codex plugin cache，而不是仓库根目录。如果安装
+副本里已经存在经过校验的 runtime bundle，launcher 会直接使用它。如果
+runtime bundle 缺失或无效，launcher 会按
+[plugins/computer-use-win/runtime-release.json](plugins/computer-use-win/runtime-release.json)
+中描述的 pinned runtime release 进行解析，校验 SHA256 和
+`okno-runtime-bundle-manifest.json`，然后才启动 MCP host。
 
-### 5. 跑通第一次操作循环
+### 4. 跑通第一次操作循环
 
 1. 调用 `list_apps`；
 2. 选择一个 `windowId`；
 3. 调用 `get_app_state(windowId=...)`；
 4. 执行动作；
 5. 通过 `observeAfter=true` 或新的 `get_app_state` 验证结果。
+
+如果你要给通用 MCP `STDIO` 客户端使用，或者要走维护者的源码工作流，请
+参见
+[docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)。
+维护者仍可通过 `scripts/codex/publish-computer-use-win-plugin.ps1` 显式生成
+plugin-local bundle。
 
 ## 公开工具 surface
 
@@ -182,6 +183,8 @@ powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-
 - architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
 - public capability docs:
   [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
+- 安装路径说明：
+  [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)
 - generated interfaces:
   [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
 - commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
@@ -194,6 +197,7 @@ powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-
 已经比较成熟的部分：
 
 - 公开 capability 已经 shipped，并且可以从 source repo 安装；
+- 面向通用 MCP 客户端的 release-backed runtime contract 已经定义完成；
 - runtime bundle 和 plugin install surface 已经存在；
 - public contract、smoke path 和 verification loop 都是真实可运行的；
 - 项目早已不是 research prototype。
@@ -201,8 +205,9 @@ powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-
 仍需诚实说明的部分：
 
 - 安装体验依然偏向开发者；
-- 当前最佳支持路径仍然是本地 checkout 仓库；
-- install / reinstall 之前仍需要先发布 plugin-local runtime bundle；
+- Codex plugin 的安装路径目前仍依赖本地仓库 checkout；
+- 在“无需本地预先构建 runtime 的 plugin 安装路径”成为主要公开路径
+  之前，GitHub runtime releases 仍必须先存在；
 - 一键式 consumer distribution 不是当前产品形态。
 
 ## 许可证
