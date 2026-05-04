@@ -13,58 +13,18 @@ if (Get-Variable -Name PSStyle -ErrorAction Ignore) {
     $PSStyle.OutputRendering = 'PlainText'
 }
 
+. (Join-Path $PSScriptRoot 'computer-use-win-runtime-bundle-common.ps1')
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $serverProjectPath = Join-Path $repoRoot 'src\WinBridge.Server\WinBridge.Server.csproj'
 $runtimeParent = Join-Path $repoRoot 'plugins\computer-use-win\runtime'
 $runtimeRoot = Join-Path $runtimeParent 'win-x64'
-$runtimeBundleManifestFileName = 'okno-runtime-bundle-manifest.json'
 $publishRoot = Join-Path $repoRoot '.tmp\.codex\publish\computer-use-win\win-x64'
 $stagingRoot = Join-Path $publishRoot ('staging-' + [Guid]::NewGuid().ToString('N'))
 $swapRoot = Join-Path $runtimeParent ('win-x64.publish-' + [Guid]::NewGuid().ToString('N'))
 $backupRoot = Join-Path $runtimeParent ('win-x64.backup-' + [Guid]::NewGuid().ToString('N'))
 $repairRoot = Join-Path $runtimeParent ('win-x64.repair-' + [Guid]::NewGuid().ToString('N'))
 $repairFallbackRoot = Join-Path $runtimeParent ('win-x64.repair-fallback-' + [Guid]::NewGuid().ToString('N'))
-
-function Remove-DirectoryIfExists {
-    param(
-        [Parameter(Mandatory)]
-        [string] $Path
-    )
-
-    if (Test-Path $Path -PathType Container) {
-        Remove-Item -LiteralPath $Path -Recurse -Force
-    }
-}
-
-function Write-StderrDiagnostic {
-    param(
-        [Parameter(Mandatory)]
-        [string] $Message
-    )
-
-    [Console]::Error.WriteLine($Message)
-}
-
-function Invoke-NativeCommandToStderr {
-    param(
-        [Parameter(Mandatory)]
-        [scriptblock] $Command,
-        [Parameter(Mandatory)]
-        [string] $FailureMessage
-    )
-
-    $output = & $Command 2>&1
-    $exitCode = $LASTEXITCODE
-    if ($exitCode -ne 0) {
-        foreach ($line in $output) {
-            if ($null -ne $line) {
-                Write-StderrDiagnostic -Message ([string]$line)
-            }
-        }
-
-        throw "$FailureMessage ExitCode=$exitCode."
-    }
-}
 
 function Remove-DirectoryBestEffort {
     param(
@@ -86,161 +46,6 @@ function Remove-DirectoryBestEffort {
     }
 }
 
-function Copy-DirectoryContents {
-    param(
-        [Parameter(Mandatory)]
-        [string] $SourceRoot,
-        [Parameter(Mandatory)]
-        [string] $DestinationRoot
-    )
-
-    $normalizedSourceRoot = [System.IO.Path]::GetFullPath($SourceRoot).TrimEnd('\')
-    Get-ChildItem -LiteralPath $SourceRoot -Recurse -File | ForEach-Object {
-        $sourcePath = [System.IO.Path]::GetFullPath($_.FullName)
-        $relativePath = $sourcePath.Substring($normalizedSourceRoot.Length).TrimStart('\')
-        $destinationPath = Join-Path $DestinationRoot $relativePath
-        $destinationDirectory = Split-Path -Parent $destinationPath
-        if (-not (Test-Path $destinationDirectory -PathType Container)) {
-            New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
-        }
-
-        Copy-Item -LiteralPath $_.FullName -Destination $destinationPath -Force
-
-        if ($FailRepairCopyAfterServer `
-            -and [System.IO.Path]::GetFullPath($DestinationRoot) -eq [System.IO.Path]::GetFullPath($repairRoot) `
-            -and [string]::Equals($relativePath, 'Okno.Server.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Synthetic repair copy failure after Okno.Server.exe."
-        }
-    }
-}
-
-function Get-RuntimeBundleManifestPath {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath
-    )
-
-    Join-Path $RootPath $runtimeBundleManifestFileName
-}
-
-function New-RuntimeBundleManifest {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath
-    )
-
-    $normalizedRootPath = [System.IO.Path]::GetFullPath($RootPath).TrimEnd('\')
-    $files = Get-ChildItem -LiteralPath $RootPath -Recurse -File |
-        Where-Object { -not [string]::Equals($_.Name, $runtimeBundleManifestFileName, [System.StringComparison]::OrdinalIgnoreCase) } |
-        Sort-Object FullName |
-        ForEach-Object {
-            $fullPath = [System.IO.Path]::GetFullPath($_.FullName)
-            $relativePath = $fullPath.Substring($normalizedRootPath.Length).TrimStart('\')
-            [pscustomobject]@{
-                path = $relativePath
-                size = [int64]$_.Length
-            }
-        }
-
-    [pscustomobject]@{
-        formatVersion = 1
-        files = @($files)
-    }
-}
-
-function Write-RuntimeBundleManifest {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath
-    )
-
-    $manifest = New-RuntimeBundleManifest -RootPath $RootPath
-    $manifestPath = Get-RuntimeBundleManifestPath -RootPath $RootPath
-    $manifest | ConvertTo-Json -Depth 6 -Compress | Set-Content -Path $manifestPath -Encoding UTF8
-}
-
-function Read-RuntimeBundleManifest {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath
-    )
-
-    $manifestPath = Get-RuntimeBundleManifestPath -RootPath $RootPath
-    if (-not (Test-Path $manifestPath -PathType Leaf)) {
-        throw "Runtime bundle manifest '$manifestPath' is missing."
-    }
-
-    Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
-}
-
-function Test-RuntimeBundleManifestExists {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath
-    )
-
-    Test-Path (Get-RuntimeBundleManifestPath -RootPath $RootPath) -PathType Leaf
-}
-
-function Assert-RuntimeBundleMatchesManifest {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath,
-        [Parameter(Mandatory)]
-        [string] $Description
-    )
-
-    $manifest = Read-RuntimeBundleManifest -RootPath $RootPath
-    if ($manifest.formatVersion -ne 1) {
-        throw "$Description uses unsupported runtime bundle manifest version '$($manifest.formatVersion)'."
-    }
-
-    $expectedEntries = @($manifest.files)
-    $expectedMap = New-Object 'System.Collections.Generic.Dictionary[string,long]' ([System.StringComparer]::Ordinal)
-    foreach ($entry in $expectedEntries) {
-        $expectedMap[[string]$entry.path] = [int64]$entry.size
-    }
-
-    $normalizedRootPath = [System.IO.Path]::GetFullPath($RootPath).TrimEnd('\')
-    $actualFiles = Get-ChildItem -LiteralPath $RootPath -Recurse -File |
-        Where-Object { -not [string]::Equals($_.Name, $runtimeBundleManifestFileName, [System.StringComparison]::OrdinalIgnoreCase) } |
-        Sort-Object FullName
-
-    foreach ($file in $actualFiles) {
-        $fullPath = [System.IO.Path]::GetFullPath($file.FullName)
-        $relativePath = $fullPath.Substring($normalizedRootPath.Length).TrimStart('\')
-        if (-not $expectedMap.ContainsKey($relativePath)) {
-            throw "$Description contains unexpected file '$relativePath'."
-        }
-
-        if ([int64]$file.Length -ne $expectedMap[$relativePath]) {
-            throw "$Description contains size drift for '$relativePath'."
-        }
-
-        $null = $expectedMap.Remove($relativePath)
-    }
-
-    if ($expectedMap.Count -gt 0) {
-        throw "$Description is incomplete. Missing: $($expectedMap.Keys -join ', ')."
-    }
-}
-
-function Assert-RuntimeBundleHasExistingManifest {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath,
-        [Parameter(Mandatory)]
-        [string] $Description
-    )
-
-    if (Test-RuntimeBundleManifestExists -RootPath $RootPath) {
-        Assert-RuntimeBundleMatchesManifest -RootPath $RootPath -Description $Description
-        return
-    }
-
-    throw "$Description cannot be accepted as a runtime bundle because '$runtimeBundleManifestFileName' is missing."
-}
-
 function Stage-RuntimeBundleFromBackup {
     param(
         [Parameter(Mandatory)]
@@ -251,31 +56,11 @@ function Stage-RuntimeBundleFromBackup {
 
     Remove-DirectoryIfExists -Path $DestinationRoot
     Copy-DirectoryContents -SourceRoot $backupRoot -DestinationRoot $DestinationRoot
-    Assert-RuntimeBundleHasExistingManifest -RootPath $DestinationRoot -Description $Description
+    Assert-ComputerUseWinRuntimeBundleHasExistingManifest -RootPath $DestinationRoot -Description $Description
 }
 
 function Publish-RuntimeBundleToStaging {
-    if (-not [string]::IsNullOrWhiteSpace($PublishSourceRoot)) {
-        Assert-RuntimeBundleMatchesManifest -RootPath $PublishSourceRoot -Description "Test publish source runtime bundle '$PublishSourceRoot'"
-        Copy-DirectoryContents -SourceRoot $PublishSourceRoot -DestinationRoot $stagingRoot
-        Assert-RuntimeBundleMatchesManifest -RootPath $stagingRoot -Description "Published computer-use-win runtime bundle '$stagingRoot'"
-        return
-    }
-
-    Invoke-NativeCommandToStderr -FailureMessage "dotnet publish failed for computer-use-win runtime bundle." -Command {
-        & dotnet publish $serverProjectPath `
-            --configuration Release `
-            --runtime win-x64 `
-            --self-contained true `
-            -p:UseAppHost=true `
-            -p:UiaWorkerPublishSelfContained=true `
-            -p:PublishSingleFile=false `
-            -p:PublishTrimmed=false `
-            --output $stagingRoot
-    }
-
-    Write-RuntimeBundleManifest -RootPath $stagingRoot
-    Assert-RuntimeBundleMatchesManifest -RootPath $stagingRoot -Description "Published computer-use-win runtime bundle '$stagingRoot'"
+    Publish-ComputerUseWinRuntimeBundleToDirectory -RepoRoot $repoRoot -DestinationRoot $stagingRoot -Rid 'win-x64' -PublishSourceRoot $PublishSourceRoot
 }
 
 function Promote-ValidatedRuntimeBundle {
@@ -288,7 +73,7 @@ function Promote-ValidatedRuntimeBundle {
         [string] $Description
     )
 
-    Assert-RuntimeBundleMatchesManifest -RootPath $SourceRoot -Description $Description
+    Assert-ComputerUseWinRuntimeBundleMatchesManifest -RootPath $SourceRoot -Description $Description
 
     if (Test-Path $DestinationRoot -PathType Container) {
         Remove-DirectoryIfExists -Path $DestinationRoot
@@ -305,7 +90,7 @@ function Promote-ValidatedRuntimeBundle {
     }
 
     Move-Item -LiteralPath $SourceRoot -Destination $DestinationRoot
-    Assert-RuntimeBundleMatchesManifest -RootPath $DestinationRoot -Description $Description
+    Assert-ComputerUseWinRuntimeBundleMatchesManifest -RootPath $DestinationRoot -Description $Description
 }
 
 function Restore-CanonicalRuntimeFromBackup {
@@ -352,7 +137,7 @@ try {
     Publish-RuntimeBundleToStaging
     Copy-DirectoryContents -SourceRoot $stagingRoot -DestinationRoot $swapRoot
 
-    Assert-RuntimeBundleMatchesManifest -RootPath $swapRoot -Description "Plugin runtime swap directory '$swapRoot'"
+    Assert-ComputerUseWinRuntimeBundleMatchesManifest -RootPath $swapRoot -Description "Plugin runtime swap directory '$swapRoot'"
 
     try {
         if (Test-Path $runtimeRoot -PathType Container) {

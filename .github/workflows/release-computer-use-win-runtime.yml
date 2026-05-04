@@ -1,0 +1,88 @@
+name: release-computer-use-win-runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Runtime release version without leading v
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  attestations: write
+  id-token: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+          }
+          else {
+            $version = "${{ github.ref_name }}".TrimStart('v')
+          }
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Release version is empty."
+          }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag=v$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Package runtime release asset
+        id: package
+        shell: pwsh
+        run: |
+          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-runtime-release.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64"
+          $json = $payload | ConvertFrom-Json
+          "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "asset_name=$($json.assetName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          if (-not (gh release view $tag 2>$null)) {
+            gh release create $tag --draft --title "Okno Computer Use for Windows Runtime $tag" --notes "Draft runtime release for Computer Use for Windows." --target "${{ github.sha }}"
+          }
+
+      - name: Upload release assets to draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          gh release upload $tag "${{ steps.package.outputs.archive_path }}" "${{ steps.package.outputs.checksum_path }}" --clobber
+
+      - name: Attest runtime archive
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.package.outputs.archive_path }}
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release edit "${{ steps.version.outputs.tag }}" --draft=false --latest

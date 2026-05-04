@@ -29,8 +29,13 @@ The plugin publishes:
 ## Runtime model
 
 - the plugin starts through `powershell -NoProfile -NonInteractive`;
-- the launcher starts only the plugin-local runtime bundle
-  `runtime/win-x64/Okno.Server.exe`;
+- the launcher starts the install-owned runtime bundle
+  `runtime/win-x64/Okno.Server.exe` when that bundle is already present and
+  valid;
+- if the runtime bundle is missing or invalid, the launcher resolves the pinned
+  runtime release described by `runtime-release.json`, verifies SHA256 plus
+  `okno-runtime-bundle-manifest.json`, and only then promotes the runtime into
+  `runtime/win-x64`;
 - the public profile is selected explicitly through
   `--tool-surface-profile computer-use-win`;
 - the product-ready transport is local `MCP over STDIO`;
@@ -41,10 +46,17 @@ If an operator needs an even narrower client-side surface, it is better to use
 Codex MCP configuration (`enabled_tools` / `disabled_tools`) than to multiply
 plugin profiles or fork the runtime narrative.
 
-## Publish the runtime bundle
+For generic non-Codex clients, use the standalone MCP `STDIO` install path
+documented in
+[docs/runbooks/computer-use-win-install.md](../../docs/runbooks/computer-use-win-install.md).
 
-Before plugin install or reinstall, and after runtime/server layout changes,
-publish the plugin-local bundle:
+## Maintainer runtime publication
+
+Normal users do not need to pre-publish a runtime bundle locally. This path is
+for maintainers and source-based runtime work.
+
+When you need a fresh plugin-local bundle after runtime/server layout changes,
+publish it explicitly:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1
@@ -78,8 +90,8 @@ paths.
 Notable current behavior:
 
 - `type_text` supports ordinary editable targets, focused fallback with
-  `allowFocusedFallback=true`, and coordinate-confirmed typing from the latest
-  `capture_pixels` state;
+  `allowFocusedFallback=true`, the required confirmation gate `confirm=true`,
+  and coordinate-confirmed typing from the latest `capture_pixels` state;
 - `click`, `press_key`, `type_text`, `scroll`, and `drag` support
   `observeAfter=true` and can return `successorState`;
 - repeated unchanged `list_apps` snapshots reuse the same runtime-owned

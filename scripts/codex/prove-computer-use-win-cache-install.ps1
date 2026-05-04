@@ -321,6 +321,40 @@ function Assert-RuntimeBundleFreshForPublicationInputs {
     }
 }
 
+function Read-RuntimeReleaseDescriptor {
+    param(
+        [Parameter(Mandatory)]
+        [string] $PluginRoot
+    )
+
+    $descriptorPath = Join-Path $PluginRoot 'runtime-release.json'
+    if (-not (Test-Path $descriptorPath -PathType Leaf)) {
+        throw "Runtime release descriptor not found: $descriptorPath"
+    }
+
+    $descriptor = Get-Content -Path $descriptorPath -Raw | ConvertFrom-Json
+    if ($descriptor.formatVersion -ne 1) {
+        throw "Unsupported runtime release descriptor version '$($descriptor.formatVersion)'."
+    }
+
+    foreach ($propertyName in @('version', 'rid', 'tag', 'assetName', 'downloadUrl', 'sha256', 'serverExeRelativePath', 'bundleManifestName')) {
+        if (-not $descriptor.PSObject.Properties.Name.Contains($propertyName) -or [string]::IsNullOrWhiteSpace([string]$descriptor.$propertyName)) {
+            throw "Runtime release descriptor '$descriptorPath' is missing required field '$propertyName'."
+        }
+    }
+
+    return [PSCustomObject]@{
+        path = [System.IO.Path]::GetFullPath($descriptorPath)
+        version = [string]$descriptor.version
+        rid = [string]$descriptor.rid
+        tag = [string]$descriptor.tag
+        assetName = [string]$descriptor.assetName
+        downloadUrl = [string]$descriptor.downloadUrl
+        serverExeRelativePath = [string]$descriptor.serverExeRelativePath
+        bundleManifestName = [string]$descriptor.bundleManifestName
+    }
+}
+
 function Test-Property {
     param(
         [Parameter(Mandatory)]
@@ -451,6 +485,7 @@ $repoPluginRoot = Join-Path $repoRoot 'plugins\computer-use-win'
 $cacheRoot = Convert-ToNormalizedPath -Path $CachePluginRoot
 $copyProof = Assert-PluginCopiesMatch -RepoPluginRoot $repoPluginRoot -CacheRoot $cacheRoot
 $runtimeFreshness = Assert-RuntimeBundleFreshForPublicationInputs -RepoRoot $repoRoot -RepoPluginRoot $repoPluginRoot
+$runtimeReleaseDescriptor = Read-RuntimeReleaseDescriptor -PluginRoot $repoPluginRoot
 
 $process = Start-CacheMcpHost -CacheRoot $cacheRoot
 try {
@@ -543,6 +578,14 @@ try {
         latestRuntimePublicationInputWriteTimeUtc = $runtimeFreshness.latestRuntimePublicationInputWriteTimeUtc
         runtimeBundleFreshForSource = $runtimeFreshness.runtimeBundleFreshForSource
         runtimeBundleFreshForPublicationInputs = $runtimeFreshness.runtimeBundleFreshForSource
+        runtimeReleaseDescriptorPath = $runtimeReleaseDescriptor.path
+        runtimeReleaseVersion = $runtimeReleaseDescriptor.version
+        runtimeReleaseRid = $runtimeReleaseDescriptor.rid
+        runtimeReleaseTag = $runtimeReleaseDescriptor.tag
+        runtimeReleaseAssetName = $runtimeReleaseDescriptor.assetName
+        runtimeReleaseDownloadUrl = $runtimeReleaseDescriptor.downloadUrl
+        runtimeReleaseServerExeRelativePath = $runtimeReleaseDescriptor.serverExeRelativePath
+        runtimeReleaseBundleManifestName = $runtimeReleaseDescriptor.bundleManifestName
         publicationAcceptanceEligible = $publicationAcceptanceEligible
         repoPluginRoot = Convert-ToNormalizedPath -Path $repoPluginRoot
         cacheRoot = $cacheRoot

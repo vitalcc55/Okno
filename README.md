@@ -105,8 +105,9 @@ plugin shipped from this repository.
 
 - Windows 11
 - Codex on Windows
-- .NET SDK `8.0.401` or compatible with [global.json](global.json)
 - PowerShell
+- network access if the plugin install copy needs to resolve its pinned runtime
+  release on first run
 
 ### 1. Clone the repository
 
@@ -115,16 +116,7 @@ git clone https://github.com/vitalcc55/Okno.git
 cd Okno
 ```
 
-### 2. Publish the plugin-local runtime bundle
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1
-```
-
-This materializes the self-contained runtime bundle in
-[plugins/computer-use-win/runtime/win-x64](plugins/computer-use-win/runtime/win-x64).
-
-### 3. Install the local plugin from the repository marketplace entry
+### 2. Install the local plugin from the repository marketplace entry
 
 Repository entry points:
 
@@ -133,19 +125,28 @@ Repository entry points:
 - [plugins/computer-use-win/.codex-plugin/plugin.json](plugins/computer-use-win/.codex-plugin/plugin.json)
 - [plugins/computer-use-win/.mcp.json](plugins/computer-use-win/.mcp.json)
 
-### 4. Restart Codex or open a new thread
+### 3. Restart Codex or open a new thread
 
 The installed plugin runs from the Codex plugin cache, not from the repository
-root. If the surface looks stale after reinstall, restart Codex or open a new
-thread.
+root. If the install copy already has a validated runtime bundle, the launcher
+uses it directly. If the runtime bundle is missing or invalid, the launcher
+resolves the pinned runtime release described by
+[plugins/computer-use-win/runtime-release.json](plugins/computer-use-win/runtime-release.json),
+verifies SHA256 plus `okno-runtime-bundle-manifest.json`, and only then starts
+the MCP host.
 
-### 5. Run the first loop
+### 4. Run the first loop
 
 1. call `list_apps`;
 2. choose a `windowId`;
 3. call `get_app_state(windowId=...)`;
 4. act;
 5. verify with `observeAfter=true` or a new `get_app_state`.
+
+For generic MCP `STDIO` clients and the maintainer source workflow, see
+[docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md).
+Maintainers can still materialize a plugin-local bundle explicitly with
+`scripts/codex/publish-computer-use-win-plugin.ps1`.
 
 ## Public Tool Surface
 
@@ -192,6 +193,8 @@ If you want more than the front page:
 - architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
 - public capability docs:
   [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
+- install paths:
+  [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)
 - generated interfaces:
   [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
 - commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
@@ -204,6 +207,7 @@ as a local MCP surface over `STDIO`.
 What is already strong:
 
 - the public capability is shipped and installable from source;
+- the release-backed runtime contract for generic MCP clients is now defined;
 - the runtime bundle and plugin install surface already exist;
 - the public contract, smoke path, and verification loop are real;
 - the runtime is past the research-prototype stage.
@@ -211,8 +215,9 @@ What is already strong:
 What is still intentionally honest:
 
 - installation is still developer-oriented;
-- the best supported path is still a local repository checkout;
-- you must publish the plugin-local runtime bundle before install or reinstall;
+- the Codex plugin install path is still repo-backed today;
+- GitHub runtime releases must exist before the runtime-less plugin path becomes
+  the main public story;
 - one-click consumer distribution is not the current shape of the product.
 
 ## License

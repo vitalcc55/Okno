@@ -1,0 +1,11 @@
+{
+  "formatVersion": 1,
+  "version": "0.1.0",
+  "rid": "win-x64",
+  "tag": "v0.1.0",
+  "assetName": "okno-computer-use-win-runtime-0.1.0-win-x64.zip",
+  "downloadUrl": "https://github.com/vitalcc55/Okno/releases/download/v0.1.0/okno-computer-use-win-runtime-0.1.0-win-x64.zip",
+  "sha256": "REPLACE_ON_RELEASE",
+  "serverExeRelativePath": "Okno.Server.exe",
+  "bundleManifestName": "okno-runtime-bundle-manifest.json"
+}

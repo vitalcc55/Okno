@@ -9,7 +9,7 @@ using WinBridge.Runtime.Tooling;
 
 namespace WinBridge.Server.IntegrationTests;
 
-public sealed class ComputerUseWinInstallSurfaceTests
+public sealed partial class ComputerUseWinInstallSurfaceTests
 {
     [Fact]
     public void PublishComputerUseWinPluginCreatesSelfContainedRuntimeBundle()
@@ -598,7 +598,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
-    public void ComputerUseWinLauncherFailsFastWhenPluginLocalRuntimeIsMissing()
+    public void ComputerUseWinLauncherFailsClosedWhenRuntimeIsMissingAndDescriptorIsMissing()
     {
         string repoRoot = GetRepositoryRoot();
         string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
@@ -608,21 +608,13 @@ public sealed class ComputerUseWinInstallSurfaceTests
         {
             CopyDirectory(sourcePluginRoot, tempPluginRoot, relativePath =>
                 !relativePath.StartsWith($"runtime{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
+            File.Delete(Path.Combine(tempPluginRoot, "runtime-release.json"));
 
-            ScriptInvocationResult result = InvokePowerShellScript(
-                Path.Combine(tempPluginRoot, "run-computer-use-win-mcp.ps1"),
-                tempPluginRoot,
-                startInfo =>
-                {
-                    startInfo.Environment["COMPUTER_USE_WIN_REPO_ROOT"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_RUN_ID"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_RUN_ROOT"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = string.Empty;
-                });
+            ScriptInvocationResult result = InvokePluginLauncher(tempPluginRoot);
 
             Assert.NotEqual(0, result.ExitCode);
-            Assert.Contains("publish-computer-use-win-plugin.ps1", result.Stderr, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains(Path.Combine("runtime", "win-x64", "Okno.Server.exe"), result.Stderr, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("runtime release descriptor not found", result.Stderr, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("runtime-release.json", result.Stderr, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -631,7 +623,7 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
-    public void ComputerUseWinLauncherFailsFastWhenPluginLocalRuntimeBundleIsIncomplete()
+    public void ComputerUseWinLauncherFailsClosedWhenRuntimeBundleIsIncompleteAndDescriptorIsMissing()
     {
         string repoRoot = GetRepositoryRoot();
         string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
@@ -639,28 +631,21 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            CopyDirectory(sourcePluginRoot, tempPluginRoot, _ => true);
+            CopyDirectory(sourcePluginRoot, tempPluginRoot, relativePath =>
+                !relativePath.StartsWith($"runtime{Path.DirectorySeparatorChar}win-x64.", StringComparison.OrdinalIgnoreCase));
             string runtimeRoot = Path.Combine(tempPluginRoot, "runtime", "win-x64");
             string serverDllPath = Path.Combine(runtimeRoot, "Okno.Server.dll");
             if (File.Exists(serverDllPath))
             {
                 File.Delete(serverDllPath);
             }
+            File.Delete(Path.Combine(tempPluginRoot, "runtime-release.json"));
 
-            ScriptInvocationResult result = InvokePowerShellScript(
-                Path.Combine(tempPluginRoot, "run-computer-use-win-mcp.ps1"),
-                tempPluginRoot,
-                startInfo =>
-                {
-                    startInfo.Environment["COMPUTER_USE_WIN_REPO_ROOT"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_RUN_ID"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_RUN_ROOT"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = string.Empty;
-                });
+            ScriptInvocationResult result = InvokePluginLauncher(tempPluginRoot);
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.False(string.IsNullOrWhiteSpace(result.Stderr));
-            Assert.Contains("Okno.Server.dll", result.Stderr, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("runtime release descriptor not found", result.Stderr, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -669,40 +654,68 @@ public sealed class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
-    public void ComputerUseWinLauncherFailsFastWhenRuntimeDependencyFileIsMissing()
+    public async Task ComputerUseWinLauncherRehydratesFromPinnedReleaseWhenRuntimeDependencyFileIsMissing()
     {
         string repoRoot = GetRepositoryRoot();
         string publishScriptPath = Path.Combine(repoRoot, "scripts", "codex", "publish-computer-use-win-plugin.ps1");
+        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
         string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
         string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-missing-dependency", Guid.NewGuid().ToString("N"));
+        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-missing-dependency-release", Guid.NewGuid().ToString("N"));
 
         EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, Path.Combine(sourcePluginRoot, "runtime", "win-x64"));
 
         try
         {
+            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, Path.Combine(sourcePluginRoot, "runtime", "win-x64"), outputRoot, "0.1.0-test");
+            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, "0.1.0-test", archivePath, "win-x64");
             CopyDirectory(sourcePluginRoot, tempPluginRoot, _ => true);
             string dependencyPath = Path.Combine(tempPluginRoot, "runtime", "win-x64", "hostfxr.dll");
             Assert.True(File.Exists(dependencyPath));
             File.Delete(dependencyPath);
 
-            ScriptInvocationResult result = InvokePowerShellScript(
-                Path.Combine(tempPluginRoot, "run-computer-use-win-mcp.ps1"),
-                tempPluginRoot,
-                startInfo =>
-                {
-                    startInfo.Environment["COMPUTER_USE_WIN_REPO_ROOT"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_RUN_ID"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_RUN_ROOT"] = string.Empty;
-                    startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = string.Empty;
-                });
+            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, descriptorPath);
+            PluginMcpSession session = launcher.CreateMcpSession();
 
-            Assert.NotEqual(0, result.ExitCode);
-            Assert.False(string.IsNullOrWhiteSpace(result.Stderr));
-            Assert.Contains("hostfxr.dll", result.Stderr, StringComparison.OrdinalIgnoreCase);
+            try
+            {
+                using JsonDocument initializeResponse = await session.SendRequestAsync(
+                    "initialize",
+                    new
+                    {
+                        protocolVersion = "2025-11-25",
+                        capabilities = new { },
+                        clientInfo = new
+                        {
+                            name = "ComputerUseWin.InstallSurfaceTests",
+                            version = "0.1.0",
+                        },
+                    },
+                    "initialize");
+
+                await session.SendNotificationAsync("notifications/initialized");
+
+                using JsonDocument toolsResponse = await session.SendRequestAsync("tools/list", new { }, "tools/list");
+                string[] toolNames = toolsResponse.RootElement
+                    .GetProperty("result")
+                    .GetProperty("tools")
+                    .EnumerateArray()
+                    .Select(tool => tool.GetProperty("name").GetString() ?? string.Empty)
+                    .OrderBy(static value => value, StringComparer.Ordinal)
+                    .ToArray();
+
+                Assert.Contains(ToolNames.ComputerUseWinListApps, toolNames);
+                Assert.Contains(ToolNames.ComputerUseWinTypeText, toolNames);
+                Assert.True(File.Exists(Path.Combine(tempPluginRoot, "runtime", "win-x64", "hostfxr.dll")));
+            }
+            finally
+            {
+            }
         }
         finally
         {
             DeleteDirectoryIfExists(tempPluginRoot);
+            DeleteDirectoryIfExists(outputRoot);
         }
     }
 
@@ -720,10 +733,8 @@ public sealed class ComputerUseWinInstallSurfaceTests
         {
             CopyDirectory(sourcePluginRoot, tempPluginRoot, _ => true);
 
-            using Process process = StartPluginLauncher(tempPluginRoot);
-            await using StreamWriter writer = process.StandardInput;
-            using StreamReader reader = process.StandardOutput;
-            PluginMcpSession session = new(reader, writer);
+            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot);
+            PluginMcpSession session = launcher.CreateMcpSession();
 
             try
             {
@@ -837,8 +848,6 @@ public sealed class ComputerUseWinInstallSurfaceTests
             }
             finally
             {
-                writer.Close();
-                await WaitForExitAsync(process);
             }
         }
         finally
@@ -976,8 +985,9 @@ public sealed class ComputerUseWinInstallSurfaceTests
         Assert.Contains("runtimeBundleFreshForPublicationInputs", proofScript, StringComparison.Ordinal);
     }
 
-    private static Process StartPluginLauncher(string pluginRoot)
+    private static PluginLauncherSession StartPluginLauncherSession(string pluginRoot, string? runtimeReleaseDescriptorOverridePath = null)
     {
+        PluginLauncherStartContext context = CreatePluginLauncherStartContext(pluginRoot, runtimeReleaseDescriptorOverridePath);
         ProcessStartInfo startInfo = new()
         {
             FileName = "powershell",
@@ -990,37 +1000,54 @@ public sealed class ComputerUseWinInstallSurfaceTests
             StandardErrorEncoding = Encoding.UTF8,
         };
 
-        startInfo.ArgumentList.Add("-NoLogo");
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-NonInteractive");
-        startInfo.ArgumentList.Add("-ExecutionPolicy");
-        startInfo.ArgumentList.Add("Bypass");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(Path.Combine(pluginRoot, "run-computer-use-win-mcp.ps1"));
-        startInfo.Environment["COMPUTER_USE_WIN_REPO_ROOT"] = string.Empty;
-        startInfo.Environment["WINBRIDGE_RUN_ID"] = string.Empty;
-        startInfo.Environment["WINBRIDGE_RUN_ROOT"] = string.Empty;
-        startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = string.Empty;
+        ConfigurePluginLauncherProcessStartInfo(startInfo, context);
 
         Process process = new() { StartInfo = startInfo };
         process.Start();
-        return process;
+        return new PluginLauncherSession(
+            context,
+            process,
+            process.StandardInput,
+            process.StandardOutput,
+            process.StandardError.ReadToEndAsync());
     }
 
-    private static async Task WaitForExitAsync(Process process)
+    private static ScriptInvocationResult InvokePluginLauncher(string pluginRoot, string? runtimeReleaseDescriptorOverridePath = null)
     {
-        if (process.HasExited)
+        PluginLauncherStartContext context = CreatePluginLauncherStartContext(pluginRoot, runtimeReleaseDescriptorOverridePath);
+        ProcessStartInfo startInfo = new()
         {
-            return;
-        }
+            FileName = "powershell",
+            WorkingDirectory = pluginRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
 
-        Task waitTask = process.WaitForExitAsync();
-        Task completedTask = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(5)));
-        if (!ReferenceEquals(completedTask, waitTask))
+        ConfigurePluginLauncherProcessStartInfo(startInfo, context);
+
+        using Process process = new() { StartInfo = startInfo };
+        process.Start();
+
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(TimeSpan.FromSeconds(30)))
         {
             process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync();
+            process.WaitForExit();
+            Task.WaitAll(stdoutTask, stderrTask);
+            return new ScriptInvocationResult(
+                -1,
+                stdoutTask.Result,
+                $"Plugin launcher timed out.{Environment.NewLine}{BuildPluginLauncherFailureContext(context, process, stderrTask.Result)}");
         }
+
+        Task.WaitAll(stdoutTask, stderrTask);
+        DeleteDirectoryIfExists(context.RunRoot);
+        DeleteDirectoryIfExists(context.ArtifactsRoot);
+        return new ScriptInvocationResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
     }
 
     private static void CopyDirectory(string sourceRoot, string destinationRoot, Func<string, bool> includePredicate)
@@ -1043,7 +1070,71 @@ public sealed class ComputerUseWinInstallSurfaceTests
     {
         if (Directory.Exists(path))
         {
-            Directory.Delete(path, recursive: true);
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    foreach (string filePath in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                    {
+                        File.SetAttributes(filePath, FileAttributes.Normal);
+                    }
+
+                    Directory.Delete(path, recursive: true);
+                    return;
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    return;
+                }
+                catch (UnauthorizedAccessException) when (attempt < 4)
+                {
+                    Thread.Sleep(200);
+                }
+                catch (IOException) when (attempt < 4)
+                {
+                    Thread.Sleep(200);
+                }
+            }
+        }
+    }
+
+    private static PluginLauncherStartContext CreatePluginLauncherStartContext(string pluginRoot, string? runtimeReleaseDescriptorOverridePath)
+    {
+        string runId = "computer-use-win-test-" + Guid.NewGuid().ToString("N");
+        string repoRoot = GetRepositoryRoot();
+        string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-runs", runId);
+        string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-artifacts", runId);
+        Directory.CreateDirectory(runRoot);
+        Directory.CreateDirectory(artifactsRoot);
+
+        return new PluginLauncherStartContext(
+            pluginRoot,
+            runId,
+            runRoot,
+            artifactsRoot,
+            runtimeReleaseDescriptorOverridePath);
+    }
+
+    private static void ConfigurePluginLauncherProcessStartInfo(ProcessStartInfo startInfo, PluginLauncherStartContext context)
+    {
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-ExecutionPolicy");
+        startInfo.ArgumentList.Add("Bypass");
+        startInfo.ArgumentList.Add("-File");
+        startInfo.ArgumentList.Add(Path.Combine(context.PluginRoot, "run-computer-use-win-mcp.ps1"));
+        startInfo.Environment["COMPUTER_USE_WIN_REPO_ROOT"] = string.Empty;
+        startInfo.Environment["WINBRIDGE_RUN_ID"] = context.RunId;
+        startInfo.Environment["WINBRIDGE_RUN_ROOT"] = context.RunRoot;
+        startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = context.ArtifactsRoot;
+        if (!string.IsNullOrWhiteSpace(context.RuntimeReleaseDescriptorOverridePath))
+        {
+            startInfo.Environment["COMPUTER_USE_WIN_RUNTIME_RELEASE_DESCRIPTOR_OVERRIDE"] = context.RuntimeReleaseDescriptorOverridePath;
+        }
+        else
+        {
+            startInfo.Environment.Remove("COMPUTER_USE_WIN_RUNTIME_RELEASE_DESCRIPTOR_OVERRIDE");
         }
     }
 
@@ -1428,7 +1519,31 @@ public sealed class ComputerUseWinInstallSurfaceTests
         return new WorkerProbeResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
     }
 
-    private sealed class PluginMcpSession(StreamReader reader, StreamWriter writer)
+    private static string BuildPluginLauncherFailureContext(PluginLauncherStartContext context, Process process, string stderr)
+    {
+        StringBuilder builder = new();
+        builder.AppendLine("Launcher failure context:");
+        builder.AppendLine("- pluginRoot: " + context.PluginRoot);
+        builder.AppendLine("- runId: " + context.RunId);
+        builder.AppendLine("- runRoot: " + context.RunRoot);
+        builder.AppendLine("- artifactsRoot: " + context.ArtifactsRoot);
+        builder.AppendLine("- descriptorOverride: " + (context.RuntimeReleaseDescriptorOverridePath ?? "<none>"));
+        builder.AppendLine("- hasExited: " + process.HasExited);
+        if (process.HasExited)
+        {
+            builder.AppendLine("- exitCode: " + process.ExitCode);
+        }
+
+        if (!string.IsNullOrWhiteSpace(stderr))
+        {
+            builder.AppendLine("- stderr:");
+            builder.AppendLine(stderr.Trim());
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private sealed class PluginMcpSession(StreamReader reader, StreamWriter writer, Func<string> failureContextFactory)
     {
         private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
         private int nextRequestId = 1;
@@ -1466,8 +1581,21 @@ public sealed class ComputerUseWinInstallSurfaceTests
 
             while (true)
             {
-                string? line = await reader.ReadLineAsync().WaitAsync(ResponseTimeout);
-                Assert.False(line is null, $"Plugin process exited before '{requestName}' response.");
+                string? line;
+                try
+                {
+                    line = await reader.ReadLineAsync().WaitAsync(ResponseTimeout);
+                }
+                catch (TimeoutException)
+                {
+                    throw new Xunit.Sdk.XunitException($"Timed out waiting for '{requestName}' response.{Environment.NewLine}{failureContextFactory()}");
+                }
+
+                if (line is null)
+                {
+                    throw new Xunit.Sdk.XunitException($"Plugin process exited before '{requestName}' response.{Environment.NewLine}{failureContextFactory()}");
+                }
+
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     continue;
@@ -1486,6 +1614,64 @@ public sealed class ComputerUseWinInstallSurfaceTests
                 }
 
                 document.Dispose();
+            }
+        }
+    }
+
+    private sealed record PluginLauncherStartContext(
+        string PluginRoot,
+        string RunId,
+        string RunRoot,
+        string ArtifactsRoot,
+        string? RuntimeReleaseDescriptorOverridePath);
+
+    private sealed class PluginLauncherSession(
+        PluginLauncherStartContext context,
+        Process process,
+        StreamWriter writer,
+        StreamReader reader,
+        Task<string> stderrTask) : IAsyncDisposable
+    {
+        public PluginMcpSession CreateMcpSession() => new(reader, writer, GetFailureContext);
+
+        private string GetFailureContext()
+        {
+            string stderr = stderrTask.IsCompletedSuccessfully ? stderrTask.Result : string.Empty;
+            return BuildPluginLauncherFailureContext(context, process, stderr);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    try
+                    {
+                        writer.Close();
+                    }
+                    catch
+                    {
+                    }
+
+                    Task waitTask = process.WaitForExitAsync();
+                    Task completedTask = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(5)));
+                    if (!ReferenceEquals(completedTask, waitTask) && !process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                        await process.WaitForExitAsync();
+                    }
+                }
+
+                await stderrTask;
+            }
+            finally
+            {
+                writer.Dispose();
+                reader.Dispose();
+                process.Dispose();
+                DeleteDirectoryIfExists(context.RunRoot);
+                DeleteDirectoryIfExists(context.ArtifactsRoot);
             }
         }
     }
