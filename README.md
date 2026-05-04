@@ -184,3 +184,25 @@ Computer Use for Windows не должен конкурировать с `shell`
 - [docs/generated/commands.md](docs/generated/commands.md)
 - [docs/generated/project-interfaces.md](docs/generated/project-interfaces.md)
 - [docs/runbooks/investigation.md](docs/runbooks/investigation.md)
+
+## Лицензия
+
+Этот репозиторий лицензирован под **GNU Affero General Public License v3.0
+or later** (`AGPL-3.0-or-later`).
+
+Copyright © 2025–2026 Власов Виталий Андреевич <vital.cc55@gmail.com>
+
+Полный текст лицензии см. в:
+
+- [LICENSE](LICENSE)
+- [LICENSES/AGPL-3.0-or-later.txt](LICENSES/AGPL-3.0-or-later.txt)
+
+Репозиторий дополнительно оформлен в более формально совместимом с
+**REUSE** виде:
+
+- `src/**/*.cs` и `tests/**/*.cs` используют
+  `SPDX-FileCopyrightText` + `SPDX-License-Identifier`;
+- [REUSE.toml](REUSE.toml) закрывает licensing metadata для repo-level docs,
+  scripts и других не-code файлов;
+- проверка header-ов для C# идёт через
+  [scripts/check-csharp-license-headers.ps1](scripts/check-csharp-license-headers.ps1).

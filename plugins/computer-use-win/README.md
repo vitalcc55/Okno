@@ -48,6 +48,16 @@ powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-
 
 - `skills/computer-use-win/`
 
+Bundled skill теперь должен восприниматься как **onboarding guide for new
+agents**, а не как часть repo-internal verification loop. Его основная задача:
+
+- быстро объяснить public nine-tool surface;
+- подсказать normal state/action/observe loops;
+- помочь выбрать между `set_value`, `type_text`, `press_key`, `click`,
+  `scroll`, `perform_secondary_action`, `drag`;
+- объяснить `verify_needed`, `observeAfter`, `successorState`, `windowId` и
+  `stateToken` без погружения в внутренние `windows.*` engine tools.
+
 Skill требует state-first discipline:
 
 - каждый GUI turn начинать с `get_app_state`;
