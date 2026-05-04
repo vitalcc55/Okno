@@ -530,7 +530,7 @@ OCR полезен как fallback, но не как главный semantic lay
 
 ### В одной фразе
 
-**Мне нужен не просто Windows MCP-сервер, а собственный agent-grade Okno: быстрый, screenshot-first, UIA-first, verify-always runtime для реального управления этим Windows 11 ПК.**
+**Мне нужен не просто Windows MCP-сервер, а собственный agent-grade Okno: быстрый, screenshot-first, proof-weighted, verify-always runtime для реального управления этим Windows 11 ПК.**
 
 ### Короткая формула развития
 

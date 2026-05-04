@@ -49,6 +49,26 @@
 - `request_summary_suppressed` или `exception_message_suppressed`, когда fail-safe path намеренно не пишет raw значение
 - `gate_decision`, `gate_risk_level`, `gate_guard_capability`, `gate_requires_confirmation`, `gate_dry_run_supported`, `gate_reason_codes` для internal gated execution boundary; public payload-shaped keys не должны делить с ними один namespace
 
+Текущее shipped состояние для `computer-use-win` observability уже различает
+часть execution facts через поля вроде `dispatch_path`, `risk_class`,
+`fallback_used`, `observe_after_requested`, `successor_state_available` и
+`successor_state_failure_code`.
+
+Но это ещё не полный physical-execution policy layer. Следующий planned
+workstream должен поднять observability от “какой path выбрал coordinator” к
+более явному execution-fact envelope:
+
+- semantic vs physical execution mode;
+- expected physical vs fallback physical reason;
+- moved system cursor or not;
+- used physical keyboard stream or not;
+- foreground/focus takeover facts;
+- clipboard touched or not;
+- user-interference / interruption result, если такой слой появится.
+
+Важно: это не означает public tool-zoo expansion. Цель — усилить уже
+существующий action/result/audit surface.
+
 ## Каналы и anti-noise rules
 
 | Канал | Всегда включён | Что пишет | Anti-noise правило |
@@ -85,6 +105,22 @@
 9. Для `windows.wait` сверить public `structuredContent.artifactPath` с JSON artifact и, если audit sink был здоров, с событием `wait.runtime.completed` в `events.jsonl`; для `visual_changed` сначала проверить `lastObserved.visualEvidenceStatus`, а baseline/current PNG проверять только если runtime вернул соответствующие artifact paths. Internal marker `wait.visual.baseline_captured` допустим как smoke-only readiness signal, но остаётся best-effort и не должен трактоваться как обязательный public runtime event. Для `runtime_unhandled` и `tool_boundary_unhandled` internal `failure_diagnostics` остаются в wait artifact, а runtime event несёт только `failure_stage`, `exception_type` и redaction markers; для `artifact_write` wait artifact уже отсутствует по определению, поэтому расследование идёт по тем же runtime markers без raw `exception_message`.
 10. Для `okno.health` не искать `artifactPath`: отсутствие dedicated health artifact/event в этом rollout является ожидаемым contract.
 11. Для быстрого доступа к последним артефактам использовать `powershell -File scripts/investigate.ps1`.
+
+## Следующий observability gap
+
+После shipped screenshot-first hardening главным пробелом остаётся не
+отсутствие артефактов, а неполная формализация execution mode.
+
+Следующий workstream должен решить:
+
+- какие action paths считаются semantic/UIA execution;
+- какие action paths считаются expected physical execution для poor-UIA
+  targets;
+- какие action paths считаются fallback physical execution после слабого или
+  failed semantic proof;
+- как это отражается в public result, а что остаётся только в audit/event;
+- как фиксировать shared-resource effects вроде cursor movement,
+  foreground/focus change и physical keyboard input без утечки raw payload.
 
 ## Осознанно отложено
 

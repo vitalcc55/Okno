@@ -130,6 +130,14 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1
   unchanged `list_apps` snapshots переиспользуют strict runtime-owned
   `windowId`, а drift/replacement paths всё ещё fail-close без наивного
   публичного `hwnd + processId`.
+- следующий стратегический workstream теперь уже не “ещё один action”, а
+  `computer-use-win physical execution policy hardening`: explicit execution
+  facts, risky physical confirmation, physical-input lease/policy,
+  user-interference semantics и более ясное различение semantic path,
+  expected physical path и fallback physical path.
+- advisory app playbooks уже существуют, но app capability memory/profile layer
+  пока не shipped; расширять его разумнее после policy/observability
+  hardening, а не вместо него.
 
 Важно: Codex запускает установленную local plugin copy из `~/.codex/plugins/cache/.../local`, поэтому перед первой установкой plugin, после изменения runtime/layout или после reinstall нужно заново materialize-ить plugin-local runtime bundle командой `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1`, затем пересинхронизировать install/cache copy plugin и перезапустить Codex. Repo-root hint больше не входит в public install path `computer-use-win`.
 
@@ -158,6 +166,10 @@ Computer Use for Windows не должен конкурировать с `shell`
 - official `computer use` guidance отдельно фиксирует screenshot-first cycle:
   первый turn часто начинается со screenshot, а после action batch harness
   должен вернуть updated screenshot как first-class image input;
+- Windows не даёт проекту практичной модели второго независимого системного
+  курсора в том же interactive desktop, поэтому local strategy должна
+  усиливать current screenshot-first + explicit physical input loop, а не
+  уходить в “second cursor” research;
 - official MCP guidance для Codex и Responses API дополнительно усиливает
   narrow-surface подход: keep tool list small, use allow-list thinking where
   appropriate and не смешивать workflow-control с public operator actions;

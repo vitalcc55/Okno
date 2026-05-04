@@ -2,6 +2,10 @@
 
 Политика: фиксировать только инженерно значимые изменения, влияющие на operating model, control plane, архитектуру, проверки или контракт инструментов.
 
+## 2026-05-04
+
+- Product strategy после shipped `computer-use-win-screenshot-first-hardening` синхронизирована в source-of-truth docs и в новом active workstream [computer-use-win-physical-execution-policy-hardening](docs/exec-plans/active/computer-use-win-physical-execution-policy-hardening.md). [okno-roadmap](docs/product/okno-roadmap.md), [computer-use-win-surface](docs/architecture/computer-use-win-surface.md), [observability](docs/architecture/observability.md), [README.md](README.md) и [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md) теперь фиксируют следующий workstream как `computer-use-win physical execution policy hardening`, а не как узкий approvals-only follow-up. Документы прямо закрепляют три вещи: проект не строится вокруг “второго системного курсора”, `UIA-first` не считается универсальной стратегией для poor-UIA targets, а physical mouse/keyboard path для weak-semantic GUI является first-class execution mode, который должен стать explicit, measured, policy-controlled и successor-verified. В capability map также появился отдельный slice для app playbooks / capability hints, а `windows.region_capture` оставлен следующим visual verification slice после policy hardening.
+
 ## 2026-05-01
 
 - Review hardening для reopened `computer-use-win-screenshot-first-hardening` сузил coordinate-confirmed `type_text` fallback до screenshot-derived `capture_pixels` only: `coordinateSpace="screen"` больше не проходит validator/schema для `type_text(point, ...)`, handler всегда использует capture-pixels validation lane, observability больше не публикует `screen_text_input`, а docs/proof/tests фиксируют, что этот weakest typing path остаётся привязан к свежему `get_app_state` capture reference и raster bounds. Это закрывает broad raw screen-coordinate typing drift без добавления OCR, region/text detection или hidden previous-click reuse; semantic outcome по-прежнему подтверждается только successor screenshot и статус остаётся `verify_needed`.

@@ -105,6 +105,14 @@ Skill требует state-first discipline:
   `list_apps` snapshots переиспользуют прежний runtime-owned `windowId`;
   drift/replacement paths всё ещё fail-close, а `hwnd + processId` не стал
   public selector.
+- следующий strategic hardening для plugin surface теперь называется
+  `computer-use-win physical execution policy hardening`: нужно сделать
+  physical mouse/keyboard path для poor-UIA apps более явным в result/audit,
+  добавить единый risky physical policy layer и не оставлять `SendInput`
+  behavior размазанным по отдельным coordinators.
+- advisory app playbooks уже есть, но они пока не заменяют capability memory и
+  не должны подменять execution policy. Расширять playbooks лучше после
+  execution-fact / physical-policy hardening, а не вместо него.
 - `get_app_state` уже возвращает screenshot bytes в MCP result и локальный
   artifact, но если конкретный client не рендерит image block inline,
   screenshot preview hint остаётся отдельным UX hardening item, а не поводом

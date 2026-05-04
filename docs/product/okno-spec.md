@@ -89,11 +89,13 @@ _Технический продуктовый контракт Okno под Wind
 
 ## 2. Главные инженерные принципы продукта
 
-## 2.1. UIA-first
+## 2.1. Proof-weighted execution
 
 Основной путь действий:
-1. сначала понять, можно ли решить шаг через UI Automation;
-2. только если нельзя — использовать input по координатам.
+1. сначала собрать screenshot-first и state-first наблюдение;
+2. если semantic/UIA proof действительно сильный — использовать semantic path;
+3. если proof слабый, но target хорошо локализован визуально — использовать explicit physical input path;
+4. physical input не считается автоматически semantic success и должен проверяться successor observation.
 
 ## 2.2. Screenshot-first verification
 
@@ -750,10 +752,10 @@ Invariant:
 - Ядро на **C# / .NET 8+**.
 - Локальный runtime на **Windows 11**.
 - Базовый transport — **STDIO MCP**.
-- **UIA-first**.
+- **Screenshot-first + proof-weighted execution**, а не universal `UIA-first`.
 - **Window + desktop capture**.
-- **Clipboard входит в обязательный продуктовый контур**.
 - **Wait/verify входит в обязательный продуктовый контур**.
+- **Clipboard остаётся отдельным explicit slice, а не скрытым default path**.
 - Browser и desktop поддерживаются сразу, но через общий window-centric контур.
 
 ### Отложено на потом
@@ -767,6 +769,6 @@ Invariant:
 
 ## 10. Итоговое определение продукта
 
-**Okno** — это локальный UIA-first Windows runtime на C#/.NET с MCP-интерфейсом, который даёт мне минимально достаточный и надёжный набор возможностей для наблюдения, выбора окна, семантических действий, coordinate fallback, ввода текста, clipboard-вставки, ожидания и проверки результата в браузерах и desktop-приложениях.
+**Okno** — это локальный screenshot-first, proof-weighted Windows runtime на C#/.NET с MCP-интерфейсом, который даёт мне минимально достаточный и надёжный набор возможностей для наблюдения, выбора окна, семантических действий там, где proof сильный, explicit physical input там, где UIA слабый, ожидания и проверки результата в браузерах и desktop-приложениях.
 
 Если я с его помощью стабильно выполняю типовые рабочие сценарии пользователя и присылаю подтверждающие скрины состояния, значит продукт уже находится в рабочем зрелом состоянии.

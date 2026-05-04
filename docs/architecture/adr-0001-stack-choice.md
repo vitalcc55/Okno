@@ -2,7 +2,7 @@
 
 ## Контекст
 
-Репозиторий уже строится как локальный Windows-native MCP runtime с `UIA-first` семантикой, `STDIO` transport и фокусом на надёжность, а не на скорость прототипирования.
+Репозиторий уже строится как локальный Windows-native MCP runtime со `screenshot-first` и proof-weighted execution semantics, `STDIO` transport и фокусом на надёжность, а не на скорость прототипирования.
 
 ## Кандидаты
 
