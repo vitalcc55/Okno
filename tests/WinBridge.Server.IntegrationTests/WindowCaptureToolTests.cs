@@ -17,23 +17,24 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed class WindowCaptureToolTests
 {
+    private const string CaptureRunId = "capture-tests";
+    private const string PrimaryMonitorId = "display-source:0000000100000000:1";
+    private const string SecondaryMonitorId = "display-source:0000000100000000:2";
+    private const string PrimaryMonitorName = "Primary monitor";
+    private const string SecondaryMonitorName = "Secondary monitor";
+
     [Fact]
     public async Task CapturePrefersExplicitHwndOverAttachedWindow()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached");
         WindowDescriptor explicitWindow = CreateWindow(hwnd: 202, title: "Explicit");
         FakeCaptureService captureService = new(CreateCaptureResult(explicitWindow, "window"));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow, explicitWindow],
-            captureService: captureService,
-            attachedWindow: attachedWindow);
+        WindowTools tools = CreateTools([attachedWindow, explicitWindow], captureService, attachedWindow);
 
         CallToolResult result = await tools.Capture(hwnd: explicitWindow.Hwnd);
 
-        Assert.False(result.IsError);
-        Assert.Equal(explicitWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
-
-        JsonElement payload = AssertStructuredPayload(result);
+        JsonElement payload = AssertSuccessfulPayload(result);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Window, explicitWindow.Hwnd);
         Assert.Equal("window", payload.GetProperty("scope").GetString());
         Assert.Equal(explicitWindow.Hwnd, payload.GetProperty("hwnd").GetInt64());
         Assert.Equal(CaptureCoordinateSpaceValues.PhysicalPixels, payload.GetProperty("coordinateSpace").GetString());
@@ -43,45 +44,28 @@ public sealed class WindowCaptureToolTests
     [Fact]
     public async Task CaptureUsesExplicitHwndEvenWhenStableIdentitySignalsAreMissing()
     {
-        WindowDescriptor explicitWindow = CreateWindow(hwnd: 202, title: "Weak explicit") with
-        {
-            ProcessId = null,
-            ThreadId = null,
-            ClassName = null,
-        };
+        WindowDescriptor explicitWindow = CreateWindowWithoutStableIdentity(hwnd: 202, title: "Weak explicit");
         FakeCaptureService captureService = new(CreateCaptureResult(explicitWindow, "window"));
-        WindowTools tools = CreateTools(
-            windows: [explicitWindow],
-            captureService: captureService,
-            attachedWindow: null);
+        WindowTools tools = CreateTools([explicitWindow], captureService);
 
         CallToolResult result = await tools.Capture(hwnd: explicitWindow.Hwnd);
 
         Assert.False(result.IsError);
-        Assert.Equal(explicitWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Window, explicitWindow.Hwnd);
     }
 
     [Fact]
     public async Task WindowCaptureKeepsObservePayloadWhenInputTargetIdentityIsUnavailable()
     {
-        WindowDescriptor explicitWindow = CreateWindow(hwnd: 203, title: "Weak capture") with
-        {
-            ProcessId = null,
-            ThreadId = null,
-            ClassName = null,
-        };
+        WindowDescriptor explicitWindow = CreateWindowWithoutStableIdentity(hwnd: 203, title: "Weak capture");
         FakeCaptureService captureService = new(CreateCaptureResult(explicitWindow, "window", includeCaptureReference: false));
-        WindowTools tools = CreateTools(
-            windows: [explicitWindow],
-            captureService: captureService,
-            attachedWindow: null);
+        WindowTools tools = CreateTools([explicitWindow], captureService);
 
         CallToolResult result = await tools.Capture(hwnd: explicitWindow.Hwnd);
 
-        Assert.False(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
+        JsonElement payload = AssertSuccessfulPayload(result);
         Assert.Equal(explicitWindow.Hwnd, payload.GetProperty("hwnd").GetInt64());
-        Assert.False(payload.TryGetProperty("captureReference", out _));
+        AssertMissingProperties(payload, "captureReference");
     }
 
     [Fact]
@@ -89,16 +73,12 @@ public sealed class WindowCaptureToolTests
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 303, title: "Attached");
         FakeCaptureService captureService = new(CreateCaptureResult(attachedWindow, "window"));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            captureService: captureService,
-            attachedWindow: attachedWindow);
+        WindowTools tools = CreateTools([attachedWindow], captureService, attachedWindow);
 
         CallToolResult result = await tools.Capture();
 
         Assert.False(result.IsError);
-        Assert.Equal(attachedWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
-        Assert.Equal(CaptureScope.Window, captureService.LastTarget?.Scope);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Window, attachedWindow.Hwnd);
     }
 
     [Fact]
@@ -106,19 +86,12 @@ public sealed class WindowCaptureToolTests
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 303, title: "Attached");
         FakeCaptureService captureService = new(CreateCaptureResult(attachedWindow, "window"));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            captureService: captureService,
-            attachedWindow: attachedWindow);
+        WindowTools tools = CreateTools([attachedWindow], captureService, attachedWindow);
 
         CallToolResult result = await tools.Capture(hwnd: 0);
 
-        Assert.True(result.IsError);
         Assert.Null(captureService.LastTarget);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("по указанному hwnd больше не найдено", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        AssertToolError(result, "по указанному hwnd больше не найдено");
     }
 
     [Fact]
@@ -126,50 +99,35 @@ public sealed class WindowCaptureToolTests
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 404, title: "Attached");
         FakeCaptureService captureService = new(CreateCaptureResult(attachedWindow, "desktop", "monitor"));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            captureService: captureService,
-            attachedWindow: attachedWindow);
+        WindowTools tools = CreateTools([attachedWindow], captureService, attachedWindow);
 
         CallToolResult result = await tools.Capture(scope: "desktop");
 
-        Assert.False(result.IsError);
-        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
-        Assert.Equal(attachedWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
-        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+        JsonElement payload = AssertSuccessfulPayload(result);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Desktop, attachedWindow.Hwnd);
+        AssertDesktopMonitorPayload(payload);
         Assert.Equal(CaptureCoordinateSpaceValues.PhysicalPixels, payload.GetProperty("coordinateSpace").GetString());
-        Assert.False(payload.TryGetProperty("effectiveDpi", out _));
-        Assert.False(payload.TryGetProperty("frameBounds", out _));
-        Assert.False(payload.TryGetProperty("captureReference", out _));
+        AssertMissingProperties(payload, "effectiveDpi", "frameBounds", "captureReference");
     }
 
     [Fact]
     public async Task CaptureUsesExplicitMonitorIdForDesktopScope()
     {
-        FakeCaptureService captureService = new(
-            CreateCaptureResult(
-                window: null,
-                scope: "desktop",
-                targetKind: "monitor",
-                monitorId: "display-source:0000000100000000:2",
-                monitorFriendlyName: "Secondary monitor"));
-        WindowTools tools = CreateTools(
-            windows: [],
-            captureService: captureService,
-            attachedWindow: null);
+        FakeCaptureService captureService = new(CreateCaptureResult(
+            window: null,
+            scope: "desktop",
+            targetKind: "monitor",
+            monitorId: SecondaryMonitorId,
+            monitorFriendlyName: SecondaryMonitorName));
+        WindowTools tools = CreateTools([], captureService);
 
-        CallToolResult result = await tools.Capture(scope: "desktop", monitorId: "display-source:0000000100000000:2");
+        CallToolResult result = await tools.Capture(scope: "desktop", monitorId: SecondaryMonitorId);
 
-        Assert.False(result.IsError);
+        JsonElement payload = AssertSuccessfulPayload(result);
         Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
-        Assert.Equal("display-source:0000000100000000:2", captureService.LastTarget?.MonitorId);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("display-source:0000000100000000:2", payload.GetProperty("monitorId").GetString());
-        Assert.Equal("Secondary monitor", payload.GetProperty("monitorFriendlyName").GetString());
+        Assert.Equal(SecondaryMonitorId, captureService.LastTarget?.MonitorId);
+        Assert.Equal(SecondaryMonitorId, payload.GetProperty("monitorId").GetString());
+        Assert.Equal(SecondaryMonitorName, payload.GetProperty("monitorFriendlyName").GetString());
         Assert.Equal(CaptureCoordinateSpaceValues.PhysicalPixels, payload.GetProperty("coordinateSpace").GetString());
     }
 
@@ -180,13 +138,10 @@ public sealed class WindowCaptureToolTests
         WindowDescriptor explicitWindow = CreateWindow(hwnd: 411, title: "Explicit");
         IReadOnlyList<MonitorInfo> monitors =
         [
+            WindowToolTestData.CreateMonitor(monitorId: PrimaryMonitorId, friendlyName: PrimaryMonitorName, handle: 501),
             WindowToolTestData.CreateMonitor(
-                monitorId: "display-source:0000000100000000:1",
-                friendlyName: "Primary monitor",
-                handle: 501),
-            WindowToolTestData.CreateMonitor(
-                monitorId: "display-source:0000000100000000:2",
-                friendlyName: "Secondary monitor",
+                monitorId: SecondaryMonitorId,
+                friendlyName: SecondaryMonitorName,
                 isPrimary: false,
                 handle: 502),
         ];
@@ -194,44 +149,31 @@ public sealed class WindowCaptureToolTests
             monitors: monitors,
             windowToMonitorMap: new Dictionary<long, string>
             {
-                [attachedWindow.Hwnd] = "display-source:0000000100000000:1",
-                [explicitWindow.Hwnd] = "display-source:0000000100000000:2",
+                [attachedWindow.Hwnd] = PrimaryMonitorId,
+                [explicitWindow.Hwnd] = SecondaryMonitorId,
             });
         ResolvingCaptureService captureService = new(monitorManager);
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow, explicitWindow],
-            captureService: captureService,
-            attachedWindow: attachedWindow,
-            monitorManager: monitorManager);
+        WindowTools tools = CreateTools([attachedWindow, explicitWindow], captureService, attachedWindow, monitorManager);
 
         CallToolResult result = await tools.Capture(scope: "desktop", hwnd: explicitWindow.Hwnd);
 
-        Assert.False(result.IsError);
-        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
-        Assert.Equal(explicitWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
-        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+        JsonElement payload = AssertSuccessfulPayload(result);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Desktop, explicitWindow.Hwnd);
+        AssertDesktopMonitorPayload(payload);
         Assert.Equal(explicitWindow.Hwnd, payload.GetProperty("hwnd").GetInt64());
-        Assert.Equal("display-source:0000000100000000:2", payload.GetProperty("monitorId").GetString());
-        Assert.Equal("Secondary monitor", payload.GetProperty("monitorFriendlyName").GetString());
+        Assert.Equal(SecondaryMonitorId, payload.GetProperty("monitorId").GetString());
+        Assert.Equal(SecondaryMonitorName, payload.GetProperty("monitorFriendlyName").GetString());
     }
 
     [Fact]
     public async Task CaptureRejectsMonitorIdForWindowScope()
     {
-        WindowTools tools = CreateTools(
-            windows: [CreateWindow()],
-            captureService: new FakeCaptureService(CreateCaptureResult(CreateWindow(), "window")),
-            attachedWindow: null);
+        WindowDescriptor window = CreateWindow();
+        WindowTools tools = CreateTools([window], new FakeCaptureService(CreateCaptureResult(window, "window")));
 
-        CallToolResult result = await tools.Capture(scope: "window", monitorId: "display-source:0000000100000000:1");
+        CallToolResult result = await tools.Capture(scope: "window", monitorId: PrimaryMonitorId);
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("только для desktop capture", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        AssertToolError(result, "только для desktop capture");
     }
 
     [Fact]
@@ -239,19 +181,12 @@ public sealed class WindowCaptureToolTests
     {
         WindowDescriptor window = CreateWindow(hwnd: 409, title: "Conflict");
         WindowTools tools = CreateTools(
-            windows: [window],
-            captureService: new FakeCaptureService(CreateCaptureResult(window: null, scope: "desktop", targetKind: "monitor")),
-            attachedWindow: null);
+            [window],
+            new FakeCaptureService(CreateCaptureResult(window: null, scope: "desktop", targetKind: "monitor")));
 
-        CallToolResult result = await tools.Capture(
-            scope: "desktop",
-            hwnd: window.Hwnd,
-            monitorId: "display-source:0000000100000000:1");
+        CallToolResult result = await tools.Capture(scope: "desktop", hwnd: window.Hwnd, monitorId: PrimaryMonitorId);
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("одновременно передавать hwnd и monitorId", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        AssertToolError(result, "одновременно передавать hwnd и monitorId");
     }
 
     [Fact]
@@ -259,21 +194,14 @@ public sealed class WindowCaptureToolTests
     {
         WindowDescriptor staleAttachedWindow = CreateWindow(hwnd: 405, title: "Stale");
         FakeCaptureService captureService = new(CreateCaptureResult(window: null, scope: "desktop", targetKind: "monitor"));
-        WindowTools tools = CreateTools(
-            windows: [],
-            captureService: captureService,
-            attachedWindow: staleAttachedWindow);
+        WindowTools tools = CreateTools([], captureService, staleAttachedWindow);
 
         CallToolResult result = await tools.Capture(scope: "desktop");
 
-        Assert.False(result.IsError);
-        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
-        Assert.Null(captureService.LastTarget?.Window);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
-        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
-        Assert.False(payload.TryGetProperty("hwnd", out _));
+        JsonElement payload = AssertSuccessfulPayload(result);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Desktop, hwnd: null);
+        AssertDesktopMonitorPayload(payload);
+        AssertMissingProperties(payload, "hwnd");
     }
 
     [Fact]
@@ -282,21 +210,14 @@ public sealed class WindowCaptureToolTests
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 406, title: "Original", processId: 123, threadId: 900, className: "MainWindow");
         WindowDescriptor reusedLiveWindow = CreateWindow(hwnd: 406, title: "Different", processId: 123, threadId: 901, className: "MainWindow");
         FakeCaptureService captureService = new(CreateCaptureResult(window: null, scope: "desktop", targetKind: "monitor"));
-        WindowTools tools = CreateTools(
-            windows: [reusedLiveWindow],
-            captureService: captureService,
-            attachedWindow: attachedWindow);
+        WindowTools tools = CreateTools([reusedLiveWindow], captureService, attachedWindow);
 
         CallToolResult result = await tools.Capture(scope: "desktop");
 
-        Assert.False(result.IsError);
-        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
-        Assert.Null(captureService.LastTarget?.Window);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
-        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
-        Assert.False(payload.TryGetProperty("hwnd", out _));
+        JsonElement payload = AssertSuccessfulPayload(result);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Desktop, hwnd: null);
+        AssertDesktopMonitorPayload(payload);
+        AssertMissingProperties(payload, "hwnd");
     }
 
     [Fact]
@@ -305,16 +226,12 @@ public sealed class WindowCaptureToolTests
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 407, title: "Original");
         WindowDescriptor renamedLiveWindow = attachedWindow with { Title = "Renamed" };
         FakeCaptureService captureService = new(CreateCaptureResult(renamedLiveWindow, "window"));
-        WindowTools tools = CreateTools(
-            windows: [renamedLiveWindow],
-            captureService: captureService,
-            attachedWindow: attachedWindow);
+        WindowTools tools = CreateTools([renamedLiveWindow], captureService, attachedWindow);
 
         CallToolResult result = await tools.Capture(scope: "window");
 
         Assert.False(result.IsError);
-        Assert.Equal(CaptureScope.Window, captureService.LastTarget?.Scope);
-        Assert.Equal(attachedWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Window, attachedWindow.Hwnd);
     }
 
     [Fact]
@@ -323,20 +240,13 @@ public sealed class WindowCaptureToolTests
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 408, title: "Original");
         WindowDescriptor renamedLiveWindow = attachedWindow with { Title = "Renamed" };
         FakeCaptureService captureService = new(CreateCaptureResult(renamedLiveWindow, "desktop", "monitor"));
-        WindowTools tools = CreateTools(
-            windows: [renamedLiveWindow],
-            captureService: captureService,
-            attachedWindow: attachedWindow);
+        WindowTools tools = CreateTools([renamedLiveWindow], captureService, attachedWindow);
 
         CallToolResult result = await tools.Capture(scope: "desktop");
 
-        Assert.False(result.IsError);
-        Assert.Equal(CaptureScope.Desktop, captureService.LastTarget?.Scope);
-        Assert.Equal(attachedWindow.Hwnd, captureService.LastTarget?.Window?.Hwnd);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
-        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+        JsonElement payload = AssertSuccessfulPayload(result);
+        AssertCaptureTarget(captureService.LastTarget, CaptureScope.Desktop, attachedWindow.Hwnd);
+        AssertDesktopMonitorPayload(payload);
         Assert.Equal(attachedWindow.Hwnd, payload.GetProperty("hwnd").GetInt64());
     }
 
@@ -344,19 +254,12 @@ public sealed class WindowCaptureToolTests
     public async Task CaptureReturnsToolErrorWhenWindowTargetIsMissing()
     {
         FakeCaptureService captureService = new(CreateCaptureResult(CreateWindow(), "window"));
-        WindowTools tools = CreateTools(
-            windows: [],
-            captureService: captureService,
-            attachedWindow: null);
+        WindowTools tools = CreateTools([], captureService);
 
         CallToolResult result = await tools.Capture();
 
-        Assert.True(result.IsError);
         Assert.Null(captureService.LastTarget);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("сначала прикрепить окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        AssertToolError(result, "сначала прикрепить окно", StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -371,15 +274,11 @@ public sealed class WindowCaptureToolTests
             "window",
             pngBytes: pngBytes,
             frameBounds: frameBounds));
-        WindowTools tools = CreateTools(
-            windows: [window],
-            captureService: captureService,
-            attachedWindow: window);
+        WindowTools tools = CreateTools([window], captureService, window);
 
         CallToolResult result = await tools.Capture();
 
-        Assert.False(result.IsError);
-        Assert.NotNull(result.StructuredContent);
+        JsonElement payload = AssertSuccessfulPayload(result);
         Assert.Equal(2, result.Content.Count);
 
         TextContentBlock textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
@@ -391,15 +290,9 @@ public sealed class WindowCaptureToolTests
         Assert.Equal("image/png", imageBlock.MimeType);
         Assert.Equal(Convert.ToBase64String(pngBytes), Encoding.ASCII.GetString(imageBlock.Data.Span));
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(captureBounds.Left, payload.GetProperty("bounds").GetProperty("left").GetInt32());
-        Assert.Equal(captureBounds.Right, payload.GetProperty("bounds").GetProperty("right").GetInt32());
-        Assert.Equal(captureBounds.Width, payload.GetProperty("bounds").GetProperty("width").GetInt32());
-        Assert.Equal(captureBounds.Height, payload.GetProperty("bounds").GetProperty("height").GetInt32());
-        Assert.Equal(frameBounds.Left, payload.GetProperty("frameBounds").GetProperty("left").GetInt32());
-        Assert.Equal(frameBounds.Right, payload.GetProperty("frameBounds").GetProperty("right").GetInt32());
-        Assert.Equal(frameBounds.Width, payload.GetProperty("frameBounds").GetProperty("width").GetInt32());
-        Assert.Equal(frameBounds.Height, payload.GetProperty("frameBounds").GetProperty("height").GetInt32());
+        AssertBounds(payload, "bounds", captureBounds);
+        AssertBounds(payload, "frameBounds", frameBounds);
+
         JsonElement captureReference = payload.GetProperty("captureReference");
         AssertInputCompatibleBoundsWireShape(captureReference.GetProperty("bounds"));
         AssertInputCompatibleBoundsWireShape(captureReference.GetProperty("frameBounds"));
@@ -430,10 +323,58 @@ public sealed class WindowCaptureToolTests
             reason);
     }
 
+    private static JsonElement AssertSuccessfulPayload(CallToolResult result)
+    {
+        Assert.False(result.IsError);
+        return AssertStructuredPayload(result);
+    }
+
+    private static JsonElement AssertToolError(
+        CallToolResult result,
+        string reasonContains,
+        StringComparison comparison = StringComparison.Ordinal)
+    {
+        Assert.True(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal("failed", payload.GetProperty("status").GetString());
+        Assert.Contains(reasonContains, payload.GetProperty("reason").GetString(), comparison);
+        return payload;
+    }
+
     private static JsonElement AssertStructuredPayload(CallToolResult result)
     {
         Assert.NotNull(result.StructuredContent);
         return result.StructuredContent!.Value;
+    }
+
+    private static void AssertCaptureTarget(CaptureTarget? target, CaptureScope scope, long? hwnd)
+    {
+        Assert.NotNull(target);
+        Assert.Equal(scope, target!.Scope);
+        Assert.Equal(hwnd, target.Window?.Hwnd);
+    }
+
+    private static void AssertDesktopMonitorPayload(JsonElement payload)
+    {
+        Assert.Equal("desktop", payload.GetProperty("scope").GetString());
+        Assert.Equal("monitor", payload.GetProperty("targetKind").GetString());
+    }
+
+    private static void AssertBounds(JsonElement payload, string propertyName, Bounds expected)
+    {
+        JsonElement bounds = payload.GetProperty(propertyName);
+        Assert.Equal(expected.Left, bounds.GetProperty("left").GetInt32());
+        Assert.Equal(expected.Right, bounds.GetProperty("right").GetInt32());
+        Assert.Equal(expected.Width, bounds.GetProperty("width").GetInt32());
+        Assert.Equal(expected.Height, bounds.GetProperty("height").GetInt32());
+    }
+
+    private static void AssertMissingProperties(JsonElement payload, params string[] propertyNames)
+    {
+        foreach (string propertyName in propertyNames)
+        {
+            Assert.False(payload.TryGetProperty(propertyName, out _), $"Payload must not contain '{propertyName}'.");
+        }
     }
 
     private static void AssertInputCompatibleBoundsWireShape(JsonElement bounds)
@@ -449,39 +390,42 @@ public sealed class WindowCaptureToolTests
     private static WindowTools CreateTools(
         IReadOnlyList<WindowDescriptor> windows,
         ICaptureService captureService,
-        WindowDescriptor? attachedWindow,
+        WindowDescriptor? attachedWindow = null,
         FakeMonitorManager? monitorManager = null)
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
 
+        string diagnosticsRoot = Path.Combine(root, "artifacts", "diagnostics");
+        string runDirectory = Path.Combine(diagnosticsRoot, CaptureRunId);
         AuditLogOptions options = new(
             ContentRootPath: root,
             EnvironmentName: "Tests",
-            RunId: "capture-tests",
-            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
-            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "capture-tests"),
-            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "capture-tests", "events.jsonl"),
-            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "capture-tests", "summary.md"));
-        AuditLog auditLog = new(options, TimeProvider.System);
-        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("capture-tests"));
+            RunId: CaptureRunId,
+            DiagnosticsRoot: diagnosticsRoot,
+            RunDirectory: runDirectory,
+            EventsPath: Path.Combine(runDirectory, "events.jsonl"),
+            SummaryPath: Path.Combine(runDirectory, "summary.md"));
+        TimeProvider timeProvider = TimeProvider.System;
+        AuditLog auditLog = new(options, timeProvider);
+        InMemorySessionManager sessionManager = new(timeProvider, new SessionContext(CaptureRunId));
 
         if (attachedWindow is not null)
         {
             sessionManager.Attach(attachedWindow, "hwnd");
         }
 
-        FakeMonitorManager effectiveMonitorManager = monitorManager ?? new FakeMonitorManager();
+        FakeWindowManager windowManager = new(windows);
         WaitResultMaterializer waitResultMaterializer = new(auditLog, options, WaitOptions.Default);
 
         return new WindowTools(
             auditLog,
             sessionManager,
-            new FakeWindowManager(windows),
+            windowManager,
             captureService,
-            effectiveMonitorManager,
+            monitorManager ?? new FakeMonitorManager(),
             new FakeWindowActivationService(),
-            new WindowTargetResolver(new FakeWindowManager(windows)),
+            new WindowTargetResolver(windowManager),
             new FakeUiAutomationService(),
             new FakeWaitService(),
             waitResultMaterializer,
@@ -509,17 +453,43 @@ public sealed class WindowCaptureToolTests
             IsForeground: true,
             IsVisible: true);
 
+    private static WindowDescriptor CreateWindowWithoutStableIdentity(long hwnd, string title) =>
+        CreateWindow(hwnd: hwnd, title: title) with
+        {
+            ProcessId = null,
+            ThreadId = null,
+            ClassName = null,
+        };
+
     private static CaptureResult CreateCaptureResult(
         WindowDescriptor? window,
         string scope,
         string targetKind = "window",
         byte[]? pngBytes = null,
-        string? monitorId = "display-source:0000000100000000:1",
-        string? monitorFriendlyName = "Primary monitor",
+        string? monitorId = PrimaryMonitorId,
+        string? monitorFriendlyName = PrimaryMonitorName,
         string? monitorGdiDeviceName = @"\\.\DISPLAY1",
         Bounds? frameBounds = null,
         bool includeCaptureReference = true)
     {
+        byte[] imageBytes = pngBytes ?? [1, 2, 3];
+        bool isWindowTarget = targetKind == "window";
+        DateTimeOffset capturedAtUtc = DateTimeOffset.UtcNow;
+        InputCaptureReference? captureReference = includeCaptureReference && isWindowTarget && window is not null
+            ? new InputCaptureReference(
+                ToInputBounds(window.Bounds),
+                pixelWidth: 200,
+                pixelHeight: 200,
+                effectiveDpi: 96,
+                capturedAtUtc: capturedAtUtc,
+                frameBounds: frameBounds is null ? null : ToInputBounds(frameBounds),
+                targetIdentity: new InputTargetIdentity(
+                    window.Hwnd,
+                    window.ProcessId ?? 123,
+                    window.ThreadId ?? 456,
+                    window.ClassName ?? "OknoWindow"))
+            : null;
+
         CaptureMetadata metadata = new(
             Scope: scope,
             TargetKind: targetKind,
@@ -530,36 +500,24 @@ public sealed class WindowCaptureToolTests
             CoordinateSpace: CaptureCoordinateSpaceValues.PhysicalPixels,
             PixelWidth: 200,
             PixelHeight: 200,
-            CapturedAtUtc: DateTimeOffset.UtcNow,
+            CapturedAtUtc: capturedAtUtc,
             ArtifactPath: @"C:\artifacts\capture.png",
             MimeType: "image/png",
-            ByteSize: (pngBytes ?? [1, 2, 3]).Length,
-            SessionRunId: "capture-tests",
-            EffectiveDpi: targetKind == "window" ? 96 : null,
-            DpiScale: targetKind == "window" ? 1.0 : null,
+            ByteSize: imageBytes.Length,
+            SessionRunId: CaptureRunId,
+            EffectiveDpi: isWindowTarget ? 96 : null,
+            DpiScale: isWindowTarget ? 1.0 : null,
             MonitorId: monitorId,
             MonitorFriendlyName: monitorFriendlyName,
             MonitorGdiDeviceName: monitorGdiDeviceName,
             FrameBounds: frameBounds,
-            CaptureReference: includeCaptureReference && targetKind == "window" && window is not null
-                ? new InputCaptureReference(
-                    new InputBounds(window.Bounds.Left, window.Bounds.Top, window.Bounds.Right, window.Bounds.Bottom),
-                    pixelWidth: 200,
-                    pixelHeight: 200,
-                    effectiveDpi: 96,
-                    capturedAtUtc: DateTimeOffset.UtcNow,
-                    frameBounds: frameBounds is null
-                        ? null
-                        : new InputBounds(frameBounds.Left, frameBounds.Top, frameBounds.Right, frameBounds.Bottom),
-                    targetIdentity: new InputTargetIdentity(
-                        window.Hwnd,
-                        window.ProcessId ?? 123,
-                        window.ThreadId ?? 456,
-                        window.ClassName ?? "OknoWindow"))
-                : null);
+            CaptureReference: captureReference);
 
-        return new CaptureResult(metadata, pngBytes ?? [1, 2, 3]);
+        return new CaptureResult(metadata, imageBytes);
     }
+
+    private static InputBounds ToInputBounds(Bounds bounds) =>
+        new(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
 
     private sealed class FakeCaptureService(CaptureResult result) : ICaptureService
     {
@@ -600,7 +558,7 @@ public sealed class WindowCaptureToolTests
                 ArtifactPath: @"C:\artifacts\desktop-capture.png",
                 MimeType: "image/png",
                 ByteSize: 3,
-                SessionRunId: "capture-tests",
+                SessionRunId: CaptureRunId,
                 MonitorId: monitor.Descriptor.MonitorId,
                 MonitorFriendlyName: monitor.Descriptor.FriendlyName,
                 MonitorGdiDeviceName: monitor.Descriptor.GdiDeviceName);

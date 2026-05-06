@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025–2026 Власов Виталий Андреевич <vital.cc55@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using WinBridge.Runtime.Tooling;
@@ -12,305 +12,113 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
+    private const string ReleasePackagingPluginVersion = "0.1.0";
+    private const string ReleasePackagingRuntimeVersion = "0.1.0-test";
+    private const string ReleasePackagingRuntimeRid = "win-x64";
+    private const string ReleasePackagingRuntimeServerExeName = "Okno.Server.exe";
+    private const string ReleasePackagingRuntimeBundleManifestName = "okno-runtime-bundle-manifest.json";
+    private const string ReleasePackagingRuntimeWorkerExeName = "WinBridge.Runtime.Windows.UIA.Worker.exe";
+
+    private static readonly Lazy<ReleasePackagingPackage> SharedReleasePackagingPluginPackage = new(CreateReleasePackagingPluginPackage);
+    private static readonly Lazy<ReleasePackagingPackage> SharedReleasePackagingRuntimePackage = new(CreateReleasePackagingRuntimePackage);
+    private static readonly byte[] ReleasePackagingDirectoryDigestSeparator = [0];
+
     [Fact]
     public void PackageComputerUseWinPluginReleaseCreatesVersionedZipAndChecksumWithoutMutatingPluginSource()
     {
-        string repoRoot = GetRepositoryRoot();
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
-        string pluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-plugin-release-package", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        ReleasePackagingPackage package = SharedReleasePackagingPluginPackage.Value;
 
-        string pluginDigestBefore = ComputeDirectoryDigest(pluginRoot);
-
-        try
-        {
-            ScriptInvocationResult result = InvokePowerShellScript(
-                packageScriptPath,
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-Version");
-                    startInfo.ArgumentList.Add(version);
-                    startInfo.ArgumentList.Add("-OutputRoot");
-                    startInfo.ArgumentList.Add(outputRoot);
-                });
-
-            Assert.True(
-                result.ExitCode == 0,
-                $"Plugin release packaging script failed. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
-            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
-
-            string archivePath = payload.RootElement.GetProperty("archivePath").GetString()
-                ?? throw new InvalidOperationException("archivePath missing.");
-            string checksumPath = payload.RootElement.GetProperty("checksumPath").GetString()
-                ?? throw new InvalidOperationException("checksumPath missing.");
-            string assetName = payload.RootElement.GetProperty("assetName").GetString()
-                ?? throw new InvalidOperationException("assetName missing.");
-
-            Assert.Equal($"okno-computer-use-win-plugin-{version}.zip", assetName);
-            Assert.True(File.Exists(archivePath));
-            Assert.True(File.Exists(checksumPath));
-            Assert.Equal(pluginDigestBefore, ComputeDirectoryDigest(pluginRoot));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-        }
+        Assert.Equal($"okno-computer-use-win-plugin-{ReleasePackagingPluginVersion}.zip", package.AssetName);
+        AssertReleasePackagingFilesExist(package.ArchivePath, package.ChecksumPath);
+        Assert.Equal(package.SourceDigestBefore, package.SourceDigestAfter);
     }
 
     [Fact]
     public void PackageComputerUseWinPluginReleaseIncludesPluginContractFilesAndExcludesRuntimeDirectory()
     {
-        string repoRoot = GetRepositoryRoot();
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-plugin-release-archive", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        using ZipArchive archive = ZipFile.OpenRead(SharedReleasePackagingPluginPackage.Value.ArchivePath);
 
-        try
-        {
-            ScriptInvocationResult result = InvokePowerShellScript(
-                packageScriptPath,
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-Version");
-                    startInfo.ArgumentList.Add(version);
-                    startInfo.ArgumentList.Add("-OutputRoot");
-                    startInfo.ArgumentList.Add(outputRoot);
-                });
-
-            Assert.True(result.ExitCode == 0, $"Plugin release packaging script failed: {result.Stderr}");
-            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
-
-            string archivePath = payload.RootElement.GetProperty("archivePath").GetString()
-                ?? throw new InvalidOperationException("archivePath missing.");
-            using ZipArchive archive = ZipFile.OpenRead(archivePath);
-
-            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), ".mcp.json", StringComparison.Ordinal));
-            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), ".codex-plugin/plugin.json", StringComparison.Ordinal));
-            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "run-computer-use-win-mcp.ps1", StringComparison.Ordinal));
-            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "runtime-release.json", StringComparison.Ordinal));
-            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "skills/computer-use-win/SKILL.md", StringComparison.Ordinal));
-            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "okno-plugin-bundle-manifest.json", StringComparison.Ordinal));
-            Assert.DoesNotContain(archive.Entries, entry => NormalizeArchiveEntryPath(entry.FullName).StartsWith("runtime/", StringComparison.Ordinal));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-        }
+        AssertReleasePackagingArchiveContains(
+            archive,
+            ".mcp.json",
+            ".codex-plugin/plugin.json",
+            "run-computer-use-win-mcp.ps1",
+            "runtime-release.json",
+            "skills/computer-use-win/SKILL.md",
+            "okno-plugin-bundle-manifest.json");
+        AssertReleasePackagingArchiveDoesNotContainPrefix(archive, "runtime/");
     }
 
     [Fact]
     public void PackageComputerUseWinPluginReleaseBundleManifestCarriesPluginAndRuntimeCompatibilityMetadata()
     {
-        string repoRoot = GetRepositoryRoot();
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-plugin-release-manifest", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        using ZipArchive archive = ZipFile.OpenRead(SharedReleasePackagingPluginPackage.Value.ArchivePath);
+        using JsonDocument manifest = ReadReleasePackagingJsonArchiveEntry(archive, "okno-plugin-bundle-manifest.json");
+        JsonElement root = manifest.RootElement;
 
-        try
-        {
-            ScriptInvocationResult result = InvokePowerShellScript(
-                packageScriptPath,
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-Version");
-                    startInfo.ArgumentList.Add(version);
-                    startInfo.ArgumentList.Add("-OutputRoot");
-                    startInfo.ArgumentList.Add(outputRoot);
-                });
-
-            Assert.True(result.ExitCode == 0, $"Plugin release packaging script failed: {result.Stderr}");
-            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
-            string archivePath = payload.RootElement.GetProperty("archivePath").GetString()
-                ?? throw new InvalidOperationException("archivePath missing.");
-
-            using ZipArchive archive = ZipFile.OpenRead(archivePath);
-            ZipArchiveEntry manifestEntry = archive.Entries.Single(entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "okno-plugin-bundle-manifest.json", StringComparison.Ordinal));
-            using Stream manifestStream = manifestEntry.Open();
-            using JsonDocument manifest = JsonDocument.Parse(manifestStream);
-
-            Assert.Equal(1, manifest.RootElement.GetProperty("formatVersion").GetInt32());
-            Assert.Equal("computer-use-win", manifest.RootElement.GetProperty("pluginId").GetString());
-            Assert.Equal(version, manifest.RootElement.GetProperty("pluginVersion").GetString());
-            Assert.Equal(version, manifest.RootElement.GetProperty("runtimeVersion").GetString());
-            Assert.Equal("win-x64", manifest.RootElement.GetProperty("runtimeRid").GetString());
-            Assert.Equal($"v{version}", manifest.RootElement.GetProperty("runtimeTag").GetString());
-            Assert.Equal($"okno-computer-use-win-runtime-{version}-win-x64.zip", manifest.RootElement.GetProperty("runtimeAssetName").GetString());
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-        }
+        Assert.Equal(1, root.GetProperty("formatVersion").GetInt32());
+        AssertReleasePackagingJsonString(root, "pluginId", "computer-use-win");
+        AssertReleasePackagingJsonString(root, "pluginVersion", ReleasePackagingPluginVersion);
+        AssertReleasePackagingJsonString(root, "runtimeVersion", ReleasePackagingPluginVersion);
+        AssertReleasePackagingJsonString(root, "runtimeRid", ReleasePackagingRuntimeRid);
+        AssertReleasePackagingJsonString(root, "runtimeTag", $"v{ReleasePackagingPluginVersion}");
+        AssertReleasePackagingJsonString(root, "runtimeAssetName", $"okno-computer-use-win-runtime-{ReleasePackagingPluginVersion}-{ReleasePackagingRuntimeRid}.zip");
     }
 
     [Fact]
     public void PackageComputerUseWinRuntimeReleaseCreatesVersionedZipAndChecksumWithoutMutatingRuntimeBundle()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-package", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0-test";
+        ReleasePackagingPackage package = SharedReleasePackagingRuntimePackage.Value;
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
-        string runtimeDigestBefore = ComputeDirectoryDigest(runtimeRoot);
-
-        try
-        {
-            ScriptInvocationResult result = InvokePowerShellScript(
-                packageScriptPath,
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-Version");
-                    startInfo.ArgumentList.Add(version);
-                    startInfo.ArgumentList.Add("-Rid");
-                    startInfo.ArgumentList.Add("win-x64");
-                    startInfo.ArgumentList.Add("-PublishSourceRoot");
-                    startInfo.ArgumentList.Add(runtimeRoot);
-                    startInfo.ArgumentList.Add("-OutputRoot");
-                    startInfo.ArgumentList.Add(outputRoot);
-                });
-
-            Assert.True(
-                result.ExitCode == 0,
-                $"Release packaging script failed. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
-            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
-
-            string archivePath = payload.RootElement.GetProperty("archivePath").GetString()
-                ?? throw new InvalidOperationException("archivePath missing.");
-            string checksumPath = payload.RootElement.GetProperty("checksumPath").GetString()
-                ?? throw new InvalidOperationException("checksumPath missing.");
-            string assetName = payload.RootElement.GetProperty("assetName").GetString()
-                ?? throw new InvalidOperationException("assetName missing.");
-
-            Assert.Equal($"okno-computer-use-win-runtime-{version}-win-x64.zip", assetName);
-            Assert.True(File.Exists(archivePath));
-            Assert.True(File.Exists(checksumPath));
-            Assert.Equal(runtimeDigestBefore, ComputeDirectoryDigest(runtimeRoot));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-        }
+        Assert.Equal($"okno-computer-use-win-runtime-{ReleasePackagingRuntimeVersion}-{ReleasePackagingRuntimeRid}.zip", package.AssetName);
+        AssertReleasePackagingFilesExist(package.ArchivePath, package.ChecksumPath);
+        Assert.Equal(package.SourceDigestBefore, package.SourceDigestAfter);
     }
 
     [Fact]
     public void PackageComputerUseWinRuntimeReleasePreservesRuntimeManifestInsideArchive()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-package-archive", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0-test";
+        using ZipArchive archive = ZipFile.OpenRead(SharedReleasePackagingRuntimePackage.Value.ArchivePath);
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
-
-        try
-        {
-            ScriptInvocationResult result = InvokePowerShellScript(
-                packageScriptPath,
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-Version");
-                    startInfo.ArgumentList.Add(version);
-                    startInfo.ArgumentList.Add("-Rid");
-                    startInfo.ArgumentList.Add("win-x64");
-                    startInfo.ArgumentList.Add("-PublishSourceRoot");
-                    startInfo.ArgumentList.Add(runtimeRoot);
-                    startInfo.ArgumentList.Add("-OutputRoot");
-                    startInfo.ArgumentList.Add(outputRoot);
-                });
-
-            Assert.True(result.ExitCode == 0, $"Release packaging script failed: {result.Stderr}");
-            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
-
-            string archivePath = payload.RootElement.GetProperty("archivePath").GetString()
-                ?? throw new InvalidOperationException("archivePath missing.");
-            using ZipArchive archive = ZipFile.OpenRead(archivePath);
-            Assert.Contains(archive.Entries, entry => string.Equals(entry.FullName, "Okno.Server.exe", StringComparison.Ordinal));
-            Assert.Contains(archive.Entries, entry => string.Equals(entry.FullName, "okno-runtime-bundle-manifest.json", StringComparison.Ordinal));
-            Assert.Contains(archive.Entries, entry => string.Equals(entry.FullName, "WinBridge.Runtime.Windows.UIA.Worker.exe", StringComparison.Ordinal));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-        }
+        AssertReleasePackagingArchiveContains(archive, ReleasePackagingRuntimeServerExeName, ReleasePackagingRuntimeBundleManifestName, ReleasePackagingRuntimeWorkerExeName);
     }
 
     [Fact]
     public async Task ComputerUseWinLauncherBootstrapsRuntimeFromPinnedReleaseDescriptorWhenRuntimeBundleIsMissing()
     {
         string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-bootstrap", Guid.NewGuid().ToString("N"));
-        string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-backed-plugin", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-release-bootstrap", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0-test";
-
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        string sourcePluginRoot = GetReleasePackagingPluginRoot(repoRoot);
+        string descriptorRoot = CreateReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-release-bootstrap-descriptor");
+        string tempPluginRoot = CreateReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-release-backed-plugin");
+        string codexHome = CreateReleasePackagingTestOutputRoot(repoRoot, "codex-home-release-bootstrap");
 
         try
         {
-            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, runtimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, archivePath, "win-x64");
+            string descriptorPath = CreateRuntimeReleaseDescriptor(
+                descriptorRoot,
+                ReleasePackagingRuntimeVersion,
+                SharedReleasePackagingRuntimePackage.Value.ArchivePath,
+                ReleasePackagingRuntimeRid);
 
-            CopyDirectory(sourcePluginRoot, tempPluginRoot, IncludeStablePluginPath);
-            DeleteDirectoryIfExists(Path.Combine(tempPluginRoot, "runtime", "win-x64"));
+            CopyReleasePackagingPluginWithoutLocalRuntime(sourcePluginRoot, tempPluginRoot);
 
             await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, descriptorPath, codexHome);
             PluginMcpSession session = launcher.CreateMcpSession();
 
-            try
-            {
-                using JsonDocument initializeResponse = await session.SendRequestAsync(
-                    "initialize",
-                    new
-                    {
-                        protocolVersion = "2025-11-25",
-                        capabilities = new { },
-                        clientInfo = new
-                        {
-                            name = "ComputerUseWin.ReleasePackagingTests",
-                            version = "0.1.0",
-                        },
-                    },
-                    "initialize");
+            await InitializeReleasePackagingMcpSessionAsync(session);
+            string[] toolNames = await ListReleasePackagingMcpToolNamesAsync(session);
 
-                await session.SendNotificationAsync("notifications/initialized");
-
-                using JsonDocument toolsResponse = await session.SendRequestAsync("tools/list", new { }, "tools/list");
-                string[] toolNames = toolsResponse.RootElement
-                    .GetProperty("result")
-                    .GetProperty("tools")
-                    .EnumerateArray()
-                    .Select(tool => tool.GetProperty("name").GetString() ?? string.Empty)
-                    .OrderBy(static value => value, StringComparer.Ordinal)
-                    .ToArray();
-
-                Assert.Contains(ToolNames.ComputerUseWinListApps, toolNames);
-                Assert.Contains(ToolNames.ComputerUseWinGetAppState, toolNames);
-                Assert.Contains(ToolNames.ComputerUseWinClick, toolNames);
-                string sharedRuntimeRoot = GetExpectedSharedRuntimeRoot(codexHome, "win-x64", version);
-                Assert.True(File.Exists(Path.Combine(sharedRuntimeRoot, "Okno.Server.exe")));
-                Assert.True(File.Exists(Path.Combine(sharedRuntimeRoot, "okno-runtime-bundle-manifest.json")));
-            }
-            finally
-            {
-            }
+            Assert.Contains(ToolNames.ComputerUseWinListApps, toolNames);
+            Assert.Contains(ToolNames.ComputerUseWinGetAppState, toolNames);
+            Assert.Contains(ToolNames.ComputerUseWinClick, toolNames);
+            AssertReleasePackagingFilesExistUnder(
+                GetExpectedSharedRuntimeRoot(codexHome, ReleasePackagingRuntimeRid, ReleasePackagingRuntimeVersion),
+                ReleasePackagingRuntimeServerExeName,
+                ReleasePackagingRuntimeBundleManifestName);
         }
         finally
         {
-            DeleteDirectoryIfExists(outputRoot);
+            DeleteDirectoryIfExists(descriptorRoot);
             DeleteDirectoryIfExists(tempPluginRoot);
             DeleteDirectoryIfExists(codexHome);
         }
@@ -320,29 +128,21 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     public void ComputerUseWinLauncherFailsClosedWhenPinnedReleaseChecksumDoesNotMatch()
     {
         string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-bootstrap-fail", Guid.NewGuid().ToString("N"));
-        string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-backed-plugin-fail", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-release-bootstrap-fail", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0-test";
-
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        string sourcePluginRoot = GetReleasePackagingPluginRoot(repoRoot);
+        string descriptorRoot = CreateReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-release-bootstrap-fail-descriptor");
+        string tempPluginRoot = CreateReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-release-backed-plugin-fail");
+        string codexHome = CreateReleasePackagingTestOutputRoot(repoRoot, "codex-home-release-bootstrap-fail");
 
         try
         {
-            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, runtimeRoot, outputRoot, version);
             string descriptorPath = CreateRuntimeReleaseDescriptor(
-                outputRoot,
-                version,
-                archivePath,
-                "win-x64",
+                descriptorRoot,
+                ReleasePackagingRuntimeVersion,
+                SharedReleasePackagingRuntimePackage.Value.ArchivePath,
+                ReleasePackagingRuntimeRid,
                 sha256Override: new string('0', 64));
 
-            CopyDirectory(sourcePluginRoot, tempPluginRoot, IncludeStablePluginPath);
-            DeleteDirectoryIfExists(Path.Combine(tempPluginRoot, "runtime", "win-x64"));
+            CopyReleasePackagingPluginWithoutLocalRuntime(sourcePluginRoot, tempPluginRoot);
 
             ScriptInvocationResult result = InvokePluginLauncher(tempPluginRoot, descriptorPath, codexHome);
 
@@ -351,7 +151,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         }
         finally
         {
-            DeleteDirectoryIfExists(outputRoot);
+            DeleteDirectoryIfExists(descriptorRoot);
             DeleteDirectoryIfExists(tempPluginRoot);
             DeleteDirectoryIfExists(codexHome);
         }
@@ -360,83 +160,117 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     [Fact]
     public void ComputerUseWinRuntimeReleaseDescriptorMatchesPinnedContractShape()
     {
-        string repoRoot = GetRepositoryRoot();
-        string descriptorPath = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime-release.json");
-        using JsonDocument descriptor = JsonDocument.Parse(File.ReadAllText(descriptorPath));
+        using JsonDocument descriptor = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(GetReleasePackagingPluginRoot(GetRepositoryRoot()), "runtime-release.json")));
+        JsonElement root = descriptor.RootElement;
 
-        Assert.Equal(1, descriptor.RootElement.GetProperty("formatVersion").GetInt32());
-        Assert.Equal("0.1.0", descriptor.RootElement.GetProperty("version").GetString());
-        Assert.Equal("win-x64", descriptor.RootElement.GetProperty("rid").GetString());
-        Assert.Equal("v0.1.0", descriptor.RootElement.GetProperty("tag").GetString());
-        Assert.Equal("okno-computer-use-win-runtime-0.1.0-win-x64.zip", descriptor.RootElement.GetProperty("assetName").GetString());
-        Assert.Contains("/releases/download/v0.1.0/", descriptor.RootElement.GetProperty("downloadUrl").GetString(), StringComparison.Ordinal);
-        string sha256 = descriptor.RootElement.GetProperty("sha256").GetString()
-            ?? throw new InvalidOperationException("sha256 missing.");
-        Assert.Matches("^[0-9a-f]{64}$", sha256);
-        Assert.Equal("Okno.Server.exe", descriptor.RootElement.GetProperty("serverExeRelativePath").GetString());
-        Assert.Equal("okno-runtime-bundle-manifest.json", descriptor.RootElement.GetProperty("bundleManifestName").GetString());
+        Assert.Equal(1, root.GetProperty("formatVersion").GetInt32());
+        AssertReleasePackagingJsonString(root, "version", "0.1.0");
+        AssertReleasePackagingJsonString(root, "rid", ReleasePackagingRuntimeRid);
+        AssertReleasePackagingJsonString(root, "tag", "v0.1.0");
+        AssertReleasePackagingJsonString(root, "assetName", "okno-computer-use-win-runtime-0.1.0-win-x64.zip");
+        Assert.Contains("/releases/download/v0.1.0/", GetRequiredReleasePackagingJsonString(root, "downloadUrl"), StringComparison.Ordinal);
+        Assert.Matches("^[0-9a-f]{64}$", GetRequiredReleasePackagingJsonString(root, "sha256"));
+        AssertReleasePackagingJsonString(root, "serverExeRelativePath", ReleasePackagingRuntimeServerExeName);
+        AssertReleasePackagingJsonString(root, "bundleManifestName", ReleasePackagingRuntimeBundleManifestName);
     }
 
     [Fact]
     public void ComputerUseWinInstallRunbookSeparatesCodexGenericAndDeveloperPaths()
     {
-        string repoRoot = GetRepositoryRoot();
-        string runbookPath = Path.Combine(repoRoot, "docs", "runbooks", "computer-use-win-install.md");
-        string runbook = File.ReadAllText(runbookPath);
+        string runbook = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "docs", "runbooks", "computer-use-win-install.md"));
 
-        Assert.Contains("## 1. Installer-first Codex install", runbook, StringComparison.Ordinal);
-        Assert.Contains("## 2. Installer-first runtime-only install", runbook, StringComparison.Ordinal);
-        Assert.Contains("## 3. Generic MCP STDIO runtime zip", runbook, StringComparison.Ordinal);
-        Assert.Contains("## 4. Developer from source", runbook, StringComparison.Ordinal);
-        Assert.Contains("Okno Setup.exe", runbook, StringComparison.Ordinal);
-        Assert.Contains("install-computer-use-win.ps1", runbook, StringComparison.Ordinal);
-        Assert.Contains("Okno.Server.exe", runbook, StringComparison.Ordinal);
-        Assert.Contains("publish-computer-use-win-plugin.ps1", runbook, StringComparison.Ordinal);
+        AssertReleasePackagingTextContainsAll(
+            runbook,
+            "## 1. Installer-first Codex install",
+            "## 2. Installer-first runtime-only install",
+            "## 3. Generic MCP STDIO runtime zip",
+            "## 4. Developer from source",
+            "Okno Setup.exe",
+            "install-computer-use-win.ps1",
+            ReleasePackagingRuntimeServerExeName,
+            "publish-computer-use-win-plugin.ps1");
     }
 
     [Fact]
     public void CacheInstallProofTracksRuntimeReleaseDescriptorMetadata()
     {
-        string repoRoot = GetRepositoryRoot();
-        string proofScriptPath = Path.Combine(repoRoot, "scripts", "codex", "prove-computer-use-win-cache-install.ps1");
-        string proofScript = File.ReadAllText(proofScriptPath);
+        string proofScript = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "scripts", "codex", "prove-computer-use-win-cache-install.ps1"));
 
-        Assert.Contains("runtime-release.json", proofScript, StringComparison.Ordinal);
-        Assert.Contains("runtimeReleaseVersion", proofScript, StringComparison.Ordinal);
-        Assert.Contains("runtimeReleaseAssetName", proofScript, StringComparison.Ordinal);
-        Assert.Contains("runtimeReleaseDownloadUrl", proofScript, StringComparison.Ordinal);
+        AssertReleasePackagingTextContainsAll(
+            proofScript,
+            "runtime-release.json",
+            "runtimeReleaseVersion",
+            "runtimeReleaseAssetName",
+            "runtimeReleaseDownloadUrl");
     }
 
-    private static string PackageRuntimeRelease(
-        string repoRoot,
-        string packageScriptPath,
-        string runtimeRoot,
-        string outputRoot,
-        string version)
+    private static ReleasePackagingPackage CreateReleasePackagingPluginPackage()
     {
-        ScriptInvocationResult result = InvokePowerShellScript(
-            packageScriptPath,
+        string repoRoot = GetRepositoryRoot();
+        string outputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-plugin-release-package");
+
+        return InvokeReleasePackagingPackageScript(
             repoRoot,
+            GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-plugin-release.ps1"),
+            GetReleasePackagingPluginRoot(repoRoot),
+            "Plugin release packaging script",
             startInfo =>
             {
                 startInfo.ArgumentList.Add("-Version");
-                startInfo.ArgumentList.Add(version);
-                startInfo.ArgumentList.Add("-Rid");
-                startInfo.ArgumentList.Add("win-x64");
-                startInfo.ArgumentList.Add("-PublishSourceRoot");
-                startInfo.ArgumentList.Add(runtimeRoot);
+                startInfo.ArgumentList.Add(ReleasePackagingPluginVersion);
                 startInfo.ArgumentList.Add("-OutputRoot");
                 startInfo.ArgumentList.Add(outputRoot);
             });
+    }
 
-        if (result.ExitCode != 0)
-        {
-            throw new Xunit.Sdk.XunitException($"Release packaging script failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
-        }
+    private static ReleasePackagingPackage CreateReleasePackagingRuntimePackage()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string runtimeRoot = GetReleasePackagingRuntimeRoot(repoRoot);
+        string outputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-runtime-release-package");
 
-        using JsonDocument payload = ParseJsonStdoutOrThrow(result, "Release packaging script");
-        return payload.RootElement.GetProperty("archivePath").GetString()
-            ?? throw new InvalidOperationException("archivePath missing.");
+        EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), runtimeRoot);
+
+        return InvokeReleasePackagingPackageScript(
+            repoRoot,
+            GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+            runtimeRoot,
+            "Release packaging script",
+            startInfo => AddReleasePackagingRuntimePackageArguments(startInfo, ReleasePackagingRuntimeVersion, runtimeRoot, outputRoot));
+    }
+
+    private static ReleasePackagingPackage InvokeReleasePackagingPackageScript(
+        string repoRoot,
+        string packageScriptPath,
+        string sourceRoot,
+        string failureContext,
+        Action<ProcessStartInfo> configureStartInfo)
+    {
+        string sourceDigestBefore = ComputeDirectoryDigest(sourceRoot);
+        ScriptInvocationResult result = InvokePowerShellScript(packageScriptPath, repoRoot, configureStartInfo);
+
+        AssertReleasePackagingScriptSucceeded(result, failureContext);
+
+        using JsonDocument payload = ParseJsonStdoutOrThrow(result, failureContext);
+        return new ReleasePackagingPackage(
+            GetRequiredReleasePackagingJsonString(payload.RootElement, "archivePath"),
+            GetRequiredReleasePackagingJsonString(payload.RootElement, "checksumPath"),
+            GetRequiredReleasePackagingJsonString(payload.RootElement, "assetName"),
+            sourceDigestBefore,
+            ComputeDirectoryDigest(sourceRoot));
+    }
+
+    private static void AddReleasePackagingRuntimePackageArguments(ProcessStartInfo startInfo, string version, string runtimeRoot, string outputRoot)
+    {
+        startInfo.ArgumentList.Add("-Version");
+        startInfo.ArgumentList.Add(version);
+        startInfo.ArgumentList.Add("-Rid");
+        startInfo.ArgumentList.Add(ReleasePackagingRuntimeRid);
+        startInfo.ArgumentList.Add("-PublishSourceRoot");
+        startInfo.ArgumentList.Add(runtimeRoot);
+        startInfo.ArgumentList.Add("-OutputRoot");
+        startInfo.ArgumentList.Add(outputRoot);
     }
 
     private static string CreateRuntimeReleaseDescriptor(
@@ -459,42 +293,190 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             assetName = Path.GetFileName(archivePath),
             downloadUrl = new Uri(archivePath).AbsoluteUri,
             sha256,
-            serverExeRelativePath = "Okno.Server.exe",
-            bundleManifestName = "okno-runtime-bundle-manifest.json",
+            serverExeRelativePath = ReleasePackagingRuntimeServerExeName,
+            bundleManifestName = ReleasePackagingRuntimeBundleManifestName,
         };
 
         File.WriteAllText(descriptorPath, JsonSerializer.Serialize(descriptor));
         return descriptorPath;
     }
 
+    private static async Task InitializeReleasePackagingMcpSessionAsync(PluginMcpSession session)
+    {
+        using JsonDocument _ = await session.SendRequestAsync(
+            "initialize",
+            new
+            {
+                protocolVersion = "2025-11-25",
+                capabilities = new { },
+                clientInfo = new
+                {
+                    name = "ComputerUseWin.ReleasePackagingTests",
+                    version = "0.1.0",
+                },
+            },
+            "initialize");
+
+        await session.SendNotificationAsync("notifications/initialized");
+    }
+
+    private static async Task<string[]> ListReleasePackagingMcpToolNamesAsync(PluginMcpSession session)
+    {
+        using JsonDocument toolsResponse = await session.SendRequestAsync("tools/list", new { }, "tools/list");
+
+        return toolsResponse.RootElement
+            .GetProperty("result")
+            .GetProperty("tools")
+            .EnumerateArray()
+            .Select(tool => tool.GetProperty("name").GetString() ?? string.Empty)
+            .OrderBy(static value => value, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static void CopyReleasePackagingPluginWithoutLocalRuntime(string sourcePluginRoot, string tempPluginRoot)
+    {
+        CopyDirectory(sourcePluginRoot, tempPluginRoot, IncludeStablePluginPath);
+        DeleteDirectoryIfExists(Path.Combine(tempPluginRoot, "runtime", ReleasePackagingRuntimeRid));
+    }
+
+    private static void AssertReleasePackagingScriptSucceeded(ScriptInvocationResult result, string failureContext)
+    {
+        Assert.True(
+            result.ExitCode == 0,
+            $"{failureContext} failed. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
+    }
+
+    private static void AssertReleasePackagingArchiveContains(ZipArchive archive, params string[] expectedPaths)
+    {
+        HashSet<string> entries = GetNormalizedReleasePackagingArchiveEntryPaths(archive);
+
+        foreach (string expectedPath in expectedPaths)
+        {
+            Assert.True(entries.Contains(expectedPath), $"Archive is missing '{expectedPath}'.");
+        }
+    }
+
+    private static void AssertReleasePackagingArchiveDoesNotContainPrefix(ZipArchive archive, string pathPrefix)
+    {
+        Assert.DoesNotContain(
+            GetNormalizedReleasePackagingArchiveEntryPaths(archive),
+            entry => entry.StartsWith(pathPrefix, StringComparison.Ordinal));
+    }
+
+    private static JsonDocument ReadReleasePackagingJsonArchiveEntry(ZipArchive archive, string entryPath)
+    {
+        using Stream stream = GetRequiredReleasePackagingArchiveEntry(archive, entryPath).Open();
+        return JsonDocument.Parse(stream);
+    }
+
+    private static ZipArchiveEntry GetRequiredReleasePackagingArchiveEntry(ZipArchive archive, string entryPath) =>
+        Assert.Single(archive.Entries.Where(
+            entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), entryPath, StringComparison.Ordinal)));
+
+    private static HashSet<string> GetNormalizedReleasePackagingArchiveEntryPaths(ZipArchive archive) =>
+        archive.Entries.Select(entry => NormalizeArchiveEntryPath(entry.FullName)).ToHashSet(StringComparer.Ordinal);
+
+    private static void AssertReleasePackagingJsonString(JsonElement json, string propertyName, string expected) =>
+        Assert.Equal(expected, GetRequiredReleasePackagingJsonString(json, propertyName));
+
+    private static string GetRequiredReleasePackagingJsonString(JsonElement json, string propertyName) =>
+        json.GetProperty(propertyName).GetString() ?? throw new InvalidOperationException($"{propertyName} missing.");
+
+    private static void AssertReleasePackagingTextContainsAll(string text, params string[] expectedSnippets)
+    {
+        foreach (string expectedSnippet in expectedSnippets)
+        {
+            Assert.Contains(expectedSnippet, text, StringComparison.Ordinal);
+        }
+    }
+
+    private static void AssertReleasePackagingFilesExist(params string[] paths)
+    {
+        foreach (string path in paths)
+        {
+            Assert.True(File.Exists(path), $"Expected file does not exist: {path}");
+        }
+    }
+
+    private static void AssertReleasePackagingFilesExistUnder(string rootPath, params string[] relativePaths)
+    {
+        foreach (string relativePath in relativePaths)
+        {
+            AssertReleasePackagingFilesExist(Path.Combine(rootPath, relativePath));
+        }
+    }
+
     private static string ComputeDirectoryDigest(string rootPath)
     {
-        Dictionary<string, string> entries = Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories)
-            .OrderBy(static value => value, StringComparer.Ordinal)
-            .ToDictionary(
-                path => Path.GetRelativePath(rootPath, path).Replace('\\', '/'),
-                ComputeFileSha256,
-                StringComparer.Ordinal);
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
-        string serialized = JsonSerializer.Serialize(entries);
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(serialized);
-        return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        foreach (string path in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories)
+            .OrderBy(static value => value, StringComparer.Ordinal))
+        {
+            hash.AppendData(Encoding.UTF8.GetBytes(NormalizeArchiveEntryPath(Path.GetRelativePath(rootPath, path))));
+            hash.AppendData(ReleasePackagingDirectoryDigestSeparator);
+            hash.AppendData(ComputeFileSha256Bytes(path));
+            hash.AppendData(ReleasePackagingDirectoryDigestSeparator);
+        }
+
+        return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
     }
 
-    private static string ComputeFileSha256(string path)
+    private static string ComputeFileSha256(string path) =>
+        Convert.ToHexString(ComputeFileSha256Bytes(path)).ToLowerInvariant();
+
+    private static byte[] ComputeFileSha256Bytes(string path)
     {
         using FileStream stream = File.OpenRead(path);
-        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+        return SHA256.HashData(stream);
     }
 
-    private static string NormalizeArchiveEntryPath(string path)
+    private static string NormalizeArchiveEntryPath(string path) => path.Replace('\\', '/');
+
+    private static string GetReleasePackagingCodexScriptPath(string repoRoot, string scriptName) =>
+        Path.Combine(repoRoot, "scripts", "codex", scriptName);
+
+    private static string GetReleasePackagingPluginRoot(string repoRoot) =>
+        Path.Combine(repoRoot, "plugins", "computer-use-win");
+
+    private static string GetReleasePackagingRuntimeRoot(string repoRoot) =>
+        Path.Combine(GetReleasePackagingPluginRoot(repoRoot), "runtime", ReleasePackagingRuntimeRid);
+
+    private static string CreateReleasePackagingTestOutputRoot(string repoRoot, string scenarioName) =>
+        Path.Combine(repoRoot, ".tmp", ".codex", "tests", scenarioName, Guid.NewGuid().ToString("N"));
+
+    private static string CreateSharedReleasePackagingTestOutputRoot(string repoRoot, string scenarioName)
     {
-        return path.Replace('\\', '/');
+        string outputRoot = CreateReleasePackagingTestOutputRoot(repoRoot, scenarioName);
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => TryDeleteReleasePackagingDirectoryIfExists(outputRoot);
+        return outputRoot;
+    }
+
+    private static void TryDeleteReleasePackagingDirectoryIfExists(string path)
+    {
+        try
+        {
+            DeleteDirectoryIfExists(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     private static bool IncludeStablePluginPath(string relativePath)
     {
         string normalized = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-        return !normalized.StartsWith($"runtime{Path.DirectorySeparatorChar}win-x64.", StringComparison.OrdinalIgnoreCase);
+        string localRuntimeRoot = $"runtime{Path.DirectorySeparatorChar}{ReleasePackagingRuntimeRid}";
+
+        return !normalized.Equals(localRuntimeRoot, StringComparison.OrdinalIgnoreCase)
+            && !normalized.StartsWith($"{localRuntimeRoot}{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+            && !normalized.StartsWith($"{localRuntimeRoot}.", StringComparison.OrdinalIgnoreCase);
     }
+
+    private sealed record ReleasePackagingPackage(
+        string ArchivePath,
+        string ChecksumPath,
+        string AssetName,
+        string SourceDigestBefore,
+        string SourceDigestAfter);
 }

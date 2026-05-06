@@ -7,259 +7,210 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
+    private const string SetupCliReleaseVersion = "0.1.0";
+    private const string WindowsRuntimeIdentifier = "win-x64";
+
+    private static readonly object ReleasePackagingGate = new();
+    private static readonly Lazy<PublishedRuntimeBundle> SharedPublishedRuntimeBundle = new(CreateSharedPublishedRuntimeBundle);
+    private static readonly Lazy<SetupCliReleaseArtifacts> SharedRuntimeOnlyRelease = new(
+        () => CreateSetupCliReleaseArtifacts("setup-cli-runtime-only-release", packagePluginRelease: false));
+    private static readonly Lazy<SetupCliReleaseArtifacts> SharedCodexRelease = new(
+        () => CreateSetupCliReleaseArtifacts("setup-cli-codex-release", packagePluginRelease: true));
+
+    private const string MarketplaceWithOtherPluginEntry = """
+        {
+          "name": "okno-local-installed",
+          "interface": { "displayName": "Okno: Installed plugins" },
+          "plugins": [
+            { "name": "other-plugin", "source": { "source": "local", "path": "./.codex/plugins/other-plugin" }, "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" }, "category": "Productivity" },
+            { "name": "computer-use-win", "source": { "source": "local", "path": "./.codex/plugins/computer-use-win" }, "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" }, "category": "Productivity" }
+          ]
+        }
+        """;
+
     [Fact]
     public void SetupCliInstallRuntimeOnlyDoesNotTouchMarketplace()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string runtimePackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-install-runtime-only", Guid.NewGuid().ToString("N"));
-        string userProfile = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "user-profile-install-runtime-only", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(userProfile, ".codex");
-        const string version = "0.1.0";
+        using SetupCliTestHarness test = CreateRuntimeOnlySetupCliTestHarness("install-runtime-only");
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        ScriptInvocationResult result = test.RunSetupCliJsonWithRuntimeDescriptor("install", "runtime-only");
 
-        try
-        {
-            string archivePath = PackageRuntimeRelease(repoRoot, runtimePackageScriptPath, runtimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, archivePath, "win-x64");
-
-            ScriptInvocationResult result = InvokeSetupCli(
-                repoRoot,
-                ["install", "runtime-only", "--descriptor-path", descriptorPath, "--json"],
-                codexHome,
-                userProfile);
-
-            Assert.True(result.ExitCode == 0, $"Setup CLI runtime-only install failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
-            Assert.False(File.Exists(GetExpectedPersonalMarketplacePath(userProfile)));
-            Assert.True(File.Exists(GetExpectedRuntimeOnlyReceiptPath(codexHome)));
-            Assert.False(File.Exists(GetExpectedCodexReceiptPath(codexHome)));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-            DeleteDirectoryIfExists(userProfile);
-        }
+        AssertSetupCliSucceeded(result, "runtime-only install");
+        Assert.False(File.Exists(GetExpectedPersonalMarketplacePath(test.UserProfile)));
+        Assert.True(File.Exists(GetExpectedRuntimeOnlyReceiptPath(test.CodexHome)));
+        Assert.False(File.Exists(GetExpectedCodexReceiptPath(test.CodexHome)));
     }
 
     [Fact]
     public void SetupCliInstallCodexCreatesPluginSourceAndMarketplaceEntry()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string runtimePackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string pluginPackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-install-codex", Guid.NewGuid().ToString("N"));
-        string userProfile = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "user-profile-install-codex", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(userProfile, ".codex");
-        const string version = "0.1.0";
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("install-codex");
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        ScriptInvocationResult result = test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex");
 
-        try
-        {
-            string runtimeArchivePath = PackageRuntimeRelease(repoRoot, runtimePackageScriptPath, runtimeRoot, outputRoot, version);
-            string runtimeDescriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, runtimeArchivePath, "win-x64");
-            PackagePluginRelease(repoRoot, pluginPackageScriptPath, outputRoot, version);
+        AssertSetupCliSucceeded(result, "codex install");
+        using JsonDocument payload = JsonDocument.Parse(result.Stdout);
+        Assert.True(payload.RootElement.GetProperty("restartRequired").GetBoolean());
 
-            ScriptInvocationResult result = InvokeSetupCli(
-                repoRoot,
-                ["install", "codex", "--descriptor-path", runtimeDescriptorPath, "--json"],
-                codexHome,
-                userProfile);
+        string expectedMarketplacePath = GetExpectedPersonalMarketplacePath(test.UserProfile);
+        Assert.True(File.Exists(GetExpectedInstalledPluginDescriptorPath(test.CodexHome)));
+        Assert.True(File.Exists(expectedMarketplacePath));
+        Assert.True(File.Exists(GetExpectedCodexReceiptPath(test.CodexHome)));
 
-            Assert.True(result.ExitCode == 0, $"Setup CLI codex install failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
-            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
-            Assert.True(payload.RootElement.GetProperty("restartRequired").GetBoolean());
-
-            string expectedPluginRoot = GetExpectedInstalledPluginRoot(codexHome);
-            string expectedMarketplacePath = GetExpectedPersonalMarketplacePath(userProfile);
-            Assert.True(File.Exists(Path.Combine(expectedPluginRoot, ".codex-plugin", "plugin.json")));
-            Assert.True(File.Exists(expectedMarketplacePath));
-            Assert.True(File.Exists(GetExpectedCodexReceiptPath(codexHome)));
-
-            string marketplaceText = File.ReadAllText(expectedMarketplacePath);
-            Assert.Contains("computer-use-win", marketplaceText, StringComparison.Ordinal);
-            Assert.Contains("./.codex/plugins/computer-use-win", marketplaceText, StringComparison.Ordinal);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-            DeleteDirectoryIfExists(userProfile);
-        }
+        string marketplaceText = File.ReadAllText(expectedMarketplacePath);
+        Assert.Contains("computer-use-win", marketplaceText, StringComparison.Ordinal);
+        Assert.Contains("./.codex/plugins/computer-use-win", marketplaceText, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SetupCliUpdateCodexPreservesUnrelatedMarketplaceEntries()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string runtimePackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string pluginPackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-update-codex", Guid.NewGuid().ToString("N"));
-        string userProfile = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "user-profile-update-codex", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(userProfile, ".codex");
-        const string version = "0.1.0";
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("update-codex");
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        ScriptInvocationResult installResult = test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex");
+        AssertSetupCliSucceeded(installResult, "codex install");
 
-        try
-        {
-            string runtimeArchivePath = PackageRuntimeRelease(repoRoot, runtimePackageScriptPath, runtimeRoot, outputRoot, version);
-            string runtimeDescriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, runtimeArchivePath, "win-x64");
-            PackagePluginRelease(repoRoot, pluginPackageScriptPath, outputRoot, version);
+        string marketplacePath = GetExpectedPersonalMarketplacePath(test.UserProfile);
+        File.WriteAllText(marketplacePath, MarketplaceWithOtherPluginEntry);
 
-            ScriptInvocationResult installResult = InvokeSetupCli(
-                repoRoot,
-                ["install", "codex", "--descriptor-path", runtimeDescriptorPath, "--json"],
-                codexHome,
-                userProfile);
-            Assert.True(installResult.ExitCode == 0, $"Setup CLI codex install failed. stderr='{installResult.Stderr}'");
+        ScriptInvocationResult updateResult = test.RunSetupCliJsonWithRuntimeDescriptor("update", "codex");
 
-            string marketplacePath = GetExpectedPersonalMarketplacePath(userProfile);
-            File.WriteAllText(
-                marketplacePath,
-                """
-                {
-                  "name": "okno-local-installed",
-                  "interface": { "displayName": "Okno: Installed plugins" },
-                  "plugins": [
-                    {
-                      "name": "other-plugin",
-                      "source": { "source": "local", "path": "./.codex/plugins/other-plugin" },
-                      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
-                      "category": "Productivity"
-                    },
-                    {
-                      "name": "computer-use-win",
-                      "source": { "source": "local", "path": "./.codex/plugins/computer-use-win" },
-                      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
-                      "category": "Productivity"
-                    }
-                  ]
-                }
-                """);
-
-            ScriptInvocationResult updateResult = InvokeSetupCli(
-                repoRoot,
-                ["update", "codex", "--descriptor-path", runtimeDescriptorPath, "--json"],
-                codexHome,
-                userProfile);
-
-            Assert.True(updateResult.ExitCode == 0, $"Setup CLI codex update failed. stderr='{updateResult.Stderr}', stdout='{updateResult.Stdout}'.");
-            string marketplaceText = File.ReadAllText(marketplacePath);
-            Assert.Contains("other-plugin", marketplaceText, StringComparison.Ordinal);
-            Assert.Contains("computer-use-win", marketplaceText, StringComparison.Ordinal);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-            DeleteDirectoryIfExists(userProfile);
-        }
+        AssertSetupCliSucceeded(updateResult, "codex update");
+        string marketplaceText = File.ReadAllText(marketplacePath);
+        Assert.Contains("other-plugin", marketplaceText, StringComparison.Ordinal);
+        Assert.Contains("computer-use-win", marketplaceText, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SetupCliUninstallCodexRemovesPluginEntryAndKeepsRuntimeWhenRuntimeOnlyReceiptExists()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string runtimePackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string pluginPackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-uninstall-codex", Guid.NewGuid().ToString("N"));
-        string userProfile = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "user-profile-uninstall-codex", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(userProfile, ".codex");
-        const string version = "0.1.0";
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("uninstall-codex");
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "runtime-only"), "runtime-only install");
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex"), "codex install");
 
-        try
-        {
-            string runtimeArchivePath = PackageRuntimeRelease(repoRoot, runtimePackageScriptPath, runtimeRoot, outputRoot, version);
-            string runtimeDescriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, runtimeArchivePath, "win-x64");
-            PackagePluginRelease(repoRoot, pluginPackageScriptPath, outputRoot, version);
+        ScriptInvocationResult uninstallResult = test.RunSetupCliJson("uninstall", "codex");
 
-            Assert.True(
-                InvokeSetupCli(repoRoot, ["install", "runtime-only", "--descriptor-path", runtimeDescriptorPath, "--json"], codexHome, userProfile).ExitCode == 0);
-            Assert.True(
-                InvokeSetupCli(repoRoot, ["install", "codex", "--descriptor-path", runtimeDescriptorPath, "--json"], codexHome, userProfile).ExitCode == 0);
+        AssertSetupCliSucceeded(uninstallResult, "codex uninstall");
+        Assert.False(Directory.Exists(GetExpectedInstalledPluginRoot(test.CodexHome)));
+        Assert.False(File.Exists(GetExpectedCodexReceiptPath(test.CodexHome)));
+        Assert.True(Directory.Exists(GetExpectedSharedRuntimeStoreRoot(test.CodexHome)));
 
-            ScriptInvocationResult uninstallResult = InvokeSetupCli(
-                repoRoot,
-                ["uninstall", "codex", "--json"],
-                codexHome,
-                userProfile);
-
-            Assert.True(uninstallResult.ExitCode == 0, $"Setup CLI codex uninstall failed. stderr='{uninstallResult.Stderr}', stdout='{uninstallResult.Stdout}'.");
-            Assert.False(Directory.Exists(GetExpectedInstalledPluginRoot(codexHome)));
-            Assert.False(File.Exists(GetExpectedCodexReceiptPath(codexHome)));
-            Assert.True(Directory.Exists(GetExpectedSharedRuntimeStoreRoot(codexHome)));
-            string marketplaceText = File.ReadAllText(GetExpectedPersonalMarketplacePath(userProfile));
-            Assert.DoesNotContain("\"name\": \"computer-use-win\"", marketplaceText, StringComparison.Ordinal);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-            DeleteDirectoryIfExists(userProfile);
-        }
+        string marketplaceText = File.ReadAllText(GetExpectedPersonalMarketplacePath(test.UserProfile));
+        Assert.DoesNotContain("\"name\": \"computer-use-win\"", marketplaceText, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SetupCliRepairCodexRestoresMissingPluginSourceAndMarketplaceEntry()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string runtimePackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string pluginPackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-repair-codex", Guid.NewGuid().ToString("N"));
-        string userProfile = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "user-profile-repair-codex", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(userProfile, ".codex");
-        const string version = "0.1.0";
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("repair-codex");
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex"), "codex install");
+
+        DeleteDirectoryIfExists(GetExpectedInstalledPluginRoot(test.CodexHome));
+        File.Delete(GetExpectedPersonalMarketplacePath(test.UserProfile));
+
+        ScriptInvocationResult repairResult = test.RunSetupCliJsonWithRuntimeDescriptor("repair", "codex");
+
+        AssertSetupCliSucceeded(repairResult, "codex repair");
+        Assert.True(File.Exists(GetExpectedInstalledPluginDescriptorPath(test.CodexHome)));
+        Assert.True(File.Exists(GetExpectedPersonalMarketplacePath(test.UserProfile)));
+    }
+
+    private static SetupCliTestHarness CreateRuntimeOnlySetupCliTestHarness(string scenarioName) => CreateSetupCliTestHarness(SharedRuntimeOnlyRelease.Value, scenarioName);
+
+    private static SetupCliTestHarness CreateCodexSetupCliTestHarness(string scenarioName) => CreateSetupCliTestHarness(SharedCodexRelease.Value, scenarioName);
+
+    private static SetupCliTestHarness CreateSetupCliTestHarness(SetupCliReleaseArtifacts release, string scenarioName)
+    {
+        string userProfile = Path.Combine(
+            release.RepoRoot,
+            ".tmp",
+            ".codex",
+            "tests",
+            $"user-profile-{scenarioName}",
+            Guid.NewGuid().ToString("N"));
+
+        return new SetupCliTestHarness(release, userProfile);
+    }
+
+    private static PublishedRuntimeBundle CreateSharedPublishedRuntimeBundle()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", WindowsRuntimeIdentifier);
+
+        EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), runtimeRoot);
+        return new PublishedRuntimeBundle(repoRoot, runtimeRoot);
+    }
+
+    private static SetupCliReleaseArtifacts CreateSetupCliReleaseArtifacts(string outputDirectoryName, bool packagePluginRelease)
+    {
+        PublishedRuntimeBundle runtimeBundle = SharedPublishedRuntimeBundle.Value;
+        string outputRoot = Path.Combine(
+            runtimeBundle.RepoRoot,
+            ".tmp",
+            ".codex",
+            "tests",
+            outputDirectoryName,
+            Guid.NewGuid().ToString("N"));
 
         try
         {
-            string runtimeArchivePath = PackageRuntimeRelease(repoRoot, runtimePackageScriptPath, runtimeRoot, outputRoot, version);
-            string runtimeDescriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, runtimeArchivePath, "win-x64");
-            PackagePluginRelease(repoRoot, pluginPackageScriptPath, outputRoot, version);
+            string runtimeDescriptorPath;
+            lock (ReleasePackagingGate)
+            {
+                string runtimeArchivePath = PackageRuntimeRelease(
+                    runtimeBundle.RepoRoot,
+                    GetRuntimePackageScriptPath(runtimeBundle.RepoRoot),
+                    runtimeBundle.RuntimeRoot,
+                    outputRoot,
+                    SetupCliReleaseVersion);
 
-            Assert.True(
-                InvokeSetupCli(repoRoot, ["install", "codex", "--descriptor-path", runtimeDescriptorPath, "--json"], codexHome, userProfile).ExitCode == 0);
+                runtimeDescriptorPath = CreateRuntimeReleaseDescriptor(
+                    outputRoot,
+                    SetupCliReleaseVersion,
+                    runtimeArchivePath,
+                    WindowsRuntimeIdentifier);
 
-            DeleteDirectoryIfExists(GetExpectedInstalledPluginRoot(codexHome));
-            File.Delete(GetExpectedPersonalMarketplacePath(userProfile));
+                if (packagePluginRelease)
+                {
+                    PackagePluginRelease(
+                        runtimeBundle.RepoRoot,
+                        GetPluginPackageScriptPath(runtimeBundle.RepoRoot),
+                        outputRoot,
+                        SetupCliReleaseVersion);
+                }
+            }
 
-            ScriptInvocationResult repairResult = InvokeSetupCli(
-                repoRoot,
-                ["repair", "codex", "--descriptor-path", runtimeDescriptorPath, "--json"],
-                codexHome,
-                userProfile);
-
-            Assert.True(repairResult.ExitCode == 0, $"Setup CLI codex repair failed. stderr='{repairResult.Stderr}', stdout='{repairResult.Stdout}'.");
-            Assert.True(File.Exists(Path.Combine(GetExpectedInstalledPluginRoot(codexHome), ".codex-plugin", "plugin.json")));
-            Assert.True(File.Exists(GetExpectedPersonalMarketplacePath(userProfile)));
+            RegisterProcessExitCleanup(outputRoot);
+            return new SetupCliReleaseArtifacts(runtimeBundle.RepoRoot, runtimeDescriptorPath);
         }
-        finally
+        catch
         {
             DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-            DeleteDirectoryIfExists(userProfile);
+            throw;
         }
+    }
+
+    private static string GetRuntimePackageScriptPath(string repoRoot) =>
+        Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
+
+    private static string GetPluginPackageScriptPath(string repoRoot) =>
+        Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
+
+    private static string GetExpectedInstalledPluginDescriptorPath(string codexHome) =>
+        Path.Combine(GetExpectedInstalledPluginRoot(codexHome), ".codex-plugin", "plugin.json");
+
+    private static void AssertSetupCliSucceeded(ScriptInvocationResult result, string operation) =>
+        Assert.True(result.ExitCode == 0, $"Setup CLI {operation} failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
+
+    private static void RegisterProcessExitCleanup(string directory)
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { DeleteDirectoryIfExists(directory); }
+            catch { }
+        };
     }
 
     private static string PackagePluginRelease(string repoRoot, string packageScriptPath, string outputRoot, string version)
@@ -283,5 +234,45 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         using JsonDocument payload = JsonDocument.Parse(result.Stdout);
         return payload.RootElement.GetProperty("archivePath").GetString()
             ?? throw new InvalidOperationException("archivePath missing.");
+    }
+
+    private sealed record PublishedRuntimeBundle(string RepoRoot, string RuntimeRoot);
+    private sealed record SetupCliReleaseArtifacts(string RepoRoot, string RuntimeDescriptorPath);
+
+    private sealed class SetupCliTestHarness : IDisposable
+    {
+        private readonly SetupCliReleaseArtifacts _release;
+
+        public SetupCliTestHarness(SetupCliReleaseArtifacts release, string userProfile)
+        {
+            _release = release;
+            UserProfile = userProfile;
+            CodexHome = Path.Combine(userProfile, ".codex");
+        }
+
+        public string UserProfile { get; }
+
+        public string CodexHome { get; }
+
+        public ScriptInvocationResult RunSetupCliJsonWithRuntimeDescriptor(params string[] command)
+        {
+            string[] args = [.. command, "--descriptor-path", _release.RuntimeDescriptorPath, "--json"];
+            return RunSetupCli(args);
+        }
+
+        public ScriptInvocationResult RunSetupCliJson(params string[] command)
+        {
+            string[] args = [.. command, "--json"];
+            return RunSetupCli(args);
+        }
+
+        public void Dispose()
+        {
+            DeleteDirectoryIfExists(CodexHome);
+            DeleteDirectoryIfExists(UserProfile);
+        }
+
+        private ScriptInvocationResult RunSetupCli(string[] args) =>
+            InvokeSetupCli(_release.RepoRoot, args, CodexHome, UserProfile);
     }
 }

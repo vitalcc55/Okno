@@ -33,6 +33,62 @@ internal static class WindowToolTestData
             [handle]);
 }
 
+internal static class WindowToolFakeCall
+{
+    public static NotSupportedException Unexpected(string operationName) =>
+        new($"{operationName} не должен вызываться в этом тесте.");
+}
+
+internal abstract class WindowToolFakePairService<TFirst, TSecond, TResult>(
+    Func<TFirst, TSecond, CancellationToken, Task<TResult>>? handler,
+    string operationName)
+{
+    public int Calls { get; private set; }
+
+    protected TFirst? LastFirst { get; private set; }
+
+    protected TSecond? LastSecond { get; private set; }
+
+    protected Task<TResult> ExecuteCoreAsync(TFirst first, TSecond second, CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastFirst = first;
+        LastSecond = second;
+
+        return handler is null
+            ? throw WindowToolFakeCall.Unexpected(operationName)
+            : handler(first, second, cancellationToken);
+    }
+}
+
+internal abstract class WindowToolFakeWindowRequestService<TRequest, TResult>(
+    Func<WindowDescriptor, TRequest, CancellationToken, Task<TResult>>? handler,
+    string operationName) : WindowToolFakePairService<WindowDescriptor, TRequest, TResult>(handler, operationName)
+{
+    public WindowDescriptor? LastWindow => LastFirst;
+
+    public TRequest? LastRequest => LastSecond;
+}
+
+internal abstract class WindowToolFakeRequestService<TRequest, TResult>(
+    Func<TRequest, CancellationToken, Task<TResult>>? handler,
+    string operationName)
+{
+    public int Calls { get; private set; }
+
+    public TRequest? LastRequest { get; private set; }
+
+    protected Task<TResult> ExecuteCoreAsync(TRequest request, CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastRequest = request;
+
+        return handler is null
+            ? throw WindowToolFakeCall.Unexpected(operationName)
+            : handler(request, cancellationToken);
+    }
+}
+
 internal sealed class FakeMonitorManager(
     IReadOnlyList<MonitorInfo>? monitors = null,
     DisplayIdentityDiagnostics? diagnostics = null,
@@ -57,17 +113,11 @@ internal sealed class FakeMonitorManager(
                 monitorId,
                 StringComparison.OrdinalIgnoreCase));
 
-    public MonitorInfo? FindMonitorByHandle(long handle, DisplayTopologySnapshot? snapshot = null)
-    {
-        IReadOnlyList<MonitorInfo> source = snapshot?.Monitors ?? _monitors;
-        return source.FirstOrDefault(monitor => monitor.Handles.Contains(handle));
-    }
+    public MonitorInfo? FindMonitorByHandle(long handle, DisplayTopologySnapshot? snapshot = null) =>
+        (snapshot?.Monitors ?? _monitors).FirstOrDefault(monitor => monitor.Handles.Contains(handle));
 
-    public long? GetMonitorHandleForWindow(long hwnd)
-    {
-        MonitorInfo? monitor = FindMonitorForWindow(hwnd);
-        return monitor?.CaptureHandle;
-    }
+    public long? GetMonitorHandleForWindow(long hwnd) =>
+        FindMonitorForWindow(hwnd)?.CaptureHandle;
 
     public MonitorInfo? FindMonitorForWindow(long hwnd, DisplayTopologySnapshot? snapshot = null)
     {
@@ -102,224 +152,116 @@ internal sealed class FakeWindowActivationService(Func<WindowDescriptor, Activat
     public Task<ActivateWindowResult> ActivateAsync(WindowDescriptor targetWindow, CancellationToken cancellationToken)
     {
         LastHwnd = targetWindow.Hwnd;
-        if (handler is null)
-        {
-            throw new NotSupportedException("ActivateWindow не должен вызываться в этом тесте.");
-        }
 
-        return Task.FromResult(handler(targetWindow));
+        return handler is null
+            ? throw WindowToolFakeCall.Unexpected("ActivateWindow")
+            : Task.FromResult(handler(targetWindow));
     }
 }
 
 internal sealed class FakeUiAutomationService(
-    Func<WindowDescriptor, UiaSnapshotRequest, CancellationToken, Task<UiaSnapshotResult>>? handler = null) : IUiAutomationService
+    Func<WindowDescriptor, UiaSnapshotRequest, CancellationToken, Task<UiaSnapshotResult>>? handler = null)
+    : WindowToolFakeWindowRequestService<UiaSnapshotRequest, UiaSnapshotResult>(handler, "UIA snapshot"),
+      IUiAutomationService
 {
-    public int Calls { get; private set; }
-
-    public WindowDescriptor? LastWindow { get; private set; }
-
-    public UiaSnapshotRequest? LastRequest { get; private set; }
-
     public Task<UiaSnapshotResult> SnapshotAsync(
         WindowDescriptor targetWindow,
         UiaSnapshotRequest request,
-        CancellationToken cancellationToken)
-    {
-        Calls++;
-        LastWindow = targetWindow;
-        LastRequest = request;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("UIA snapshot не должен вызываться в этом тесте.");
-        }
-
-        return handler(targetWindow, request, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(targetWindow, request, cancellationToken);
 }
 
 internal sealed class FakeUiAutomationSetValueService(
-    Func<WindowDescriptor, UiaSetValueRequest, CancellationToken, Task<UiaSetValueResult>>? handler = null) : IUiAutomationSetValueService
+    Func<WindowDescriptor, UiaSetValueRequest, CancellationToken, Task<UiaSetValueResult>>? handler = null)
+    : WindowToolFakeWindowRequestService<UiaSetValueRequest, UiaSetValueResult>(handler, "UIA set_value"),
+      IUiAutomationSetValueService
 {
-    public int Calls { get; private set; }
-
-    public WindowDescriptor? LastWindow { get; private set; }
-
-    public UiaSetValueRequest? LastRequest { get; private set; }
-
     public Task<UiaSetValueResult> SetValueAsync(
         WindowDescriptor targetWindow,
         UiaSetValueRequest request,
-        CancellationToken cancellationToken)
-    {
-        Calls++;
-        LastWindow = targetWindow;
-        LastRequest = request;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("UIA set_value не должен вызываться в этом тесте.");
-        }
-
-        return handler(targetWindow, request, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(targetWindow, request, cancellationToken);
 }
 
 internal sealed class FakeUiAutomationScrollService(
-    Func<WindowDescriptor, UiaScrollRequest, CancellationToken, Task<UiaScrollResult>>? handler = null) : IUiAutomationScrollService
+    Func<WindowDescriptor, UiaScrollRequest, CancellationToken, Task<UiaScrollResult>>? handler = null)
+    : WindowToolFakeWindowRequestService<UiaScrollRequest, UiaScrollResult>(handler, "UIA scroll"),
+      IUiAutomationScrollService
 {
-    public int Calls { get; private set; }
-
-    public WindowDescriptor? LastWindow { get; private set; }
-
-    public UiaScrollRequest? LastRequest { get; private set; }
-
     public Task<UiaScrollResult> ScrollAsync(
         WindowDescriptor targetWindow,
         UiaScrollRequest request,
-        CancellationToken cancellationToken)
-    {
-        Calls++;
-        LastWindow = targetWindow;
-        LastRequest = request;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("UIA scroll не должен вызываться в этом тесте.");
-        }
-
-        return handler(targetWindow, request, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(targetWindow, request, cancellationToken);
 }
 
 internal sealed class FakeUiAutomationSecondaryActionService(
-    Func<WindowDescriptor, UiaSecondaryActionRequest, CancellationToken, Task<UiaSecondaryActionResult>>? handler = null) : IUiAutomationSecondaryActionService
+    Func<WindowDescriptor, UiaSecondaryActionRequest, CancellationToken, Task<UiaSecondaryActionResult>>? handler = null)
+    : WindowToolFakeWindowRequestService<UiaSecondaryActionRequest, UiaSecondaryActionResult>(handler, "UIA perform_secondary_action"),
+      IUiAutomationSecondaryActionService
 {
-    public int Calls { get; private set; }
-
-    public WindowDescriptor? LastWindow { get; private set; }
-
-    public UiaSecondaryActionRequest? LastRequest { get; private set; }
-
     public Task<UiaSecondaryActionResult> ExecuteAsync(
         WindowDescriptor targetWindow,
         UiaSecondaryActionRequest request,
-        CancellationToken cancellationToken)
-    {
-        Calls++;
-        LastWindow = targetWindow;
-        LastRequest = request;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("UIA perform_secondary_action не должен вызываться в этом тесте.");
-        }
-
-        return handler(targetWindow, request, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(targetWindow, request, cancellationToken);
 }
 
 internal sealed class FakeWaitService(
-    Func<WaitTargetResolution, WaitRequest, CancellationToken, Task<WaitResult>>? handler = null) : IWaitService
+    Func<WaitTargetResolution, WaitRequest, CancellationToken, Task<WaitResult>>? handler = null)
+    : WindowToolFakePairService<WaitTargetResolution, WaitRequest, WaitResult>(handler, "Wait service"),
+      IWaitService
 {
-    public int Calls { get; private set; }
+    public WaitTargetResolution? LastTarget => LastFirst;
 
-    public WaitTargetResolution? LastTarget { get; private set; }
-
-    public WaitRequest? LastRequest { get; private set; }
+    public WaitRequest? LastRequest => LastSecond;
 
     public Task<WaitResult> WaitAsync(
         WaitTargetResolution target,
         WaitRequest request,
-        CancellationToken cancellationToken)
-    {
-        Calls++;
-        LastTarget = target;
-        LastRequest = request;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("Wait service не должен вызываться в этом тесте.");
-        }
-
-        return handler(target, request, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(target, request, cancellationToken);
 }
 
 internal sealed class FakeProcessLaunchService(
-    Func<LaunchProcessRequest, CancellationToken, Task<LaunchProcessResult>>? handler = null) : IProcessLaunchService
+    Func<LaunchProcessRequest, CancellationToken, Task<LaunchProcessResult>>? handler = null)
+    : WindowToolFakeRequestService<LaunchProcessRequest, LaunchProcessResult>(handler, "Launch service"),
+      IProcessLaunchService
 {
-    public int Calls { get; private set; }
-
-    public LaunchProcessRequest? LastRequest { get; private set; }
-
-    public Task<LaunchProcessResult> LaunchAsync(LaunchProcessRequest request, CancellationToken cancellationToken)
-    {
-        Calls++;
-        LastRequest = request;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("Launch service не должен вызываться в этом тесте.");
-        }
-
-        return handler(request, cancellationToken);
-    }
+    public Task<LaunchProcessResult> LaunchAsync(LaunchProcessRequest request, CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(request, cancellationToken);
 }
 
 internal sealed class FakeOpenTargetService(
-    Func<OpenTargetRequest, CancellationToken, Task<OpenTargetResult>>? handler = null) : IOpenTargetService
+    Func<OpenTargetRequest, CancellationToken, Task<OpenTargetResult>>? handler = null)
+    : WindowToolFakeRequestService<OpenTargetRequest, OpenTargetResult>(handler, "OpenTarget service"),
+      IOpenTargetService
 {
-    public int Calls { get; private set; }
-
-    public OpenTargetRequest? LastRequest { get; private set; }
-
-    public Task<OpenTargetResult> OpenAsync(OpenTargetRequest request, CancellationToken cancellationToken)
-    {
-        Calls++;
-        LastRequest = request;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("OpenTarget service не должен вызываться в этом тесте.");
-        }
-
-        return handler(request, cancellationToken);
-    }
+    public Task<OpenTargetResult> OpenAsync(OpenTargetRequest request, CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(request, cancellationToken);
 }
 
 internal sealed class FakeInputService(
-    Func<InputRequest, InputExecutionContext, CancellationToken, Task<InputResult>>? handler = null) : IInputService
+    Func<InputRequest, InputExecutionContext, CancellationToken, Task<InputResult>>? handler = null)
+    : WindowToolFakePairService<InputRequest, InputExecutionContext, InputResult>(handler, "Input service"),
+      IInputService
 {
-    public int Calls { get; private set; }
+    public InputRequest? LastRequest => LastFirst;
 
-    public InputRequest? LastRequest { get; private set; }
-
-    public InputExecutionContext? LastContext { get; private set; }
+    public InputExecutionContext? LastContext => LastSecond;
 
     public Task<InputResult> ExecuteAsync(
         InputRequest request,
         InputExecutionContext context,
-        CancellationToken cancellationToken)
-        => ExecuteAsync(request, context, InputExecutionProfileValues.ClickFirstPublic, cancellationToken);
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(request, context, InputExecutionProfileValues.ClickFirstPublic, cancellationToken);
 
     public Task<InputResult> ExecuteAsync(
         InputRequest request,
         InputExecutionContext context,
         string executionProfile,
-        CancellationToken cancellationToken)
-    {
-        Calls++;
-        LastRequest = request;
-        LastContext = context;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("Input service не должен вызываться в этом тесте.");
-        }
-
-        return handler(request, context, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(request, context, cancellationToken);
 }
 
 internal sealed class FakeToolExecutionGate(
@@ -329,32 +271,22 @@ internal sealed class FakeToolExecutionGate(
 
     public ToolExecutionIntent? LastIntent { get; private set; }
 
-    public ToolExecutionDecision Evaluate(ToolExecutionPolicyDescriptor policy, ToolExecutionIntent intent)
-    {
-        Calls++;
-        LastIntent = intent;
-
-        if (handler is null)
-        {
-            throw new NotSupportedException("Shared gate не должен вызываться в этом тесте.");
-        }
-
-        return handler(policy, intent);
-    }
+    public ToolExecutionDecision Evaluate(ToolExecutionPolicyDescriptor policy, ToolExecutionIntent intent) =>
+        EvaluateCore(policy, intent);
 
     public ToolExecutionDecision Evaluate(
         ToolExecutionPolicyDescriptor policy,
         RuntimeGuardAssessment assessment,
-        ToolExecutionIntent intent)
+        ToolExecutionIntent intent) =>
+        EvaluateCore(policy, intent);
+
+    private ToolExecutionDecision EvaluateCore(ToolExecutionPolicyDescriptor policy, ToolExecutionIntent intent)
     {
         Calls++;
         LastIntent = intent;
 
-        if (handler is null)
-        {
-            throw new NotSupportedException("Shared gate не должен вызываться в этом тесте.");
-        }
-
-        return handler(policy, intent);
+        return handler is null
+            ? throw WindowToolFakeCall.Unexpected("Shared gate")
+            : handler(policy, intent);
     }
 }

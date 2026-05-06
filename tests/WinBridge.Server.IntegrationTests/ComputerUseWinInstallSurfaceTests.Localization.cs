@@ -10,28 +10,26 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     [Fact]
     public void SetupAppLocalizationResourcesStayInKeyParityAcrossSupportedLanguages()
     {
-        string repoRoot = GetRepositoryRoot();
-        string stringsRoot = Path.Combine(repoRoot, "src", "WinBridge.Setup.App", "Strings");
+        string stringsRoot = Path.Combine(GetRepositoryRoot(), "src", "WinBridge.Setup.App", "Strings");
+        HashSet<string> englishKeys = LoadReswValues(Path.Combine(stringsRoot, "en-US", "Resources.resw")).Keys.ToHashSet();
 
-        Dictionary<string, string> english = LoadReswValues(Path.Combine(stringsRoot, "en-US", "Resources.resw"));
-        Dictionary<string, string> russian = LoadReswValues(Path.Combine(stringsRoot, "ru-RU", "Resources.resw"));
-        Dictionary<string, string> chinese = LoadReswValues(Path.Combine(stringsRoot, "zh-CN", "Resources.resw"));
+        foreach (string supportedLocalizedCulture in new[] { "ru-RU", "zh-CN" })
+        {
+            Dictionary<string, string> localized = LoadReswValues(Path.Combine(stringsRoot, supportedLocalizedCulture, "Resources.resw"));
 
-        Assert.Equal(english.Keys.OrderBy(static key => key), russian.Keys.OrderBy(static key => key));
-        Assert.Equal(english.Keys.OrderBy(static key => key), chinese.Keys.OrderBy(static key => key));
-        Assert.All(russian, static entry => Assert.False(string.IsNullOrWhiteSpace(entry.Value), $"Russian value for '{entry.Key}' is empty."));
-        Assert.All(chinese, static entry => Assert.False(string.IsNullOrWhiteSpace(entry.Value), $"Chinese value for '{entry.Key}' is empty."));
+            if (!englishKeys.SetEquals(localized.Keys))
+            {
+                Assert.Equal(englishKeys.Order(), localized.Keys.Order());
+            }
+
+            Assert.All(localized, entry => Assert.False(string.IsNullOrWhiteSpace(entry.Value), $"{supportedLocalizedCulture} value for '{entry.Key}' is empty."));
+        }
     }
 
-    private static Dictionary<string, string> LoadReswValues(string path)
-    {
-        XDocument document = XDocument.Load(path);
-        return document.Root?
-                   .Elements("data")
-                   .ToDictionary(
-                       static element => element.Attribute("name")?.Value
-                           ?? throw new InvalidOperationException("Resource key is missing."),
-                       static element => element.Element("value")?.Value ?? string.Empty)
-               ?? throw new InvalidOperationException($"RESW file '{path}' does not contain a root element.");
-    }
+    private static Dictionary<string, string> LoadReswValues(string path) =>
+        XDocument.Load(path).Root?.Elements("data").ToDictionary(
+            static element => element.Attribute("name")?.Value
+                ?? throw new InvalidOperationException("Resource key is missing."),
+            static element => element.Element("value")?.Value ?? string.Empty)
+        ?? throw new InvalidOperationException($"RESW file '{path}' does not contain a root element.");
 }

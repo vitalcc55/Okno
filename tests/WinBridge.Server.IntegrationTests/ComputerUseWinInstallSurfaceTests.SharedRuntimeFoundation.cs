@@ -8,369 +8,336 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
+    private const string SharedRuntimeFoundationRid = "win-x64";
+    private const string SharedRuntimeFoundationVersion = "0.1.0";
+    private const string SharedRuntimeFoundationMcpProtocolVersion = "2025-11-25";
+    private const string SharedRuntimeFoundationTestClientName = "ComputerUseWin.SharedRuntimeFoundationTests";
+
+    private static readonly object s_sharedRuntimeFoundationCacheLock = new();
+    private static SharedRuntimeRelease? s_cachedSharedRuntimeRelease;
+    private static string? s_publishedSharedRuntimeRoot;
+    private static bool s_cachedSharedRuntimeReleaseCleanupRegistered;
+
     [Fact]
     public void SetupCliRuntimeInstallCreatesCanonicalSharedRuntimeStoreUnderCodexHome()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-runtime-install", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-runtime-install", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        using SharedRuntimeScenario scenario = CreateSharedRuntimeScenario("setup-cli-runtime-install");
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        ScriptInvocationResult result = InvokeDefaultRuntimeCommand(scenario, "install");
 
-        try
-        {
-            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, runtimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, archivePath, "win-x64");
+        AssertCliSucceeded(result, "Setup CLI runtime install");
+        using JsonDocument payload = JsonDocument.Parse(result.Stdout);
 
-            ScriptInvocationResult result = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "install", "--descriptor-path", descriptorPath, "--json"],
-                codexHome);
+        string expectedRuntimeRoot = GetExpectedDefaultSharedRuntimeRoot(scenario);
+        string expectedStatePath = GetExpectedSharedRuntimeStatePath(scenario.CodexHome);
 
-            Assert.True(result.ExitCode == 0, $"Setup CLI runtime install failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
-            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
+        Assert.Equal(expectedRuntimeRoot, payload.RootElement.GetProperty("runtimeRoot").GetString());
+        Assert.Equal(expectedStatePath, payload.RootElement.GetProperty("currentStatePath").GetString());
+        Assert.True(Directory.Exists(expectedRuntimeRoot));
+        Assert.True(File.Exists(Path.Combine(expectedRuntimeRoot, "Okno.Server.exe")));
+        Assert.True(File.Exists(Path.Combine(expectedRuntimeRoot, "okno-runtime-bundle-manifest.json")));
+        Assert.True(File.Exists(expectedStatePath));
 
-            string expectedRuntimeRoot = GetExpectedSharedRuntimeRoot(codexHome, "win-x64", version);
-            string expectedStatePath = GetExpectedSharedRuntimeStatePath(codexHome);
-
-            Assert.Equal(expectedRuntimeRoot, payload.RootElement.GetProperty("runtimeRoot").GetString());
-            Assert.Equal(expectedStatePath, payload.RootElement.GetProperty("currentStatePath").GetString());
-            Assert.True(Directory.Exists(expectedRuntimeRoot));
-            Assert.True(File.Exists(Path.Combine(expectedRuntimeRoot, "Okno.Server.exe")));
-            Assert.True(File.Exists(Path.Combine(expectedRuntimeRoot, "okno-runtime-bundle-manifest.json")));
-            Assert.True(File.Exists(expectedStatePath));
-
-            using JsonDocument state = JsonDocument.Parse(File.ReadAllText(expectedStatePath));
-            Assert.Equal(1, state.RootElement.GetProperty("formatVersion").GetInt32());
-            Assert.Equal("win-x64", state.RootElement.GetProperty("rid").GetString());
-            Assert.Equal(version, state.RootElement.GetProperty("version").GetString());
-            Assert.Equal(expectedRuntimeRoot, state.RootElement.GetProperty("runtimeRoot").GetString());
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-        }
+        using JsonDocument state = JsonDocument.Parse(File.ReadAllText(expectedStatePath));
+        Assert.Equal(1, state.RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(SharedRuntimeFoundationRid, state.RootElement.GetProperty("rid").GetString());
+        Assert.Equal(scenario.DefaultRelease.Version, state.RootElement.GetProperty("version").GetString());
+        Assert.Equal(expectedRuntimeRoot, state.RootElement.GetProperty("runtimeRoot").GetString());
     }
 
     [Fact]
     public void SetupCliRuntimeStatusReturnsCurrentSharedRuntimeMetadata()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-runtime-status", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-runtime-status", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        using SharedRuntimeScenario scenario = CreateSharedRuntimeScenario("setup-cli-runtime-status");
+        InstallDefaultRuntimeOrFail(scenario);
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        ScriptInvocationResult statusResult = InvokeDefaultRuntimeCommand(scenario, "status");
 
-        try
-        {
-            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, runtimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, archivePath, "win-x64");
-
-            ScriptInvocationResult installResult = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "install", "--descriptor-path", descriptorPath, "--json"],
-                codexHome);
-            Assert.True(installResult.ExitCode == 0, $"Setup CLI install failed. stderr='{installResult.Stderr}'");
-
-            ScriptInvocationResult statusResult = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "status", "--descriptor-path", descriptorPath, "--json"],
-                codexHome);
-            Assert.True(statusResult.ExitCode == 0, $"Setup CLI status failed. stderr='{statusResult.Stderr}', stdout='{statusResult.Stdout}'.");
-
-            using JsonDocument payload = JsonDocument.Parse(statusResult.Stdout);
-            Assert.True(payload.RootElement.GetProperty("isInstalled").GetBoolean());
-            Assert.True(payload.RootElement.GetProperty("isUsable").GetBoolean());
-            Assert.True(payload.RootElement.GetProperty("isCompatible").GetBoolean());
-            Assert.Equal(version, payload.RootElement.GetProperty("currentRuntime").GetProperty("version").GetString());
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-        }
+        AssertCliSucceeded(statusResult, "Setup CLI status");
+        using JsonDocument payload = JsonDocument.Parse(statusResult.Stdout);
+        Assert.True(payload.RootElement.GetProperty("isInstalled").GetBoolean());
+        Assert.True(payload.RootElement.GetProperty("isUsable").GetBoolean());
+        Assert.True(payload.RootElement.GetProperty("isCompatible").GetBoolean());
+        Assert.Equal(scenario.DefaultRelease.Version, payload.RootElement.GetProperty("currentRuntime").GetProperty("version").GetString());
     }
 
     [Fact]
     public void SetupCliRuntimeVerifyFailsClosedWhenSharedRuntimeBundleDrifts()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-runtime-verify", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-runtime-verify", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        using SharedRuntimeScenario scenario = CreateSharedRuntimeScenario("setup-cli-runtime-verify");
+        InstallDefaultRuntimeOrFail(scenario);
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        string installedRuntimeRoot = GetExpectedDefaultSharedRuntimeRoot(scenario);
+        File.Delete(Path.Combine(installedRuntimeRoot, "hostfxr.dll"));
 
-        try
-        {
-            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, runtimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, archivePath, "win-x64");
+        ScriptInvocationResult verifyResult = InvokeDefaultRuntimeCommand(scenario, "verify");
 
-            ScriptInvocationResult installResult = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "install", "--descriptor-path", descriptorPath, "--json"],
-                codexHome);
-            Assert.True(installResult.ExitCode == 0, $"Setup CLI install failed. stderr='{installResult.Stderr}'");
-
-            string installedRuntimeRoot = GetExpectedSharedRuntimeRoot(codexHome, "win-x64", version);
-            File.Delete(Path.Combine(installedRuntimeRoot, "hostfxr.dll"));
-
-            ScriptInvocationResult verifyResult = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "verify", "--descriptor-path", descriptorPath, "--json"],
-                codexHome);
-
-            Assert.NotEqual(0, verifyResult.ExitCode);
-            Assert.Contains("isUsable", verifyResult.Stdout, StringComparison.Ordinal);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-        }
+        Assert.NotEqual(0, verifyResult.ExitCode);
+        Assert.Contains("isUsable", verifyResult.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SetupCliRuntimeRepairRestoresDriftedCurrentRuntimeFromDescriptor()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-runtime-repair", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-runtime-repair", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        using SharedRuntimeScenario scenario = CreateSharedRuntimeScenario("setup-cli-runtime-repair");
+        InstallDefaultRuntimeOrFail(scenario);
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        string installedRuntimeRoot = GetExpectedDefaultSharedRuntimeRoot(scenario);
+        File.Delete(Path.Combine(installedRuntimeRoot, "hostfxr.dll"));
 
-        try
-        {
-            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, runtimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, archivePath, "win-x64");
+        ScriptInvocationResult repairResult = InvokeDefaultRuntimeCommand(scenario, "repair");
 
-            ScriptInvocationResult installResult = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "install", "--descriptor-path", descriptorPath, "--json"],
-                codexHome);
-            Assert.True(installResult.ExitCode == 0, $"Setup CLI install failed. stderr='{installResult.Stderr}'");
-
-            string installedRuntimeRoot = GetExpectedSharedRuntimeRoot(codexHome, "win-x64", version);
-            File.Delete(Path.Combine(installedRuntimeRoot, "hostfxr.dll"));
-
-            ScriptInvocationResult repairResult = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "repair", "--descriptor-path", descriptorPath, "--json"],
-                codexHome);
-
-            Assert.True(repairResult.ExitCode == 0, $"Setup CLI repair failed. stderr='{repairResult.Stderr}', stdout='{repairResult.Stdout}'.");
-            Assert.True(File.Exists(Path.Combine(installedRuntimeRoot, "hostfxr.dll")));
-            AssertRuntimeBundleMatchesManifest(installedRuntimeRoot);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-        }
+        AssertCliSucceeded(repairResult, "Setup CLI repair");
+        Assert.True(File.Exists(Path.Combine(installedRuntimeRoot, "hostfxr.dll")));
+        AssertRuntimeBundleMatchesManifest(installedRuntimeRoot);
     }
 
     [Fact]
     public async Task ComputerUseWinLauncherUsesSharedInstalledRuntimeWhenPluginLocalRuntimeIsInvalid()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string pluginRuntimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-shared-runtime-preferred", Guid.NewGuid().ToString("N"));
-        string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-shared-runtime-plugin-copy", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-launcher-shared", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        using SharedRuntimeScenario scenario = CreateSharedRuntimeScenario("launcher-shared-runtime-preferred");
+        InstallDefaultRuntimeOrFail(scenario);
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, pluginRuntimeRoot);
+        string tempPluginRoot = CopySourcePluginToTempRoot(scenario);
+        File.Delete(Path.Combine(tempPluginRoot, "runtime", SharedRuntimeFoundationRid, "Okno.Server.exe"));
 
-        try
-        {
-            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, pluginRuntimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, archivePath, "win-x64");
+        await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, scenario.DefaultRelease.DescriptorPath, scenario.CodexHome);
+        PluginMcpSession session = launcher.CreateMcpSession();
 
-            ScriptInvocationResult installResult = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "install", "--descriptor-path", descriptorPath, "--json"],
-                codexHome);
-            Assert.True(installResult.ExitCode == 0, $"Setup CLI install failed. stderr='{installResult.Stderr}'");
+        await InitializeComputerUseWinMcpSessionAsync(session);
+        string[] toolNames = await ReadComputerUseWinToolNamesAsync(session);
 
-            CopyDirectory(sourcePluginRoot, tempPluginRoot, _ => true);
-            File.Delete(Path.Combine(tempPluginRoot, "runtime", "win-x64", "Okno.Server.exe"));
-
-            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, descriptorPath, codexHome);
-            PluginMcpSession session = launcher.CreateMcpSession();
-
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "ComputerUseWin.SharedRuntimeFoundationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-            using JsonDocument toolsResponse = await session.SendRequestAsync("tools/list", new { }, "tools/list");
-            string[] toolNames = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Select(tool => tool.GetProperty("name").GetString() ?? string.Empty)
-                .ToArray();
-
-            Assert.Contains(ToolNames.ComputerUseWinListApps, toolNames);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(tempPluginRoot);
-            DeleteDirectoryIfExists(codexHome);
-        }
+        Assert.Contains(ToolNames.ComputerUseWinListApps, toolNames);
     }
 
     [Fact]
     public async Task ComputerUseWinLauncherFallsBackToPluginLocalRuntimeWhenSharedRuntimeStateIsIncompatible()
     {
-        string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string pluginRuntimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-plugin-local-fallback", Guid.NewGuid().ToString("N"));
-        string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-plugin-local-fallback-plugin-copy", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-plugin-local-fallback", Guid.NewGuid().ToString("N"));
-        const string validVersion = "0.1.0";
         const string mismatchedVersion = "0.1.0-test";
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, pluginRuntimeRoot);
+        using SharedRuntimeScenario scenario = CreateSharedRuntimeScenario("launcher-plugin-local-fallback");
+        SharedRuntimeRelease mismatchedRelease = CreateRuntimeRelease(scenario, mismatchedVersion);
+        ScriptInvocationResult installResult = InvokeRuntimeCommand(scenario, "install", mismatchedRelease.DescriptorPath);
+        AssertCliSucceeded(installResult, "Setup CLI mismatched install");
 
-        try
-        {
-            string mismatchedArchivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, pluginRuntimeRoot, outputRoot, mismatchedVersion);
-            string mismatchedDescriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, mismatchedVersion, mismatchedArchivePath, "win-x64");
-            string validArchivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, pluginRuntimeRoot, outputRoot, validVersion);
-            string validDescriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, validVersion, validArchivePath, "win-x64");
+        string tempPluginRoot = CopySourcePluginToTempRoot(scenario);
 
-            ScriptInvocationResult installResult = InvokeSetupCli(
-                repoRoot,
-                ["runtime", "install", "--descriptor-path", mismatchedDescriptorPath, "--json"],
-                codexHome);
-            Assert.True(installResult.ExitCode == 0, $"Setup CLI mismatched install failed. stderr='{installResult.Stderr}'");
+        await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, scenario.DefaultRelease.DescriptorPath, scenario.CodexHome);
+        PluginMcpSession session = launcher.CreateMcpSession();
 
-            CopyDirectory(sourcePluginRoot, tempPluginRoot, _ => true);
+        await InitializeComputerUseWinMcpSessionAsync(session);
 
-            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, validDescriptorPath, codexHome);
-            PluginMcpSession session = launcher.CreateMcpSession();
-
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "ComputerUseWin.SharedRuntimeFoundationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument state = JsonDocument.Parse(File.ReadAllText(GetExpectedSharedRuntimeStatePath(codexHome)));
-            Assert.Equal(mismatchedVersion, state.RootElement.GetProperty("version").GetString());
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(tempPluginRoot);
-            DeleteDirectoryIfExists(codexHome);
-        }
+        using JsonDocument state = JsonDocument.Parse(File.ReadAllText(GetExpectedSharedRuntimeStatePath(scenario.CodexHome)));
+        Assert.Equal(mismatchedVersion, state.RootElement.GetProperty("version").GetString());
     }
 
     [Fact]
     public async Task ComputerUseWinLauncherRehydratesSharedRuntimeStoreWhenNoUsableRuntimeExists()
     {
+        using SharedRuntimeScenario scenario = CreateSharedRuntimeScenario("launcher-rehydrate-shared-runtime");
+
+        string tempPluginRoot = CopySourcePluginToTempRoot(scenario);
+        DeleteDirectoryIfExists(Path.Combine(tempPluginRoot, "runtime", SharedRuntimeFoundationRid));
+
+        await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, scenario.DefaultRelease.DescriptorPath, scenario.CodexHome);
+        PluginMcpSession session = launcher.CreateMcpSession();
+
+        await InitializeComputerUseWinMcpSessionAsync(session);
+
+        string sharedRuntimeRoot = GetExpectedDefaultSharedRuntimeRoot(scenario);
+        string statePath = GetExpectedSharedRuntimeStatePath(scenario.CodexHome);
+        Assert.True(File.Exists(Path.Combine(sharedRuntimeRoot, "Okno.Server.exe")));
+        Assert.True(File.Exists(statePath));
+
+        using JsonDocument state = JsonDocument.Parse(File.ReadAllText(statePath));
+        Assert.Equal(scenario.DefaultRelease.Version, state.RootElement.GetProperty("version").GetString());
+        Assert.Equal(sharedRuntimeRoot, state.RootElement.GetProperty("runtimeRoot").GetString());
+    }
+
+    private static SharedRuntimeScenario CreateSharedRuntimeScenario(string scenarioName)
+    {
+        SharedRuntimeTestPaths paths = CreateSharedRuntimeTestPaths();
+        EnsureSharedRuntimeBundlePublishedOnce(paths);
+
+        return new SharedRuntimeScenario(paths, scenarioName, GetCachedDefaultSharedRuntimeRelease(paths), DeleteDirectoryIfExists);
+    }
+
+    private static SharedRuntimeTestPaths CreateSharedRuntimeTestPaths()
+    {
         string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
         string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string pluginRuntimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-rehydrate-shared-runtime", Guid.NewGuid().ToString("N"));
-        string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-rehydrate-shared-runtime-plugin-copy", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-rehydrate-shared-runtime", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
 
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, pluginRuntimeRoot);
+        return new SharedRuntimeTestPaths(
+            repoRoot,
+            GetPublishScriptPath(repoRoot),
+            Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1"),
+            sourcePluginRoot,
+            Path.Combine(sourcePluginRoot, "runtime", SharedRuntimeFoundationRid),
+            Path.Combine(repoRoot, ".tmp", ".codex", "tests"));
+    }
 
-        try
+    private static void EnsureSharedRuntimeBundlePublishedOnce(SharedRuntimeTestPaths paths)
+    {
+        lock (s_sharedRuntimeFoundationCacheLock)
         {
-            string archivePath = PackageRuntimeRelease(repoRoot, packageScriptPath, pluginRuntimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, archivePath, "win-x64");
+            if (StringComparer.OrdinalIgnoreCase.Equals(s_publishedSharedRuntimeRoot, paths.PluginRuntimeRoot))
+            {
+                return;
+            }
 
-            CopyDirectory(sourcePluginRoot, tempPluginRoot, _ => true);
-            DeleteDirectoryIfExists(Path.Combine(tempPluginRoot, "runtime", "win-x64"));
-
-            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, descriptorPath, codexHome);
-            PluginMcpSession session = launcher.CreateMcpSession();
-
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "ComputerUseWin.SharedRuntimeFoundationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            string sharedRuntimeRoot = GetExpectedSharedRuntimeRoot(codexHome, "win-x64", version);
-            string statePath = GetExpectedSharedRuntimeStatePath(codexHome);
-            Assert.True(File.Exists(Path.Combine(sharedRuntimeRoot, "Okno.Server.exe")));
-            Assert.True(File.Exists(statePath));
-
-            using JsonDocument state = JsonDocument.Parse(File.ReadAllText(statePath));
-            Assert.Equal(version, state.RootElement.GetProperty("version").GetString());
-            Assert.Equal(sharedRuntimeRoot, state.RootElement.GetProperty("runtimeRoot").GetString());
+            EnsurePublishedRuntimeBundle(paths.RepoRoot, paths.PublishScriptPath, paths.PluginRuntimeRoot);
+            s_publishedSharedRuntimeRoot = paths.PluginRuntimeRoot;
         }
-        finally
+    }
+
+    private static SharedRuntimeRelease GetCachedDefaultSharedRuntimeRelease(SharedRuntimeTestPaths paths)
+    {
+        lock (s_sharedRuntimeFoundationCacheLock)
         {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(tempPluginRoot);
-            DeleteDirectoryIfExists(codexHome);
+            if (s_cachedSharedRuntimeRelease is not null)
+            {
+                return s_cachedSharedRuntimeRelease;
+            }
+
+            string outputRoot = Path.Combine(paths.TestRoot, "shared-runtime-foundation-release-cache", Guid.NewGuid().ToString("N"));
+            string archivePath = PackageRuntimeRelease(paths.RepoRoot, paths.PackageScriptPath, paths.PluginRuntimeRoot, outputRoot, SharedRuntimeFoundationVersion);
+            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, SharedRuntimeFoundationVersion, archivePath, SharedRuntimeFoundationRid);
+
+            s_cachedSharedRuntimeRelease = new SharedRuntimeRelease(SharedRuntimeFoundationVersion, descriptorPath, outputRoot);
+            RegisterCachedSharedRuntimeReleaseCleanup(s_cachedSharedRuntimeRelease);
+
+            return s_cachedSharedRuntimeRelease;
+        }
+    }
+
+    private static void RegisterCachedSharedRuntimeReleaseCleanup(SharedRuntimeRelease release)
+    {
+        if (s_cachedSharedRuntimeReleaseCleanupRegistered)
+        {
+            return;
+        }
+
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try
+            {
+                if (Directory.Exists(release.OutputRoot))
+                {
+                    Directory.Delete(release.OutputRoot, recursive: true);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        };
+        s_cachedSharedRuntimeReleaseCleanupRegistered = true;
+    }
+
+    private static SharedRuntimeRelease CreateRuntimeRelease(SharedRuntimeScenario scenario, string version)
+    {
+        string archivePath = PackageRuntimeRelease(scenario.Paths.RepoRoot, scenario.Paths.PackageScriptPath, scenario.Paths.PluginRuntimeRoot, scenario.OutputRoot, version);
+        string descriptorPath = CreateRuntimeReleaseDescriptor(scenario.OutputRoot, version, archivePath, SharedRuntimeFoundationRid);
+
+        return new SharedRuntimeRelease(version, descriptorPath, scenario.OutputRoot);
+    }
+
+    private static ScriptInvocationResult InvokeDefaultRuntimeCommand(SharedRuntimeScenario scenario, string command) =>
+        InvokeRuntimeCommand(scenario, command, scenario.DefaultRelease.DescriptorPath);
+
+    private static ScriptInvocationResult InvokeRuntimeCommand(SharedRuntimeScenario scenario, string command, string descriptorPath) =>
+        InvokeSetupCli(scenario.Paths.RepoRoot, ["runtime", command, "--descriptor-path", descriptorPath, "--json"], scenario.CodexHome);
+
+    private static void AssertCliSucceeded(ScriptInvocationResult result, string operationName)
+    {
+        Assert.True(result.ExitCode == 0, $"{operationName} failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
+    }
+
+    private static void InstallDefaultRuntimeOrFail(SharedRuntimeScenario scenario) =>
+        AssertCliSucceeded(InvokeDefaultRuntimeCommand(scenario, "install"), "Setup CLI install");
+
+    private static string CopySourcePluginToTempRoot(SharedRuntimeScenario scenario)
+    {
+        string tempPluginRoot = scenario.AllocateTempPluginRoot();
+        CopyDirectory(scenario.Paths.SourcePluginRoot, tempPluginRoot, _ => true);
+        return tempPluginRoot;
+    }
+
+    private static string GetExpectedDefaultSharedRuntimeRoot(SharedRuntimeScenario scenario) =>
+        GetExpectedSharedRuntimeRoot(scenario.CodexHome, SharedRuntimeFoundationRid, scenario.DefaultRelease.Version);
+
+    private static async Task InitializeComputerUseWinMcpSessionAsync(PluginMcpSession session)
+    {
+        using JsonDocument _ = await session.SendRequestAsync(
+            "initialize",
+            new
+            {
+                protocolVersion = SharedRuntimeFoundationMcpProtocolVersion,
+                capabilities = new { },
+                clientInfo = new
+                {
+                    name = SharedRuntimeFoundationTestClientName,
+                    version = SharedRuntimeFoundationVersion,
+                },
+            },
+            "initialize");
+
+        await session.SendNotificationAsync("notifications/initialized");
+    }
+
+    private static async Task<string[]> ReadComputerUseWinToolNamesAsync(PluginMcpSession session)
+    {
+        using JsonDocument toolsResponse = await session.SendRequestAsync("tools/list", new { }, "tools/list");
+
+        return toolsResponse.RootElement
+            .GetProperty("result")
+            .GetProperty("tools")
+            .EnumerateArray()
+            .Select(tool => tool.GetProperty("name").GetString() ?? string.Empty)
+            .ToArray();
+    }
+
+    private sealed record SharedRuntimeTestPaths(
+        string RepoRoot,
+        string PublishScriptPath,
+        string PackageScriptPath,
+        string SourcePluginRoot,
+        string PluginRuntimeRoot,
+        string TestRoot);
+
+    private sealed record SharedRuntimeRelease(string Version, string DescriptorPath, string OutputRoot);
+
+    private sealed class SharedRuntimeScenario(
+        SharedRuntimeTestPaths paths,
+        string scenarioName,
+        SharedRuntimeRelease defaultRelease,
+        Action<string> deleteDirectoryIfExists) : IDisposable
+    {
+        public SharedRuntimeTestPaths Paths { get; } = paths;
+
+        public SharedRuntimeRelease DefaultRelease { get; } = defaultRelease;
+
+        public string OutputRoot { get; } = Path.Combine(paths.TestRoot, scenarioName, Guid.NewGuid().ToString("N"));
+
+        public string CodexHome { get; } = Path.Combine(paths.TestRoot, $"codex-home-{scenarioName}", Guid.NewGuid().ToString("N"));
+
+        public string? TempPluginRoot { get; private set; }
+
+        public string AllocateTempPluginRoot() =>
+            TempPluginRoot ??= Path.Combine(Paths.TestRoot, $"{scenarioName}-plugin-copy", Guid.NewGuid().ToString("N"));
+
+        public void Dispose()
+        {
+            deleteDirectoryIfExists(OutputRoot);
+
+            if (TempPluginRoot is not null)
+            {
+                deleteDirectoryIfExists(TempPluginRoot);
+            }
+
+            deleteDirectoryIfExists(CodexHome);
         }
     }
 }

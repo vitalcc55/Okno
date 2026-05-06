@@ -22,24 +22,16 @@ public sealed class ToolExecutionGateBoundaryTests
         SyntheticGatedBoundaryHost host = CreateHost();
 
         CallToolResult result = host.Execute(
-            CreatePolicy(
-                ToolExecutionPolicyGroup.Input,
-                ToolExecutionRiskLevel.Destructive,
-                CapabilitySummaryValues.Input,
-                supportsDryRun: false,
-                ToolExecutionConfirmationMode.Required),
+            CreateRequiredConfirmationPolicy(
+                ToolExecutionPolicyGroup.Input, ToolExecutionRiskLevel.Destructive,
+                CapabilitySummaryValues.Input, supportsDryRun: false),
             ToolExecutionIntent.Default);
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal("blocked", payload.GetProperty("status").GetString());
-        Assert.Equal("blocked", payload.GetProperty("decision").GetString());
-        Assert.Equal("destructive", payload.GetProperty("riskLevel").GetString());
-        Assert.Equal(CapabilitySummaryValues.Input, payload.GetProperty("guardCapability").GetString());
-        Assert.False(payload.GetProperty("requiresConfirmation").GetBoolean());
-        Assert.False(payload.GetProperty("dryRunSupported").GetBoolean());
-        Assert.Equal(0, host.AllowedInvocationCount);
-        Assert.Equal(1, host.RejectedInvocationCount);
+        AssertRejectedPayload(
+            result, "blocked", "destructive", CapabilitySummaryValues.Input,
+            requiresConfirmation: false, dryRunSupported: false);
+        AssertAllowedPathWasSkipped(host);
+
         string completedEvent = host.ReadCompletedEvent();
         Assert.Contains("\"gate_decision\":\"blocked\"", completedEvent, StringComparison.Ordinal);
         Assert.Contains("\"gate_risk_level\":\"destructive\"", completedEvent, StringComparison.Ordinal);
@@ -53,24 +45,15 @@ public sealed class ToolExecutionGateBoundaryTests
         SyntheticGatedBoundaryHost host = CreateHost();
 
         CallToolResult result = host.Execute(
-            CreatePolicy(
-                ToolExecutionPolicyGroup.Launch,
-                ToolExecutionRiskLevel.High,
-                CapabilitySummaryValues.Launch,
-                supportsDryRun: true,
-                ToolExecutionConfirmationMode.Required),
+            CreateRequiredConfirmationPolicy(
+                ToolExecutionPolicyGroup.Launch, ToolExecutionRiskLevel.High,
+                CapabilitySummaryValues.Launch, supportsDryRun: true),
             ToolExecutionIntent.Default);
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal("needs_confirmation", payload.GetProperty("status").GetString());
-        Assert.Equal("needs_confirmation", payload.GetProperty("decision").GetString());
-        Assert.Equal("high", payload.GetProperty("riskLevel").GetString());
-        Assert.Equal(CapabilitySummaryValues.Launch, payload.GetProperty("guardCapability").GetString());
-        Assert.True(payload.GetProperty("requiresConfirmation").GetBoolean());
-        Assert.True(payload.GetProperty("dryRunSupported").GetBoolean());
-        Assert.Equal(0, host.AllowedInvocationCount);
-        Assert.Equal(1, host.RejectedInvocationCount);
+        AssertRejectedPayload(
+            result, "needs_confirmation", "high", CapabilitySummaryValues.Launch,
+            requiresConfirmation: true, dryRunSupported: true);
+        AssertAllowedPathWasSkipped(host);
     }
 
     [Fact]
@@ -79,27 +62,15 @@ public sealed class ToolExecutionGateBoundaryTests
         SyntheticGatedBoundaryHost host = CreateHost();
 
         CallToolResult result = await host.ExecuteAsync(
-            CreatePolicy(
-                ToolExecutionPolicyGroup.Clipboard,
-                ToolExecutionRiskLevel.High,
-                CapabilitySummaryValues.Clipboard,
-                supportsDryRun: true,
-                ToolExecutionConfirmationMode.Required),
-            new ToolExecutionIntent(
-                IsDryRunRequested: false,
-                ConfirmationGranted: false,
-                PreviewAvailable: true));
+            CreateRequiredConfirmationPolicy(
+                ToolExecutionPolicyGroup.Clipboard, ToolExecutionRiskLevel.High,
+                CapabilitySummaryValues.Clipboard, supportsDryRun: true),
+            new(IsDryRunRequested: false, ConfirmationGranted: false, PreviewAvailable: true));
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal("dry_run_only", payload.GetProperty("status").GetString());
-        Assert.Equal("dry_run_only", payload.GetProperty("decision").GetString());
-        Assert.Equal("high", payload.GetProperty("riskLevel").GetString());
-        Assert.Equal(CapabilitySummaryValues.Clipboard, payload.GetProperty("guardCapability").GetString());
-        Assert.False(payload.GetProperty("requiresConfirmation").GetBoolean());
-        Assert.True(payload.GetProperty("dryRunSupported").GetBoolean());
-        Assert.Equal(0, host.AllowedInvocationCount);
-        Assert.Equal(1, host.RejectedInvocationCount);
+        AssertRejectedPayload(
+            result, "dry_run_only", "high", CapabilitySummaryValues.Clipboard,
+            requiresConfirmation: false, dryRunSupported: true);
+        AssertAllowedPathWasSkipped(host);
     }
 
     [Fact]
@@ -108,80 +79,59 @@ public sealed class ToolExecutionGateBoundaryTests
         SyntheticGatedBoundaryHost host = CreateHost();
 
         CallToolResult result = host.Execute(
-            CreatePolicy(
-                ToolExecutionPolicyGroup.Input,
-                ToolExecutionRiskLevel.Destructive,
-                CapabilitySummaryValues.Input,
-                supportsDryRun: false,
-                ToolExecutionConfirmationMode.Required),
-            new ToolExecutionIntent(
-                IsDryRunRequested: true,
-                ConfirmationGranted: false,
-                PreviewAvailable: true));
+            CreateRequiredConfirmationPolicy(
+                ToolExecutionPolicyGroup.Input, ToolExecutionRiskLevel.Destructive,
+                CapabilitySummaryValues.Input, supportsDryRun: false),
+            new(IsDryRunRequested: true, ConfirmationGranted: false, PreviewAvailable: true));
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal("blocked", payload.GetProperty("status").GetString());
-        Assert.Equal("blocked", payload.GetProperty("decision").GetString());
-        Assert.Equal(CapabilitySummaryValues.Input, payload.GetProperty("guardCapability").GetString());
-        Assert.Equal(0, host.AllowedInvocationCount);
-        Assert.Equal(1, host.RejectedInvocationCount);
+        JsonElement payload = AssertRejectedPayload(
+            result, "blocked", "destructive", CapabilitySummaryValues.Input,
+            requiresConfirmation: false, dryRunSupported: false);
+        AssertAllowedPathWasSkipped(host);
         Assert.Equal(
             GuardReasonCodeValues.CapabilityDryRunNotSupported,
             payload.GetProperty("reasons")[0].GetProperty("code").GetString());
     }
 
-    private static SyntheticGatedBoundaryHost CreateHost()
-    {
-        RuntimeGuardAssessment assessment = CreateAssessment(
-            CreateCapability(
-                CapabilitySummaryValues.Input,
-                GuardStatusValues.Blocked,
-                CreateReason(
-                    GuardReasonCodeValues.InputUipiBarrierPresent,
-                    GuardSeverityValues.Blocked,
-                    CapabilitySummaryValues.Input,
-                    "Future input path не может обещать higher-integrity interaction без uiAccess.")),
-            CreateCapability(
-                CapabilitySummaryValues.Clipboard,
-                GuardStatusValues.Blocked,
-                CreateReason(
-                    GuardReasonCodeValues.ClipboardIntegrityLimited,
-                    GuardSeverityValues.Blocked,
-                    CapabilitySummaryValues.Clipboard,
-                    "Clipboard path пока не должен обещать операции при неполном integrity profile.")),
-            CreateCapability(
-                CapabilitySummaryValues.Launch,
-                GuardStatusValues.Degraded,
-                CreateReason(
-                    GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                    GuardSeverityValues.Warning,
-                    CapabilitySummaryValues.Launch,
-                    "Live launch path остаётся confirmation-worthy: higher-integrity boundary заранее не подтверждена.")));
+    private static SyntheticGatedBoundaryHost CreateHost() =>
+        new(
+            CreateAssessment(
+                CreateCapability(
+                    CapabilitySummaryValues.Input, GuardStatusValues.Blocked,
+                    CreateReason(
+                        GuardReasonCodeValues.InputUipiBarrierPresent, GuardSeverityValues.Blocked,
+                        CapabilitySummaryValues.Input,
+                        "Future input path не может обещать higher-integrity interaction без uiAccess.")),
+                CreateCapability(
+                    CapabilitySummaryValues.Clipboard, GuardStatusValues.Blocked,
+                    CreateReason(
+                        GuardReasonCodeValues.ClipboardIntegrityLimited, GuardSeverityValues.Blocked,
+                        CapabilitySummaryValues.Clipboard,
+                        "Clipboard path пока не должен обещать операции при неполном integrity profile.")),
+                CreateCapability(
+                    CapabilitySummaryValues.Launch, GuardStatusValues.Degraded,
+                    CreateReason(
+                        GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed, GuardSeverityValues.Warning,
+                        CapabilitySummaryValues.Launch,
+                        "Live launch path остаётся confirmation-worthy: higher-integrity boundary заранее не подтверждена."))));
 
-        return new SyntheticGatedBoundaryHost(assessment);
-    }
-
-    private static ToolExecutionPolicyDescriptor CreatePolicy(
+    private static ToolExecutionPolicyDescriptor CreateRequiredConfirmationPolicy(
         ToolExecutionPolicyGroup policyGroup,
         ToolExecutionRiskLevel riskLevel,
         string guardCapability,
-        bool supportsDryRun,
-        ToolExecutionConfirmationMode confirmationMode) =>
+        bool supportsDryRun) =>
         new(
             PolicyGroup: policyGroup,
             RiskLevel: riskLevel,
             GuardCapability: guardCapability,
             SupportsDryRun: supportsDryRun,
-            ConfirmationMode: confirmationMode,
+            ConfirmationMode: ToolExecutionConfirmationMode.Required,
             RedactionClass: ToolExecutionRedactionClass.None);
 
     private static RuntimeGuardAssessment CreateAssessment(params CapabilityGuardSummary[] capabilities)
     {
-        RuntimeReadinessSnapshot readiness = new(
-            CapturedAtUtc: DateTimeOffset.UtcNow,
-            Domains: [],
-            Capabilities: capabilities);
+        DateTimeOffset capturedAtUtc = DateTimeOffset.UtcNow;
+        RuntimeReadinessSnapshot readiness = new(CapturedAtUtc: capturedAtUtc, Domains: [], Capabilities: capabilities);
 
         return new RuntimeGuardAssessment(
             Topology: new DisplayTopologySnapshot(
@@ -192,12 +142,9 @@ public sealed class ToolExecutionGateBoundaryTests
                     ErrorCode: null,
                     ErrorName: null,
                     MessageHuman: "Strong monitor identity resolved through QueryDisplayConfig for all active desktop monitors.",
-                    CapturedAtUtc: DateTimeOffset.UtcNow)),
+                    CapturedAtUtc: capturedAtUtc)),
             Readiness: readiness,
-            BlockedCapabilities:
-            [
-                .. capabilities.Where(item => item.Status == GuardStatusValues.Blocked),
-            ],
+            BlockedCapabilities: [.. capabilities.Where(item => item.Status == GuardStatusValues.Blocked)],
             Warnings: []);
     }
 
@@ -205,30 +152,47 @@ public sealed class ToolExecutionGateBoundaryTests
         string capability,
         string status,
         params GuardReason[] reasons) =>
-        new(
-            Capability: capability,
-            Status: status,
-            Reasons: reasons);
+        new(Capability: capability, Status: status, Reasons: reasons);
 
     private static GuardReason CreateReason(
         string code,
         string severity,
         string source,
         string message) =>
-        new(
-            Code: code,
-            Severity: severity,
-            MessageHuman: message,
-            Source: source);
+        new(Code: code, Severity: severity, MessageHuman: message, Source: source);
 
-    private static JsonElement AssertStructuredPayload(CallToolResult result)
+    private static JsonElement AssertRejectedPayload(
+        CallToolResult result,
+        string status,
+        string riskLevel,
+        string guardCapability,
+        bool requiresConfirmation,
+        bool dryRunSupported)
     {
         Assert.NotNull(result.StructuredContent);
-        return result.StructuredContent!.Value;
+
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.True(result.IsError);
+        Assert.Equal(status, payload.GetProperty("status").GetString());
+        Assert.Equal(status, payload.GetProperty("decision").GetString());
+        Assert.Equal(riskLevel, payload.GetProperty("riskLevel").GetString());
+        Assert.Equal(guardCapability, payload.GetProperty("guardCapability").GetString());
+        Assert.Equal(requiresConfirmation, payload.GetProperty("requiresConfirmation").GetBoolean());
+        Assert.Equal(dryRunSupported, payload.GetProperty("dryRunSupported").GetBoolean());
+
+        return payload;
+    }
+
+    private static void AssertAllowedPathWasSkipped(SyntheticGatedBoundaryHost host)
+    {
+        Assert.Equal(0, host.AllowedInvocationCount);
+        Assert.Equal(1, host.RejectedInvocationCount);
     }
 
     private sealed class SyntheticGatedBoundaryHost
     {
+        private const string RunId = "tool-execution-gate-boundary";
+
         private static readonly JsonSerializerOptions PayloadJsonOptions = new()
         {
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -243,20 +207,22 @@ public sealed class ToolExecutionGateBoundaryTests
         public SyntheticGatedBoundaryHost(RuntimeGuardAssessment assessment)
         {
             string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(root);
+            string diagnosticsRoot = Path.Combine(root, "artifacts", "diagnostics");
+            string runDirectory = Path.Combine(diagnosticsRoot, RunId);
+            Directory.CreateDirectory(runDirectory);
 
             AuditLogOptions options = new(
                 ContentRootPath: root,
                 EnvironmentName: "Tests",
-                RunId: "tool-execution-gate-boundary",
-                DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
-                RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "tool-execution-gate-boundary"),
-                EventsPath: Path.Combine(root, "artifacts", "diagnostics", "tool-execution-gate-boundary", "events.jsonl"),
-                SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "tool-execution-gate-boundary", "summary.md"));
+                RunId: RunId,
+                DiagnosticsRoot: diagnosticsRoot,
+                RunDirectory: runDirectory,
+                EventsPath: Path.Combine(runDirectory, "events.jsonl"),
+                SummaryPath: Path.Combine(runDirectory, "summary.md"));
 
             _auditLog = new AuditLog(options, TimeProvider.System);
             _eventsPath = options.EventsPath;
-            _sessionManager = new InMemorySessionManager(TimeProvider.System, new SessionContext("tool-execution-gate-boundary"));
+            _sessionManager = new InMemorySessionManager(TimeProvider.System, new SessionContext(RunId));
             _gate = new ToolExecutionGate(new FakeRuntimeGuardService(assessment));
         }
 
@@ -265,7 +231,7 @@ public sealed class ToolExecutionGateBoundaryTests
         public int RejectedInvocationCount { get; private set; }
 
         public string ReadCompletedEvent() =>
-            File.ReadAllLines(_eventsPath)
+            File.ReadLines(_eventsPath)
                 .Single(line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
 
         public CallToolResult Execute(ToolExecutionPolicyDescriptor policy, ToolExecutionIntent intent) =>
@@ -331,13 +297,7 @@ public sealed class ToolExecutionGateBoundaryTests
             {
                 IsError = isError,
                 StructuredContent = structuredContent,
-                Content =
-                [
-                    new TextContentBlock
-                    {
-                        Text = JsonSerializer.Serialize(structuredContent, PayloadJsonOptions),
-                    },
-                ],
+                Content = [new TextContentBlock { Text = structuredContent.GetRawText() }],
             };
         }
 

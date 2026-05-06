@@ -17,29 +17,27 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed class WindowUiaSnapshotToolTests
 {
+    private const long AttachedHwnd = 101;
+    private const long ExplicitHwnd = 202;
+    private const long ActiveHwnd = 303;
+    private const string TestRunId = "window-uia-snapshot-tests";
+
     [Fact]
     public async Task UiaSnapshotPrefersExplicitTargetOverAttachedAndActive()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        WindowDescriptor explicitWindow = CreateWindow(hwnd: 202, title: "Explicit", isForeground: false);
-        WindowDescriptor activeWindow = CreateWindow(hwnd: 303, title: "Active", isForeground: true);
-        FakeUiAutomationService uiaService = new((targetWindow, request, _) => Task.FromResult(CreateSuccessfulRuntimeResult(targetWindow, request)));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow, explicitWindow, activeWindow],
-            attachedWindow: attachedWindow,
-            uiAutomationService: uiaService);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
+        WindowDescriptor explicitWindow = CreateExplicitWindow();
+        WindowDescriptor activeWindow = CreateActiveWindow();
+        FakeUiAutomationService uiaService = CreateSuccessfulUiAutomationService();
+        WindowTools tools = CreateTools([attachedWindow, explicitWindow, activeWindow], attachedWindow, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot(hwnd: explicitWindow.Hwnd, depth: 1, maxNodes: 12);
 
-        Assert.False(result.IsError);
+        JsonElement payload = AssertSnapshotSucceeded(result);
         Assert.Equal(explicitWindow.Hwnd, uiaService.LastWindow?.Hwnd);
         Assert.Equal(1, uiaService.LastRequest?.Depth);
         Assert.Equal(12, uiaService.LastRequest?.MaxNodes);
-        Assert.Single(result.Content);
-        Assert.IsType<TextContentBlock>(result.Content[0]);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(UiaSnapshotStatusValues.Done, payload.GetProperty("status").GetString());
+        Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
         Assert.Equal(UiaSnapshotTargetSourceValues.Explicit, payload.GetProperty("targetSource").GetString());
         Assert.Equal(explicitWindow.Hwnd, payload.GetProperty("window").GetProperty("hwnd").GetInt64());
         Assert.Equal(explicitWindow.Hwnd, payload.GetProperty("requestedHwnd").GetInt64());
@@ -49,30 +47,25 @@ public sealed class WindowUiaSnapshotToolTests
     [Fact]
     public async Task UiaSnapshotUsesAttachedWindowWhenExplicitTargetIsMissing()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        FakeUiAutomationService uiaService = new((targetWindow, request, _) => Task.FromResult(CreateSuccessfulRuntimeResult(targetWindow, request)));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            uiAutomationService: uiaService);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
+        FakeUiAutomationService uiaService = CreateSuccessfulUiAutomationService();
+        WindowTools tools = CreateTools([attachedWindow], attachedWindow, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot(depth: 2, maxNodes: 33);
 
-        Assert.False(result.IsError);
+        JsonElement payload = AssertSnapshotSucceeded(result);
         Assert.Equal(attachedWindow.Hwnd, uiaService.LastWindow?.Hwnd);
-
-        JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal(UiaSnapshotTargetSourceValues.Attached, payload.GetProperty("targetSource").GetString());
         Assert.Equal(2, payload.GetProperty("requestedDepth").GetInt32());
         Assert.Equal(33, payload.GetProperty("requestedMaxNodes").GetInt32());
         Assert.Equal(attachedWindow.Hwnd, payload.GetProperty("window").GetProperty("hwnd").GetInt64());
-        Assert.True(payload.GetProperty("capturedAtUtc").GetString() is not null);
+        Assert.NotNull(payload.GetProperty("capturedAtUtc").GetString());
     }
 
     [Fact]
     public async Task UiaSnapshotPublishesObservedWindowMetadataReturnedByRuntime()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
         ObservedWindowDescriptor observedWindow = CreateObservedWindow(attachedWindow) with
         {
             Title = "Observed",
@@ -82,42 +75,33 @@ public sealed class WindowUiaSnapshotToolTests
             MonitorId = null,
             EffectiveDpi = null,
         };
-        FakeUiAutomationService uiaService = new((targetWindow, request, _) => Task.FromResult(CreateSuccessfulRuntimeResult(observedWindow, request)));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            uiAutomationService: uiaService);
+        FakeUiAutomationService uiaService = new((_, request, _) => Task.FromResult(CreateSuccessfulRuntimeResult(observedWindow, request)));
+        WindowTools tools = CreateTools([attachedWindow], attachedWindow, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot();
 
-        Assert.False(result.IsError);
+        JsonElement payload = AssertSnapshotSucceeded(result);
+        JsonElement windowPayload = payload.GetProperty("window");
         Assert.Equal(attachedWindow.Hwnd, uiaService.LastWindow?.Hwnd);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("Observed", payload.GetProperty("window").GetProperty("title").GetString());
-        Assert.Equal(999, payload.GetProperty("window").GetProperty("processId").GetInt32());
-        Assert.Equal(998, payload.GetProperty("window").GetProperty("threadId").GetInt32());
-        Assert.Equal("ObservedWindow", payload.GetProperty("window").GetProperty("className").GetString());
-        Assert.False(payload.GetProperty("window").TryGetProperty("monitorId", out _));
+        Assert.Equal("Observed", windowPayload.GetProperty("title").GetString());
+        Assert.Equal(999, windowPayload.GetProperty("processId").GetInt32());
+        Assert.Equal(998, windowPayload.GetProperty("threadId").GetInt32());
+        Assert.Equal("ObservedWindow", windowPayload.GetProperty("className").GetString());
+        AssertNoProperty(windowPayload, "monitorId");
         Assert.Equal(UiaSnapshotTargetSourceValues.Attached, payload.GetProperty("targetSource").GetString());
     }
 
     [Fact]
     public async Task UiaSnapshotUsesActiveWindowWhenNoExplicitOrAttachedTargetExists()
     {
-        WindowDescriptor activeWindow = CreateWindow(hwnd: 303, title: "Active", isForeground: true);
-        FakeUiAutomationService uiaService = new((targetWindow, request, _) => Task.FromResult(CreateSuccessfulRuntimeResult(targetWindow, request)));
-        WindowTools tools = CreateTools(
-            windows: [activeWindow],
-            attachedWindow: null,
-            uiAutomationService: uiaService);
+        WindowDescriptor activeWindow = CreateActiveWindow();
+        FakeUiAutomationService uiaService = CreateSuccessfulUiAutomationService();
+        WindowTools tools = CreateTools([activeWindow], attachedWindow: null, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot();
 
-        Assert.False(result.IsError);
+        JsonElement payload = AssertSnapshotSucceeded(result);
         Assert.Equal(activeWindow.Hwnd, uiaService.LastWindow?.Hwnd);
-
-        JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal(UiaSnapshotTargetSourceValues.Active, payload.GetProperty("targetSource").GetString());
         Assert.Equal(activeWindow.Hwnd, payload.GetProperty("window").GetProperty("hwnd").GetInt64());
     }
@@ -125,63 +109,46 @@ public sealed class WindowUiaSnapshotToolTests
     [Fact]
     public async Task UiaSnapshotReturnsTypedFailureForStaleExplicitTargetWithoutCallingService()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
         FakeUiAutomationService uiaService = new();
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            uiAutomationService: uiaService);
+        WindowTools tools = CreateTools([attachedWindow], attachedWindow, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot(hwnd: 999);
 
-        Assert.True(result.IsError);
+        JsonElement payload = AssertSnapshotFailed(result);
         Assert.Equal(0, uiaService.Calls);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(UiaSnapshotStatusValues.Failed, payload.GetProperty("status").GetString());
         Assert.Equal(UiaSnapshotTargetFailureValues.StaleExplicitTarget, payload.GetProperty("targetFailureCode").GetString());
-        Assert.False(payload.TryGetProperty("capturedAtUtc", out _));
-        Assert.False(payload.TryGetProperty("root", out _));
+        AssertNoProperty(payload, "capturedAtUtc");
+        AssertNoProperty(payload, "root");
     }
 
     [Fact]
     public async Task UiaSnapshotRejectsInvalidDepthBeforeTargetResolution()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
         FakeUiAutomationService uiaService = new();
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            uiAutomationService: uiaService);
+        WindowTools tools = CreateTools([attachedWindow], attachedWindow, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot(hwnd: 999, depth: -1);
 
-        Assert.True(result.IsError);
+        JsonElement payload = AssertSnapshotFailed(result);
         Assert.Equal(0, uiaService.Calls);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(UiaSnapshotStatusValues.Failed, payload.GetProperty("status").GetString());
-        Assert.False(payload.TryGetProperty("targetFailureCode", out JsonElement targetFailureCode) && targetFailureCode.ValueKind != JsonValueKind.Null);
+        AssertNoNonNullProperty(payload, "targetFailureCode");
         Assert.Contains("depth", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task UiaSnapshotReturnsTypedFailureForStaleAttachedTargetWithoutCallingService()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        WindowDescriptor reusedWindow = CreateWindow(hwnd: 101, title: "Different", threadId: 999, isForeground: false);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
+        WindowDescriptor reusedWindow = CreateWindow(hwnd: AttachedHwnd, title: "Different", threadId: 999);
         FakeUiAutomationService uiaService = new();
-        WindowTools tools = CreateTools(
-            windows: [reusedWindow],
-            attachedWindow: attachedWindow,
-            uiAutomationService: uiaService);
+        WindowTools tools = CreateTools([reusedWindow], attachedWindow, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot();
 
-        Assert.True(result.IsError);
+        JsonElement payload = AssertSnapshotFailed(result);
         Assert.Equal(0, uiaService.Calls);
-
-        JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal(UiaSnapshotTargetFailureValues.StaleAttachedTarget, payload.GetProperty("targetFailureCode").GetString());
         Assert.Contains("Прикрепленное окно", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
     }
@@ -189,68 +156,51 @@ public sealed class WindowUiaSnapshotToolTests
     [Fact]
     public async Task UiaSnapshotRejectsTooLargeMaxNodesBeforeTargetResolution()
     {
-        WindowDescriptor staleAttachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        WindowDescriptor reusedWindow = CreateWindow(hwnd: 101, title: "Different", threadId: 999, isForeground: false);
+        WindowDescriptor staleAttachedWindow = CreateAttachedWindow();
+        WindowDescriptor reusedWindow = CreateWindow(hwnd: AttachedHwnd, title: "Different", threadId: 999);
         FakeUiAutomationService uiaService = new();
-        WindowTools tools = CreateTools(
-            windows: [reusedWindow],
-            attachedWindow: staleAttachedWindow,
-            uiAutomationService: uiaService);
+        WindowTools tools = CreateTools([reusedWindow], staleAttachedWindow, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot(maxNodes: UiaSnapshotRequestValidator.MaxNodesCeiling + 1);
 
-        Assert.True(result.IsError);
+        JsonElement payload = AssertSnapshotFailed(result);
         Assert.Equal(0, uiaService.Calls);
-
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(UiaSnapshotStatusValues.Failed, payload.GetProperty("status").GetString());
         Assert.Contains(UiaSnapshotRequestValidator.MaxNodesCeiling.ToString(CultureInfo.InvariantCulture), payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
-        Assert.False(payload.TryGetProperty("targetFailureCode", out JsonElement targetFailureCode) && targetFailureCode.ValueKind != JsonValueKind.Null);
+        AssertNoNonNullProperty(payload, "targetFailureCode");
     }
 
     [Fact]
     public async Task UiaSnapshotReturnsTypedFailureForMissingTargetWithoutCallingService()
     {
         FakeUiAutomationService uiaService = new();
-        WindowTools tools = CreateTools(
-            windows: [],
-            attachedWindow: null,
-            uiAutomationService: uiaService);
+        WindowTools tools = CreateTools([], attachedWindow: null, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot();
 
-        Assert.True(result.IsError);
+        JsonElement payload = AssertSnapshotFailed(result);
         Assert.Equal(0, uiaService.Calls);
-
-        JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal(UiaSnapshotTargetFailureValues.MissingTarget, payload.GetProperty("targetFailureCode").GetString());
     }
 
     [Fact]
     public async Task UiaSnapshotReturnsTypedFailureForAmbiguousActiveTargetWithoutCallingService()
     {
-        WindowDescriptor firstCandidate = CreateWindow(hwnd: 303, title: "Active 1", isForeground: true);
+        WindowDescriptor firstCandidate = CreateWindow(hwnd: ActiveHwnd, title: "Active 1", isForeground: true);
         WindowDescriptor secondCandidate = CreateWindow(hwnd: 404, title: "Active 2", isForeground: true, threadId: 777);
         FakeUiAutomationService uiaService = new();
-        WindowTools tools = CreateTools(
-            windows: [firstCandidate, secondCandidate],
-            attachedWindow: null,
-            uiAutomationService: uiaService);
+        WindowTools tools = CreateTools([firstCandidate, secondCandidate], attachedWindow: null, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot();
 
-        Assert.True(result.IsError);
+        JsonElement payload = AssertSnapshotFailed(result);
         Assert.Equal(0, uiaService.Calls);
-
-        JsonElement payload = AssertStructuredPayload(result);
         Assert.Equal(UiaSnapshotTargetFailureValues.AmbiguousActiveTarget, payload.GetProperty("targetFailureCode").GetString());
-        Assert.Equal(UiaSnapshotStatusValues.Failed, payload.GetProperty("status").GetString());
     }
 
     [Fact]
     public async Task UiaSnapshotReturnsRuntimeFailureAsToolErrorWithoutExceptionLeak()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
         FakeUiAutomationService uiaService = new(
             (targetWindow, request, _) => Task.FromResult(
                 new UiaSnapshotResult(
@@ -261,16 +211,11 @@ public sealed class WindowUiaSnapshotToolTests
                     RequestedMaxNodes: request.MaxNodes,
                     View: UiaSnapshotDefaults.View,
                     CapturedAtUtc: new DateTimeOffset(2026, 3, 19, 10, 30, 0, TimeSpan.Zero))));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            uiAutomationService: uiaService);
+        WindowTools tools = CreateTools([attachedWindow], attachedWindow, uiaService);
 
         CallToolResult result = await tools.UiaSnapshot();
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(UiaSnapshotStatusValues.Failed, payload.GetProperty("status").GetString());
+        JsonElement payload = AssertSnapshotFailed(result);
         Assert.Equal(UiaSnapshotTargetSourceValues.Attached, payload.GetProperty("targetSource").GetString());
         Assert.Equal(attachedWindow.Hwnd, payload.GetProperty("window").GetProperty("hwnd").GetInt64());
         Assert.Contains("root element", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
@@ -279,24 +224,19 @@ public sealed class WindowUiaSnapshotToolTests
     [Fact]
     public async Task UiaSnapshotReturnsFailedToolResultWhenServiceThrowsUnexpectedException()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
         FakeUiAutomationService uiaService = new((_, _, _) => throw new InvalidOperationException("secret internal failure"));
-        TestContext context = CreateContext(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            uiAutomationService: uiaService);
+        TestContext context = CreateContext([attachedWindow], attachedWindow, uiaService);
 
         CallToolResult result = await context.Tools.UiaSnapshot();
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(UiaSnapshotStatusValues.Failed, payload.GetProperty("status").GetString());
+        JsonElement payload = AssertSnapshotFailed(result);
         Assert.Equal("Server не смог завершить UIA snapshot request.", payload.GetProperty("reason").GetString());
         Assert.DoesNotContain("secret", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
-        Assert.False(payload.TryGetProperty("window", out _));
-        string[] eventLines = await File.ReadAllLinesAsync(context.EventsPath);
+        AssertNoProperty(payload, "window");
+
         string completedEvent = Assert.Single(
-            eventLines,
+            File.ReadLines(context.EventsPath),
             line => line.Contains("\"event_name\":\"tool.invocation.completed\"", StringComparison.Ordinal));
         Assert.Contains("\"exception_type\":\"System.InvalidOperationException\"", completedEvent, StringComparison.Ordinal);
         Assert.Contains("\"redaction_applied\":\"true\"", completedEvent, StringComparison.Ordinal);
@@ -309,15 +249,25 @@ public sealed class WindowUiaSnapshotToolTests
     public void LiveHandlerDefaultsMatchCanonicalSnapshotDefaults()
     {
         MethodInfo method = typeof(WindowTools).GetMethod(nameof(WindowTools.UiaSnapshot))!;
-        ParameterInfo depthParameter = method
-            .GetParameters()
-            .Single(parameter => string.Equals(parameter.Name, "depth", StringComparison.Ordinal));
-        ParameterInfo maxNodesParameter = method
-            .GetParameters()
-            .Single(parameter => string.Equals(parameter.Name, "maxNodes", StringComparison.Ordinal));
 
-        Assert.Equal(UiaSnapshotDefaults.Depth, Assert.IsType<int>(depthParameter.DefaultValue));
-        Assert.Equal(UiaSnapshotDefaults.MaxNodes, Assert.IsType<int>(maxNodesParameter.DefaultValue));
+        AssertDefaultParameter(method, "depth", UiaSnapshotDefaults.Depth);
+        AssertDefaultParameter(method, "maxNodes", UiaSnapshotDefaults.MaxNodes);
+    }
+
+    private static JsonElement AssertSnapshotSucceeded(CallToolResult result)
+    {
+        Assert.False(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal(UiaSnapshotStatusValues.Done, payload.GetProperty("status").GetString());
+        return payload;
+    }
+
+    private static JsonElement AssertSnapshotFailed(CallToolResult result)
+    {
+        Assert.True(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal(UiaSnapshotStatusValues.Failed, payload.GetProperty("status").GetString());
+        return payload;
     }
 
     private static JsonElement AssertStructuredPayload(CallToolResult result)
@@ -325,6 +275,21 @@ public sealed class WindowUiaSnapshotToolTests
         Assert.NotNull(result.StructuredContent);
         return result.StructuredContent!.Value;
     }
+
+    private static void AssertNoProperty(JsonElement payload, string propertyName) =>
+        Assert.False(payload.TryGetProperty(propertyName, out _));
+
+    private static void AssertNoNonNullProperty(JsonElement payload, string propertyName) =>
+        Assert.False(payload.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind != JsonValueKind.Null);
+
+    private static void AssertDefaultParameter(MethodInfo method, string parameterName, int expectedDefault)
+    {
+        ParameterInfo parameter = method.GetParameters().Single(candidate => string.Equals(candidate.Name, parameterName, StringComparison.Ordinal));
+        Assert.Equal(expectedDefault, Assert.IsType<int>(parameter.DefaultValue));
+    }
+
+    private static FakeUiAutomationService CreateSuccessfulUiAutomationService() =>
+        new((targetWindow, request, _) => Task.FromResult(CreateSuccessfulRuntimeResult(targetWindow, request)));
 
     private static WindowTools CreateTools(
         IReadOnlyList<WindowDescriptor> windows,
@@ -338,18 +303,21 @@ public sealed class WindowUiaSnapshotToolTests
         FakeUiAutomationService uiAutomationService)
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        string diagnosticsRoot = Path.Combine(root, "artifacts", "diagnostics");
+        string runDirectory = Path.Combine(diagnosticsRoot, TestRunId);
         Directory.CreateDirectory(root);
 
         AuditLogOptions options = new(
             ContentRootPath: root,
             EnvironmentName: "Tests",
-            RunId: "window-uia-snapshot-tests",
-            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
-            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "window-uia-snapshot-tests"),
-            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "window-uia-snapshot-tests", "events.jsonl"),
-            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "window-uia-snapshot-tests", "summary.md"));
-        AuditLog auditLog = new(options, TimeProvider.System);
-        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("window-uia-snapshot-tests"));
+            RunId: TestRunId,
+            DiagnosticsRoot: diagnosticsRoot,
+            RunDirectory: runDirectory,
+            EventsPath: Path.Combine(runDirectory, "events.jsonl"),
+            SummaryPath: Path.Combine(runDirectory, "summary.md"));
+        TimeProvider timeProvider = TimeProvider.System;
+        AuditLog auditLog = new(options, timeProvider);
+        InMemorySessionManager sessionManager = new(timeProvider, new SessionContext(TestRunId));
 
         if (attachedWindow is not null)
         {
@@ -377,10 +345,16 @@ public sealed class WindowUiaSnapshotToolTests
             options.EventsPath);
     }
 
+    private static WindowDescriptor CreateAttachedWindow() => CreateWindow(AttachedHwnd, "Attached");
+
+    private static WindowDescriptor CreateExplicitWindow() => CreateWindow(ExplicitHwnd, "Explicit");
+
+    private static WindowDescriptor CreateActiveWindow() => CreateWindow(ActiveHwnd, "Active", isForeground: true);
+
     private static WindowDescriptor CreateWindow(
         long hwnd,
         string title,
-        bool isForeground,
+        bool isForeground = false,
         int processId = 123,
         int threadId = 456,
         string className = "OknoWindow") =>
@@ -417,52 +391,55 @@ public sealed class WindowUiaSnapshotToolTests
             AcquisitionMode: "element_from_handle",
             ArtifactPath: @"C:\artifacts\uia-snapshot.json",
             CapturedAtUtc: new DateTimeOffset(2026, 3, 19, 10, 0, 0, TimeSpan.Zero),
-            Root: new UiaElementSnapshot
-            {
-                ElementId = "rid:1.2",
-                Depth = 0,
-                Ordinal = 0,
-                Name = targetWindow.Title,
-                AutomationId = "SmokeRoot",
-                ClassName = targetWindow.ClassName,
-                FrameworkId = "Win32",
-                ControlType = "window",
-                ControlTypeId = 50032,
-                LocalizedControlType = "окно",
-                IsControlElement = true,
-                IsContentElement = true,
-                IsEnabled = true,
-                IsOffscreen = false,
-                HasKeyboardFocus = true,
-                Patterns = ["window"],
-                BoundingRectangle = targetWindow.Bounds,
-                NativeWindowHandle = targetWindow.Hwnd,
-                Children =
-                [
-                    new UiaElementSnapshot
-                    {
-                        ElementId = "rid:1.2/button",
-                        ParentElementId = "rid:1.2",
-                        Depth = 1,
-                        Ordinal = 0,
-                        Name = "Run",
-                        AutomationId = "RunButton",
-                        ClassName = "Button",
-                        FrameworkId = "Win32",
-                        ControlType = "button",
-                        ControlTypeId = 50000,
-                        LocalizedControlType = "кнопка",
-                        IsControlElement = true,
-                        IsContentElement = true,
-                        IsEnabled = true,
-                        IsOffscreen = false,
-                        HasKeyboardFocus = false,
-                        Patterns = ["invoke"],
-                        BoundingRectangle = new Bounds(20, 20, 80, 40),
-                        NativeWindowHandle = targetWindow.Hwnd,
-                    },
-                ],
-            });
+            Root: CreateRootSnapshot(targetWindow));
+
+    private static UiaElementSnapshot CreateRootSnapshot(ObservedWindowDescriptor window) =>
+        new()
+        {
+            ElementId = "rid:1.2",
+            Depth = 0,
+            Ordinal = 0,
+            Name = window.Title,
+            AutomationId = "SmokeRoot",
+            ClassName = window.ClassName,
+            FrameworkId = "Win32",
+            ControlType = "window",
+            ControlTypeId = 50032,
+            LocalizedControlType = "окно",
+            IsControlElement = true,
+            IsContentElement = true,
+            IsEnabled = true,
+            IsOffscreen = false,
+            HasKeyboardFocus = true,
+            Patterns = ["window"],
+            BoundingRectangle = window.Bounds,
+            NativeWindowHandle = window.Hwnd,
+            Children = [CreateButtonSnapshot(window.Hwnd)],
+        };
+
+    private static UiaElementSnapshot CreateButtonSnapshot(long hwnd) =>
+        new()
+        {
+            ElementId = "rid:1.2/button",
+            ParentElementId = "rid:1.2",
+            Depth = 1,
+            Ordinal = 0,
+            Name = "Run",
+            AutomationId = "RunButton",
+            ClassName = "Button",
+            FrameworkId = "Win32",
+            ControlType = "button",
+            ControlTypeId = 50000,
+            LocalizedControlType = "кнопка",
+            IsControlElement = true,
+            IsContentElement = true,
+            IsEnabled = true,
+            IsOffscreen = false,
+            HasKeyboardFocus = false,
+            Patterns = ["invoke"],
+            BoundingRectangle = new Bounds(20, 20, 80, 40),
+            NativeWindowHandle = hwnd,
+        };
 
     private static ObservedWindowDescriptor CreateObservedWindow(WindowDescriptor window) =>
         new(

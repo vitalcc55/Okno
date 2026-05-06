@@ -1,244 +1,227 @@
 // SPDX-FileCopyrightText: 2025–2026 Власов Виталий Андреевич <vital.cc55@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
-using System.Diagnostics;
 
 namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
+    private const string BootstrapInstallerTestVersion = "0.1.0";
+    private const string RuntimeIdentifier = "win-x64";
+    private const string SetupAppExecutableName = "Okno Setup.exe";
+    private const string SetupAppWindowTitle = "Okno Setup";
+    private static readonly TimeSpan SetupAppLaunchTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan SetupAppLaunchPollInterval = TimeSpan.FromMilliseconds(100);
+
     [Fact]
     public void PackageComputerUseWinSetupCliPayloadProducesVersionedArchive()
     {
         string repoRoot = GetRepositoryRoot();
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-setup-cli-payload.ps1");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-cli-payload", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        string outputRoot = CreateBootstrapTestOutputRoot(repoRoot, "setup-cli-payload");
 
         try
         {
-            string archivePath = PackageSetupCliPayload(repoRoot, packageScriptPath, outputRoot, version);
-            string checksumPath = Path.Combine(outputRoot, $"okno-setup-cli-payload-{version}-SHA256SUMS.txt");
+            string archivePath = PackageSetupCliPayload(repoRoot, outputRoot);
+            string checksumPath = Path.Combine(outputRoot, $"okno-setup-cli-payload-{BootstrapInstallerTestVersion}-SHA256SUMS.txt");
             Assert.True(File.Exists(archivePath));
             Assert.True(File.Exists(checksumPath));
 
-            using ZipArchive archive = ZipFile.OpenRead(archivePath);
-            string[] entries = archive.Entries.Select(static entry => NormalizeArchiveEntryPath(entry.FullName)).ToArray();
+            HashSet<string> entries = ReadBootstrapArchiveEntryPaths(archivePath);
             Assert.Contains("WinBridge.Setup.Cli.exe", entries, StringComparer.Ordinal);
             Assert.Contains("WinBridge.Setup.Cli.dll", entries, StringComparer.Ordinal);
             Assert.Contains("runtime-release.json", entries, StringComparer.Ordinal);
         }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-        }
+        finally { DeleteDirectoryIfExists(outputRoot); }
     }
 
     [Fact]
     public void PackageOknoSetupAppReleaseProducesArchiveWithOknoSetupExecutable()
     {
         string repoRoot = GetRepositoryRoot();
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-okno-setup-app-release.ps1");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-app-release", Guid.NewGuid().ToString("N"));
-        const string version = "0.1.0";
+        string outputRoot = CreateBootstrapTestOutputRoot(repoRoot, "setup-app-release");
 
         try
         {
-            string archivePath = PackageSetupAppRelease(repoRoot, packageScriptPath, outputRoot, version);
+            string archivePath = PackageSetupAppRelease(repoRoot, outputRoot);
             Assert.True(File.Exists(archivePath));
 
-            using ZipArchive archive = ZipFile.OpenRead(archivePath);
-            string[] entries = archive.Entries.Select(static entry => NormalizeArchiveEntryPath(entry.FullName)).ToArray();
-            Assert.Contains("Okno Setup.exe", entries, StringComparer.Ordinal);
+            HashSet<string> entries = ReadBootstrapArchiveEntryPaths(archivePath);
+            Assert.Contains(SetupAppExecutableName, entries, StringComparer.Ordinal);
             Assert.Contains("WinBridge.Setup.App.dll", entries, StringComparer.Ordinal);
             Assert.Contains("runtime-release.json", entries, StringComparer.Ordinal);
             Assert.DoesNotContain("WinBridge.Setup.App.exe", entries, StringComparer.Ordinal);
         }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-        }
+        finally { DeleteDirectoryIfExists(outputRoot); }
     }
 
     [Fact]
     public void PackagedOknoSetupAppLaunchesFromOwnAndExternalWorkingDirectories()
     {
         string repoRoot = GetRepositoryRoot();
-        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-okno-setup-app-release.ps1");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-app-launch", Guid.NewGuid().ToString("N"));
+        string outputRoot = CreateBootstrapTestOutputRoot(repoRoot, "setup-app-launch");
         string extractRoot = Path.Combine(outputRoot, "extract");
-        const string version = "0.1.0";
 
         try
         {
-            string archivePath = PackageSetupAppRelease(repoRoot, packageScriptPath, outputRoot, version);
+            string archivePath = PackageSetupAppRelease(repoRoot, outputRoot);
             ZipFile.ExtractToDirectory(archivePath, extractRoot);
 
-            string executablePath = Path.Combine(extractRoot, "Okno Setup.exe");
+            string executablePath = Path.Combine(extractRoot, SetupAppExecutableName);
             Assert.True(File.Exists(executablePath), "Packaged setup executable is missing.");
 
             AssertSetupAppLaunches(executablePath, extractRoot, "own package directory");
             AssertSetupAppLaunches(executablePath, repoRoot, "external working directory");
         }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-        }
+        finally { DeleteDirectoryIfExists(outputRoot); }
     }
 
     [Fact]
     public void BootstrapInstallerInstallsRuntimeOnlyFromLocalPayloadArchive()
     {
         string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string runtimePackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string payloadPackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-setup-cli-payload.ps1");
-        string bootstrapScriptPath = Path.Combine(repoRoot, "scripts", "codex", "install-computer-use-win.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "bootstrap-runtime-only", Guid.NewGuid().ToString("N"));
-        string userProfile = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "user-profile-bootstrap-runtime-only", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(userProfile, ".codex");
-        const string version = "0.1.0";
-
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        string outputRoot = CreateBootstrapTestOutputRoot(repoRoot, "bootstrap-runtime-only");
+        string userProfile = CreateBootstrapTestUserProfileRoot(repoRoot, "bootstrap-runtime-only");
+        string codexHome = GetBootstrapCodexHome(userProfile);
 
         try
         {
-            string runtimeArchivePath = PackageRuntimeRelease(repoRoot, runtimePackageScriptPath, runtimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, runtimeArchivePath, "win-x64");
-            string payloadArchivePath = PackageSetupCliPayload(repoRoot, payloadPackageScriptPath, outputRoot, version);
+            string descriptorPath = CreateLocalRuntimeReleaseDescriptor(repoRoot, outputRoot);
+            string payloadArchivePath = PackageSetupCliPayload(repoRoot, outputRoot);
+            ScriptInvocationResult result = InvokeBootstrapInstaller(repoRoot, "runtime-only", payloadArchivePath, descriptorPath, userProfile);
 
-            ScriptInvocationResult result = InvokePowerShellScript(
-                bootstrapScriptPath,
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-Mode");
-                    startInfo.ArgumentList.Add("runtime-only");
-                    startInfo.ArgumentList.Add("-PayloadArchivePath");
-                    startInfo.ArgumentList.Add(payloadArchivePath);
-                    startInfo.ArgumentList.Add("-DescriptorPath");
-                    startInfo.ArgumentList.Add(descriptorPath);
-                    startInfo.ArgumentList.Add("-Json");
-                    startInfo.Environment["CODEX_HOME"] = codexHome;
-                    startInfo.Environment["USERPROFILE"] = userProfile;
-                    startInfo.Environment["LOCALAPPDATA"] = Path.Combine(userProfile, "AppData", "Local");
-                });
-
-            Assert.True(result.ExitCode == 0, $"Bootstrap runtime-only install failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
+            AssertBootstrapInstallerSucceeded(result, "runtime-only");
             Assert.True(File.Exists(GetExpectedRuntimeOnlyReceiptPath(codexHome)));
             Assert.False(File.Exists(GetExpectedPersonalMarketplacePath(userProfile)));
         }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-            DeleteDirectoryIfExists(userProfile);
-        }
+        finally { DeleteBootstrapDirectoriesIfExists(outputRoot, codexHome, userProfile); }
     }
 
     [Fact]
     public void BootstrapInstallerInstallsCodexFromLocalPayloadArchive()
     {
         string repoRoot = GetRepositoryRoot();
-        string publishScriptPath = GetPublishScriptPath(repoRoot);
-        string runtimePackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-runtime-release.ps1");
-        string pluginPackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
-        string payloadPackageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-setup-cli-payload.ps1");
-        string bootstrapScriptPath = Path.Combine(repoRoot, "scripts", "codex", "install-computer-use-win.ps1");
-        string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
-        string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
-        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "bootstrap-codex", Guid.NewGuid().ToString("N"));
-        string userProfile = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "user-profile-bootstrap-codex", Guid.NewGuid().ToString("N"));
-        string codexHome = Path.Combine(userProfile, ".codex");
-        const string version = "0.1.0";
-
-        EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
+        string outputRoot = CreateBootstrapTestOutputRoot(repoRoot, "bootstrap-codex");
+        string userProfile = CreateBootstrapTestUserProfileRoot(repoRoot, "bootstrap-codex");
+        string codexHome = GetBootstrapCodexHome(userProfile);
 
         try
         {
-            string runtimeArchivePath = PackageRuntimeRelease(repoRoot, runtimePackageScriptPath, runtimeRoot, outputRoot, version);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, version, runtimeArchivePath, "win-x64");
-            PackagePluginRelease(repoRoot, pluginPackageScriptPath, outputRoot, version);
-            string payloadArchivePath = PackageSetupCliPayload(repoRoot, payloadPackageScriptPath, outputRoot, version);
+            string descriptorPath = CreateLocalRuntimeReleaseDescriptor(repoRoot, outputRoot);
+            PackageLocalPluginRelease(repoRoot, outputRoot);
+            string payloadArchivePath = PackageSetupCliPayload(repoRoot, outputRoot);
+            ScriptInvocationResult result = InvokeBootstrapInstaller(repoRoot, "codex", payloadArchivePath, descriptorPath, userProfile);
 
-            ScriptInvocationResult result = InvokePowerShellScript(
-                bootstrapScriptPath,
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-Mode");
-                    startInfo.ArgumentList.Add("codex");
-                    startInfo.ArgumentList.Add("-PayloadArchivePath");
-                    startInfo.ArgumentList.Add(payloadArchivePath);
-                    startInfo.ArgumentList.Add("-DescriptorPath");
-                    startInfo.ArgumentList.Add(descriptorPath);
-                    startInfo.ArgumentList.Add("-Json");
-                    startInfo.Environment["CODEX_HOME"] = codexHome;
-                    startInfo.Environment["USERPROFILE"] = userProfile;
-                    startInfo.Environment["LOCALAPPDATA"] = Path.Combine(userProfile, "AppData", "Local");
-                });
-
-            Assert.True(result.ExitCode == 0, $"Bootstrap codex install failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
+            AssertBootstrapInstallerSucceeded(result, "codex");
             Assert.True(Directory.Exists(GetExpectedInstalledPluginRoot(codexHome)));
             Assert.True(File.Exists(GetExpectedPersonalMarketplacePath(userProfile)));
             Assert.True(File.Exists(GetExpectedCodexReceiptPath(codexHome)));
         }
-        finally
-        {
-            DeleteDirectoryIfExists(outputRoot);
-            DeleteDirectoryIfExists(codexHome);
-            DeleteDirectoryIfExists(userProfile);
-        }
+        finally { DeleteBootstrapDirectoriesIfExists(outputRoot, codexHome, userProfile); }
     }
 
-    private static string PackageSetupCliPayload(string repoRoot, string packageScriptPath, string outputRoot, string version)
+    private static string PackageSetupCliPayload(string repoRoot, string outputRoot) =>
+        PackageSetupCliPayload(repoRoot, GetBootstrapCodexScriptPath(repoRoot, "package-computer-use-win-setup-cli-payload.ps1"), outputRoot, BootstrapInstallerTestVersion);
+
+    private static string PackageSetupAppRelease(string repoRoot, string outputRoot) =>
+        PackageSetupAppRelease(repoRoot, GetBootstrapCodexScriptPath(repoRoot, "package-okno-setup-app-release.ps1"), outputRoot, BootstrapInstallerTestVersion);
+
+    private static string PackageSetupCliPayload(string repoRoot, string packageScriptPath, string outputRoot, string version) =>
+        PackageBootstrapVersionedArchive(repoRoot, packageScriptPath, outputRoot, version, "Setup CLI payload packaging script");
+
+    private static string PackageSetupAppRelease(string repoRoot, string packageScriptPath, string outputRoot, string version) =>
+        PackageBootstrapVersionedArchive(repoRoot, packageScriptPath, outputRoot, version, "Setup app release packaging script");
+
+    private static string PackageBootstrapVersionedArchive(string repoRoot, string packageScriptPath, string outputRoot, string version, string scriptDisplayName)
     {
         ScriptInvocationResult result = InvokePowerShellScript(
             packageScriptPath,
             repoRoot,
-            startInfo =>
-            {
-                startInfo.ArgumentList.Add("-Version");
-                startInfo.ArgumentList.Add(version);
-                startInfo.ArgumentList.Add("-OutputRoot");
-                startInfo.ArgumentList.Add(outputRoot);
-            });
+            startInfo => AddProcessArguments(startInfo, "-Version", version, "-OutputRoot", outputRoot));
 
         if (result.ExitCode != 0)
         {
-            throw new Xunit.Sdk.XunitException($"Setup CLI payload packaging script failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
+            throw new Xunit.Sdk.XunitException($"{scriptDisplayName} failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
         }
 
-        using JsonDocument payload = ParseJsonStdoutOrThrow(result, "Setup CLI payload packaging script");
+        using JsonDocument payload = ParseJsonStdoutOrThrow(result, scriptDisplayName);
         return payload.RootElement.GetProperty("archivePath").GetString()
             ?? throw new InvalidOperationException("archivePath missing.");
     }
 
-    private static string PackageSetupAppRelease(string repoRoot, string packageScriptPath, string outputRoot, string version)
+    private static string CreateLocalRuntimeReleaseDescriptor(string repoRoot, string outputRoot)
     {
-        ScriptInvocationResult result = InvokePowerShellScript(
-            packageScriptPath,
+        string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", RuntimeIdentifier);
+        EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), runtimeRoot);
+
+        string runtimeArchivePath = PackageRuntimeRelease(
+            repoRoot,
+            GetBootstrapCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+            runtimeRoot,
+            outputRoot,
+            BootstrapInstallerTestVersion);
+
+        return CreateRuntimeReleaseDescriptor(outputRoot, BootstrapInstallerTestVersion, runtimeArchivePath, RuntimeIdentifier);
+    }
+
+    private static void PackageLocalPluginRelease(string repoRoot, string outputRoot) =>
+        PackagePluginRelease(repoRoot, GetBootstrapCodexScriptPath(repoRoot, "package-computer-use-win-plugin-release.ps1"), outputRoot, BootstrapInstallerTestVersion);
+
+    private static ScriptInvocationResult InvokeBootstrapInstaller(string repoRoot, string mode, string payloadArchivePath, string descriptorPath, string userProfile)
+    {
+        string codexHome = GetBootstrapCodexHome(userProfile);
+        return InvokePowerShellScript(
+            GetBootstrapCodexScriptPath(repoRoot, "install-computer-use-win.ps1"),
             repoRoot,
             startInfo =>
             {
-                startInfo.ArgumentList.Add("-Version");
-                startInfo.ArgumentList.Add(version);
-                startInfo.ArgumentList.Add("-OutputRoot");
-                startInfo.ArgumentList.Add(outputRoot);
+                AddProcessArguments(startInfo, "-Mode", mode, "-PayloadArchivePath", payloadArchivePath, "-DescriptorPath", descriptorPath, "-Json");
+                startInfo.Environment["CODEX_HOME"] = codexHome;
+                startInfo.Environment["USERPROFILE"] = userProfile;
+                startInfo.Environment["LOCALAPPDATA"] = Path.Combine(userProfile, "AppData", "Local");
             });
+    }
 
-        if (result.ExitCode != 0)
+    private static void AssertBootstrapInstallerSucceeded(ScriptInvocationResult result, string mode) =>
+        Assert.True(result.ExitCode == 0, $"Bootstrap {mode} install failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
+
+    private static HashSet<string> ReadBootstrapArchiveEntryPaths(string archivePath)
+    {
+        using ZipArchive archive = ZipFile.OpenRead(archivePath);
+        return archive.Entries.Select(static entry => NormalizeArchiveEntryPath(entry.FullName)).ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static string GetBootstrapCodexScriptPath(string repoRoot, string scriptName) =>
+        Path.Combine(repoRoot, "scripts", "codex", scriptName);
+
+    private static string CreateBootstrapTestOutputRoot(string repoRoot, string scenarioName) =>
+        CreateBootstrapTemporaryRoot(repoRoot, scenarioName);
+
+    private static string CreateBootstrapTestUserProfileRoot(string repoRoot, string scenarioName) =>
+        CreateBootstrapTemporaryRoot(repoRoot, $"user-profile-{scenarioName}");
+
+    private static string CreateBootstrapTemporaryRoot(string repoRoot, string scenarioName) =>
+        Path.Combine(repoRoot, ".tmp", ".codex", "tests", scenarioName, Guid.NewGuid().ToString("N"));
+
+    private static string GetBootstrapCodexHome(string userProfile) =>
+        Path.Combine(userProfile, ".codex");
+
+    private static void AddProcessArguments(ProcessStartInfo startInfo, params string[] arguments)
+    {
+        foreach (string argument in arguments)
         {
-            throw new Xunit.Sdk.XunitException($"Setup app release packaging script failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
+            startInfo.ArgumentList.Add(argument);
         }
+    }
 
-        using JsonDocument payload = ParseJsonStdoutOrThrow(result, "Setup app release packaging script");
-        return payload.RootElement.GetProperty("archivePath").GetString()
-            ?? throw new InvalidOperationException("archivePath missing.");
+    private static void DeleteBootstrapDirectoriesIfExists(params string[] directoryPaths)
+    {
+        foreach (string directoryPath in directoryPaths)
+        {
+            DeleteDirectoryIfExists(directoryPath);
+        }
     }
 
     private static void AssertSetupAppLaunches(string executablePath, string workingDirectory, string scenarioName)
@@ -254,8 +237,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         Assert.True(process.Start(), $"Failed to start packaged setup app for scenario '{scenarioName}'.");
         try
         {
-            DateTime deadlineUtc = DateTime.UtcNow.AddSeconds(10);
-            while (DateTime.UtcNow < deadlineUtc)
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed < SetupAppLaunchTimeout)
             {
                 process.Refresh();
                 if (process.HasExited)
@@ -264,12 +247,12 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 }
 
                 if (process.MainWindowHandle != IntPtr.Zero
-                    && string.Equals(process.MainWindowTitle, "Okno Setup", StringComparison.Ordinal))
+                    && string.Equals(process.MainWindowTitle, SetupAppWindowTitle, StringComparison.Ordinal))
                 {
                     return;
                 }
 
-                Thread.Sleep(250);
+                Thread.Sleep(SetupAppLaunchPollInterval);
             }
 
             process.Refresh();
