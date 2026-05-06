@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace WinBridge.Setup.Core;
 
 public sealed class SetupShellController
@@ -54,6 +56,8 @@ public sealed class SetupShellController
         return new SetupShellStatusSnapshot(
             status.CodexHome,
             status.RuntimeStoreRoot,
+            status.CodexInstall?.PluginSourceRoot ?? Path.Combine(status.CodexHome, "plugins", "computer-use-win"),
+            status.CodexInstall?.MarketplacePath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".agents", "plugins", "marketplace.json"),
             status.RuntimeStatus.IsInstalled && status.RuntimeStatus.IsUsable && status.RuntimeStatus.IsCompatible,
             status.CodexInstall is not null,
             headline,
@@ -93,6 +97,8 @@ public sealed class SetupShellController
 public sealed record SetupShellStatusSnapshot(
     string CodexHome,
     string RuntimeStoreRoot,
+    string PluginSourceRoot,
+    string MarketplacePath,
     bool RuntimeReady,
     bool CodexInstalled,
     string Headline,

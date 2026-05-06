@@ -3,6 +3,7 @@
 
 using System.IO.Compression;
 using System.Text.Json;
+using System.Diagnostics;
 
 namespace WinBridge.Server.IntegrationTests;
 
@@ -62,6 +63,32 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
+    public void PackagedOknoSetupAppLaunchesFromOwnAndExternalWorkingDirectories()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-okno-setup-app-release.ps1");
+        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "setup-app-launch", Guid.NewGuid().ToString("N"));
+        string extractRoot = Path.Combine(outputRoot, "extract");
+        const string version = "0.1.0";
+
+        try
+        {
+            string archivePath = PackageSetupAppRelease(repoRoot, packageScriptPath, outputRoot, version);
+            ZipFile.ExtractToDirectory(archivePath, extractRoot);
+
+            string executablePath = Path.Combine(extractRoot, "Okno Setup.exe");
+            Assert.True(File.Exists(executablePath), "Packaged setup executable is missing.");
+
+            AssertSetupAppLaunches(executablePath, extractRoot, "own package directory");
+            AssertSetupAppLaunches(executablePath, repoRoot, "external working directory");
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(outputRoot);
+        }
+    }
+
+    [Fact]
     public void BootstrapInstallerInstallsRuntimeOnlyFromLocalPayloadArchive()
     {
         string repoRoot = GetRepositoryRoot();
@@ -98,6 +125,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                     startInfo.ArgumentList.Add("-Json");
                     startInfo.Environment["CODEX_HOME"] = codexHome;
                     startInfo.Environment["USERPROFILE"] = userProfile;
+                    startInfo.Environment["LOCALAPPDATA"] = Path.Combine(userProfile, "AppData", "Local");
                 });
 
             Assert.True(result.ExitCode == 0, $"Bootstrap runtime-only install failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
@@ -151,6 +179,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                     startInfo.ArgumentList.Add("-Json");
                     startInfo.Environment["CODEX_HOME"] = codexHome;
                     startInfo.Environment["USERPROFILE"] = userProfile;
+                    startInfo.Environment["LOCALAPPDATA"] = Path.Combine(userProfile, "AppData", "Local");
                 });
 
             Assert.True(result.ExitCode == 0, $"Bootstrap codex install failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
@@ -210,5 +239,51 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         using JsonDocument payload = JsonDocument.Parse(result.Stdout);
         return payload.RootElement.GetProperty("archivePath").GetString()
             ?? throw new InvalidOperationException("archivePath missing.");
+    }
+
+    private static void AssertSetupAppLaunches(string executablePath, string workingDirectory, string scenarioName)
+    {
+        using Process process = new();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = executablePath,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+        };
+
+        Assert.True(process.Start(), $"Failed to start packaged setup app for scenario '{scenarioName}'.");
+        try
+        {
+            DateTime deadlineUtc = DateTime.UtcNow.AddSeconds(10);
+            while (DateTime.UtcNow < deadlineUtc)
+            {
+                process.Refresh();
+                if (process.HasExited)
+                {
+                    break;
+                }
+
+                if (process.MainWindowHandle != IntPtr.Zero
+                    && string.Equals(process.MainWindowTitle, "Okno Setup", StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                Thread.Sleep(250);
+            }
+
+            process.Refresh();
+            throw new Xunit.Sdk.XunitException(
+                $"Packaged setup app did not open a visible window for scenario '{scenarioName}'. " +
+                $"hasExited={process.HasExited}, mainWindowTitle='{process.MainWindowTitle}', mainWindowHandle={process.MainWindowHandle}.");
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+        }
     }
 }

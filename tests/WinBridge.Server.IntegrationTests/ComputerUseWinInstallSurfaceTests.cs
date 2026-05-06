@@ -1143,10 +1143,12 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         if (!string.IsNullOrWhiteSpace(context.CodexHomeOverridePath))
         {
             startInfo.Environment["CODEX_HOME"] = context.CodexHomeOverridePath;
+            startInfo.Environment["LOCALAPPDATA"] = GetExpectedLocalAppDataRootFromCodexHome(context.CodexHomeOverridePath);
         }
         else
         {
             startInfo.Environment.Remove("CODEX_HOME");
+            startInfo.Environment.Remove("LOCALAPPDATA");
         }
         if (!string.IsNullOrWhiteSpace(context.RuntimeReleaseDescriptorOverridePath))
         {
@@ -1433,7 +1435,18 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private static string GetExpectedSharedRuntimeStoreRoot(string codexHome)
     {
-        return Path.Combine(codexHome, "okno", "computer-use-win");
+        return Path.Combine(GetExpectedLocalAppDataRootFromCodexHome(codexHome), "Okno", "computer-use-win");
+    }
+
+    private static string GetExpectedLocalAppDataRootFromCodexHome(string codexHome)
+    {
+        string? userProfileRoot = Directory.GetParent(Path.GetFullPath(codexHome))?.FullName;
+        if (string.IsNullOrWhiteSpace(userProfileRoot))
+        {
+            throw new InvalidOperationException($"Unable to derive user profile root from CODEX_HOME '{codexHome}'.");
+        }
+
+        return Path.Combine(userProfileRoot, "AppData", "Local");
     }
 
     private static string GetExpectedSharedRuntimeRoot(string codexHome, string rid, string version)
@@ -1490,6 +1503,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         if (!string.IsNullOrWhiteSpace(userProfileOverride))
         {
             startInfo.Environment["USERPROFILE"] = userProfileOverride;
+            startInfo.Environment["LOCALAPPDATA"] = Path.Combine(userProfileOverride, "AppData", "Local");
         }
 
         using Process process = new() { StartInfo = startInfo };

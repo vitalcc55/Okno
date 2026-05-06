@@ -6,137 +6,202 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <Grid>
-        <Grid.Background>
-            <LinearGradientBrush EndPoint="1,1" StartPoint="0,0">
-                <GradientStop Color="#F2FBFA" Offset="0" />
-                <GradientStop Color="#E2ECF5" Offset="1" />
-            </LinearGradientBrush>
-        </Grid.Background>
+    <ScrollViewer>
+        <Grid
+            x:Name="LayoutRoot"
+            Padding="28,20,28,28"
+            RowSpacing="18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <ScrollViewer>
-            <Grid Padding="32">
-                <Border
-                    MaxWidth="860"
-                    Padding="28"
-                    Background="{ThemeResource InstallerCardBrush}"
-                    BorderBrush="{ThemeResource InstallerBorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="24"
-                    HorizontalAlignment="Center">
-                    <StackPanel Spacing="22">
-                        <StackPanel Spacing="8">
-                            <TextBlock FontSize="34" FontWeight="SemiBold" Text="Okno Setup" />
-                            <TextBlock
-                                Foreground="{ThemeResource InstallerMutedBrush}"
-                                Text="One installer, two install modes. Codex mode already includes the shared Okno runtime."
-                                TextWrapping="Wrap" />
-                        </StackPanel>
+            <Grid Grid.Row="0" ColumnSpacing="24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                        <Grid ColumnSpacing="18">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="6">
+                    <TextBlock x:Name="MainTitleTextBlock" FontSize="34" FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="MainSubtitleTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                </StackPanel>
 
-                            <Border
-                                Grid.Column="0"
-                                Padding="18"
-                                BorderBrush="{ThemeResource InstallerBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="18">
-                                <StackPanel Spacing="10">
-                                    <RadioButton
-                                        x:Name="CodexModeRadioButton"
-                                        IsChecked="True"
-                                        Content="Install for Codex (Recommended)" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource InstallerMutedBrush}"
-                                        Text="Installs the shared runtime, installs the thin computer-use-win plugin, and updates your personal Codex marketplace."
-                                        TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border
-                                Grid.Column="1"
-                                Padding="18"
-                                BorderBrush="{ThemeResource InstallerBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="18">
-                                <StackPanel Spacing="10">
-                                    <RadioButton
-                                        x:Name="RuntimeOnlyModeRadioButton"
-                                        Content="Install runtime only (Advanced)" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource InstallerMutedBrush}"
-                                        Text="Installs only the shared Okno runtime and gives you a ready-to-paste MCP command snippet."
-                                        TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-
-                        <Border
-                            Padding="18"
-                            BorderBrush="{ThemeResource InstallerBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="18">
-                            <StackPanel Spacing="8">
-                                <TextBlock FontSize="20" FontWeight="SemiBold" Text="Install targets" />
-                                <TextBlock x:Name="StatusHeadlineTextBlock" FontWeight="SemiBold" />
-                                <TextBlock
-                                    x:Name="StatusDetailTextBlock"
-                                    Foreground="{ThemeResource InstallerMutedBrush}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock x:Name="CodexHomeTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" />
-                                <TextBlock x:Name="RuntimeStoreTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
-
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button
-                                x:Name="InstallButton"
-                                Click="OnInstallClicked"
-                                Content="Install"
-                                Style="{StaticResource PrimaryActionButtonStyle}" />
-                            <ProgressRing x:Name="InstallProgressRing" IsActive="False" Visibility="Collapsed" />
-                        </StackPanel>
-
-                        <Border
-                            x:Name="ResultBorder"
-                            Padding="18"
-                            BorderBrush="{ThemeResource InstallerBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="18"
-                            Visibility="Collapsed">
-                            <StackPanel Spacing="8">
-                                <TextBlock x:Name="ResultTitleTextBlock" FontSize="20" FontWeight="SemiBold" />
-                                <TextBlock
-                                    x:Name="ResultMessageTextBlock"
-                                    Foreground="{ThemeResource InstallerMutedBrush}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock x:Name="RuntimePathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" />
-                                <TextBlock x:Name="PluginPathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" Visibility="Collapsed" />
-                                <TextBlock x:Name="MarketplacePathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" Visibility="Collapsed" />
-                                <StackPanel x:Name="SnippetPanel" Spacing="8" Visibility="Collapsed">
-                                    <TextBlock FontWeight="SemiBold" Text="Ready MCP snippet" />
-                                    <TextBox
-                                        x:Name="SnippetTextBox"
-                                        AcceptsReturn="True"
-                                        FontFamily="Cascadia Code"
-                                        IsReadOnly="True"
-                                        MinHeight="140"
-                                        TextWrapping="Wrap" />
-                                    <Button
-                                        x:Name="CopySnippetButton"
-                                        Click="OnCopySnippetClicked"
-                                        Content="Copy snippet"
-                                        HorizontalAlignment="Left" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </Border>
+                <StackPanel
+                    Grid.Column="1"
+                    HorizontalAlignment="Right"
+                    Spacing="6">
+                    <TextBlock
+                        x:Name="LanguageLabelTextBlock"
+                        FontWeight="SemiBold"
+                        HorizontalAlignment="Left" />
+                    <ComboBox
+                        x:Name="LanguageComboBox"
+                        HorizontalAlignment="Stretch"
+                        MinWidth="160"
+                        SelectionChanged="OnLanguageSelectionChanged" />
+                </StackPanel>
             </Grid>
-        </ScrollViewer>
-    </Grid>
+
+            <StackPanel
+                x:Name="StatusPanel"
+                Grid.Row="1"
+                Spacing="6">
+                <TextBlock x:Name="StatusTitleTextBlock" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock
+                    x:Name="StatusDetailTextBlock"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Spacing="14">
+                <TextBlock x:Name="InstallModeSectionTitleTextBlock" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock
+                    x:Name="InstallModeSectionDescriptionTextBlock"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+
+                <RadioButton
+                    x:Name="CodexModeRadioButton"
+                    GroupName="InstallMode"
+                    IsChecked="True" />
+                <TextBlock
+                    x:Name="CodexModeDescriptionTextBlock"
+                    Margin="32,0,0,0"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+
+                <RadioButton
+                    x:Name="RuntimeOnlyModeRadioButton"
+                    GroupName="InstallMode"
+                    />
+                <TextBlock
+                    x:Name="RuntimeOnlyModeDescriptionTextBlock"
+                    Margin="32,0,0,0"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="3" Spacing="12">
+                <TextBlock x:Name="ModeSummarySectionTitleTextBlock" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock x:Name="ModeSummaryTitleTextBlock" FontWeight="SemiBold" />
+                <TextBlock
+                    x:Name="ModeSummaryDetailTextBlock"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+
+                <Grid ColumnSpacing="16" RowSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock x:Name="CodexHomeLabelTextBlock" Grid.Row="0" Grid.Column="0" FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="CodexHomeTextBlock"
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        FontFamily="Cascadia Code"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock x:Name="RuntimeStoreLabelTextBlock" Grid.Row="1" Grid.Column="0" FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="RuntimeStoreTextBlock"
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        FontFamily="Cascadia Code"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock
+                        x:Name="PluginRootLabelTextBlock"
+                        Grid.Row="2"
+                        Grid.Column="0"
+                        FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="PluginRootTextBlock"
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        FontFamily="Cascadia Code"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock
+                        x:Name="MarketplaceLabelTextBlock"
+                        Grid.Row="3"
+                        Grid.Column="0"
+                        FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="MarketplaceTextBlock"
+                        Grid.Row="3"
+                        Grid.Column="1"
+                        FontFamily="Cascadia Code"
+                        TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+
+            <StackPanel Grid.Row="4" Spacing="16">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        x:Name="FooterHintTextBlock"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+
+                    <StackPanel
+                        Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal"
+                        Spacing="12">
+                        <ProgressRing x:Name="InstallProgressRing" IsActive="False" Visibility="Collapsed" />
+                        <Button
+                            x:Name="InstallButton"
+                            Click="OnInstallClicked"
+                            MinWidth="170" />
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel x:Name="ResultPanel" Spacing="8" Visibility="Collapsed">
+                    <TextBlock x:Name="ResultTitleTextBlock" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="ResultMessageTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                    <TextBlock x:Name="RuntimePathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" />
+                    <TextBlock x:Name="PluginPathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" Visibility="Collapsed" />
+                    <TextBlock x:Name="MarketplacePathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" Visibility="Collapsed" />
+                    <StackPanel x:Name="SnippetPanel" Spacing="8" Visibility="Collapsed">
+                        <TextBlock x:Name="SnippetTitleTextBlock" FontWeight="SemiBold" />
+                        <TextBox
+                            x:Name="SnippetTextBox"
+                            AcceptsReturn="True"
+                            FontFamily="Cascadia Code"
+                            IsReadOnly="True"
+                            MinHeight="140"
+                            TextWrapping="Wrap" />
+                        <Button
+                            x:Name="CopySnippetButton"
+                            Click="OnCopySnippetClicked"
+                            HorizontalAlignment="Left" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
 </Page>

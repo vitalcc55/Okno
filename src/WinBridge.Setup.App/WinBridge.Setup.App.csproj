@@ -15,6 +15,7 @@
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
+        <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
         <RootNamespace>WinBridge.Setup.App</RootNamespace>
 
         <!-- App Options -->

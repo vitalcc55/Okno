@@ -139,7 +139,7 @@ Use `-Mode runtime-only` for the advanced plain MCP path.
 
 `Codex` mode now:
 
-- installs the shared runtime under `<codex-home>/okno/computer-use-win`;
+- installs the shared runtime under `%LocalAppData%\Okno\computer-use-win`;
 - installs the thin `computer-use-win` plugin under
   `<codex-home>/plugins/computer-use-win`;
 - updates `%USERPROFILE%\.agents\plugins\marketplace.json`;

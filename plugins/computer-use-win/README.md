@@ -30,7 +30,7 @@ The plugin publishes:
 
 - the plugin starts through `powershell -NoProfile -NonInteractive`;
 - the launcher first prefers the shared installed runtime store under
-  `<codex-home>/okno/computer-use-win`;
+  `%LocalAppData%\Okno\computer-use-win`;
 - plugin-local `runtime/win-x64` remains only as a developer fallback;
 - if the shared runtime is missing or invalid, the launcher resolves the pinned
   runtime release described by `runtime-release.json`, verifies SHA256 plus

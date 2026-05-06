@@ -31,7 +31,7 @@ Steps:
 
 Behavior:
 
-- the installer lays out the shared runtime under `<codex-home>/okno/computer-use-win`;
+- the installer lays out the shared runtime under `%LocalAppData%\Okno\computer-use-win`;
 - the installer lays out the thin plugin under `<codex-home>/plugins/computer-use-win`;
 - the installer creates or updates `%USERPROFILE%\.agents\plugins\marketplace.json`;
 - the launcher first prefers the shared installed runtime;
@@ -64,7 +64,7 @@ Steps:
 
 Behavior:
 
-- this mode installs the same shared runtime store used by Codex mode;
+- this mode installs the same shared runtime store used by Codex mode under `%LocalAppData%\Okno\computer-use-win`;
 - it does not touch the personal Codex marketplace;
 - it returns a ready-to-paste local `STDIO` snippet.
 

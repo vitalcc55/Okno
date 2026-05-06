@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, ...</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, ...</value>
+  </resheader>
+  <data name="WindowTitle" xml:space="preserve"><value>Установка Okno</value></data>
+  <data name="MainTitle" xml:space="preserve"><value>Установка Okno</value></data>
+  <data name="MainSubtitle" xml:space="preserve"><value>Установите Okno для Codex или только общий runtime для другого MCP-клиента.</value></data>
+  <data name="LanguageLabel" xml:space="preserve"><value>Язык</value></data>
+  <data name="LanguageSelectorPlaceholder" xml:space="preserve"><value>Выберите язык</value></data>
+  <data name="LanguageSelectorAutomationName" xml:space="preserve"><value>Язык установщика</value></data>
+  <data name="InstallButtonAutomationName" xml:space="preserve"><value>Запустить установку</value></data>
+  <data name="StatusRecommendedTitle" xml:space="preserve"><value>Рекомендуемый вариант</value></data>
+  <data name="StatusRecommendedDetail" xml:space="preserve"><value>Режим Codex уже включает общий runtime Okno. Выбирайте вариант только с runtime, если плагин Codex вам не нужен.</value></data>
+  <data name="StatusRuntimeReadyTitle" xml:space="preserve"><value>Общий runtime уже найден</value></data>
+  <data name="StatusRuntimeReadyDetail" xml:space="preserve"><value>Можно оставить вариант только с runtime или добавить поверх него плагин для Codex.</value></data>
+  <data name="StatusCodexInstalledTitle" xml:space="preserve"><value>Плагин Codex уже установлен</value></data>
+  <data name="StatusCodexInstalledDetail" xml:space="preserve"><value>Можно переустановить или восстановить локальный плагин и runtime прямо из этого установщика.</value></data>
+  <data name="InstallModeSectionTitle" xml:space="preserve"><value>Вариант установки</value></data>
+  <data name="InstallModeSectionDescription" xml:space="preserve"><value>Выберите один вариант. Режим Codex уже включает общий runtime Okno.</value></data>
+  <data name="CodexModeTitle" xml:space="preserve"><value>Установить для Codex</value></data>
+  <data name="CodexModeDescription" xml:space="preserve"><value>Установит общий runtime, небольшой плагин computer-use-win и обновит ваш персональный marketplace Codex.</value></data>
+  <data name="RuntimeOnlyModeTitle" xml:space="preserve"><value>Установить только runtime</value></data>
+  <data name="RuntimeOnlyModeDescription" xml:space="preserve"><value>Установит только общий runtime Okno и покажет готовый MCP-сниппет для вставки.</value></data>
+  <data name="ModeSummarySectionTitle" xml:space="preserve"><value>Что будет установлено</value></data>
+  <data name="ModeSummaryCodexTitle" xml:space="preserve"><value>Режим Codex устанавливает плагин и общий runtime.</value></data>
+  <data name="ModeSummaryCodexDetail" xml:space="preserve"><value>Выбирайте этот вариант, если хотите, чтобы Okno появился в Codex через ваш персональный marketplace.</value></data>
+  <data name="ModeSummaryRuntimeTitle" xml:space="preserve"><value>Вариант только с runtime устанавливает только общий runtime.</value></data>
+  <data name="ModeSummaryRuntimeDetail" xml:space="preserve"><value>Выбирайте этот вариант, если вам нужен только Okno.Server.exe и готовый MCP-сниппет для другого клиента.</value></data>
+  <data name="CodexHomeLabel" xml:space="preserve"><value>Каталог Codex</value></data>
+  <data name="RuntimeStoreLabel" xml:space="preserve"><value>Каталог runtime</value></data>
+  <data name="PluginRootLabel" xml:space="preserve"><value>Каталог плагина</value></data>
+  <data name="MarketplaceFileLabel" xml:space="preserve"><value>Файл marketplace</value></data>
+  <data name="RuntimeRootLabel" xml:space="preserve"><value>Путь к runtime</value></data>
+  <data name="FooterCodexHint" xml:space="preserve"><value>После установки перезапустите Codex и откройте новый диалог, чтобы локальный плагин перечитался из вашего marketplace.</value></data>
+  <data name="FooterRuntimeHint" xml:space="preserve"><value>После установки скопируйте сгенерированный сниппет в конфигурацию вашего MCP-клиента.</value></data>
+  <data name="InstallCodexButton" xml:space="preserve"><value>Установить для Codex</value></data>
+  <data name="InstallRuntimeOnlyButton" xml:space="preserve"><value>Установить только runtime</value></data>
+  <data name="ResultCodexTitle" xml:space="preserve"><value>Установка для Codex завершена</value></data>
+  <data name="ResultCodexMessage" xml:space="preserve"><value>Перезапустите Codex, чтобы он подхватил установленный плагин из вашего персонального marketplace.</value></data>
+  <data name="ResultRuntimeTitle" xml:space="preserve"><value>Установка runtime завершена</value></data>
+  <data name="ResultRuntimeMessage" xml:space="preserve"><value>Используйте сгенерированный MCP-сниппет в конфигурации клиента.</value></data>
+  <data name="ResultFailureTitle" xml:space="preserve"><value>Не удалось выполнить установку</value></data>
+  <data name="SnippetTitle" xml:space="preserve"><value>Готовый MCP-сниппет</value></data>
+  <data name="CopySnippetButton" xml:space="preserve"><value>Скопировать сниппет</value></data>
+  <data name="SnippetCopiedMessage" xml:space="preserve"><value>Сниппет скопирован в буфер обмена.</value></data>
+</root>

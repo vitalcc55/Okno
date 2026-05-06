@@ -5,10 +5,11 @@ namespace WinBridge.Setup.Core;
 
 public sealed class ComputerUseWinRuntimeStorePaths
 {
-    public ComputerUseWinRuntimeStorePaths(string codexHome)
+    public ComputerUseWinRuntimeStorePaths(string codexHome, string localAppDataRoot)
     {
         CodexHome = Path.GetFullPath(codexHome);
-        RuntimeStoreRoot = Path.Combine(CodexHome, "okno", "computer-use-win");
+        LocalAppDataRoot = Path.GetFullPath(localAppDataRoot);
+        RuntimeStoreRoot = Path.Combine(LocalAppDataRoot, "Okno", "computer-use-win");
         RuntimesRoot = Path.Combine(RuntimeStoreRoot, "runtimes");
         StateRoot = Path.Combine(RuntimeStoreRoot, "state");
         ReceiptsRoot = Path.Combine(RuntimeStoreRoot, "receipts");
@@ -17,6 +18,8 @@ public sealed class ComputerUseWinRuntimeStorePaths
     }
 
     public string CodexHome { get; }
+
+    public string LocalAppDataRoot { get; }
 
     public string RuntimeStoreRoot { get; }
 

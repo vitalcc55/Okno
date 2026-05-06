@@ -21,17 +21,17 @@ else {
     [System.IO.Path]::GetFullPath($descriptorOverridePath)
 }
 
-$codexHome = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_HOME)) {
-    [System.IO.Path]::GetFullPath($env:CODEX_HOME)
+$localAppDataRoot = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    [System.IO.Path]::GetFullPath($env:LOCALAPPDATA)
 }
 elseif (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-    Join-Path $env:USERPROFILE '.codex'
+    Join-Path ([System.IO.Path]::GetFullPath($env:USERPROFILE)) 'AppData\Local'
 }
 else {
-    throw 'Neither CODEX_HOME nor USERPROFILE is available for shared runtime resolution.'
+    throw 'Neither LOCALAPPDATA nor USERPROFILE is available for shared runtime resolution.'
 }
 
-$sharedRuntimeStoreRoot = Join-Path $codexHome 'okno\computer-use-win'
+$sharedRuntimeStoreRoot = Join-Path $localAppDataRoot 'Okno\computer-use-win'
 $sharedRuntimesRoot = Join-Path $sharedRuntimeStoreRoot 'runtimes'
 $sharedStateRoot = Join-Path $sharedRuntimeStoreRoot 'state'
 $sharedCurrentStatePath = Join-Path $sharedStateRoot 'current-runtime.json'

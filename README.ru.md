@@ -146,7 +146,7 @@ powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode code
 
 Режим `Codex` теперь:
 
-- ставит shared runtime в `<codex-home>/okno/computer-use-win`;
+- ставит shared runtime в `%LocalAppData%\Okno\computer-use-win`;
 - ставит thin plugin в `<codex-home>/plugins/computer-use-win`;
 - обновляет `%USERPROFILE%\.agents\plugins\marketplace.json`;
 - требует от пользователя только перезапустить Codex.

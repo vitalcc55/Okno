@@ -1,36 +1,85 @@
-using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Composition.SystemBackdrops;
+using Microsoft.UI.Windowing;
+using System.IO;
+using Windows.Graphics;
 using WinBridge.Setup.App.Views;
 
-namespace WinBridge.Setup.App
+namespace WinBridge.Setup.App;
+
+public partial class App : Application
 {
-    public partial class App : Application
+    private static readonly SizeInt32 StartupWindowSize = new(1060, 780);
+    private static readonly SizeInt32 MinimumWindowSize = new(760, 640);
+    private Window? mainWindow;
+
+    public App()
     {
-        private Window window = Window.Current;
+        InitializeComponent();
+        UnhandledException += OnUnhandledException;
+    }
 
-        public App()
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        try
         {
-            this.InitializeComponent();
-        }
+            MainPage mainPage = new();
 
-        protected override void OnLaunched(LaunchActivatedEventArgs args)
-        {
-            window ??= new Window();
-            window.Title = "Okno Setup";
-
-            if (window.Content is not Frame rootFrame)
+            mainWindow = new Window
             {
-                rootFrame = new Frame();
-                rootFrame.NavigationFailed += OnNavigationFailed;
-                window.Content = rootFrame;
+                Title = "Okno Setup",
+                Content = mainPage,
+            };
+
+            mainPage.AttachWindow(mainWindow);
+            ConfigureWindowSizing(mainWindow);
+            TryApplyMica(mainWindow);
+            mainWindow.Activate();
+        }
+        catch (Exception ex)
+        {
+            WriteStartupLog("OnLaunched", ex);
+            throw;
+        }
+    }
+
+    private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+    {
+        WriteStartupLog("UnhandledException", e.Exception);
+    }
+
+    private static void ConfigureWindowSizing(Window window)
+    {
+        try
+        {
+            if (window.AppWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.PreferredMinimumWidth = MinimumWindowSize.Width;
+                presenter.PreferredMinimumHeight = MinimumWindowSize.Height;
             }
 
-            _ = rootFrame.Navigate(typeof(MainPage), args.Arguments);
-            window.Activate();
+            window.AppWindow.Resize(StartupWindowSize);
         }
-
-        void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
+        catch
         {
-            throw new InvalidOperationException("Failed to load page " + e.SourcePageType.FullName);
         }
+    }
+
+    private static void TryApplyMica(Window window)
+    {
+        try
+        {
+            window.SystemBackdrop = new MicaBackdrop();
+        }
+        catch
+        {
+        }
+    }
+
+    private static void WriteStartupLog(string stage, Exception exception)
+    {
+        string path = Path.Combine(Path.GetTempPath(), "okno-setup-startup.log");
+        File.AppendAllText(
+            path,
+            $"[{DateTimeOffset.Now:O}] {stage}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
     }
 }

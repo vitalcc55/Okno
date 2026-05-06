@@ -134,7 +134,7 @@ powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode code
 
 `Codex` 模式现在会：
 
-- 把 shared runtime 安装到 `<codex-home>/okno/computer-use-win`；
+- 把 shared runtime 安装到 `%LocalAppData%\Okno\computer-use-win`；
 - 把 thin plugin 安装到 `<codex-home>/plugins/computer-use-win`；
 - 更新 `%USERPROFILE%\.agents\plugins\marketplace.json`；
 - 只要求用户重启 Codex。

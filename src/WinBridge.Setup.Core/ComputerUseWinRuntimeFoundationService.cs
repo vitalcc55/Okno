@@ -25,7 +25,7 @@ public sealed class ComputerUseWinRuntimeFoundationService
     private readonly ComputerUseWinRuntimeStorePaths storePaths;
 
     public ComputerUseWinRuntimeFoundationService()
-        : this(new ComputerUseWinRuntimeStorePaths(ResolveCodexHome()))
+        : this(new ComputerUseWinRuntimeStorePaths(ResolveCodexHome(), ResolveLocalAppDataRoot()))
     {
     }
 
@@ -86,6 +86,34 @@ public sealed class ComputerUseWinRuntimeFoundationService
         }
 
         return Path.Combine(userProfile, ".codex");
+    }
+
+    public static string ResolveLocalAppDataRoot()
+    {
+        string? explicitLocalAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        if (!string.IsNullOrWhiteSpace(explicitLocalAppData))
+        {
+            return Path.GetFullPath(explicitLocalAppData);
+        }
+
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(localAppData))
+        {
+            return Path.GetFullPath(localAppData);
+        }
+
+        string? userProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        if (string.IsNullOrWhiteSpace(userProfile))
+        {
+            userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+
+        if (string.IsNullOrWhiteSpace(userProfile))
+        {
+            throw new InvalidOperationException("Neither LOCALAPPDATA nor USERPROFILE is available for runtime store resolution.");
+        }
+
+        return Path.Combine(Path.GetFullPath(userProfile), "AppData", "Local");
     }
 
     private ComputerUseWinRuntimeStatus BuildStatus(ComputerUseWinRuntimeReleaseDescriptor? descriptor)

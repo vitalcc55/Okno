@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, ...</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, ...</value>
+  </resheader>
+  <data name="WindowTitle" xml:space="preserve"><value>Okno 安装程序</value></data>
+  <data name="MainTitle" xml:space="preserve"><value>Okno 安装程序</value></data>
+  <data name="MainSubtitle" xml:space="preserve"><value>为 Codex 安装 Okno，或仅为其他 MCP 客户端安装共享运行时。</value></data>
+  <data name="LanguageLabel" xml:space="preserve"><value>语言</value></data>
+  <data name="LanguageSelectorPlaceholder" xml:space="preserve"><value>选择语言</value></data>
+  <data name="LanguageSelectorAutomationName" xml:space="preserve"><value>安装程序语言</value></data>
+  <data name="InstallButtonAutomationName" xml:space="preserve"><value>开始安装</value></data>
+  <data name="StatusRecommendedTitle" xml:space="preserve"><value>推荐方式</value></data>
+  <data name="StatusRecommendedDetail" xml:space="preserve"><value>Codex 模式已经包含共享的 Okno 运行时。只有在你不需要 Codex 插件时，才选择仅安装运行时。</value></data>
+  <data name="StatusRuntimeReadyTitle" xml:space="preserve"><value>已检测到共享运行时</value></data>
+  <data name="StatusRuntimeReadyDetail" xml:space="preserve"><value>你可以继续使用仅运行时模式，也可以在现有运行时之上再安装 Codex 插件。</value></data>
+  <data name="StatusCodexInstalledTitle" xml:space="preserve"><value>已检测到 Codex 插件</value></data>
+  <data name="StatusCodexInstalledDetail" xml:space="preserve"><value>你可以直接通过这个安装程序重新安装或修复本地插件和运行时。</value></data>
+  <data name="InstallModeSectionTitle" xml:space="preserve"><value>安装方式</value></data>
+  <data name="InstallModeSectionDescription" xml:space="preserve"><value>请选择一种方式。Codex 模式已经包含共享的 Okno 运行时。</value></data>
+  <data name="CodexModeTitle" xml:space="preserve"><value>安装到 Codex</value></data>
+  <data name="CodexModeDescription" xml:space="preserve"><value>安装共享运行时、轻量的 computer-use-win 插件，并更新你的个人 Codex marketplace。</value></data>
+  <data name="RuntimeOnlyModeTitle" xml:space="preserve"><value>仅安装运行时</value></data>
+  <data name="RuntimeOnlyModeDescription" xml:space="preserve"><value>仅安装共享的 Okno 运行时，并提供可直接粘贴的 MCP 配置片段。</value></data>
+  <data name="ModeSummarySectionTitle" xml:space="preserve"><value>此模式将安装的内容</value></data>
+  <data name="ModeSummaryCodexTitle" xml:space="preserve"><value>Codex 模式会安装插件和共享运行时。</value></data>
+  <data name="ModeSummaryCodexDetail" xml:space="preserve"><value>适合希望通过个人 marketplace 在 Codex 中使用 Okno 的情况。</value></data>
+  <data name="ModeSummaryRuntimeTitle" xml:space="preserve"><value>仅运行时模式只会安装共享运行时。</value></data>
+  <data name="ModeSummaryRuntimeDetail" xml:space="preserve"><value>适合只需要 Okno.Server.exe 和可直接用于其他客户端的 MCP 配置片段。</value></data>
+  <data name="CodexHomeLabel" xml:space="preserve"><value>Codex 目录</value></data>
+  <data name="RuntimeStoreLabel" xml:space="preserve"><value>运行时目录</value></data>
+  <data name="PluginRootLabel" xml:space="preserve"><value>插件目录</value></data>
+  <data name="MarketplaceFileLabel" xml:space="preserve"><value>marketplace 文件</value></data>
+  <data name="RuntimeRootLabel" xml:space="preserve"><value>运行时根目录</value></data>
+  <data name="FooterCodexHint" xml:space="preserve"><value>安装完成后，请重启 Codex 并新开一个对话，使本地插件从你的 marketplace 重新加载。</value></data>
+  <data name="FooterRuntimeHint" xml:space="preserve"><value>安装完成后，请将生成的配置片段复制到你的 MCP 客户端配置中。</value></data>
+  <data name="InstallCodexButton" xml:space="preserve"><value>安装到 Codex</value></data>
+  <data name="InstallRuntimeOnlyButton" xml:space="preserve"><value>仅安装运行时</value></data>
+  <data name="ResultCodexTitle" xml:space="preserve"><value>已完成 Codex 安装</value></data>
+  <data name="ResultCodexMessage" xml:space="preserve"><value>请重启 Codex，使其从你的个人 marketplace 加载已安装的插件。</value></data>
+  <data name="ResultRuntimeTitle" xml:space="preserve"><value>已完成运行时安装</value></data>
+  <data name="ResultRuntimeMessage" xml:space="preserve"><value>请在客户端配置中使用生成的 MCP 配置片段。</value></data>
+  <data name="ResultFailureTitle" xml:space="preserve"><value>安装失败</value></data>
+  <data name="SnippetTitle" xml:space="preserve"><value>可直接使用的 MCP 配置片段</value></data>
+  <data name="CopySnippetButton" xml:space="preserve"><value>复制片段</value></data>
+  <data name="SnippetCopiedMessage" xml:space="preserve"><value>片段已复制到剪贴板。</value></data>
+</root>
