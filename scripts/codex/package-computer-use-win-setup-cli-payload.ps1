@@ -93,6 +93,7 @@ try {
     $publishOutput = & dotnet publish $projectPath `
         -c Release `
         -r $Rid `
+        --disable-build-servers `
         --self-contained true `
         -p:PublishSingleFile=false `
         -p:Version=$Version `

@@ -434,7 +434,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             throw new Xunit.Sdk.XunitException($"Release packaging script failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
         }
 
-        using JsonDocument payload = JsonDocument.Parse(result.Stdout);
+        using JsonDocument payload = ParseJsonStdoutOrThrow(result, "Release packaging script");
         return payload.RootElement.GetProperty("archivePath").GetString()
             ?? throw new InvalidOperationException("archivePath missing.");
     }

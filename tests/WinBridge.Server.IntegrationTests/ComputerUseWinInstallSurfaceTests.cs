@@ -26,10 +26,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             repoRoot,
             _ => { });
 
-        using JsonDocument payload = JsonDocument.Parse(result.Stdout);
-        Assert.True(
-            result.ExitCode == 0,
-            $"Publish script failed. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
+        using JsonDocument payload = ParseJsonStdoutOrThrow(result, "Publish script");
         Assert.True(File.Exists(Path.Combine(runtimeRoot, "Okno.Server.exe")));
         Assert.Equal(runtimeRoot, payload.RootElement.GetProperty("runtimeRoot").GetString());
     }
@@ -1143,11 +1140,13 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         if (!string.IsNullOrWhiteSpace(context.CodexHomeOverridePath))
         {
             startInfo.Environment["CODEX_HOME"] = context.CodexHomeOverridePath;
+            startInfo.Environment["USERPROFILE"] = GetExpectedUserProfileRootFromCodexHome(context.CodexHomeOverridePath);
             startInfo.Environment["LOCALAPPDATA"] = GetExpectedLocalAppDataRootFromCodexHome(context.CodexHomeOverridePath);
         }
         else
         {
             startInfo.Environment.Remove("CODEX_HOME");
+            startInfo.Environment.Remove("USERPROFILE");
             startInfo.Environment.Remove("LOCALAPPDATA");
         }
         if (!string.IsNullOrWhiteSpace(context.RuntimeReleaseDescriptorOverridePath))
@@ -1438,15 +1437,26 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         return Path.Combine(GetExpectedLocalAppDataRootFromCodexHome(codexHome), "Okno", "computer-use-win");
     }
 
-    private static string GetExpectedLocalAppDataRootFromCodexHome(string codexHome)
+    private static string GetExpectedUserProfileRootFromCodexHome(string codexHome)
     {
-        string? userProfileRoot = Directory.GetParent(Path.GetFullPath(codexHome))?.FullName;
-        if (string.IsNullOrWhiteSpace(userProfileRoot))
+        string normalizedCodexHome = Path.GetFullPath(codexHome);
+        if (string.Equals(Path.GetFileName(normalizedCodexHome), ".codex", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException($"Unable to derive user profile root from CODEX_HOME '{codexHome}'.");
+            string? parent = Directory.GetParent(normalizedCodexHome)?.FullName;
+            if (string.IsNullOrWhiteSpace(parent))
+            {
+                throw new InvalidOperationException($"Unable to derive user profile root from CODEX_HOME '{codexHome}'.");
+            }
+
+            return parent;
         }
 
-        return Path.Combine(userProfileRoot, "AppData", "Local");
+        return normalizedCodexHome;
+    }
+
+    private static string GetExpectedLocalAppDataRootFromCodexHome(string codexHome)
+    {
+        return Path.Combine(GetExpectedUserProfileRootFromCodexHome(codexHome), "AppData", "Local");
     }
 
     private static string GetExpectedSharedRuntimeRoot(string codexHome, string rid, string version)
@@ -1500,10 +1510,15 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         }
 
         startInfo.Environment["CODEX_HOME"] = codexHome;
+        startInfo.Environment["USERPROFILE"] = string.IsNullOrWhiteSpace(userProfileOverride)
+            ? GetExpectedUserProfileRootFromCodexHome(codexHome)
+            : userProfileOverride;
+        startInfo.Environment["LOCALAPPDATA"] = string.IsNullOrWhiteSpace(userProfileOverride)
+            ? GetExpectedLocalAppDataRootFromCodexHome(codexHome)
+            : Path.Combine(userProfileOverride, "AppData", "Local");
         if (!string.IsNullOrWhiteSpace(userProfileOverride))
         {
             startInfo.Environment["USERPROFILE"] = userProfileOverride;
-            startInfo.Environment["LOCALAPPDATA"] = Path.Combine(userProfileOverride, "AppData", "Local");
         }
 
         using Process process = new() { StartInfo = startInfo };
@@ -1525,7 +1540,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private static ScriptInvocationResult InvokePowerShellScript(string scriptPath, string workingDirectory, Action<ProcessStartInfo> configure)
     {
-        TimeSpan timeout = TimeSpan.FromMinutes(15);
+        TimeSpan timeout = TimeSpan.FromMinutes(5);
         ProcessStartInfo startInfo = new()
         {
             FileName = "powershell",
@@ -1566,6 +1581,17 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         Task.WaitAll(stdoutTask, stderrTask);
 
         return new ScriptInvocationResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
+    }
+
+    private static JsonDocument ParseJsonStdoutOrThrow(ScriptInvocationResult result, string description)
+    {
+        Assert.True(
+            result.ExitCode == 0,
+            $"{description} failed. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
+        Assert.False(
+            string.IsNullOrWhiteSpace(result.Stdout),
+            $"{description} returned empty stdout. stderr='{result.Stderr.Trim()}'.");
+        return JsonDocument.Parse(result.Stdout);
     }
 
     private static string GetRepositoryRoot()
@@ -1670,7 +1696,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private sealed class PluginMcpSession(StreamReader reader, StreamWriter writer, Func<string> failureContextFactory)
     {
-        private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan DefaultResponseTimeout = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan InitializeResponseTimeout = TimeSpan.FromSeconds(45);
         private int nextRequestId = 1;
 
         public async Task SendNotificationAsync(string method)
@@ -1703,17 +1730,20 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         {
             await writer.WriteLineAsync(json);
             await writer.FlushAsync();
+            TimeSpan responseTimeout = string.Equals(requestName, "initialize", StringComparison.OrdinalIgnoreCase)
+                ? InitializeResponseTimeout
+                : DefaultResponseTimeout;
 
             while (true)
             {
                 string? line;
                 try
                 {
-                    line = await reader.ReadLineAsync().WaitAsync(ResponseTimeout);
+                    line = await reader.ReadLineAsync().WaitAsync(responseTimeout);
                 }
                 catch (TimeoutException)
                 {
-                    throw new Xunit.Sdk.XunitException($"Timed out waiting for '{requestName}' response.{Environment.NewLine}{failureContextFactory()}");
+                    throw new Xunit.Sdk.XunitException($"Timed out waiting for '{requestName}' response after {responseTimeout}.{Environment.NewLine}{failureContextFactory()}");
                 }
 
                 if (line is null)

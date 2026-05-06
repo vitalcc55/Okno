@@ -213,7 +213,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             throw new Xunit.Sdk.XunitException($"Setup CLI payload packaging script failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
         }
 
-        using JsonDocument payload = JsonDocument.Parse(result.Stdout);
+        using JsonDocument payload = ParseJsonStdoutOrThrow(result, "Setup CLI payload packaging script");
         return payload.RootElement.GetProperty("archivePath").GetString()
             ?? throw new InvalidOperationException("archivePath missing.");
     }
@@ -236,7 +236,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             throw new Xunit.Sdk.XunitException($"Setup app release packaging script failed. stderr='{result.Stderr}', stdout='{result.Stdout}'.");
         }
 
-        using JsonDocument payload = JsonDocument.Parse(result.Stdout);
+        using JsonDocument payload = ParseJsonStdoutOrThrow(result, "Setup app release packaging script");
         return payload.RootElement.GetProperty("archivePath").GetString()
             ?? throw new InvalidOperationException("archivePath missing.");
     }

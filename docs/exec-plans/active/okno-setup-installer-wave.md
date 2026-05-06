@@ -130,6 +130,8 @@ installer станет стабильным и доказанным.
 Целевой инвариант:
 
 - у продукта есть **один canonical installed runtime** на пользователя/машину;
+- этот runtime живёт в product-owned per-user path `%LocalAppData%\Okno\computer-use-win`,
+  а не внутри `.codex`;
 - Codex plugin использует именно этот runtime;
 - plain MCP clients используют тот же runtime;
 - installer не плодит отдельные runtime copy под каждый install mode.

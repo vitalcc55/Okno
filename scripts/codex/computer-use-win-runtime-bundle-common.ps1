@@ -215,6 +215,7 @@ function Publish-ComputerUseWinRuntimeBundleToDirectory {
         & dotnet publish $serverProjectPath `
             --configuration Release `
             --runtime $Rid `
+            --disable-build-servers `
             --self-contained true `
             -p:UseAppHost=true `
             -p:UiaWorkerPublishSelfContained=true `
