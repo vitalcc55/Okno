@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
 
@@ -662,6 +663,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string sourcePluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
         string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-missing-dependency", Guid.NewGuid().ToString("N"));
         string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-missing-dependency-release", Guid.NewGuid().ToString("N"));
+        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-missing-dependency", Guid.NewGuid().ToString("N"));
 
         EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, Path.Combine(sourcePluginRoot, "runtime", "win-x64"));
 
@@ -674,7 +676,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             Assert.True(File.Exists(dependencyPath));
             File.Delete(dependencyPath);
 
-            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, descriptorPath);
+            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, descriptorPath, codexHome);
             PluginMcpSession session = launcher.CreateMcpSession();
 
             try
@@ -706,7 +708,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
                 Assert.Contains(ToolNames.ComputerUseWinListApps, toolNames);
                 Assert.Contains(ToolNames.ComputerUseWinTypeText, toolNames);
-                Assert.True(File.Exists(Path.Combine(tempPluginRoot, "runtime", "win-x64", "hostfxr.dll")));
+                Assert.True(File.Exists(Path.Combine(GetExpectedSharedRuntimeRoot(codexHome, "win-x64", "0.1.0-test"), "hostfxr.dll")));
             }
             finally
             {
@@ -716,6 +718,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         {
             DeleteDirectoryIfExists(tempPluginRoot);
             DeleteDirectoryIfExists(outputRoot);
+            DeleteDirectoryIfExists(codexHome);
         }
     }
 
@@ -985,9 +988,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         Assert.Contains("runtimeBundleFreshForPublicationInputs", proofScript, StringComparison.Ordinal);
     }
 
-    private static PluginLauncherSession StartPluginLauncherSession(string pluginRoot, string? runtimeReleaseDescriptorOverridePath = null)
+    private static PluginLauncherSession StartPluginLauncherSession(string pluginRoot, string? runtimeReleaseDescriptorOverridePath = null, string? codexHomeOverridePath = null)
     {
-        PluginLauncherStartContext context = CreatePluginLauncherStartContext(pluginRoot, runtimeReleaseDescriptorOverridePath);
+        PluginLauncherStartContext context = CreatePluginLauncherStartContext(pluginRoot, runtimeReleaseDescriptorOverridePath, codexHomeOverridePath);
         ProcessStartInfo startInfo = new()
         {
             FileName = "powershell",
@@ -1012,9 +1015,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             process.StandardError.ReadToEndAsync());
     }
 
-    private static ScriptInvocationResult InvokePluginLauncher(string pluginRoot, string? runtimeReleaseDescriptorOverridePath = null)
+    private static ScriptInvocationResult InvokePluginLauncher(string pluginRoot, string? runtimeReleaseDescriptorOverridePath = null, string? codexHomeOverridePath = null)
     {
-        PluginLauncherStartContext context = CreatePluginLauncherStartContext(pluginRoot, runtimeReleaseDescriptorOverridePath);
+        PluginLauncherStartContext context = CreatePluginLauncherStartContext(pluginRoot, runtimeReleaseDescriptorOverridePath, codexHomeOverridePath);
         ProcessStartInfo startInfo = new()
         {
             FileName = "powershell",
@@ -1047,6 +1050,10 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         Task.WaitAll(stdoutTask, stderrTask);
         DeleteDirectoryIfExists(context.RunRoot);
         DeleteDirectoryIfExists(context.ArtifactsRoot);
+        if (!string.IsNullOrWhiteSpace(context.CodexHomeOverridePath))
+        {
+            DeleteDirectoryIfExists(context.CodexHomeOverridePath);
+        }
         return new ScriptInvocationResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
     }
 
@@ -1098,21 +1105,26 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         }
     }
 
-    private static PluginLauncherStartContext CreatePluginLauncherStartContext(string pluginRoot, string? runtimeReleaseDescriptorOverridePath)
+    private static PluginLauncherStartContext CreatePluginLauncherStartContext(string pluginRoot, string? runtimeReleaseDescriptorOverridePath, string? codexHomeOverridePath)
     {
         string runId = "computer-use-win-test-" + Guid.NewGuid().ToString("N");
         string repoRoot = GetRepositoryRoot();
         string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-runs", runId);
         string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-artifacts", runId);
+        string codexHomePath = string.IsNullOrWhiteSpace(codexHomeOverridePath)
+            ? Path.Combine(repoRoot, ".tmp", ".codex", "tests", "launcher-codex-home", runId)
+            : codexHomeOverridePath;
         Directory.CreateDirectory(runRoot);
         Directory.CreateDirectory(artifactsRoot);
+        Directory.CreateDirectory(codexHomePath);
 
         return new PluginLauncherStartContext(
             pluginRoot,
             runId,
             runRoot,
             artifactsRoot,
-            runtimeReleaseDescriptorOverridePath);
+            runtimeReleaseDescriptorOverridePath,
+            codexHomePath);
     }
 
     private static void ConfigurePluginLauncherProcessStartInfo(ProcessStartInfo startInfo, PluginLauncherStartContext context)
@@ -1128,6 +1140,14 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         startInfo.Environment["WINBRIDGE_RUN_ID"] = context.RunId;
         startInfo.Environment["WINBRIDGE_RUN_ROOT"] = context.RunRoot;
         startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = context.ArtifactsRoot;
+        if (!string.IsNullOrWhiteSpace(context.CodexHomeOverridePath))
+        {
+            startInfo.Environment["CODEX_HOME"] = context.CodexHomeOverridePath;
+        }
+        else
+        {
+            startInfo.Environment.Remove("CODEX_HOME");
+        }
         if (!string.IsNullOrWhiteSpace(context.RuntimeReleaseDescriptorOverridePath))
         {
             startInfo.Environment["COMPUTER_USE_WIN_RUNTIME_RELEASE_DESCRIPTOR_OVERRIDE"] = context.RuntimeReleaseDescriptorOverridePath;
@@ -1398,6 +1418,97 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         return Path.Combine(repoRoot, "scripts", "codex", "test-publish-computer-use-win-plugin.ps1");
     }
 
+    private static string GetSetupCliAssemblyPath(string repoRoot)
+    {
+        XDocument document = XDocument.Load(Path.Combine(repoRoot, "Directory.Build.props"));
+        string targetFramework = document.Root?
+            .Elements("PropertyGroup")
+            .Elements("TargetFramework")
+            .FirstOrDefault()?
+            .Value
+            .Trim()
+            ?? throw new InvalidOperationException("Directory.Build.props does not define TargetFramework.");
+        return Path.Combine(repoRoot, "src", "WinBridge.Setup.Cli", "bin", "Debug", targetFramework, "WinBridge.Setup.Cli.dll");
+    }
+
+    private static string GetExpectedSharedRuntimeStoreRoot(string codexHome)
+    {
+        return Path.Combine(codexHome, "okno", "computer-use-win");
+    }
+
+    private static string GetExpectedSharedRuntimeRoot(string codexHome, string rid, string version)
+    {
+        return Path.Combine(GetExpectedSharedRuntimeStoreRoot(codexHome), "runtimes", rid, version);
+    }
+
+    private static string GetExpectedSharedRuntimeStatePath(string codexHome)
+    {
+        return Path.Combine(GetExpectedSharedRuntimeStoreRoot(codexHome), "state", "current-runtime.json");
+    }
+
+    private static string GetExpectedRuntimeOnlyReceiptPath(string codexHome)
+    {
+        return Path.Combine(GetExpectedSharedRuntimeStoreRoot(codexHome), "receipts", "runtimeonly.json");
+    }
+
+    private static string GetExpectedCodexReceiptPath(string codexHome)
+    {
+        return Path.Combine(GetExpectedSharedRuntimeStoreRoot(codexHome), "receipts", "codex.json");
+    }
+
+    private static string GetExpectedInstalledPluginRoot(string codexHome)
+    {
+        return Path.Combine(codexHome, "plugins", "computer-use-win");
+    }
+
+    private static string GetExpectedPersonalMarketplacePath(string userProfile)
+    {
+        return Path.Combine(userProfile, ".agents", "plugins", "marketplace.json");
+    }
+
+    private static ScriptInvocationResult InvokeSetupCli(string repoRoot, IReadOnlyList<string> arguments, string codexHome, string? userProfileOverride = null)
+    {
+        string assemblyPath = GetSetupCliAssemblyPath(repoRoot);
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = "dotnet",
+            WorkingDirectory = repoRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+
+        startInfo.ArgumentList.Add(assemblyPath);
+        foreach (string argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        startInfo.Environment["CODEX_HOME"] = codexHome;
+        if (!string.IsNullOrWhiteSpace(userProfileOverride))
+        {
+            startInfo.Environment["USERPROFILE"] = userProfileOverride;
+        }
+
+        using Process process = new() { StartInfo = startInfo };
+        process.Start();
+
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(TimeSpan.FromMinutes(5)))
+        {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit();
+            Task.WaitAll(stdoutTask, stderrTask);
+            return new ScriptInvocationResult(-1, stdoutTask.Result, $"Setup CLI timed out. {stderrTask.Result}");
+        }
+
+        Task.WaitAll(stdoutTask, stderrTask);
+        return new ScriptInvocationResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
+    }
+
     private static ScriptInvocationResult InvokePowerShellScript(string scriptPath, string workingDirectory, Action<ProcessStartInfo> configure)
     {
         TimeSpan timeout = TimeSpan.FromMinutes(15);
@@ -1623,7 +1734,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string RunId,
         string RunRoot,
         string ArtifactsRoot,
-        string? RuntimeReleaseDescriptorOverridePath);
+        string? RuntimeReleaseDescriptorOverridePath,
+        string? CodexHomeOverridePath);
 
     private sealed class PluginLauncherSession(
         PluginLauncherStartContext context,
@@ -1672,6 +1784,10 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 process.Dispose();
                 DeleteDirectoryIfExists(context.RunRoot);
                 DeleteDirectoryIfExists(context.ArtifactsRoot);
+                if (!string.IsNullOrWhiteSpace(context.CodexHomeOverridePath))
+                {
+                    DeleteDirectoryIfExists(context.CodexHomeOverridePath);
+                }
             }
         }
     }

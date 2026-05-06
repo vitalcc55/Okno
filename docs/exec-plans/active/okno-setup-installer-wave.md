@@ -39,6 +39,27 @@ Date: `2026-05-04`
 - installer wave не пересматривает уже принятый shared runtime release model,
   а строит поверх него более удобную delivery shell.
 
+Текущий прогресс по состоянию на `2026-05-06`:
+
+- thin plugin bundle release path уже реализован;
+- shared runtime foundation bundle уже реализован:
+  - canonical per-user runtime store;
+  - managed CLI `runtime install/status/verify/repair`;
+  - launcher preference для shared installed runtime;
+- installer orchestration core уже реализован:
+  - `install/update/repair/uninstall/status` для `codex` и `runtime-only`;
+  - personal marketplace mutation;
+  - install receipts и runtime retention policy;
+- PowerShell/bootstrap shell уже реализован:
+  - packaged setup CLI payload;
+  - thin bootstrap shell without repo checkout;
+- WinUI 3 shell уже реализован как unpackaged unsigned RC app:
+  - two install modes;
+  - progress/result screen;
+  - runtime-only snippet copy action;
+- следующая крупная недостающая часть — финальная docs sync, full verify и
+  clean merge-ready closure.
+
 Связанный baseline-документ:
 
 - [okno-release-and-install-packaging.md](okno-release-and-install-packaging.md)

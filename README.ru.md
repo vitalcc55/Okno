@@ -103,42 +103,56 @@ Okno не является главным выбором, если тебе ну
 
 ## Быстрый старт
 
-Самый короткий поддержанный путь сегодня — **Codex на Windows** с локальным
-plugin, который поставляется из этого репозитория.
+Самый короткий поддержанный путь на этой ветке — новый
+**installer-first RC path** для Windows.
 
 ### Что нужно заранее
 
 - Windows 11
-- Codex на Windows
-- PowerShell
-- доступ к сети, если установленной копии плагина при первом запуске
-  понадобится подтянуть pinned runtime release
+- Codex на Windows для рекомендованного режима `Codex`
+- PowerShell только если вместо GUI installer используется bootstrap shell
+- доступ к сети, если во время установки нужно подтянуть runtime или plugin
+  assets
 
-### 1. Склонировать репозиторий
+### 1. Получить installer RC assets
+
+Выбери один из вариантов:
+
+- GUI installer: `okno-setup-unsigned-<version>-win-x64.zip`
+- bootstrap shell: `install-computer-use-win.ps1` +
+  `okno-setup-cli-payload-<version>-win-x64.zip`
+
+Эти RC artifacts собираются installer-wave workflow на этой ветке вместе с
+runtime и plugin bundle assets.
+
+### 2. Установить для Codex или только runtime
+
+GUI path:
+
+1. Распакуй `okno-setup-unsigned-<version>-win-x64.zip`.
+2. Запусти `Okno Setup.exe`.
+3. Выбери `Install for Codex (Recommended)` или
+   `Install runtime only (Advanced)`.
+
+Bootstrap path:
 
 ```powershell
-git clone https://github.com/vitalcc55/Okno.git
-cd Okno
+powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode codex -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
 ```
 
-### 2. Установить локальный plugin из записи в marketplace репозитория
+Для plain MCP path используй `-Mode runtime-only`.
 
-Точки входа в репозитории:
+### 3. Перезапустить Codex или использовать runtime-only snippet
 
-- [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)
-- [plugins/computer-use-win](plugins/computer-use-win)
-- [plugins/computer-use-win/.codex-plugin/plugin.json](plugins/computer-use-win/.codex-plugin/plugin.json)
-- [plugins/computer-use-win/.mcp.json](plugins/computer-use-win/.mcp.json)
+Режим `Codex` теперь:
 
-### 3. Перезапустить Codex или открыть новый thread
+- ставит shared runtime в `<codex-home>/okno/computer-use-win`;
+- ставит thin plugin в `<codex-home>/plugins/computer-use-win`;
+- обновляет `%USERPROFILE%\.agents\plugins\marketplace.json`;
+- требует от пользователя только перезапустить Codex.
 
-Установленный plugin запускается из Codex plugin cache, а не из корня
-репозитория. Если в установленной копии уже есть валидированный runtime bundle,
-launcher использует его напрямую. Если runtime bundle отсутствует или
-повреждён, launcher берёт pinned runtime release, описанный в
-[plugins/computer-use-win/runtime-release.json](plugins/computer-use-win/runtime-release.json),
-проверяет SHA256 и `okno-runtime-bundle-manifest.json`, и только после этого
-поднимает MCP host.
+Режим `runtime-only` ставит тот же shared runtime и возвращает готовый MCP
+snippet `command + args`.
 
 ### 4. Пройти первый рабочий цикл
 
@@ -148,9 +162,11 @@ launcher использует его напрямую. Если runtime bundle �
 4. выполнить действие;
 5. подтвердить результат через `observeAfter=true` или новый `get_app_state`.
 
-Для обычных MCP-клиентов по `STDIO` и для maintainer-сценария из исходников см.
+Для обычных MCP-клиентов по `STDIO`, installer-first runtime-only path и
+maintainer-сценария из исходников см.
 [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md).
-Мейнтейнеры по-прежнему могут явно собрать plugin-local bundle командой
+Мейнтейнеры по-прежнему могут клонировать репозиторий и явно собрать
+plugin-local bundle командой
 `scripts/codex/publish-computer-use-win-plugin.ps1`.
 
 ## Публичный набор инструментов
@@ -211,20 +227,18 @@ Codex и как локальную MCP surface поверх `STDIO`.
 
 Что уже выглядит сильно:
 
-- публичная возможность уже shipped и устанавливается из source repo;
+- публичная возможность уже shipped и ставится через installer-first RC assets;
 - для обычных MCP-клиентов уже определён release-backed runtime contract;
-- runtime bundle и plugin install surface уже существуют;
+- shared runtime store, installer core, bootstrap shell и WinUI setup shell уже существуют;
 - public contract, smoke path и verification loop реальны;
 - проект уже давно вышел из research-prototype стадии.
 
 Что пока честно остаётся правдой:
 
-- установка всё ещё developer-oriented;
-- путь установки плагина в Codex сегодня всё ещё опирается на checkout
-  репозитория;
-- GitHub runtime releases должны существовать, прежде чем сценарий установки
-  plugin без локально собранного runtime станет основной публичной историей;
-- one-click consumer distribution пока не является текущей формой продукта.
+- installer-first path на этой ветке пока остаётся unsigned RC, а не signed public release;
+- repo-first/source installation остаётся maintainer fallback, а не main story;
+- signed consumer distribution, `winget` и `MSI` — это следующие волны;
+- публикация RC assets и их подпись — отдельный шаг относительно branch-local implementation state.
 
 ## Лицензия
 

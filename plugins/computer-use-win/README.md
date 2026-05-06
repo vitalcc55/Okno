@@ -29,13 +29,13 @@ The plugin publishes:
 ## Runtime model
 
 - the plugin starts through `powershell -NoProfile -NonInteractive`;
-- the launcher starts the install-owned runtime bundle
-  `runtime/win-x64/Okno.Server.exe` when that bundle is already present and
-  valid;
-- if the runtime bundle is missing or invalid, the launcher resolves the pinned
+- the launcher first prefers the shared installed runtime store under
+  `<codex-home>/okno/computer-use-win`;
+- plugin-local `runtime/win-x64` remains only as a developer fallback;
+- if the shared runtime is missing or invalid, the launcher resolves the pinned
   runtime release described by `runtime-release.json`, verifies SHA256 plus
   `okno-runtime-bundle-manifest.json`, and only then promotes the runtime into
-  `runtime/win-x64`;
+  the shared runtime store;
 - the public profile is selected explicitly through
   `--tool-surface-profile computer-use-win`;
 - the product-ready transport is local `MCP over STDIO`;
@@ -46,8 +46,8 @@ If an operator needs an even narrower client-side surface, it is better to use
 Codex MCP configuration (`enabled_tools` / `disabled_tools`) than to multiply
 plugin profiles or fork the runtime narrative.
 
-For generic non-Codex clients, use the standalone MCP `STDIO` install path
-documented in
+For installer-first Codex and runtime-only paths plus the standalone MCP
+`STDIO` runtime zip path, use the install runbook documented in
 [docs/runbooks/computer-use-win-install.md](../../docs/runbooks/computer-use-win-install.md).
 
 ## Maintainer runtime publication

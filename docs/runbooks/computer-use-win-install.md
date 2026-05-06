@@ -1,38 +1,77 @@
 # Computer Use for Windows Install Paths
 
-This runbook documents the three supported installation stories for the current
+This runbook documents the supported installation stories for the current
 `computer-use-win` surface.
 
-## 1. Codex plugin install
+## 1. Installer-first Codex install
 
-This is the primary OpenAI/Codex-native path.
+This is the recommended OpenAI/Codex-native path on the installer-wave branch.
 
 Requirements:
 
 - Windows 11
 - Codex on Windows
-- network access for first-run runtime resolution if the plugin copy does not
-  already contain a validated runtime bundle
+- either the GUI installer archive `okno-setup-unsigned-<version>-win-x64.zip`
+  or the bootstrap pair `install-computer-use-win.ps1` +
+  `okno-setup-cli-payload-<version>-win-x64.zip`
+- network access if the install needs to resolve runtime or plugin assets
 
 Steps:
 
-1. Clone the repository.
-2. Install the local plugin from [plugins/computer-use-win](../../plugins/computer-use-win).
+1. Extract `okno-setup-unsigned-<version>-win-x64.zip` and run `Okno Setup.exe`,
+   or run:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode codex -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
+   ```
+
+2. Choose `Install for Codex (Recommended)`.
 3. Restart Codex or open a new thread.
 4. Start with `list_apps`.
 
 Behavior:
 
-- if the install copy already contains a valid `runtime/win-x64` bundle, the
-  launcher uses it directly;
-- if the runtime bundle is missing or invalid, the launcher resolves the pinned
-  runtime release described by `runtime-release.json`;
-- the launcher validates SHA256 and
-  `okno-runtime-bundle-manifest.json` before starting `Okno.Server.exe`.
+- the installer lays out the shared runtime under `<codex-home>/okno/computer-use-win`;
+- the installer lays out the thin plugin under `<codex-home>/plugins/computer-use-win`;
+- the installer creates or updates `%USERPROFILE%\.agents\plugins\marketplace.json`;
+- the launcher first prefers the shared installed runtime;
+- plugin-local runtime remains only a developer fallback;
+- if the shared runtime is missing or invalid, the launcher resolves the pinned
+  runtime release described by `runtime-release.json` and rehydrates the shared
+  runtime store before starting `Okno.Server.exe`.
 
-## 2. Generic MCP STDIO install
+## 2. Installer-first runtime-only install
 
-This is the primary path for non-Codex MCP clients.
+This is the advanced local MCP path when you want the shared runtime without
+installing the Codex plugin.
+
+Requirements:
+
+- Windows 11
+- either the GUI installer archive `okno-setup-unsigned-<version>-win-x64.zip`
+  or the bootstrap pair `install-computer-use-win.ps1` +
+  `okno-setup-cli-payload-<version>-win-x64.zip`
+
+Steps:
+
+1. Run `Okno Setup.exe` and choose `Install runtime only (Advanced)`, or run:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode runtime-only -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
+   ```
+
+2. Copy the emitted MCP snippet into your client configuration.
+
+Behavior:
+
+- this mode installs the same shared runtime store used by Codex mode;
+- it does not touch the personal Codex marketplace;
+- it returns a ready-to-paste local `STDIO` snippet.
+
+## 3. Generic MCP STDIO runtime zip
+
+This remains the manual non-Codex path when you want only the standalone
+runtime release zip without the installer shells.
 
 Requirements:
 
@@ -41,8 +80,7 @@ Requirements:
 
 Steps:
 
-1. Download the `okno-computer-use-win-runtime-<version>-win-x64.zip` asset
-   from GitHub Releases.
+1. Download the `okno-computer-use-win-runtime-<version>-win-x64.zip` asset.
 2. Extract it to a stable local directory.
 3. Configure your MCP client to launch:
 
@@ -65,7 +103,7 @@ Notes:
 - clients must treat this as a local `STDIO` MCP server, not as a remote HTTP
   endpoint.
 
-## 3. Developer from source
+## 4. Developer from source
 
 This path remains available for maintainers and local runtime work.
 

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Application
+    x:Class="WinBridge.Setup.App.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="InstallerCardBrush" Color="#F8FAFC" />
+                    <SolidColorBrush x:Key="InstallerBorderBrush" Color="#D7E3E7" />
+                    <SolidColorBrush x:Key="InstallerMutedBrush" Color="#475569" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="InstallerCardBrush" Color="#172126" />
+                    <SolidColorBrush x:Key="InstallerBorderBrush" Color="#2A3940" />
+                    <SolidColorBrush x:Key="InstallerMutedBrush" Color="#CBD5E1" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <SolidColorBrush x:Key="InstallerAccentBrush" Color="#0F766E" />
+            <Style x:Key="PrimaryActionButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="{StaticResource InstallerAccentBrush}" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Padding" Value="18,10" />
+                <Setter Property="CornerRadius" Value="10" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

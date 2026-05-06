@@ -8,10 +8,11 @@ $env:COMPUTER_USE_WIN_PLUGIN_ROOT = $PSScriptRoot
 Set-Location $PSScriptRoot
 
 $runtimeRid = 'win-x64'
-$runtimeRoot = Join-Path $PSScriptRoot "runtime\$runtimeRid"
 $serverExeRelativePath = 'Okno.Server.exe'
-$serverExePath = Join-Path $runtimeRoot $serverExeRelativePath
-$runtimeManifestPath = Join-Path $runtimeRoot 'okno-runtime-bundle-manifest.json'
+$bundleManifestName = 'okno-runtime-bundle-manifest.json'
+$pluginLocalRuntimeRoot = Join-Path $PSScriptRoot "runtime\$runtimeRid"
+$pluginLocalServerExePath = Join-Path $pluginLocalRuntimeRoot $serverExeRelativePath
+$pluginLocalRuntimeManifestPath = Join-Path $pluginLocalRuntimeRoot $bundleManifestName
 $descriptorOverridePath = $env:COMPUTER_USE_WIN_RUNTIME_RELEASE_DESCRIPTOR_OVERRIDE
 $runtimeDescriptorPath = if ([string]::IsNullOrWhiteSpace($descriptorOverridePath)) {
     Join-Path $PSScriptRoot 'runtime-release.json'
@@ -19,8 +20,24 @@ $runtimeDescriptorPath = if ([string]::IsNullOrWhiteSpace($descriptorOverridePat
 else {
     [System.IO.Path]::GetFullPath($descriptorOverridePath)
 }
-$runtimeWorkingRoot = Join-Path $PSScriptRoot 'runtime'
-$resolutionLockPath = Join-Path $runtimeWorkingRoot "$runtimeRid.resolve.lock"
+
+$codexHome = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_HOME)) {
+    [System.IO.Path]::GetFullPath($env:CODEX_HOME)
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    Join-Path $env:USERPROFILE '.codex'
+}
+else {
+    throw 'Neither CODEX_HOME nor USERPROFILE is available for shared runtime resolution.'
+}
+
+$sharedRuntimeStoreRoot = Join-Path $codexHome 'okno\computer-use-win'
+$sharedRuntimesRoot = Join-Path $sharedRuntimeStoreRoot 'runtimes'
+$sharedStateRoot = Join-Path $sharedRuntimeStoreRoot 'state'
+$sharedCurrentStatePath = Join-Path $sharedStateRoot 'current-runtime.json'
+$sharedLocksRoot = Join-Path $sharedRuntimeStoreRoot 'locks'
+$resolutionLockPath = Join-Path $sharedLocksRoot "$runtimeRid.install.lock"
+$effectiveRuntimeRoot = $null
 
 function Read-RuntimeReleaseDescriptor {
     param(
@@ -100,13 +117,24 @@ function Assert-RuntimeBundleMatchesManifest {
     }
 }
 
-function Test-RuntimeBundleIsUsable {
+function Test-RuntimeBundleRootIsUsable {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RootPath,
+        [Parameter(Mandatory)]
+        [string] $ServerExeRelativePath,
+        [Parameter(Mandatory)]
+        [string] $ManifestName
+    )
+
+    $serverExePath = Join-Path $RootPath $ServerExeRelativePath
     if (-not (Test-Path $serverExePath -PathType Leaf)) {
         return $false
     }
 
+    $manifestPath = Join-Path $RootPath $ManifestName
     try {
-        Assert-RuntimeBundleMatchesManifest -RootPath $runtimeRoot -ManifestPath $runtimeManifestPath
+        Assert-RuntimeBundleMatchesManifest -RootPath $RootPath -ManifestPath $manifestPath
         return $true
     }
     catch {
@@ -143,6 +171,17 @@ function Remove-DirectoryIfExists {
 
     if (Test-Path $Path -PathType Container) {
         Remove-Item -LiteralPath $Path -Recurse -Force
+    }
+}
+
+function Remove-FileIfExists {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Path
+    )
+
+    if (Test-Path $Path -PathType Leaf) {
+        Remove-Item -LiteralPath $Path -Force
     }
 }
 
@@ -189,6 +228,103 @@ function Save-RemoteAssetToPath {
     Invoke-WebRequest -Uri $SourceUrl -OutFile $DestinationPath
 }
 
+function Get-SharedRuntimeVersionRoot {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Descriptor
+    )
+
+    Join-Path (Join-Path $sharedRuntimesRoot ([string]$Descriptor.rid)) ([string]$Descriptor.version)
+}
+
+function Write-SharedRuntimeState {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Descriptor,
+        [Parameter(Mandatory)]
+        [string] $RuntimeRoot
+    )
+
+    New-Item -ItemType Directory -Path $sharedStateRoot -Force | Out-Null
+    $state = [pscustomobject]@{
+        formatVersion = 1
+        rid = [string]$Descriptor.rid
+        version = [string]$Descriptor.version
+        runtimeRoot = [System.IO.Path]::GetFullPath($RuntimeRoot)
+        runtimeAssetName = [string]$Descriptor.assetName
+        runtimeTag = [string]$Descriptor.tag
+        runtimeSha256 = ([string]$Descriptor.sha256).ToLowerInvariant()
+        installedAtUtc = [DateTime]::UtcNow.ToString('o')
+    }
+
+    $tempStatePath = $sharedCurrentStatePath + '.tmp-' + [Guid]::NewGuid().ToString('N')
+    $state | ConvertTo-Json -Compress | Set-Content -Path $tempStatePath -Encoding UTF8
+    if (Test-Path $sharedCurrentStatePath -PathType Leaf) {
+        Remove-Item -LiteralPath $sharedCurrentStatePath -Force
+    }
+
+    Move-Item -LiteralPath $tempStatePath -Destination $sharedCurrentStatePath
+}
+
+function Get-UsableSharedRuntimeRoot {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Descriptor
+    )
+
+    if (-not (Test-Path $sharedCurrentStatePath -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $state = Get-Content -Path $sharedCurrentStatePath -Raw | ConvertFrom-Json
+        if ($state.formatVersion -ne 1) {
+            return $null
+        }
+
+        foreach ($propertyName in @('rid', 'version', 'runtimeRoot', 'runtimeAssetName', 'runtimeTag', 'runtimeSha256')) {
+            if (-not $state.PSObject.Properties.Name.Contains($propertyName) -or [string]::IsNullOrWhiteSpace([string]$state.$propertyName)) {
+                return $null
+            }
+        }
+
+        if ([string]$state.rid -ne [string]$Descriptor.rid) {
+            return $null
+        }
+
+        if ([string]$state.version -ne [string]$Descriptor.version) {
+            return $null
+        }
+
+        if ([string]$state.runtimeTag -ne [string]$Descriptor.tag) {
+            return $null
+        }
+
+        if ([string]$state.runtimeAssetName -ne [string]$Descriptor.assetName) {
+            return $null
+        }
+
+        if (([string]$state.runtimeSha256).ToLowerInvariant() -ne ([string]$Descriptor.sha256).ToLowerInvariant()) {
+            return $null
+        }
+
+        $runtimeRoot = [System.IO.Path]::GetFullPath([string]$state.runtimeRoot)
+        $expectedRuntimeRoot = [System.IO.Path]::GetFullPath((Get-SharedRuntimeVersionRoot -Descriptor $Descriptor))
+        if ($runtimeRoot -ne $expectedRuntimeRoot) {
+            return $null
+        }
+
+        if (-not (Test-RuntimeBundleRootIsUsable -RootPath $runtimeRoot -ServerExeRelativePath ([string]$Descriptor.serverExeRelativePath) -ManifestName ([string]$Descriptor.bundleManifestName))) {
+            return $null
+        }
+
+        return $runtimeRoot
+    }
+    catch {
+        return $null
+    }
+}
+
 function Resolve-RuntimeFromPinnedRelease {
     param(
         [Parameter(Mandatory)]
@@ -201,18 +337,18 @@ function Resolve-RuntimeFromPinnedRelease {
         throw "Runtime release asset '$assetName' must be a .zip archive."
     }
 
+    $ridRoot = Join-Path $sharedRuntimesRoot ([string]$Descriptor.rid)
+    $versionRoot = Get-SharedRuntimeVersionRoot -Descriptor $Descriptor
     $downloadFileName = [System.IO.Path]::GetFileNameWithoutExtension($assetName) + '.download' + $assetExtension
-    $zipPath = Join-Path $runtimeWorkingRoot $downloadFileName
-    $stagingRoot = Join-Path $runtimeWorkingRoot ($Descriptor.rid + '.resolve-' + [Guid]::NewGuid().ToString('N'))
+    $zipPath = Join-Path $sharedLocksRoot $downloadFileName
+    $stagingRoot = Join-Path $ridRoot (([string]$Descriptor.version) + '.install-' + [Guid]::NewGuid().ToString('N'))
     $resolvedServerExePath = Join-Path $stagingRoot ([string]$Descriptor.serverExeRelativePath)
     $resolvedManifestPath = Join-Path $stagingRoot ([string]$Descriptor.bundleManifestName)
 
-    if (Test-Path $zipPath -PathType Leaf) {
-        Remove-Item -LiteralPath $zipPath -Force
-    }
-
+    Remove-FileIfExists -Path $zipPath
     Remove-DirectoryIfExists -Path $stagingRoot
-    New-Item -ItemType Directory -Path $runtimeWorkingRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $sharedLocksRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $ridRoot -Force | Out-Null
 
     try {
         Save-RemoteAssetToPath -SourceUrl ([string]$Descriptor.downloadUrl) -DestinationPath $zipPath
@@ -228,46 +364,59 @@ function Resolve-RuntimeFromPinnedRelease {
 
         Assert-RuntimeBundleMatchesManifest -RootPath $stagingRoot -ManifestPath $resolvedManifestPath
 
-        if (Test-Path $runtimeRoot -PathType Container) {
-            Remove-DirectoryIfExists -Path $runtimeRoot
-        }
-
-        Move-Item -LiteralPath $stagingRoot -Destination $runtimeRoot
+        Remove-DirectoryIfExists -Path $versionRoot
+        Move-Item -LiteralPath $stagingRoot -Destination $versionRoot
+        Write-SharedRuntimeState -Descriptor $Descriptor -RuntimeRoot $versionRoot
+        return [System.IO.Path]::GetFullPath($versionRoot)
     }
     finally {
-        if (Test-Path $zipPath -PathType Leaf) {
-            Remove-Item -LiteralPath $zipPath -Force
-        }
-
-        if (Test-Path $stagingRoot -PathType Container) {
-            Remove-DirectoryIfExists -Path $stagingRoot
-        }
+        Remove-FileIfExists -Path $zipPath
+        Remove-DirectoryIfExists -Path $stagingRoot
     }
 }
 
-if (-not (Test-RuntimeBundleIsUsable)) {
-    $descriptor = Read-RuntimeReleaseDescriptor -DescriptorPath $runtimeDescriptorPath
+$descriptor = Read-RuntimeReleaseDescriptor -DescriptorPath $runtimeDescriptorPath
+$sharedRuntimeRoot = Get-UsableSharedRuntimeRoot -Descriptor $descriptor
+
+if ($null -ne $sharedRuntimeRoot) {
+    $effectiveRuntimeRoot = $sharedRuntimeRoot
+}
+elseif (Test-RuntimeBundleRootIsUsable -RootPath $pluginLocalRuntimeRoot -ServerExeRelativePath $serverExeRelativePath -ManifestName $bundleManifestName) {
+    $effectiveRuntimeRoot = [System.IO.Path]::GetFullPath($pluginLocalRuntimeRoot)
+}
+else {
     $lockStream = Acquire-ResolutionLock -LockPath $resolutionLockPath
     try {
-        if (-not (Test-RuntimeBundleIsUsable)) {
-            Resolve-RuntimeFromPinnedRelease -Descriptor $descriptor
+        $sharedRuntimeRoot = Get-UsableSharedRuntimeRoot -Descriptor $descriptor
+        if ($null -eq $sharedRuntimeRoot) {
+            $sharedRuntimeRoot = Resolve-RuntimeFromPinnedRelease -Descriptor $descriptor
         }
+
+        $effectiveRuntimeRoot = $sharedRuntimeRoot
     }
     finally {
         $lockStream.Dispose()
     }
 }
 
-if (-not (Test-RuntimeBundleIsUsable)) {
+if ($null -eq $effectiveRuntimeRoot) {
     throw @"
 Failed to prepare the runtime bundle for `computer-use-win`.
 
-Expected apphost:
-$serverExePath
+Plugin-local runtime root:
+$pluginLocalRuntimeRoot
+
+Shared runtime store root:
+$sharedRuntimeStoreRoot
 
 Runtime descriptor used:
 $runtimeDescriptorPath
 "@
 }
 
-& $serverExePath --tool-surface-profile computer-use-win
+$effectiveServerExePath = Join-Path $effectiveRuntimeRoot $serverExeRelativePath
+if (-not (Test-Path $effectiveServerExePath -PathType Leaf)) {
+    throw "Resolved runtime executable is missing: $effectiveServerExePath"
+}
+
+& $effectiveServerExePath --tool-surface-profile computer-use-win

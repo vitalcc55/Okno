@@ -93,40 +93,54 @@ Okno 的设计围绕四条产品规则展开。
 ## 快速开始
 
 当前最短、最受支持的路径是：**Windows 上的 Codex** 加上本仓库提供的
-本地 plugin。
+installer-first RC 路径。
 
 ### 前置条件
 
 - Windows 11
-- Windows 上的 Codex
-- PowerShell
-- 如果安装后的 plugin 副本在首次启动时需要解析其 pinned runtime
-  release，则需要网络访问
+- 推荐的 `Codex` 模式需要 Windows 上的 Codex
+- 只有在使用 bootstrap shell 而不是 GUI installer 时才需要 PowerShell
+- 如果安装过程中需要解析 runtime 或 plugin assets，则需要网络访问
 
-### 1. 克隆仓库
+### 1. 获取 installer RC assets
+
+可选入口：
+
+- GUI installer: `okno-setup-unsigned-<version>-win-x64.zip`
+- bootstrap shell: `install-computer-use-win.ps1` +
+  `okno-setup-cli-payload-<version>-win-x64.zip`
+
+这些 RC artifacts 由此分支上的 installer-wave workflow 生成，并与
+runtime / plugin bundle assets 一起发布。
+
+### 2. 安装到 Codex，或只安装 runtime
+
+GUI path:
+
+1. 解压 `okno-setup-unsigned-<version>-win-x64.zip`。
+2. 运行 `Okno Setup.exe`。
+3. 选择 `Install for Codex (Recommended)` 或
+   `Install runtime only (Advanced)`。
+
+Bootstrap path:
 
 ```powershell
-git clone https://github.com/vitalcc55/Okno.git
-cd Okno
+powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode codex -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
 ```
 
-### 2. 从仓库 marketplace 条目安装本地 plugin
+如果要走 plain MCP path，请使用 `-Mode runtime-only`。
 
-相关入口：
+### 3. 重启 Codex，或使用 runtime-only snippet
 
-- [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)
-- [plugins/computer-use-win](plugins/computer-use-win)
-- [plugins/computer-use-win/.codex-plugin/plugin.json](plugins/computer-use-win/.codex-plugin/plugin.json)
-- [plugins/computer-use-win/.mcp.json](plugins/computer-use-win/.mcp.json)
+`Codex` 模式现在会：
 
-### 3. 重启 Codex 或打开新的 thread
+- 把 shared runtime 安装到 `<codex-home>/okno/computer-use-win`；
+- 把 thin plugin 安装到 `<codex-home>/plugins/computer-use-win`；
+- 更新 `%USERPROFILE%\.agents\plugins\marketplace.json`；
+- 只要求用户重启 Codex。
 
-安装后的 plugin 运行于 Codex plugin cache，而不是仓库根目录。如果安装
-副本里已经存在经过校验的 runtime bundle，launcher 会直接使用它。如果
-runtime bundle 缺失或无效，launcher 会按
-[plugins/computer-use-win/runtime-release.json](plugins/computer-use-win/runtime-release.json)
-中描述的 pinned runtime release 进行解析，校验 SHA256 和
-`okno-runtime-bundle-manifest.json`，然后才启动 MCP host。
+`runtime-only` 模式会安装同一个 shared runtime，并返回可以直接粘贴的
+MCP `command + args` snippet。
 
 ### 4. 跑通第一次操作循环
 
@@ -136,11 +150,13 @@ runtime bundle 缺失或无效，launcher 会按
 4. 执行动作；
 5. 通过 `observeAfter=true` 或新的 `get_app_state` 验证结果。
 
-如果你要给通用 MCP `STDIO` 客户端使用，或者要走维护者的源码工作流，请
+如果你要给通用 MCP `STDIO` 客户端使用、走 installer-first runtime-only
+path，或者要走维护者的源码工作流，请
 参见
 [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)。
-维护者仍可通过 `scripts/codex/publish-computer-use-win-plugin.ps1` 显式生成
-plugin-local bundle。
+维护者仍可克隆仓库，并通过
+`scripts/codex/publish-computer-use-win-plugin.ps1` 显式生成 plugin-local
+bundle。
 
 ## 公开工具 surface
 
@@ -196,19 +212,18 @@ plugin-local bundle。
 
 已经比较成熟的部分：
 
-- 公开 capability 已经 shipped，并且可以从 source repo 安装；
+- 公开 capability 已经 shipped，并且可以通过 installer-first RC assets 安装；
 - 面向通用 MCP 客户端的 release-backed runtime contract 已经定义完成；
-- runtime bundle 和 plugin install surface 已经存在；
+- shared runtime store、installer core、bootstrap shell 和 WinUI setup shell 已经存在；
 - public contract、smoke path 和 verification loop 都是真实可运行的；
 - 项目早已不是 research prototype。
 
 仍需诚实说明的部分：
 
-- 安装体验依然偏向开发者；
-- Codex plugin 的安装路径目前仍依赖本地仓库 checkout；
-- 在“无需本地预先构建 runtime 的 plugin 安装路径”成为主要公开路径
-  之前，GitHub runtime releases 仍必须先存在；
-- 一键式 consumer distribution 不是当前产品形态。
+- 这条 installer-first path 在当前分支上仍然只是 unsigned RC，而不是 signed public release；
+- repo-first/source installation 仍然是 maintainer fallback，而不是 main story；
+- signed consumer distribution、`winget` 和 `MSI` 仍属于后续 wave；
+- 发布 RC assets 并为其签名，和 branch-local implementation state 是分开的步骤。
 
 ## 许可证
 

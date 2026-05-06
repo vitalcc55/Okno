@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinBridge.Setup.Core\WinBridge.Setup.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>WinBridge.Setup.Cli</AssemblyName>
+    <RootNamespace>WinBridge.Setup.Cli</RootNamespace>
+  </PropertyGroup>
+
+</Project>

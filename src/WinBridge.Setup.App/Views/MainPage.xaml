@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="WinBridge.Setup.App.Views.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Grid>
+        <Grid.Background>
+            <LinearGradientBrush EndPoint="1,1" StartPoint="0,0">
+                <GradientStop Color="#F2FBFA" Offset="0" />
+                <GradientStop Color="#E2ECF5" Offset="1" />
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <ScrollViewer>
+            <Grid Padding="32">
+                <Border
+                    MaxWidth="860"
+                    Padding="28"
+                    Background="{ThemeResource InstallerCardBrush}"
+                    BorderBrush="{ThemeResource InstallerBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="24"
+                    HorizontalAlignment="Center">
+                    <StackPanel Spacing="22">
+                        <StackPanel Spacing="8">
+                            <TextBlock FontSize="34" FontWeight="SemiBold" Text="Okno Setup" />
+                            <TextBlock
+                                Foreground="{ThemeResource InstallerMutedBrush}"
+                                Text="One installer, two install modes. Codex mode already includes the shared Okno runtime."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Grid ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border
+                                Grid.Column="0"
+                                Padding="18"
+                                BorderBrush="{ThemeResource InstallerBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="18">
+                                <StackPanel Spacing="10">
+                                    <RadioButton
+                                        x:Name="CodexModeRadioButton"
+                                        IsChecked="True"
+                                        Content="Install for Codex (Recommended)" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource InstallerMutedBrush}"
+                                        Text="Installs the shared runtime, installs the thin computer-use-win plugin, and updates your personal Codex marketplace."
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Grid.Column="1"
+                                Padding="18"
+                                BorderBrush="{ThemeResource InstallerBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="18">
+                                <StackPanel Spacing="10">
+                                    <RadioButton
+                                        x:Name="RuntimeOnlyModeRadioButton"
+                                        Content="Install runtime only (Advanced)" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource InstallerMutedBrush}"
+                                        Text="Installs only the shared Okno runtime and gives you a ready-to-paste MCP command snippet."
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border
+                            Padding="18"
+                            BorderBrush="{ThemeResource InstallerBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="18">
+                            <StackPanel Spacing="8">
+                                <TextBlock FontSize="20" FontWeight="SemiBold" Text="Install targets" />
+                                <TextBlock x:Name="StatusHeadlineTextBlock" FontWeight="SemiBold" />
+                                <TextBlock
+                                    x:Name="StatusDetailTextBlock"
+                                    Foreground="{ThemeResource InstallerMutedBrush}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock x:Name="CodexHomeTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" />
+                                <TextBlock x:Name="RuntimeStoreTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button
+                                x:Name="InstallButton"
+                                Click="OnInstallClicked"
+                                Content="Install"
+                                Style="{StaticResource PrimaryActionButtonStyle}" />
+                            <ProgressRing x:Name="InstallProgressRing" IsActive="False" Visibility="Collapsed" />
+                        </StackPanel>
+
+                        <Border
+                            x:Name="ResultBorder"
+                            Padding="18"
+                            BorderBrush="{ThemeResource InstallerBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="18"
+                            Visibility="Collapsed">
+                            <StackPanel Spacing="8">
+                                <TextBlock x:Name="ResultTitleTextBlock" FontSize="20" FontWeight="SemiBold" />
+                                <TextBlock
+                                    x:Name="ResultMessageTextBlock"
+                                    Foreground="{ThemeResource InstallerMutedBrush}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock x:Name="RuntimePathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" />
+                                <TextBlock x:Name="PluginPathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" Visibility="Collapsed" />
+                                <TextBlock x:Name="MarketplacePathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" Visibility="Collapsed" />
+                                <StackPanel x:Name="SnippetPanel" Spacing="8" Visibility="Collapsed">
+                                    <TextBlock FontWeight="SemiBold" Text="Ready MCP snippet" />
+                                    <TextBox
+                                        x:Name="SnippetTextBox"
+                                        AcceptsReturn="True"
+                                        FontFamily="Cascadia Code"
+                                        IsReadOnly="True"
+                                        MinHeight="140"
+                                        TextWrapping="Wrap" />
+                                    <Button
+                                        x:Name="CopySnippetButton"
+                                        Click="OnCopySnippetClicked"
+                                        Content="Copy snippet"
+                                        HorizontalAlignment="Left" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</Page>

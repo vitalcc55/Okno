@@ -13,6 +13,140 @@ namespace WinBridge.Server.IntegrationTests;
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
     [Fact]
+    public void PackageComputerUseWinPluginReleaseCreatesVersionedZipAndChecksumWithoutMutatingPluginSource()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
+        string pluginRoot = Path.Combine(repoRoot, "plugins", "computer-use-win");
+        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-plugin-release-package", Guid.NewGuid().ToString("N"));
+        const string version = "0.1.0";
+
+        string pluginDigestBefore = ComputeDirectoryDigest(pluginRoot);
+
+        try
+        {
+            ScriptInvocationResult result = InvokePowerShellScript(
+                packageScriptPath,
+                repoRoot,
+                startInfo =>
+                {
+                    startInfo.ArgumentList.Add("-Version");
+                    startInfo.ArgumentList.Add(version);
+                    startInfo.ArgumentList.Add("-OutputRoot");
+                    startInfo.ArgumentList.Add(outputRoot);
+                });
+
+            Assert.True(
+                result.ExitCode == 0,
+                $"Plugin release packaging script failed. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
+            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
+
+            string archivePath = payload.RootElement.GetProperty("archivePath").GetString()
+                ?? throw new InvalidOperationException("archivePath missing.");
+            string checksumPath = payload.RootElement.GetProperty("checksumPath").GetString()
+                ?? throw new InvalidOperationException("checksumPath missing.");
+            string assetName = payload.RootElement.GetProperty("assetName").GetString()
+                ?? throw new InvalidOperationException("assetName missing.");
+
+            Assert.Equal($"okno-computer-use-win-plugin-{version}.zip", assetName);
+            Assert.True(File.Exists(archivePath));
+            Assert.True(File.Exists(checksumPath));
+            Assert.Equal(pluginDigestBefore, ComputeDirectoryDigest(pluginRoot));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(outputRoot);
+        }
+    }
+
+    [Fact]
+    public void PackageComputerUseWinPluginReleaseIncludesPluginContractFilesAndExcludesRuntimeDirectory()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
+        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-plugin-release-archive", Guid.NewGuid().ToString("N"));
+        const string version = "0.1.0";
+
+        try
+        {
+            ScriptInvocationResult result = InvokePowerShellScript(
+                packageScriptPath,
+                repoRoot,
+                startInfo =>
+                {
+                    startInfo.ArgumentList.Add("-Version");
+                    startInfo.ArgumentList.Add(version);
+                    startInfo.ArgumentList.Add("-OutputRoot");
+                    startInfo.ArgumentList.Add(outputRoot);
+                });
+
+            Assert.True(result.ExitCode == 0, $"Plugin release packaging script failed: {result.Stderr}");
+            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
+
+            string archivePath = payload.RootElement.GetProperty("archivePath").GetString()
+                ?? throw new InvalidOperationException("archivePath missing.");
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+
+            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), ".mcp.json", StringComparison.Ordinal));
+            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), ".codex-plugin/plugin.json", StringComparison.Ordinal));
+            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "run-computer-use-win-mcp.ps1", StringComparison.Ordinal));
+            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "runtime-release.json", StringComparison.Ordinal));
+            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "skills/computer-use-win/SKILL.md", StringComparison.Ordinal));
+            Assert.Contains(archive.Entries, entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "okno-plugin-bundle-manifest.json", StringComparison.Ordinal));
+            Assert.DoesNotContain(archive.Entries, entry => NormalizeArchiveEntryPath(entry.FullName).StartsWith("runtime/", StringComparison.Ordinal));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(outputRoot);
+        }
+    }
+
+    [Fact]
+    public void PackageComputerUseWinPluginReleaseBundleManifestCarriesPluginAndRuntimeCompatibilityMetadata()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string packageScriptPath = Path.Combine(repoRoot, "scripts", "codex", "package-computer-use-win-plugin-release.ps1");
+        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-plugin-release-manifest", Guid.NewGuid().ToString("N"));
+        const string version = "0.1.0";
+
+        try
+        {
+            ScriptInvocationResult result = InvokePowerShellScript(
+                packageScriptPath,
+                repoRoot,
+                startInfo =>
+                {
+                    startInfo.ArgumentList.Add("-Version");
+                    startInfo.ArgumentList.Add(version);
+                    startInfo.ArgumentList.Add("-OutputRoot");
+                    startInfo.ArgumentList.Add(outputRoot);
+                });
+
+            Assert.True(result.ExitCode == 0, $"Plugin release packaging script failed: {result.Stderr}");
+            using JsonDocument payload = JsonDocument.Parse(result.Stdout);
+            string archivePath = payload.RootElement.GetProperty("archivePath").GetString()
+                ?? throw new InvalidOperationException("archivePath missing.");
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            ZipArchiveEntry manifestEntry = archive.Entries.Single(entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), "okno-plugin-bundle-manifest.json", StringComparison.Ordinal));
+            using Stream manifestStream = manifestEntry.Open();
+            using JsonDocument manifest = JsonDocument.Parse(manifestStream);
+
+            Assert.Equal(1, manifest.RootElement.GetProperty("formatVersion").GetInt32());
+            Assert.Equal("computer-use-win", manifest.RootElement.GetProperty("pluginId").GetString());
+            Assert.Equal(version, manifest.RootElement.GetProperty("pluginVersion").GetString());
+            Assert.Equal(version, manifest.RootElement.GetProperty("runtimeVersion").GetString());
+            Assert.Equal("win-x64", manifest.RootElement.GetProperty("runtimeRid").GetString());
+            Assert.Equal($"v{version}", manifest.RootElement.GetProperty("runtimeTag").GetString());
+            Assert.Equal($"okno-computer-use-win-runtime-{version}-win-x64.zip", manifest.RootElement.GetProperty("runtimeAssetName").GetString());
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(outputRoot);
+        }
+    }
+
+    [Fact]
     public void PackageComputerUseWinRuntimeReleaseCreatesVersionedZipAndChecksumWithoutMutatingRuntimeBundle()
     {
         string repoRoot = GetRepositoryRoot();
@@ -120,6 +254,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
         string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-bootstrap", Guid.NewGuid().ToString("N"));
         string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-backed-plugin", Guid.NewGuid().ToString("N"));
+        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-release-bootstrap", Guid.NewGuid().ToString("N"));
         const string version = "0.1.0-test";
 
         EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
@@ -132,7 +267,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             CopyDirectory(sourcePluginRoot, tempPluginRoot, IncludeStablePluginPath);
             DeleteDirectoryIfExists(Path.Combine(tempPluginRoot, "runtime", "win-x64"));
 
-            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, descriptorPath);
+            await using PluginLauncherSession launcher = StartPluginLauncherSession(tempPluginRoot, descriptorPath, codexHome);
             PluginMcpSession session = launcher.CreateMcpSession();
 
             try
@@ -165,8 +300,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 Assert.Contains(ToolNames.ComputerUseWinListApps, toolNames);
                 Assert.Contains(ToolNames.ComputerUseWinGetAppState, toolNames);
                 Assert.Contains(ToolNames.ComputerUseWinClick, toolNames);
-                Assert.True(File.Exists(Path.Combine(tempPluginRoot, "runtime", "win-x64", "Okno.Server.exe")));
-                Assert.True(File.Exists(Path.Combine(tempPluginRoot, "runtime", "win-x64", "okno-runtime-bundle-manifest.json")));
+                string sharedRuntimeRoot = GetExpectedSharedRuntimeRoot(codexHome, "win-x64", version);
+                Assert.True(File.Exists(Path.Combine(sharedRuntimeRoot, "Okno.Server.exe")));
+                Assert.True(File.Exists(Path.Combine(sharedRuntimeRoot, "okno-runtime-bundle-manifest.json")));
             }
             finally
             {
@@ -176,6 +312,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         {
             DeleteDirectoryIfExists(outputRoot);
             DeleteDirectoryIfExists(tempPluginRoot);
+            DeleteDirectoryIfExists(codexHome);
         }
     }
 
@@ -189,6 +326,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string runtimeRoot = Path.Combine(sourcePluginRoot, "runtime", "win-x64");
         string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-bootstrap-fail", Guid.NewGuid().ToString("N"));
         string tempPluginRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "computer-use-win-release-backed-plugin-fail", Guid.NewGuid().ToString("N"));
+        string codexHome = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "codex-home-release-bootstrap-fail", Guid.NewGuid().ToString("N"));
         const string version = "0.1.0-test";
 
         EnsurePublishedRuntimeBundle(repoRoot, publishScriptPath, runtimeRoot);
@@ -206,7 +344,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             CopyDirectory(sourcePluginRoot, tempPluginRoot, IncludeStablePluginPath);
             DeleteDirectoryIfExists(Path.Combine(tempPluginRoot, "runtime", "win-x64"));
 
-            ScriptInvocationResult result = InvokePluginLauncher(tempPluginRoot, descriptorPath);
+            ScriptInvocationResult result = InvokePluginLauncher(tempPluginRoot, descriptorPath, codexHome);
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("sha256", result.Stderr, StringComparison.OrdinalIgnoreCase);
@@ -215,6 +353,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         {
             DeleteDirectoryIfExists(outputRoot);
             DeleteDirectoryIfExists(tempPluginRoot);
+            DeleteDirectoryIfExists(codexHome);
         }
     }
 
@@ -245,9 +384,12 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string runbookPath = Path.Combine(repoRoot, "docs", "runbooks", "computer-use-win-install.md");
         string runbook = File.ReadAllText(runbookPath);
 
-        Assert.Contains("## 1. Codex plugin install", runbook, StringComparison.Ordinal);
-        Assert.Contains("## 2. Generic MCP STDIO install", runbook, StringComparison.Ordinal);
-        Assert.Contains("## 3. Developer from source", runbook, StringComparison.Ordinal);
+        Assert.Contains("## 1. Installer-first Codex install", runbook, StringComparison.Ordinal);
+        Assert.Contains("## 2. Installer-first runtime-only install", runbook, StringComparison.Ordinal);
+        Assert.Contains("## 3. Generic MCP STDIO runtime zip", runbook, StringComparison.Ordinal);
+        Assert.Contains("## 4. Developer from source", runbook, StringComparison.Ordinal);
+        Assert.Contains("Okno Setup.exe", runbook, StringComparison.Ordinal);
+        Assert.Contains("install-computer-use-win.ps1", runbook, StringComparison.Ordinal);
         Assert.Contains("Okno.Server.exe", runbook, StringComparison.Ordinal);
         Assert.Contains("publish-computer-use-win-plugin.ps1", runbook, StringComparison.Ordinal);
     }
@@ -306,7 +448,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     {
         Directory.CreateDirectory(outputRoot);
         string sha256 = sha256Override ?? ComputeFileSha256(archivePath);
-        string descriptorPath = Path.Combine(outputRoot, "runtime-release.override.json");
+        string normalizedVersion = version.Replace('.', '_').Replace('-', '_').Replace('+', '_');
+        string descriptorPath = Path.Combine(outputRoot, $"runtime-release.override.{normalizedVersion}.{rid}.json");
         var descriptor = new
         {
             formatVersion = 1,
@@ -342,6 +485,11 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     {
         using FileStream stream = File.OpenRead(path);
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    private static string NormalizeArchiveEntryPath(string path)
+    {
+        return path.Replace('\\', '/');
     }
 
     private static bool IncludeStablePluginPath(string relativePath)
