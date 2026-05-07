@@ -200,8 +200,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             }
 
             string outputRoot = Path.Combine(paths.TestRoot, "shared-runtime-foundation-release-cache", Guid.NewGuid().ToString("N"));
-            string archivePath = PackageRuntimeRelease(paths.RepoRoot, paths.PackageScriptPath, paths.PluginRuntimeRoot, outputRoot, SharedRuntimeFoundationVersion);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, SharedRuntimeFoundationVersion, archivePath, SharedRuntimeFoundationRid);
+            RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(paths.RepoRoot, paths.PackageScriptPath, paths.PluginRuntimeRoot, outputRoot, SharedRuntimeFoundationVersion);
+            string descriptorPath = runtimePackage.DescriptorPath;
 
             s_cachedSharedRuntimeRelease = new SharedRuntimeRelease(SharedRuntimeFoundationVersion, descriptorPath, outputRoot);
             RegisterCachedSharedRuntimeReleaseCleanup(s_cachedSharedRuntimeRelease);
@@ -238,8 +238,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private static SharedRuntimeRelease CreateRuntimeRelease(SharedRuntimeScenario scenario, string version)
     {
-        string archivePath = PackageRuntimeRelease(scenario.Paths.RepoRoot, scenario.Paths.PackageScriptPath, scenario.Paths.PluginRuntimeRoot, scenario.OutputRoot, version);
-        string descriptorPath = CreateRuntimeReleaseDescriptor(scenario.OutputRoot, version, archivePath, SharedRuntimeFoundationRid);
+        RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(scenario.Paths.RepoRoot, scenario.Paths.PackageScriptPath, scenario.Paths.PluginRuntimeRoot, scenario.OutputRoot, version);
+        string descriptorPath = runtimePackage.DescriptorPath;
 
         return new SharedRuntimeRelease(version, descriptorPath, scenario.OutputRoot);
     }

@@ -15,6 +15,7 @@ public sealed class ComputerUseWinRuntimeStorePaths
         ReceiptsRoot = Path.Combine(RuntimeStoreRoot, "receipts");
         LocksRoot = Path.Combine(RuntimeStoreRoot, "locks");
         CurrentStatePath = Path.Combine(StateRoot, "current-runtime.json");
+        RuntimeLauncherScriptPath = Path.Combine(RuntimeStoreRoot, "run-computer-use-win-runtime.ps1");
     }
 
     public string CodexHome { get; }
@@ -32,6 +33,8 @@ public sealed class ComputerUseWinRuntimeStorePaths
     public string LocksRoot { get; }
 
     public string CurrentStatePath { get; }
+
+    public string RuntimeLauncherScriptPath { get; }
 
     public string GetRuntimeVersionRoot(string rid, string version)
     {

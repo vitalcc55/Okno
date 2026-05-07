@@ -2,6 +2,8 @@ param(
     [Parameter(Mandatory)]
     [string] $Version,
     [string] $Rid = 'win-x64',
+    [Parameter(Mandatory)]
+    [string] $RuntimePackagingResultPath,
     [string] $OutputRoot = ''
 )
 
@@ -12,9 +14,15 @@ if (Get-Variable -Name PSStyle -ErrorAction Ignore) {
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+$commonPath = Join-Path $PSScriptRoot 'computer-use-win-runtime-bundle-common.ps1'
+. $commonPath
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$runtimeDescriptorPath = Resolve-ComputerUseWinRuntimePackagingDescriptorPath `
+    -RuntimePackagingResultPath $RuntimePackagingResultPath `
+    -ExpectedVersion $Version `
+    -ExpectedRid $Rid
 $projectPath = Join-Path $repoRoot 'src\WinBridge.Setup.App\WinBridge.Setup.App.csproj'
-$descriptorPath = Join-Path $repoRoot 'plugins\computer-use-win\runtime-release.json'
 $assetName = "okno-setup-unsigned-$Version-$Rid.zip"
 $checksumFileName = "okno-setup-unsigned-$Version-SHA256SUMS.txt"
 
@@ -38,10 +46,6 @@ if ($Version.StartsWith('v', [System.StringComparison]::OrdinalIgnoreCase)) {
 
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
     throw "Version '$Version' does not match the expected release contract."
-}
-
-if (-not (Test-Path $descriptorPath -PathType Leaf)) {
-    throw "Runtime release descriptor '$descriptorPath' is missing."
 }
 
 function Remove-DirectoryIfExists {
@@ -108,7 +112,7 @@ try {
     }
 
     Copy-Item -Path (Join-Path $publishRoot '*') -Destination $stagingRoot -Recurse -Force
-    Copy-Item -LiteralPath $descriptorPath -Destination (Join-Path $stagingRoot 'runtime-release.json') -Force
+    Copy-Item -LiteralPath $runtimeDescriptorPath -Destination (Join-Path $stagingRoot 'runtime-release.json') -Force
 
     $originalExePath = Join-Path $stagingRoot 'WinBridge.Setup.App.exe'
     $renamedExePath = Join-Path $stagingRoot 'Okno Setup.exe'

@@ -373,13 +373,13 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            string archivePath = PackageRuntimeRelease(
+            RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(
                 repoRoot,
                 packageScriptPath,
                 sourceRuntimeRoot,
                 outputRoot,
                 InstallSurfaceTestRuntimeReleaseVersion);
-            string descriptorPath = CreateRuntimeReleaseDescriptor(outputRoot, InstallSurfaceTestRuntimeReleaseVersion, archivePath, InstallSurfaceRuntimeRid);
+            string descriptorPath = runtimePackage.DescriptorPath;
             CopyDirectory(sourcePluginRoot, tempPluginRoot, IncludeAllInstallSurfaceFiles);
             DeleteInstallSurfacePluginRuntimeFile(tempPluginRoot, InstallSurfaceHostFxrFileName);
 
@@ -1236,6 +1236,11 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         return Path.Combine(GetExpectedSharedRuntimeStoreRoot(codexHome), "state", "current-runtime.json");
     }
 
+    private static string GetExpectedSharedRuntimeLauncherScriptPath(string codexHome)
+    {
+        return Path.Combine(GetExpectedSharedRuntimeStoreRoot(codexHome), "run-computer-use-win-runtime.ps1");
+    }
+
     private static string GetExpectedRuntimeOnlyReceiptPath(string codexHome)
     {
         return Path.Combine(GetExpectedSharedRuntimeStoreRoot(codexHome), "receipts", "runtimeonly.json");
@@ -1374,7 +1379,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         return JsonDocument.Parse(result.Stdout);
     }
 
-    private static string PackageRuntimeRelease(
+    private static RuntimeReleasePackageResult PackageRuntimeRelease(
         string repoRoot,
         string packageScriptPath,
         string runtimeRoot,
@@ -1397,8 +1402,44 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             });
 
         using JsonDocument payload = ParseJsonStdoutOrThrow(result, "Release packaging script");
-        return payload.RootElement.GetProperty("archivePath").GetString()
-            ?? throw new InvalidOperationException("archivePath missing.");
+        return new RuntimeReleasePackageResult(
+            payload.RootElement.GetProperty("archivePath").GetString()
+                ?? throw new InvalidOperationException("archivePath missing."),
+            payload.RootElement.GetProperty("descriptorPath").GetString()
+                ?? throw new InvalidOperationException("descriptorPath missing."),
+            payload.RootElement.GetProperty("resultPath").GetString()
+                ?? throw new InvalidOperationException("resultPath missing."));
+    }
+
+    private static string CreateModifiedRuntimePackagingResult(
+        string outputRoot,
+        string originalResultPath,
+        string? descriptorPathOverride = null,
+        string? downloadUrlOverride = null,
+        string? sha256Override = null,
+        string? ridOverride = null,
+        string? archivePathOverride = null,
+        string? checksumPathOverride = null)
+    {
+        using JsonDocument original = JsonDocument.Parse(File.ReadAllText(originalResultPath));
+        JsonElement root = original.RootElement;
+        string modifiedResultPath = Path.Combine(outputRoot, Guid.NewGuid().ToString("N") + ".runtime-packaging-result.json");
+        File.WriteAllText(
+            modifiedResultPath,
+            JsonSerializer.Serialize(new
+            {
+                version = root.GetProperty("version").GetString(),
+                rid = ridOverride ?? root.GetProperty("rid").GetString(),
+                tag = root.GetProperty("tag").GetString(),
+                assetName = root.GetProperty("assetName").GetString(),
+                archivePath = archivePathOverride ?? root.GetProperty("archivePath").GetString(),
+                checksumPath = checksumPathOverride ?? root.GetProperty("checksumPath").GetString(),
+                descriptorPath = descriptorPathOverride ?? root.GetProperty("descriptorPath").GetString(),
+                resultPath = modifiedResultPath,
+                downloadUrl = downloadUrlOverride ?? root.GetProperty("downloadUrl").GetString(),
+                sha256 = sha256Override ?? root.GetProperty("sha256").GetString(),
+            }));
+        return modifiedResultPath;
     }
 
     private static string GetRepositoryRoot()
@@ -1764,6 +1805,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     }
 
     private sealed record ScriptInvocationResult(int ExitCode, string Stdout, string Stderr);
+
+    private sealed record RuntimeReleasePackageResult(string ArchivePath, string DescriptorPath, string ResultPath);
 
     private sealed record WorkerProbeResult(int ExitCode, string Stdout, string Stderr);
 }

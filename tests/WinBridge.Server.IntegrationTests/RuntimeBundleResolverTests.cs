@@ -216,6 +216,23 @@ public sealed class RuntimeBundleResolverTests
     }
 
     [Fact]
+    public void ResolveWinBridgeVerificationContextFailsClosedWhenArtifactsRootDoesNotContainStagedIntegrationAssembly()
+    {
+        TestRunContext context = CreateRunContext("resolver-verification-context-missing-artifacts");
+        using TemporaryDirectories cleanup = new(context.RunRoot, context.ArtifactsRoot);
+
+        string scriptRoot = cleanup.Add(CodexPath("resolver-tests", Guid.NewGuid().ToString("N")));
+        string scriptPath = Path.Combine(scriptRoot, "resolve-verification-context-missing-artifacts.ps1");
+        WriteVerificationContextProbeScript(scriptRoot, scriptPath, context.ArtifactsRoot);
+
+        ScriptInvocationResult result = InvokePowerShellScript(scriptPath, _ => { });
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("expected staged test artifacts", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(IntegrationTestsDllFileName, result.Stderr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ResolveOknoTestBundleRejectsConflictingExplicitExecutionContext()
     {
         ScriptInvocationResult result = InvokeBundleResolverRaw(

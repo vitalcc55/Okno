@@ -50,6 +50,120 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
+    public void PackageComputerUseWinPluginReleaseEmbedsProvidedRuntimeDescriptor()
+    {
+        ReleasePackagingPackage package = SharedReleasePackagingPluginPackage.Value;
+        Assert.NotNull(package.RuntimeDescriptorPath);
+
+        using ZipArchive archive = ZipFile.OpenRead(package.ArchivePath);
+        using JsonDocument actual = ReadReleasePackagingJsonArchiveEntry(archive, "runtime-release.json");
+        using JsonDocument expected = JsonDocument.Parse(File.ReadAllText(package.RuntimeDescriptorPath!));
+
+        Assert.True(JsonElement.DeepEquals(expected.RootElement, actual.RootElement));
+    }
+
+    [Fact]
+    public void PackageComputerUseWinPluginReleaseRejectsRuntimeDescriptorWithInvalidLaunchMetadata()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string runtimeRoot = GetReleasePackagingRuntimeRoot(repoRoot);
+        string outputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-plugin-release-invalid-descriptor");
+        string runtimeOutputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-plugin-release-invalid-descriptor-runtime");
+
+        EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), runtimeRoot);
+
+        try
+        {
+            RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(
+                repoRoot,
+                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+                runtimeRoot,
+                runtimeOutputRoot,
+                ReleasePackagingPluginVersion);
+            string runtimeDescriptorPath = CreateRuntimeReleaseDescriptor(
+                runtimeOutputRoot,
+                ReleasePackagingPluginVersion,
+                runtimePackage.ArchivePath,
+                ReleasePackagingRuntimeRid,
+                serverExeRelativePathOverride: "Wrong.Server.exe");
+            string runtimeResultPath = CreateModifiedRuntimePackagingResult(runtimeOutputRoot, runtimePackage.ResultPath, descriptorPathOverride: runtimeDescriptorPath);
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-plugin-release.ps1"),
+                repoRoot,
+                startInfo =>
+                {
+                    startInfo.ArgumentList.Add("-Version");
+                    startInfo.ArgumentList.Add(ReleasePackagingPluginVersion);
+                    startInfo.ArgumentList.Add("-RuntimePackagingResultPath");
+                    startInfo.ArgumentList.Add(runtimeResultPath);
+                    startInfo.ArgumentList.Add("-OutputRoot");
+                    startInfo.ArgumentList.Add(outputRoot);
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("serverExeRelativePath", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(outputRoot);
+            DeleteDirectoryIfExists(runtimeOutputRoot);
+        }
+    }
+
+    [Fact]
+    public void PackageComputerUseWinPluginReleaseRejectsUnsupportedRidFromRuntimePackagingResult()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string runtimeRoot = GetReleasePackagingRuntimeRoot(repoRoot);
+        string outputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-plugin-release-unsupported-rid");
+        string runtimeOutputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-plugin-release-unsupported-rid-runtime");
+
+        EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), runtimeRoot);
+
+        try
+        {
+            RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(
+                repoRoot,
+                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+                runtimeRoot,
+                runtimeOutputRoot,
+                ReleasePackagingPluginVersion);
+            string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(
+                runtimeOutputRoot,
+                runtimePackage.DescriptorPath,
+                ridOverride: "win-arm64",
+                assetNameOverride: $"okno-computer-use-win-runtime-{ReleasePackagingPluginVersion}-win-arm64.zip");
+            string mismatchedResultPath = CreateModifiedRuntimePackagingResult(
+                runtimeOutputRoot,
+                runtimePackage.ResultPath,
+                descriptorPathOverride: mismatchedDescriptorPath,
+                ridOverride: "win-arm64");
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-plugin-release.ps1"),
+                repoRoot,
+                startInfo =>
+                {
+                    startInfo.ArgumentList.Add("-Version");
+                    startInfo.ArgumentList.Add(ReleasePackagingPluginVersion);
+                    startInfo.ArgumentList.Add("-RuntimePackagingResultPath");
+                    startInfo.ArgumentList.Add(mismatchedResultPath);
+                    startInfo.ArgumentList.Add("-OutputRoot");
+                    startInfo.ArgumentList.Add(outputRoot);
+                });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("RID", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(outputRoot);
+            DeleteDirectoryIfExists(runtimeOutputRoot);
+        }
+    }
+
+    [Fact]
     public void PackageComputerUseWinPluginReleaseBundleManifestCarriesPluginAndRuntimeCompatibilityMetadata()
     {
         using ZipArchive archive = ZipFile.OpenRead(SharedReleasePackagingPluginPackage.Value.ArchivePath);
@@ -208,7 +322,18 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     private static ReleasePackagingPackage CreateReleasePackagingPluginPackage()
     {
         string repoRoot = GetRepositoryRoot();
+        string runtimeRoot = GetReleasePackagingRuntimeRoot(repoRoot);
         string outputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-plugin-release-package");
+        string runtimeOutputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-plugin-runtime-descriptor");
+
+        EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), runtimeRoot);
+        RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(
+            repoRoot,
+            GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+            runtimeRoot,
+            runtimeOutputRoot,
+            ReleasePackagingPluginVersion);
+        string runtimeDescriptorPath = runtimePackage.DescriptorPath;
 
         return InvokeReleasePackagingPackageScript(
             repoRoot,
@@ -219,9 +344,12 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             {
                 startInfo.ArgumentList.Add("-Version");
                 startInfo.ArgumentList.Add(ReleasePackagingPluginVersion);
+                startInfo.ArgumentList.Add("-RuntimePackagingResultPath");
+                startInfo.ArgumentList.Add(runtimePackage.ResultPath);
                 startInfo.ArgumentList.Add("-OutputRoot");
                 startInfo.ArgumentList.Add(outputRoot);
-            });
+            },
+            runtimeDescriptorPath);
     }
 
     private static ReleasePackagingPackage CreateReleasePackagingRuntimePackage()
@@ -245,7 +373,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string packageScriptPath,
         string sourceRoot,
         string failureContext,
-        Action<ProcessStartInfo> configureStartInfo)
+        Action<ProcessStartInfo> configureStartInfo,
+        string? runtimeDescriptorPath = null)
     {
         string sourceDigestBefore = ComputeDirectoryDigest(sourceRoot);
         ScriptInvocationResult result = InvokePowerShellScript(packageScriptPath, repoRoot, configureStartInfo);
@@ -257,6 +386,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             GetRequiredReleasePackagingJsonString(payload.RootElement, "archivePath"),
             GetRequiredReleasePackagingJsonString(payload.RootElement, "checksumPath"),
             GetRequiredReleasePackagingJsonString(payload.RootElement, "assetName"),
+            GetOptionalReleasePackagingJsonString(payload.RootElement, "descriptorPath") ?? runtimeDescriptorPath,
             sourceDigestBefore,
             ComputeDirectoryDigest(sourceRoot));
     }
@@ -278,7 +408,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string version,
         string archivePath,
         string rid,
-        string? sha256Override = null)
+        string? sha256Override = null,
+        string? serverExeRelativePathOverride = null,
+        string? bundleManifestNameOverride = null)
     {
         Directory.CreateDirectory(outputRoot);
         string sha256 = sha256Override ?? ComputeFileSha256(archivePath);
@@ -293,8 +425,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             assetName = Path.GetFileName(archivePath),
             downloadUrl = new Uri(archivePath).AbsoluteUri,
             sha256,
-            serverExeRelativePath = ReleasePackagingRuntimeServerExeName,
-            bundleManifestName = ReleasePackagingRuntimeBundleManifestName,
+            serverExeRelativePath = serverExeRelativePathOverride ?? ReleasePackagingRuntimeServerExeName,
+            bundleManifestName = bundleManifestNameOverride ?? ReleasePackagingRuntimeBundleManifestName,
         };
 
         File.WriteAllText(descriptorPath, JsonSerializer.Serialize(descriptor));
@@ -381,6 +513,16 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private static string GetRequiredReleasePackagingJsonString(JsonElement json, string propertyName) =>
         json.GetProperty(propertyName).GetString() ?? throw new InvalidOperationException($"{propertyName} missing.");
+
+    private static string? GetOptionalReleasePackagingJsonString(JsonElement json, string propertyName)
+    {
+        if (!json.TryGetProperty(propertyName, out JsonElement value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        return value.GetString();
+    }
 
     private static void AssertReleasePackagingTextContainsAll(string text, params string[] expectedSnippets)
     {
@@ -477,6 +619,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string ArchivePath,
         string ChecksumPath,
         string AssetName,
+        string? RuntimeDescriptorPath,
         string SourceDigestBefore,
         string SourceDigestAfter);
 }

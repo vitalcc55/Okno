@@ -14,11 +14,13 @@ function Get-ComputerUseWinPluginBundleManifestPath {
 function Get-ComputerUseWinPluginBundleMetadata {
     param(
         [Parameter(Mandatory)]
-        [string] $PluginRoot
+        [string] $PluginRoot,
+        [Parameter(Mandatory)]
+        [string] $RuntimeDescriptorPath
     )
 
     $pluginManifestPath = Join-Path $PluginRoot '.codex-plugin\plugin.json'
-    $runtimeReleasePath = Join-Path $PluginRoot 'runtime-release.json'
+    $runtimeReleasePath = [System.IO.Path]::GetFullPath($RuntimeDescriptorPath)
 
     if (-not (Test-Path $pluginManifestPath -PathType Leaf)) {
         throw "Plugin manifest '$pluginManifestPath' is missing."
@@ -75,6 +77,25 @@ function Get-ComputerUseWinPluginBundleMetadata {
         runtimeTag = $runtimeTag
         runtimeAssetName = $runtimeAssetName
     }
+}
+
+function Read-ComputerUseWinPluginManifest {
+    param(
+        [Parameter(Mandatory)]
+        [string] $PluginRoot
+    )
+
+    $pluginManifestPath = Join-Path $PluginRoot '.codex-plugin\plugin.json'
+    if (-not (Test-Path $pluginManifestPath -PathType Leaf)) {
+        throw "Plugin manifest '$pluginManifestPath' is missing."
+    }
+
+    $pluginManifest = Get-Content -Path $pluginManifestPath -Raw | ConvertFrom-Json
+    if ($null -eq $pluginManifest) {
+        throw "Plugin manifest '$pluginManifestPath' is empty."
+    }
+
+    return $pluginManifest
 }
 
 function Test-ComputerUseWinPluginBundleIncludedRelativePath {
@@ -226,19 +247,29 @@ function Publish-ComputerUseWinPluginBundleToDirectory {
         [string] $RepoRoot,
         [Parameter(Mandatory)]
         [string] $DestinationRoot,
-        [string] $PluginSourceRoot = ''
+        [string] $PluginSourceRoot = '',
+        [Parameter(Mandatory)]
+        [string] $RuntimeDescriptorPath
     )
 
     if ([string]::IsNullOrWhiteSpace($PluginSourceRoot)) {
         $PluginSourceRoot = Join-Path $RepoRoot 'plugins\computer-use-win'
     }
 
-    $metadata = Get-ComputerUseWinPluginBundleMetadata -PluginRoot $PluginSourceRoot
+    $pluginManifest = Read-ComputerUseWinPluginManifest -PluginRoot $PluginSourceRoot
+    $expectedRid = Get-ComputerUseWinSupportedPackagingRid
+    Assert-ComputerUseWinRuntimeDescriptorMatchesPackagingArguments `
+        -DescriptorPath $RuntimeDescriptorPath `
+        -Version ([string]$pluginManifest.version) `
+        -Rid $expectedRid
+
+    $metadata = Get-ComputerUseWinPluginBundleMetadata -PluginRoot $PluginSourceRoot -RuntimeDescriptorPath $RuntimeDescriptorPath
 
     Remove-DirectoryIfExists -Path $DestinationRoot
     New-Item -ItemType Directory -Path $DestinationRoot -Force | Out-Null
 
     Copy-ComputerUseWinPluginBundleSourceToDirectory -SourceRoot $PluginSourceRoot -DestinationRoot $DestinationRoot
+    Copy-Item -LiteralPath $RuntimeDescriptorPath -Destination (Join-Path $DestinationRoot 'runtime-release.json') -Force
     Write-ComputerUseWinPluginBundleManifest -RootPath $DestinationRoot -Metadata $metadata
     Assert-ComputerUseWinPluginBundleMatchesManifest -RootPath $DestinationRoot -Description "Published computer-use-win plugin bundle '$DestinationRoot'"
 

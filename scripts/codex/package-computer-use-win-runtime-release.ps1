@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory)]
     [string] $Version,
     [string] $Rid = 'win-x64',
+    [string] $RuntimeDownloadBaseUrl = '',
     [string] $PublishSourceRoot = '',
     [string] $OutputRoot = ''
 )
@@ -27,6 +28,8 @@ $OutputRoot = [System.IO.Path]::GetFullPath($OutputRoot)
 $stagingRoot = Join-Path $OutputRoot ('bundle-' + [Guid]::NewGuid().ToString('N'))
 $archivePath = Join-Path $OutputRoot $assetName
 $checksumPath = Join-Path $OutputRoot $checksumFileName
+$descriptorPath = Join-Path $OutputRoot 'runtime-release.json'
+$resultPath = Join-Path $OutputRoot 'runtime-packaging-result.json'
 
 if ($Rid -ne 'win-x64') {
     throw "Unsupported RID '$Rid'. The first release wave is win-x64-first, even though the contract stays RID-aware."
@@ -68,6 +71,12 @@ if (Test-Path $archivePath -PathType Leaf) {
 if (Test-Path $checksumPath -PathType Leaf) {
     Remove-Item -LiteralPath $checksumPath -Force
 }
+if (Test-Path $descriptorPath -PathType Leaf) {
+    Remove-Item -LiteralPath $descriptorPath -Force
+}
+if (Test-Path $resultPath -PathType Leaf) {
+    Remove-Item -LiteralPath $resultPath -Force
+}
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 
@@ -76,6 +85,33 @@ try {
     Compress-Archive -Path (Join-Path $stagingRoot '*') -DestinationPath $archivePath -CompressionLevel Optimal
     $archiveSha256 = Get-FileSha256 -Path $archivePath
     "$archiveSha256 *$assetName" | Set-Content -Path $checksumPath -Encoding UTF8
+
+    $downloadUrl = if ([string]::IsNullOrWhiteSpace($RuntimeDownloadBaseUrl)) {
+        [Uri]::new([System.IO.Path]::GetFullPath($archivePath)).AbsoluteUri
+    }
+    else {
+        [Uri]::new([Uri]::new($RuntimeDownloadBaseUrl), $assetName).AbsoluteUri
+    }
+
+    Write-ComputerUseWinRuntimeReleaseDescriptor `
+        -DescriptorPath $descriptorPath `
+        -Version $Version `
+        -Rid $Rid `
+        -AssetName $assetName `
+        -DownloadUrl $downloadUrl `
+        -Sha256 $archiveSha256
+
+    [pscustomobject]@{
+        version = $Version
+        rid = $Rid
+        tag = "v$Version"
+        assetName = $assetName
+        archivePath = $archivePath
+        checksumPath = $checksumPath
+        descriptorPath = $descriptorPath
+        downloadUrl = $downloadUrl
+        sha256 = $archiveSha256
+    } | ConvertTo-Json -Depth 6 | Set-Content -Path $resultPath -Encoding UTF8
 }
 finally {
     Remove-DirectoryIfExists -Path $stagingRoot
@@ -88,5 +124,8 @@ finally {
     assetName = $assetName
     archivePath = $archivePath
     checksumPath = $checksumPath
+    descriptorPath = $descriptorPath
+    resultPath = $resultPath
+    downloadUrl = $downloadUrl
     sha256 = $archiveSha256
 } | ConvertTo-Json -Compress

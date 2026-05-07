@@ -15,6 +15,7 @@ public sealed class ComputerUseWinInstallerService
     private const string DefaultMarketplaceName = "okno-local-installed";
     private const string DefaultMarketplaceDisplayName = "Okno: Installed plugins";
     private const string PluginBundleManifestName = "okno-plugin-bundle-manifest.json";
+    private const string RuntimeOnlyLauncherCommand = "powershell.exe";
     private static readonly HttpClient HttpClient = new();
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -86,7 +87,7 @@ public sealed class ComputerUseWinInstallerService
             null,
             null,
             false,
-            BuildRuntimeOnlySnippet(runtimeResult.RuntimeRoot),
+            BuildRuntimeOnlySnippet(),
             storePaths.GetReceiptPath(ComputerUseWinInstallMode.RuntimeOnly),
             receipt.InstalledAtUtc,
             receipt.UpdatedAtUtc);
@@ -125,7 +126,7 @@ public sealed class ComputerUseWinInstallerService
             null,
             null,
             false,
-            BuildRuntimeOnlySnippet(runtimeResult.RuntimeRoot),
+            BuildRuntimeOnlySnippet(),
             storePaths.GetReceiptPath(ComputerUseWinInstallMode.RuntimeOnly),
             receipt.InstalledAtUtc,
             receipt.UpdatedAtUtc);
@@ -164,7 +165,7 @@ public sealed class ComputerUseWinInstallerService
             null,
             null,
             false,
-            BuildRuntimeOnlySnippet(runtimeResult.RuntimeRoot),
+            BuildRuntimeOnlySnippet(),
             storePaths.GetReceiptPath(ComputerUseWinInstallMode.RuntimeOnly),
             receipt.InstalledAtUtc,
             receipt.UpdatedAtUtc);
@@ -203,17 +204,17 @@ public sealed class ComputerUseWinInstallerService
 
     public ComputerUseWinInstallerResult InstallCodex(string? descriptorPathOverride = null)
     {
-        return InstallOrUpdateCodex("install", descriptorPathOverride, allowMarketplaceRewrite: false);
+        return InstallOrUpdateCodex("install", descriptorPathOverride);
     }
 
     public ComputerUseWinInstallerResult UpdateCodex(string? descriptorPathOverride = null)
     {
-        return InstallOrUpdateCodex("update", descriptorPathOverride, allowMarketplaceRewrite: false);
+        return InstallOrUpdateCodex("update", descriptorPathOverride);
     }
 
     public ComputerUseWinInstallerResult RepairCodex(string? descriptorPathOverride = null)
     {
-        return InstallOrUpdateCodex("repair", descriptorPathOverride, allowMarketplaceRewrite: true);
+        return InstallOrUpdateCodex("repair", descriptorPathOverride);
     }
 
     public ComputerUseWinInstallerResult UninstallCodex()
@@ -226,7 +227,8 @@ public sealed class ComputerUseWinInstallerService
             throw new InvalidOperationException($"Personal marketplace file '{marketplacePath}' is missing.");
         }
 
-        RewriteMarketplace(removingPluginEntry: true, allowRewriteMalformed: false, marketplaceNameOverride: receipt.MarketplaceName);
+        PersonalMarketplace marketplace = PrepareMarketplace(removingPluginEntry: true, marketplaceNameOverride: receipt.MarketplaceName, marketplaceSourcePath: null);
+        WriteMarketplace(marketplace);
         DeleteDirectoryIfExists(receipt.PluginSourceRoot ?? pluginSourceRoot);
         DeleteReceipt(ComputerUseWinInstallMode.Codex);
 
@@ -255,7 +257,7 @@ public sealed class ComputerUseWinInstallerService
             DateTimeOffset.UtcNow);
     }
 
-    private ComputerUseWinInstallerResult InstallOrUpdateCodex(string action, string? descriptorPathOverride, bool allowMarketplaceRewrite)
+    private ComputerUseWinInstallerResult InstallOrUpdateCodex(string action, string? descriptorPathOverride)
     {
         ComputerUseWinRuntimeInstallResult runtimeResult = action == "repair"
             ? runtimeFoundation.RepairRuntime(descriptorPathOverride)
@@ -263,9 +265,10 @@ public sealed class ComputerUseWinInstallerService
 
         ComputerUseWinRuntimeReleaseDescriptor runtimeDescriptor = ComputerUseWinRuntimeFoundationService.LoadRuntimeReleaseDescriptor(descriptorPathOverride);
         ComputerUseWinPluginReleaseAsset pluginRelease = ResolvePluginRelease(runtimeDescriptor);
+        string marketplaceSourcePath = BuildMarketplaceSourcePath(pluginSourceRoot);
+        PersonalMarketplace marketplace = PrepareMarketplace(removingPluginEntry: false, marketplaceNameOverride: null, marketplaceSourcePath: marketplaceSourcePath);
         string installedPluginRoot = InstallPluginBundle(pluginRelease);
-        string marketplaceName = RewriteMarketplace(removingPluginEntry: false, allowRewriteMalformed: allowMarketplaceRewrite, marketplaceNameOverride: null);
-        string marketplaceSourcePath = BuildMarketplaceSourcePath(installedPluginRoot);
+        string marketplaceName = WriteMarketplace(marketplace);
         ComputerUseWinInstallReceipt? existingReceipt = TryReadReceipt(ComputerUseWinInstallMode.Codex);
         DateTimeOffset now = DateTimeOffset.UtcNow;
         ComputerUseWinInstallReceipt receipt = WriteReceipt(
@@ -392,10 +395,14 @@ public sealed class ComputerUseWinInstallerService
         string tempDirectory = Path.Combine(storePaths.LocksRoot, "plugin-install-" + Guid.NewGuid().ToString("N"));
         string archivePath = Path.Combine(tempDirectory, pluginRelease.AssetName);
         string extractRoot = Path.Combine(tempDirectory, "extract");
-        string stagingRoot = Path.Combine(tempDirectory, "staging");
-        string backupRoot = Path.Combine(tempDirectory, "backup");
+        string pluginSourceParent = Path.GetDirectoryName(pluginSourceRoot)
+            ?? throw new InvalidOperationException($"Plugin source root '{pluginSourceRoot}' does not have a parent directory.");
+        string deploymentRoot = Path.Combine(pluginSourceParent, ".computer-use-win-deploy-" + Guid.NewGuid().ToString("N"));
+        string stagingRoot = Path.Combine(deploymentRoot, "staging");
+        string backupRoot = Path.Combine(deploymentRoot, "backup");
 
         Directory.CreateDirectory(tempDirectory);
+        Directory.CreateDirectory(pluginSourceParent);
         try
         {
             SaveUriToPath(pluginRelease.ArchiveUri, archivePath);
@@ -408,8 +415,8 @@ public sealed class ComputerUseWinInstallerService
             ZipFile.ExtractToDirectory(archivePath, extractRoot);
             ValidateExtractedPluginBundle(extractRoot, pluginRelease.BundleManifest);
 
+            Directory.CreateDirectory(deploymentRoot);
             CopyDirectory(extractRoot, stagingRoot);
-            Directory.CreateDirectory(Path.GetDirectoryName(pluginSourceRoot)!);
             if (Directory.Exists(pluginSourceRoot))
             {
                 Directory.Move(pluginSourceRoot, backupRoot);
@@ -431,6 +438,7 @@ public sealed class ComputerUseWinInstallerService
         finally
         {
             DeleteDirectoryIfExists(tempDirectory);
+            DeleteDirectoryIfExists(deploymentRoot);
         }
     }
 
@@ -476,22 +484,31 @@ public sealed class ComputerUseWinInstallerService
         }
     }
 
-    private string RewriteMarketplace(bool removingPluginEntry, bool allowRewriteMalformed, string? marketplaceNameOverride)
+    private PersonalMarketplace PrepareMarketplace(bool removingPluginEntry, string? marketplaceNameOverride, string? marketplaceSourcePath)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(marketplacePath)!);
-        PersonalMarketplace marketplace = LoadMarketplace(allowRewriteMalformed, marketplaceNameOverride);
-        string sourcePath = BuildMarketplaceSourcePath(pluginSourceRoot);
+        PersonalMarketplace marketplace = LoadMarketplace(marketplaceNameOverride);
 
         marketplace.Plugins.RemoveAll(entry => string.Equals(entry.Name, PluginId, StringComparison.Ordinal));
         if (!removingPluginEntry)
         {
+            if (string.IsNullOrWhiteSpace(marketplaceSourcePath))
+            {
+                throw new InvalidOperationException("Marketplace source path is required when adding the computer-use-win entry.");
+            }
+
             marketplace.Plugins.Add(new PersonalMarketplacePluginEntry(
                 PluginId,
-                new PersonalMarketplacePluginSource("local", sourcePath),
+                new PersonalMarketplacePluginSource("local", marketplaceSourcePath),
                 new PersonalMarketplacePluginPolicy("AVAILABLE", "ON_INSTALL"),
                 "Productivity"));
         }
 
+        return marketplace;
+    }
+
+    private string WriteMarketplace(PersonalMarketplace marketplace)
+    {
         string tempPath = marketplacePath + ".tmp-" + Guid.NewGuid().ToString("N");
         File.WriteAllText(tempPath, JsonSerializer.Serialize(marketplace, JsonOptions));
         if (File.Exists(marketplacePath))
@@ -503,7 +520,7 @@ public sealed class ComputerUseWinInstallerService
         return marketplace.Name;
     }
 
-    private PersonalMarketplace LoadMarketplace(bool allowRewriteMalformed, string? marketplaceNameOverride)
+    private PersonalMarketplace LoadMarketplace(string? marketplaceNameOverride)
     {
         if (!File.Exists(marketplacePath))
         {
@@ -524,12 +541,7 @@ public sealed class ComputerUseWinInstallerService
         }
         catch (Exception)
         {
-            if (!allowRewriteMalformed)
-            {
-                throw new InvalidOperationException($"Marketplace file '{marketplacePath}' is malformed.");
-            }
-
-            return CreateDefaultMarketplace(marketplaceNameOverride);
+            throw new InvalidOperationException($"Marketplace file '{marketplacePath}' is malformed. Installer will not overwrite unrelated personal marketplace entries automatically.");
         }
     }
 
@@ -618,15 +630,15 @@ public sealed class ComputerUseWinInstallerService
         }
     }
 
-    private static string BuildRuntimeOnlySnippet(string runtimeRoot)
+    private string BuildRuntimeOnlySnippet()
     {
-        string escapedExePath = Path.Combine(runtimeRoot, "Okno.Server.exe").Replace("\\", "\\\\");
+        string escapedLauncherPath = storePaths.RuntimeLauncherScriptPath.Replace("\\", "\\\\");
         return $$"""
 {
   "mcpServers": {
     "computer-use-win": {
-      "command": "{{escapedExePath}}",
-      "args": ["--tool-surface-profile", "computer-use-win"]
+      "command": "{{RuntimeOnlyLauncherCommand}}",
+      "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "{{escapedLauncherPath}}", "--tool-surface-profile", "computer-use-win"]
     }
   }
 }

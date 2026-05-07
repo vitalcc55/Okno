@@ -14,6 +14,40 @@ public sealed class ComputerUseWinRuntimeFoundationService
     private const int StateFormatVersion = 1;
     private const string DefaultServerExeRelativePath = "Okno.Server.exe";
     private const string DefaultBundleManifestName = "okno-runtime-bundle-manifest.json";
+    private const string RuntimeLauncherScriptTemplate = """
+param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]] $RemainingArgs
+)
+
+$ErrorActionPreference = 'Stop'
+if (Get-Variable -Name PSStyle -ErrorAction Ignore) {
+    $PSStyle.OutputRendering = 'PlainText'
+}
+
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$statePath = '__CURRENT_STATE_PATH__'
+$serverExeRelativePath = '__SERVER_EXE_RELATIVE_PATH__'
+
+if (-not (Test-Path $statePath -PathType Leaf)) {
+    throw "Current runtime state file '$statePath' is missing."
+}
+
+$state = Get-Content -Path $statePath -Raw | ConvertFrom-Json
+$runtimeRoot = [string]$state.runtimeRoot
+if ([string]::IsNullOrWhiteSpace($runtimeRoot)) {
+    throw "Current runtime state file '$statePath' does not define runtimeRoot."
+}
+
+$serverExePath = Join-Path $runtimeRoot $serverExeRelativePath
+if (-not (Test-Path $serverExePath -PathType Leaf)) {
+    throw "Resolved runtime executable is missing: $serverExePath"
+}
+
+& $serverExePath @RemainingArgs
+exit $LASTEXITCODE
+""";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -471,7 +505,22 @@ public sealed class ComputerUseWinRuntimeFoundationService
         }
 
         File.Move(tempStatePath, storePaths.CurrentStatePath);
+        WriteRuntimeLauncherScript(descriptor.ServerExeRelativePath);
         return state;
+    }
+
+    private void WriteRuntimeLauncherScript(string serverExeRelativePath)
+    {
+        Directory.CreateDirectory(storePaths.RuntimeStoreRoot);
+        string scriptContent = RuntimeLauncherScriptTemplate
+            .Replace("__CURRENT_STATE_PATH__", EscapePowerShellSingleQuotedString(storePaths.CurrentStatePath), StringComparison.Ordinal)
+            .Replace("__SERVER_EXE_RELATIVE_PATH__", EscapePowerShellSingleQuotedString(serverExeRelativePath), StringComparison.Ordinal);
+        File.WriteAllText(storePaths.RuntimeLauncherScriptPath, scriptContent);
+    }
+
+    private static string EscapePowerShellSingleQuotedString(string value)
+    {
+        return value.Replace("'", "''", StringComparison.Ordinal);
     }
 
     private static bool TryValidateRuntimeRoot(

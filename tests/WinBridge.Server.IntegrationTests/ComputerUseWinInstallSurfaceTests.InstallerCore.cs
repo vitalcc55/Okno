@@ -117,6 +117,80 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         Assert.True(File.Exists(GetExpectedPersonalMarketplacePath(test.UserProfile)));
     }
 
+    [Fact]
+    public void SetupCliRuntimeOnlySnippetStaysStableAcrossRuntimeUpdate()
+    {
+        using SetupCliTestHarness test = CreateRuntimeOnlySetupCliTestHarness("runtime-only-stable-snippet");
+
+        ScriptInvocationResult installResult = test.RunSetupCliJsonWithRuntimeDescriptor("install", "runtime-only");
+        AssertSetupCliSucceeded(installResult, "runtime-only install");
+
+        using JsonDocument installPayload = JsonDocument.Parse(installResult.Stdout);
+        string installSnippet = installPayload.RootElement.GetProperty("snippet").GetString()
+            ?? throw new InvalidOperationException("runtime-only install snippet missing.");
+
+        string repoRoot = GetRepositoryRoot();
+        string outputRoot = Path.Combine(repoRoot, ".tmp", ".codex", "tests", "runtime-only-stable-snippet-update", Guid.NewGuid().ToString("N"));
+        RuntimeReleasePackageResult updatedRuntimePackage = PackageRuntimeRelease(
+            repoRoot,
+            GetRuntimePackageScriptPath(repoRoot),
+            SharedPublishedRuntimeBundle.Value.RuntimeRoot,
+            outputRoot,
+            "0.1.1-test");
+
+        try
+        {
+            ScriptInvocationResult updateResult = test.RunSetupCliJsonWithDescriptorPath(updatedRuntimePackage.DescriptorPath, "update", "runtime-only");
+            AssertSetupCliSucceeded(updateResult, "runtime-only update");
+
+            using JsonDocument updatePayload = JsonDocument.Parse(updateResult.Stdout);
+            string updateSnippet = updatePayload.RootElement.GetProperty("snippet").GetString()
+                ?? throw new InvalidOperationException("runtime-only update snippet missing.");
+            Assert.Equal(installSnippet, updateSnippet);
+
+            using JsonDocument snippetJson = JsonDocument.Parse(updateSnippet);
+            JsonElement server = snippetJson.RootElement.GetProperty("mcpServers").GetProperty("computer-use-win");
+            Assert.Equal("powershell.exe", server.GetProperty("command").GetString());
+
+            string expectedLauncherPath = GetExpectedSharedRuntimeLauncherScriptPath(test.CodexHome);
+            string[] args = server.GetProperty("args").EnumerateArray().Select(static value => value.GetString() ?? string.Empty).ToArray();
+            Assert.Contains(expectedLauncherPath, args, StringComparer.Ordinal);
+            Assert.DoesNotContain("0.1.0", updateSnippet, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.1.1-test", updateSnippet, StringComparison.Ordinal);
+            Assert.True(File.Exists(expectedLauncherPath));
+
+            string launcherScript = File.ReadAllText(expectedLauncherPath);
+            Assert.Contains("current-runtime.json", launcherScript, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.1.0", launcherScript, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.1.1-test", launcherScript, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(outputRoot);
+        }
+    }
+
+    [Fact]
+    public void SetupCliRepairCodexFailsClosedWhenMarketplaceIsMalformed()
+    {
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("repair-codex-malformed-marketplace");
+
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex"), "codex install");
+
+        string marketplacePath = GetExpectedPersonalMarketplacePath(test.UserProfile);
+        const string malformedMarketplace = "{ invalid json";
+        File.WriteAllText(marketplacePath, malformedMarketplace);
+        DeleteDirectoryIfExists(GetExpectedInstalledPluginRoot(test.CodexHome));
+
+        ScriptInvocationResult repairResult = test.RunSetupCliJsonWithRuntimeDescriptor("repair", "codex");
+
+        Assert.NotEqual(0, repairResult.ExitCode);
+        using JsonDocument payload = JsonDocument.Parse(repairResult.Stdout);
+        Assert.Contains("malformed", payload.RootElement.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(malformedMarketplace, File.ReadAllText(marketplacePath));
+        Assert.False(Directory.Exists(GetExpectedInstalledPluginRoot(test.CodexHome)));
+    }
+
     private static SetupCliTestHarness CreateRuntimeOnlySetupCliTestHarness(string scenarioName) => CreateSetupCliTestHarness(SharedRuntimeOnlyRelease.Value, scenarioName);
 
     private static SetupCliTestHarness CreateCodexSetupCliTestHarness(string scenarioName) => CreateSetupCliTestHarness(SharedCodexRelease.Value, scenarioName);
@@ -159,18 +233,14 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             string runtimeDescriptorPath;
             lock (ReleasePackagingGate)
             {
-                string runtimeArchivePath = PackageRuntimeRelease(
+                RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(
                     runtimeBundle.RepoRoot,
                     GetRuntimePackageScriptPath(runtimeBundle.RepoRoot),
                     runtimeBundle.RuntimeRoot,
                     outputRoot,
                     SetupCliReleaseVersion);
 
-                runtimeDescriptorPath = CreateRuntimeReleaseDescriptor(
-                    outputRoot,
-                    SetupCliReleaseVersion,
-                    runtimeArchivePath,
-                    WindowsRuntimeIdentifier);
+                runtimeDescriptorPath = runtimePackage.DescriptorPath;
 
                 if (packagePluginRelease)
                 {
@@ -178,7 +248,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                         runtimeBundle.RepoRoot,
                         GetPluginPackageScriptPath(runtimeBundle.RepoRoot),
                         outputRoot,
-                        SetupCliReleaseVersion);
+                        SetupCliReleaseVersion,
+                        runtimePackage.ResultPath);
                 }
             }
 
@@ -213,7 +284,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         };
     }
 
-    private static string PackagePluginRelease(string repoRoot, string packageScriptPath, string outputRoot, string version)
+    private static string PackagePluginRelease(string repoRoot, string packageScriptPath, string outputRoot, string version, string runtimePackagingResultPath)
     {
         ScriptInvocationResult result = InvokePowerShellScript(
             packageScriptPath,
@@ -222,6 +293,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             {
                 startInfo.ArgumentList.Add("-Version");
                 startInfo.ArgumentList.Add(version);
+                startInfo.ArgumentList.Add("-RuntimePackagingResultPath");
+                startInfo.ArgumentList.Add(runtimePackagingResultPath);
                 startInfo.ArgumentList.Add("-OutputRoot");
                 startInfo.ArgumentList.Add(outputRoot);
             });
@@ -257,6 +330,12 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         public ScriptInvocationResult RunSetupCliJsonWithRuntimeDescriptor(params string[] command)
         {
             string[] args = [.. command, "--descriptor-path", _release.RuntimeDescriptorPath, "--json"];
+            return RunSetupCli(args);
+        }
+
+        public ScriptInvocationResult RunSetupCliJsonWithDescriptorPath(string descriptorPath, params string[] command)
+        {
+            string[] args = [.. command, "--descriptor-path", descriptorPath, "--json"];
             return RunSetupCli(args);
         }
 

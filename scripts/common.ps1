@@ -1092,6 +1092,10 @@ function Resolve-WinBridgeVerificationContext {
         }
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($artifactsRoot)) {
+        throw "Verification context expected staged test artifacts under '$artifactsRoot', but '$TestProjectName.dll' was not found there. Run scripts/build.ps1 first or rebuild the staged artifacts before using --no-build verification paths."
+    }
+
     $defaultTestAssemblyContext = Get-WinBridgeTestAssemblyForConfiguration `
         -Root (Join-Path $resolvedRepoRoot "tests\\$TestProjectName\\bin") `
         -Filter "$TestProjectName.dll" `

@@ -51,17 +51,20 @@ jobs:
         id: package_runtime
         shell: pwsh
         run: |
-          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-runtime-release.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64"
+          $releaseBaseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/"
+          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-runtime-release.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64" -RuntimeDownloadBaseUrl $releaseBaseUrl
           $json = $payload | ConvertFrom-Json
           "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "asset_name=$($json.assetName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "descriptor_path=$($json.descriptorPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "result_path=$($json.resultPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Package plugin release asset
         id: package_plugin
         shell: pwsh
         run: |
-          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-plugin-release.ps1 -Version "${{ steps.version.outputs.version }}"
+          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-plugin-release.ps1 -Version "${{ steps.version.outputs.version }}" -RuntimePackagingResultPath "${{ steps.package_runtime.outputs.result_path }}"
           $json = $payload | ConvertFrom-Json
           "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -71,7 +74,7 @@ jobs:
         id: package_setup_payload
         shell: pwsh
         run: |
-          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-setup-cli-payload.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64"
+          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-setup-cli-payload.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64" -RuntimePackagingResultPath "${{ steps.package_runtime.outputs.result_path }}"
           $json = $payload | ConvertFrom-Json
           "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -81,7 +84,7 @@ jobs:
         id: package_setup_app
         shell: pwsh
         run: |
-          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-okno-setup-app-release.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64"
+          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-okno-setup-app-release.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64" -RuntimePackagingResultPath "${{ steps.package_runtime.outputs.result_path }}"
           $json = $payload | ConvertFrom-Json
           "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append

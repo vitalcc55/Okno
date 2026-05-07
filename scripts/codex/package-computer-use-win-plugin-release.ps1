@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory)]
     [string] $Version,
+    [Parameter(Mandatory)]
+    [string] $RuntimePackagingResultPath,
     [string] $PluginSourceRoot = '',
     [string] $OutputRoot = ''
 )
@@ -15,6 +17,10 @@ if (Get-Variable -Name PSStyle -ErrorAction Ignore) {
 . (Join-Path $PSScriptRoot 'computer-use-win-plugin-bundle-common.ps1')
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$runtimeDescriptorPath = Resolve-ComputerUseWinRuntimePackagingDescriptorPath `
+    -RuntimePackagingResultPath $RuntimePackagingResultPath `
+    -ExpectedVersion $Version `
+    -ExpectedRid 'win-x64'
 $assetName = "okno-computer-use-win-plugin-$Version.zip"
 $checksumFileName = "okno-computer-use-win-plugin-$Version-SHA256SUMS.txt"
 
@@ -67,7 +73,11 @@ New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 
 try {
-    $metadata = Publish-ComputerUseWinPluginBundleToDirectory -RepoRoot $repoRoot -DestinationRoot $stagingRoot -PluginSourceRoot $PluginSourceRoot
+    $metadata = Publish-ComputerUseWinPluginBundleToDirectory `
+        -RepoRoot $repoRoot `
+        -DestinationRoot $stagingRoot `
+        -PluginSourceRoot $PluginSourceRoot `
+        -RuntimeDescriptorPath $runtimeDescriptorPath
     if ($metadata.pluginVersion -ne $Version) {
         throw "Requested version '$Version' does not match plugin manifest version '$($metadata.pluginVersion)'."
     }

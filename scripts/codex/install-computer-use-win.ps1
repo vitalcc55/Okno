@@ -3,8 +3,10 @@
     [string] $Mode = '',
     [string] $DescriptorPath = '',
     [string] $PayloadArchivePath = '',
+    [string] $PayloadChecksumPath = '',
     [string] $PayloadRoot = '',
     [string] $Rid = 'win-x64',
+    [switch] $UnsafeSkipIntegrityCheck,
     [switch] $Silent,
     [switch] $Json
 )
@@ -96,6 +98,8 @@ function Resolve-PayloadInfo {
     param(
         [string] $DescriptorPathOverride,
         [string] $PayloadArchiveOverride,
+        [string] $PayloadChecksumOverride,
+        [switch] $AllowUnsafeSkipIntegrityCheck,
         [string] $TargetRid
     )
 
@@ -105,10 +109,33 @@ function Resolve-PayloadInfo {
             throw "Setup payload archive '$fullArchivePath' is missing."
         }
 
+        $expectedSha256 = $null
+        if (-not $AllowUnsafeSkipIntegrityCheck) {
+            $assetName = [System.IO.Path]::GetFileName($fullArchivePath)
+            $checksumPath = if (-not [string]::IsNullOrWhiteSpace($PayloadChecksumOverride)) {
+                [System.IO.Path]::GetFullPath($PayloadChecksumOverride)
+            }
+            else {
+                $expectedSuffix = "-$TargetRid.zip"
+                if (-not $assetName.EndsWith($expectedSuffix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    throw "Setup payload archive '$fullArchivePath' does not match the expected '$TargetRid' asset naming contract. Pass -PayloadChecksumPath explicitly or use -UnsafeSkipIntegrityCheck for a dev-only override."
+                }
+
+                $checksumName = $assetName.Substring(0, $assetName.Length - $expectedSuffix.Length) + '-SHA256SUMS.txt'
+                Join-Path (Split-Path -Parent $fullArchivePath) $checksumName
+            }
+
+            if (-not (Test-Path $checksumPath -PathType Leaf)) {
+                throw "Setup payload checksum '$checksumPath' is missing. Supply -PayloadChecksumPath or use -UnsafeSkipIntegrityCheck for a dev-only override."
+            }
+
+            $expectedSha256 = Get-ChecksumValue -ChecksumPath $checksumPath -AssetName $assetName
+        }
+
         return [pscustomobject]@{
             ArchivePath = $fullArchivePath
             ArchiveUri = $null
-            ExpectedSha256 = $null
+            ExpectedSha256 = $expectedSha256
             AssetName = [System.IO.Path]::GetFileName($fullArchivePath)
         }
     }
@@ -197,11 +224,17 @@ function Resolve-PayloadRoot {
     param(
         [string] $DescriptorPathOverride,
         [string] $PayloadArchiveOverride,
+        [string] $PayloadChecksumOverride,
         [string] $PayloadRootOverride,
+        [switch] $AllowUnsafeSkipIntegrityCheck,
         [string] $TargetRid
     )
 
     if (-not [string]::IsNullOrWhiteSpace($PayloadRootOverride)) {
+        if (-not $AllowUnsafeSkipIntegrityCheck) {
+            throw "Setup payload root override '$PayloadRootOverride' is a dev-only path. Pass -UnsafeSkipIntegrityCheck to use an unpacked payload root."
+        }
+
         $fullPayloadRoot = [System.IO.Path]::GetFullPath($PayloadRootOverride)
         if (-not (Test-Path $fullPayloadRoot -PathType Container)) {
             throw "Setup payload root '$fullPayloadRoot' is missing."
@@ -213,7 +246,12 @@ function Resolve-PayloadRoot {
         }
     }
 
-    $payloadInfo = Resolve-PayloadInfo -DescriptorPathOverride $DescriptorPathOverride -PayloadArchiveOverride $PayloadArchiveOverride -TargetRid $TargetRid
+    $payloadInfo = Resolve-PayloadInfo `
+        -DescriptorPathOverride $DescriptorPathOverride `
+        -PayloadArchiveOverride $PayloadArchiveOverride `
+        -PayloadChecksumOverride $PayloadChecksumOverride `
+        -AllowUnsafeSkipIntegrityCheck:$AllowUnsafeSkipIntegrityCheck `
+        -TargetRid $TargetRid
     $archivePath = $payloadInfo.ArchivePath
     $temporaryArchiveRoot = $null
     if ($null -eq $archivePath) {
@@ -245,7 +283,13 @@ function Resolve-PayloadRoot {
 }
 
 $resolvedMode = Resolve-Mode -CurrentMode $Mode -SilentMode:$Silent
-$payload = Resolve-PayloadRoot -DescriptorPathOverride $DescriptorPath -PayloadArchiveOverride $PayloadArchivePath -PayloadRootOverride $PayloadRoot -TargetRid $Rid
+$payload = Resolve-PayloadRoot `
+    -DescriptorPathOverride $DescriptorPath `
+    -PayloadArchiveOverride $PayloadArchivePath `
+    -PayloadChecksumOverride $PayloadChecksumPath `
+    -PayloadRootOverride $PayloadRoot `
+    -AllowUnsafeSkipIntegrityCheck:$UnsafeSkipIntegrityCheck `
+    -TargetRid $Rid
 
 try {
     $setupExePath = Join-Path $payload.Root 'WinBridge.Setup.Cli.exe'
