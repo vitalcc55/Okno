@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="WinBridge.Setup.App.Views.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <ScrollViewer>
+        <Grid
+            x:Name="LayoutRoot"
+            Padding="28,20,28,28"
+            RowSpacing="18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" ColumnSpacing="24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Spacing="6">
+                    <TextBlock x:Name="MainTitleTextBlock" FontSize="34" FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="MainSubtitleTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel
+                    Grid.Column="1"
+                    HorizontalAlignment="Right"
+                    Spacing="6">
+                    <TextBlock
+                        x:Name="LanguageLabelTextBlock"
+                        FontWeight="SemiBold"
+                        HorizontalAlignment="Left" />
+                    <ComboBox
+                        x:Name="LanguageComboBox"
+                        HorizontalAlignment="Stretch"
+                        MinWidth="160"
+                        SelectionChanged="OnLanguageSelectionChanged" />
+                </StackPanel>
+            </Grid>
+
+            <StackPanel
+                x:Name="StatusPanel"
+                Grid.Row="1"
+                Spacing="6">
+                <TextBlock x:Name="StatusTitleTextBlock" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock
+                    x:Name="StatusDetailTextBlock"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Spacing="14">
+                <TextBlock x:Name="InstallModeSectionTitleTextBlock" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock
+                    x:Name="InstallModeSectionDescriptionTextBlock"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+
+                <RadioButton
+                    x:Name="CodexModeRadioButton"
+                    GroupName="InstallMode"
+                    IsChecked="True" />
+                <TextBlock
+                    x:Name="CodexModeDescriptionTextBlock"
+                    Margin="32,0,0,0"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+
+                <RadioButton
+                    x:Name="RuntimeOnlyModeRadioButton"
+                    GroupName="InstallMode"
+                    />
+                <TextBlock
+                    x:Name="RuntimeOnlyModeDescriptionTextBlock"
+                    Margin="32,0,0,0"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="3" Spacing="12">
+                <TextBlock x:Name="ModeSummarySectionTitleTextBlock" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock x:Name="ModeSummaryTitleTextBlock" FontWeight="SemiBold" />
+                <TextBlock
+                    x:Name="ModeSummaryDetailTextBlock"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+
+                <Grid ColumnSpacing="16" RowSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock x:Name="CodexHomeLabelTextBlock" Grid.Row="0" Grid.Column="0" FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="CodexHomeTextBlock"
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        FontFamily="Cascadia Code"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock x:Name="RuntimeStoreLabelTextBlock" Grid.Row="1" Grid.Column="0" FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="RuntimeStoreTextBlock"
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        FontFamily="Cascadia Code"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock
+                        x:Name="PluginRootLabelTextBlock"
+                        Grid.Row="2"
+                        Grid.Column="0"
+                        FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="PluginRootTextBlock"
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        FontFamily="Cascadia Code"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock
+                        x:Name="MarketplaceLabelTextBlock"
+                        Grid.Row="3"
+                        Grid.Column="0"
+                        FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="MarketplaceTextBlock"
+                        Grid.Row="3"
+                        Grid.Column="1"
+                        FontFamily="Cascadia Code"
+                        TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+
+            <StackPanel Grid.Row="4" Spacing="16">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        x:Name="FooterHintTextBlock"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+
+                    <StackPanel
+                        Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal"
+                        Spacing="12">
+                        <ProgressRing x:Name="InstallProgressRing" IsActive="False" Visibility="Collapsed" />
+                        <Button
+                            x:Name="InstallButton"
+                            Click="OnInstallClicked"
+                            MinWidth="170" />
+                    </StackPanel>
+                </Grid>
+
+                <CommandBar
+                    x:Name="MaintenanceCommandBar"
+                    DefaultLabelPosition="Right"
+                    OverflowButtonVisibility="Collapsed">
+                    <AppBarButton
+                        x:Name="RepairAppBarButton"
+                        Click="OnRepairClicked" />
+                    <AppBarButton
+                        x:Name="RemoveAppBarButton"
+                        Click="OnRemoveClicked" />
+                </CommandBar>
+
+                <StackPanel x:Name="ResultPanel" Spacing="8" Visibility="Collapsed">
+                    <TextBlock x:Name="ResultTitleTextBlock" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="ResultMessageTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                    <TextBlock x:Name="RuntimePathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" />
+                    <TextBlock x:Name="PluginPathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" Visibility="Collapsed" />
+                    <TextBlock x:Name="MarketplacePathTextBlock" FontFamily="Cascadia Code" TextWrapping="Wrap" Visibility="Collapsed" />
+                    <StackPanel x:Name="SnippetPanel" Spacing="8" Visibility="Collapsed">
+                        <TextBlock x:Name="SnippetTitleTextBlock" FontWeight="SemiBold" />
+                        <TextBox
+                            x:Name="SnippetTextBox"
+                            AcceptsReturn="True"
+                            FontFamily="Cascadia Code"
+                            IsReadOnly="True"
+                            MinHeight="140"
+                            TextWrapping="Wrap" />
+                        <Button
+                            x:Name="CopySnippetButton"
+                            Click="OnCopySnippetClicked"
+                            HorizontalAlignment="Left" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

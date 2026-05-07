@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025–2026 Власов Виталий Андреевич <vital.cc55@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using ModelContextProtocol.Protocol;
-using System.Text.Json;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Session;
@@ -17,6 +17,8 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed class WindowSessionToolTests
 {
+    private const string RunId = "window-session-tests";
+
     [Fact]
     public void AttachWindowReturnsFailedWhenSelectorIsMissing()
     {
@@ -24,10 +26,7 @@ public sealed class WindowSessionToolTests
 
         AttachWindowResult result = tools.AttachWindow();
 
-        Assert.Equal("failed", result.Status);
-        Assert.Contains("Нужно указать хотя бы один селектор", result.Reason, StringComparison.Ordinal);
-        Assert.Null(result.AttachedWindow);
-        Assert.Equal("desktop", result.Session.Mode);
+        AssertAttachFailed(result, "Нужно указать хотя бы один селектор", sessionMode: "desktop");
     }
 
     [Fact]
@@ -53,16 +52,11 @@ public sealed class WindowSessionToolTests
     {
         WindowTools tools = CreateTools(
             windows: [CreateWindow()],
-            titlePatternsThatTimeout: new HashSet<string>(StringComparer.Ordinal)
-            {
-                "timeout-pattern",
-            });
+            titlePatternsThatTimeout: new HashSet<string>(StringComparer.Ordinal) { "timeout-pattern" });
 
         AttachWindowResult result = tools.AttachWindow(titlePattern: "timeout-pattern");
 
-        Assert.Equal("failed", result.Status);
-        Assert.Contains("превысил допустимое время", result.Reason, StringComparison.Ordinal);
-        Assert.Null(result.AttachedWindow);
+        AssertAttachFailed(result, "превысил допустимое время");
     }
 
     [Fact]
@@ -81,19 +75,13 @@ public sealed class WindowSessionToolTests
     [Fact]
     public void ListMonitorsReturnsConfiguredMonitorInventory()
     {
-        IReadOnlyList<MonitorInfo> monitors =
-        [
-            WindowToolTestData.CreateMonitor(
-                monitorId: "display-source:0000000100000000:1",
-                friendlyName: "Primary monitor",
-                handle: 501),
-            WindowToolTestData.CreateMonitor(
-                monitorId: "display-source:0000000100000000:2",
-                friendlyName: "Secondary monitor",
-                isPrimary: false,
-                handle: 502),
-        ];
-        WindowTools tools = CreateTools(windows: [], monitors: monitors);
+        WindowTools tools = CreateTools(
+            windows: [],
+            monitors:
+            [
+                WindowToolTestData.CreateMonitor(monitorId: "display-source:0000000100000000:1", friendlyName: "Primary monitor", handle: 501),
+                WindowToolTestData.CreateMonitor(monitorId: "display-source:0000000100000000:2", friendlyName: "Secondary monitor", isPrimary: false, handle: 502),
+            ]);
 
         ListMonitorsResult result = tools.ListMonitors();
 
@@ -106,34 +94,25 @@ public sealed class WindowSessionToolTests
     [Fact]
     public async Task ActivateWindowRejectsExplicitHwndWithoutAttachedIdentity()
     {
-        WindowDescriptor targetWindow = CreateWindow(hwnd: 350, title: "Activatable");
-        WindowTools tools = CreateTools(windows: [targetWindow]);
+        WindowTools tools = CreateTools(windows: [CreateWindow(hwnd: 350, title: "Activatable")]);
 
         CallToolResult result = await tools.ActivateWindow();
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("сначала прикрепи окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(ActivationFailureKindValues.MissingTarget, payload.GetProperty("failureKind").GetString());
+        JsonElement payload = AssertToolError(result, "failed");
+        Assert.Contains("сначала прикрепи окно", JsonString(payload, "reason"), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ActivationFailureKindValues.MissingTarget, JsonString(payload, "failureKind"));
     }
 
     [Fact]
     public async Task ActivateWindowUsesAttachedWindowWhenHwndIsMissing()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 351, title: "Attached");
-        FakeWindowActivationService activationService = new(
-            target => ActivateWindowResult.Done(target, wasMinimized: false, isForeground: true));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            activationService: activationService);
+        FakeWindowActivationService activationService = new(target => ActivateWindowResult.Done(target, wasMinimized: false, isForeground: true));
+        WindowTools tools = CreateTools(windows: [attachedWindow], attachedWindow: attachedWindow, activationService: activationService);
 
         CallToolResult result = await tools.ActivateWindow();
 
-        Assert.False(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("done", payload.GetProperty("status").GetString());
+        AssertToolSuccess(result, "done");
         Assert.Equal(attachedWindow.Hwnd, activationService.LastHwnd);
     }
 
@@ -148,19 +127,14 @@ public sealed class WindowSessionToolTests
                 wasMinimized: true,
                 isForeground: false,
                 failureKind: ActivationFailureKindValues.ForegroundNotConfirmed));
-        WindowTools tools = CreateTools(
-            windows: [targetWindow],
-            attachedWindow: targetWindow,
-            activationService: activationService);
+        WindowTools tools = CreateTools(windows: [targetWindow], attachedWindow: targetWindow, activationService: activationService);
 
         CallToolResult result = await tools.ActivateWindow();
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("ambiguous", payload.GetProperty("status").GetString());
+        JsonElement payload = AssertToolError(result, "ambiguous");
         Assert.True(payload.GetProperty("wasMinimized").GetBoolean());
         Assert.False(payload.GetProperty("isForeground").GetBoolean());
-        Assert.Equal(ActivationFailureKindValues.ForegroundNotConfirmed, payload.GetProperty("failureKind").GetString());
+        Assert.Equal(ActivationFailureKindValues.ForegroundNotConfirmed, JsonString(payload, "failureKind"));
     }
 
     [Fact]
@@ -170,117 +144,84 @@ public sealed class WindowSessionToolTests
 
         CallToolResult result = await tools.ActivateWindow();
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("сначала прикрепи окно", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(ActivationFailureKindValues.MissingTarget, payload.GetProperty("failureKind").GetString());
+        JsonElement payload = AssertToolError(result, "failed");
+        Assert.Contains("сначала прикрепи окно", JsonString(payload, "reason"), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ActivationFailureKindValues.MissingTarget, JsonString(payload, "failureKind"));
         Assert.False(payload.TryGetProperty("window", out _));
     }
 
     [Fact]
     public async Task ActivateWindowReturnsFailedWhenAttachedWindowIdentityIsReused()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 360, title: "Original", processId: 123, threadId: 900, className: "MainWindow");
-        WindowDescriptor reusedLiveWindow = CreateWindow(hwnd: 360, title: "Different", processId: 123, threadId: 901, className: "MainWindow");
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 360, title: "Original", threadId: 900, className: "MainWindow");
+        WindowDescriptor reusedLiveWindow = attachedWindow with { Title = "Different", ThreadId = 901 };
         FakeWindowActivationService activationService = new(
             _ => throw new InvalidOperationException("Activation service should not be called for reused attached HWND."));
-        WindowTools tools = CreateTools(
-            windows: [reusedLiveWindow],
-            attachedWindow: attachedWindow,
-            activationService: activationService);
+        WindowTools tools = CreateTools(windows: [reusedLiveWindow], attachedWindow: attachedWindow, activationService: activationService);
 
         CallToolResult result = await tools.ActivateWindow();
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal("failed", payload.GetProperty("status").GetString());
-        Assert.Contains("identity", payload.GetProperty("reason").GetString(), StringComparison.Ordinal);
-        Assert.Equal(ActivationFailureKindValues.IdentityChanged, payload.GetProperty("failureKind").GetString());
+        JsonElement payload = AssertToolError(result, "failed");
+        Assert.Contains("identity", JsonString(payload, "reason"), StringComparison.Ordinal);
+        Assert.Equal(ActivationFailureKindValues.IdentityChanged, JsonString(payload, "failureKind"));
     }
 
     [Fact]
     public void AttachWindowReturnsFailedWhenWindowIdentityIsIncomplete()
     {
-        WindowDescriptor weakIdentityWindow = CreateWindow(hwnd: 304, title: "Weak identity") with
-        {
-            ProcessId = null,
-        };
+        WindowDescriptor weakIdentityWindow = CreateWindow(hwnd: 304, title: "Weak identity") with { ProcessId = null };
         WindowTools tools = CreateTools(windows: [weakIdentityWindow]);
 
         AttachWindowResult result = tools.AttachWindow(hwnd: weakIdentityWindow.Hwnd);
 
-        Assert.Equal("failed", result.Status);
-        Assert.Contains("отсутствует ProcessId", result.Reason, StringComparison.Ordinal);
-        Assert.Null(result.AttachedWindow);
-        Assert.Equal("desktop", result.Session.Mode);
+        AssertAttachFailed(result, "отсутствует ProcessId", sessionMode: "desktop");
     }
 
     [Fact]
     public void FocusWindowUsesExplicitHwndWhenAvailable()
     {
         WindowDescriptor targetWindow = CreateWindow(hwnd: 401, title: "Focus target");
-        TestContext context = CreateContext(
-            windows: [targetWindow],
-            focusResults: new Dictionary<long, bool> { [targetWindow.Hwnd] = true });
+        TestContext context = CreateContext(windows: [targetWindow], focusResults: FocusResultFor(targetWindow));
 
         SessionSnapshot before = context.SessionManager.GetSnapshot();
         FocusWindowResult result = context.Tools.FocusWindow(hwnd: targetWindow.Hwnd);
         SessionSnapshot after = context.SessionManager.GetSnapshot();
 
-        Assert.Equal("done", result.Status);
-        Assert.Equal(targetWindow.Hwnd, result.Window?.Hwnd);
+        AssertFocusDone(result, targetWindow);
         Assert.Equal(before, after);
     }
 
     [Fact]
     public void FocusWindowUsesExplicitHwndEvenWhenStableIdentitySignalsAreMissing()
     {
-        WindowDescriptor targetWindow = CreateWindow(hwnd: 401, title: "Weak explicit") with
-        {
-            ProcessId = null,
-            ThreadId = null,
-            ClassName = null,
-        };
-        TestContext context = CreateContext(
-            windows: [targetWindow],
-            focusResults: new Dictionary<long, bool> { [targetWindow.Hwnd] = true });
+        WindowDescriptor targetWindow = CreateWindow(hwnd: 401, title: "Weak explicit") with { ProcessId = null, ThreadId = null, ClassName = null };
+        TestContext context = CreateContext(windows: [targetWindow], focusResults: FocusResultFor(targetWindow));
 
         FocusWindowResult result = context.Tools.FocusWindow(hwnd: targetWindow.Hwnd);
 
-        Assert.Equal("done", result.Status);
-        Assert.Equal(targetWindow.Hwnd, result.Window?.Hwnd);
+        AssertFocusDone(result, targetWindow);
     }
 
     [Fact]
     public void FocusWindowUsesAttachedWindowWhenHwndIsMissing()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 402, title: "Attached target");
-        TestContext context = CreateContext(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            focusResults: new Dictionary<long, bool> { [attachedWindow.Hwnd] = true });
+        TestContext context = CreateContext(windows: [attachedWindow], attachedWindow: attachedWindow, focusResults: FocusResultFor(attachedWindow));
 
         FocusWindowResult result = context.Tools.FocusWindow();
 
-        Assert.Equal("done", result.Status);
-        Assert.Equal(attachedWindow.Hwnd, result.Window?.Hwnd);
+        AssertFocusDone(result, attachedWindow);
     }
 
     [Fact]
     public void FocusWindowDoesNotFallbackToAttachedWindowForExplicitZeroHwnd()
     {
         WindowDescriptor attachedWindow = CreateWindow(hwnd: 402, title: "Attached target");
-        TestContext context = CreateContext(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            focusResults: new Dictionary<long, bool> { [attachedWindow.Hwnd] = true });
+        TestContext context = CreateContext(windows: [attachedWindow], attachedWindow: attachedWindow, focusResults: FocusResultFor(attachedWindow));
 
         FocusWindowResult result = context.Tools.FocusWindow(hwnd: 0);
 
-        Assert.Equal("failed", result.Status);
-        Assert.Contains("Окно для фокуса больше не найдено", result.Reason, StringComparison.Ordinal);
-        Assert.Null(result.Window);
+        AssertFocusFailedWithoutWindow(result, "Окно для фокуса больше не найдено");
     }
 
     [Fact]
@@ -290,9 +231,7 @@ public sealed class WindowSessionToolTests
 
         FocusWindowResult result = tools.FocusWindow();
 
-        Assert.Equal("failed", result.Status);
-        Assert.Contains("сначала прикрепить окно", result.Reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(result.Window);
+        AssertFocusFailedWithoutWindow(result, "сначала прикрепить окно", StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -303,32 +242,26 @@ public sealed class WindowSessionToolTests
 
         FocusWindowResult result = tools.FocusWindow();
 
-        Assert.Equal("failed", result.Status);
-        Assert.Contains("больше не найдено", result.Reason, StringComparison.Ordinal);
-        Assert.Null(result.Window);
+        AssertFocusFailedWithoutWindow(result, "больше не найдено");
     }
 
     [Fact]
     public void FocusWindowReturnsFailedWhenAttachedWindowIdentityIsReused()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 403, title: "Original", processId: 123, threadId: 900, className: "MainWindow");
-        WindowDescriptor reusedLiveWindow = CreateWindow(hwnd: 403, title: "Different", processId: 123, threadId: 901, className: "MainWindow");
+        WindowDescriptor attachedWindow = CreateWindow(hwnd: 403, title: "Original", threadId: 900, className: "MainWindow");
+        WindowDescriptor reusedLiveWindow = attachedWindow with { Title = "Different", ThreadId = 901 };
         WindowTools tools = CreateTools(windows: [reusedLiveWindow], attachedWindow: attachedWindow);
 
         FocusWindowResult result = tools.FocusWindow();
 
-        Assert.Equal("failed", result.Status);
-        Assert.Contains("не совпадает с live target", result.Reason, StringComparison.Ordinal);
-        Assert.Null(result.Window);
+        AssertFocusFailedWithoutWindow(result, "не совпадает с live target");
     }
 
     [Fact]
     public void FocusWindowReturnsFailedWhenForegroundRequestIsRejected()
     {
         WindowDescriptor targetWindow = CreateWindow(hwnd: 404, title: "Rejected");
-        WindowTools tools = CreateTools(
-            windows: [targetWindow],
-            focusResults: new Dictionary<long, bool> { [targetWindow.Hwnd] = false });
+        WindowTools tools = CreateTools(windows: [targetWindow], focusResults: FocusResultFor(targetWindow, succeeds: false));
 
         FocusWindowResult result = tools.FocusWindow(hwnd: targetWindow.Hwnd);
 
@@ -355,19 +288,9 @@ public sealed class WindowSessionToolTests
         IReadOnlyList<MonitorInfo>? monitors = null,
         FakeWindowActivationService? activationService = null)
     {
-        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-
-        AuditLogOptions options = new(
-            ContentRootPath: root,
-            EnvironmentName: "Tests",
-            RunId: "window-session-tests",
-            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
-            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "window-session-tests"),
-            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "window-session-tests", "events.jsonl"),
-            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "window-session-tests", "summary.md"));
+        AuditLogOptions options = CreateAuditLogOptions();
         AuditLog auditLog = new(options, TimeProvider.System);
-        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("window-session-tests"));
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext(RunId));
 
         if (attachedWindow is not null)
         {
@@ -375,7 +298,6 @@ public sealed class WindowSessionToolTests
         }
 
         FakeWindowManager windowManager = new(windows, titlePatternsThatTimeout, focusResults);
-        WaitResultMaterializer waitResultMaterializer = new(auditLog, options, WaitOptions.Default);
         WindowTools tools = new(
             auditLog,
             sessionManager,
@@ -386,13 +308,30 @@ public sealed class WindowSessionToolTests
             new WindowTargetResolver(windowManager),
             new FakeUiAutomationService(),
             new FakeWaitService(),
-            waitResultMaterializer,
+            new WaitResultMaterializer(auditLog, options, WaitOptions.Default),
             new FakeToolExecutionGate(),
             new FakeInputService(),
             new FakeProcessLaunchService(),
             new FakeOpenTargetService());
 
         return new TestContext(tools, sessionManager);
+    }
+
+    private static AuditLogOptions CreateAuditLogOptions()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        string diagnosticsRoot = Path.Combine(root, "artifacts", "diagnostics");
+        string runDirectory = Path.Combine(diagnosticsRoot, RunId);
+        Directory.CreateDirectory(root);
+
+        return new AuditLogOptions(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: RunId,
+            DiagnosticsRoot: diagnosticsRoot,
+            RunDirectory: runDirectory,
+            EventsPath: Path.Combine(runDirectory, "events.jsonl"),
+            SummaryPath: Path.Combine(runDirectory, "summary.md"));
     }
 
     private static WindowDescriptor CreateWindow(
@@ -413,11 +352,54 @@ public sealed class WindowSessionToolTests
             IsForeground: true,
             IsVisible: true);
 
-    private static JsonElement AssertStructuredPayload(CallToolResult result)
+    private static Dictionary<long, bool> FocusResultFor(WindowDescriptor window, bool succeeds = true) =>
+        new Dictionary<long, bool> { [window.Hwnd] = succeeds };
+
+    private static void AssertAttachFailed(AttachWindowResult result, string reasonFragment, string? sessionMode = null)
     {
-        Assert.NotNull(result.StructuredContent);
-        return result.StructuredContent!.Value;
+        Assert.Equal("failed", result.Status);
+        Assert.Contains(reasonFragment, result.Reason, StringComparison.Ordinal);
+        Assert.Null(result.AttachedWindow);
+
+        if (sessionMode is not null)
+        {
+            Assert.Equal(sessionMode, result.Session.Mode);
+        }
     }
+
+    private static void AssertFocusDone(FocusWindowResult result, WindowDescriptor expectedWindow)
+    {
+        Assert.Equal("done", result.Status);
+        Assert.Equal(expectedWindow.Hwnd, result.Window?.Hwnd);
+    }
+
+    private static void AssertFocusFailedWithoutWindow(
+        FocusWindowResult result,
+        string reasonFragment,
+        StringComparison comparison = StringComparison.Ordinal)
+    {
+        Assert.Equal("failed", result.Status);
+        Assert.Contains(reasonFragment, result.Reason, comparison);
+        Assert.Null(result.Window);
+    }
+
+    private static JsonElement AssertToolError(CallToolResult result, string expectedStatus) =>
+        AssertToolPayload(result, expectedStatus, expectedIsError: true);
+
+    private static JsonElement AssertToolSuccess(CallToolResult result, string expectedStatus) =>
+        AssertToolPayload(result, expectedStatus, expectedIsError: false);
+
+    private static JsonElement AssertToolPayload(CallToolResult result, string expectedStatus, bool expectedIsError)
+    {
+        Assert.Equal(expectedIsError, result.IsError);
+        Assert.NotNull(result.StructuredContent);
+        JsonElement payload = result.StructuredContent!.Value;
+        Assert.Equal(expectedStatus, JsonString(payload, "status"));
+        return payload;
+    }
+
+    private static string? JsonString(JsonElement payload, string propertyName) =>
+        payload.GetProperty(propertyName).GetString();
 
     private sealed record TestContext(WindowTools Tools, InMemorySessionManager SessionManager);
 
@@ -432,6 +414,8 @@ public sealed class WindowSessionToolTests
         IReadOnlySet<string>? titlePatternsThatTimeout,
         IReadOnlyDictionary<long, bool>? focusResults) : IWindowManager
     {
+        private const RegexOptions TitlePatternOptions = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+
         public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible = false) => windows;
 
         public WindowDescriptor? FindWindow(WindowSelector selector)
@@ -444,49 +428,42 @@ public sealed class WindowSessionToolTests
                 throw new RegexMatchTimeoutException(selector.TitlePattern, selector.TitlePattern, TimeSpan.FromMilliseconds(1));
             }
 
-            IEnumerable<WindowDescriptor> query = windows;
+            WindowDescriptor? match = null;
 
-            if (selector.Hwnd is long hwnd)
+            foreach (WindowDescriptor window in windows)
             {
-                query = query.Where(window => window.Hwnd == hwnd);
+                if (selector.Hwnd is long hwnd && window.Hwnd != hwnd)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(selector.ProcessName)
+                    && !string.Equals(window.ProcessName, selector.ProcessName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(selector.TitlePattern)
+                    && !Regex.IsMatch(window.Title, selector.TitlePattern, TitlePatternOptions))
+                {
+                    continue;
+                }
+
+                if (match is not null)
+                {
+                    throw new InvalidOperationException(
+                        "По указанному селектору найдено несколько окон; уточни hwnd, titlePattern или processName.");
+                }
+
+                match = window;
             }
 
-            if (!string.IsNullOrWhiteSpace(selector.ProcessName))
-            {
-                query = query.Where(
-                    window => string.Equals(
-                        window.ProcessName,
-                        selector.ProcessName,
-                        StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (!string.IsNullOrWhiteSpace(selector.TitlePattern))
-            {
-                query = query.Where(
-                    window => Regex.IsMatch(
-                        window.Title,
-                        selector.TitlePattern,
-                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
-            }
-
-            WindowDescriptor[] matches = query.Take(2).ToArray();
-            return matches.Length switch
-            {
-                0 => null,
-                1 => matches[0],
-                _ => throw new InvalidOperationException(
-                    "По указанному селектору найдено несколько окон; уточни hwnd, titlePattern или processName."),
-            };
+            return match;
         }
 
-        public bool TryFocus(long hwnd)
-        {
-            if (focusResults is not null && focusResults.TryGetValue(hwnd, out bool result))
-            {
-                return result;
-            }
-
-            return windows.Any(window => window.Hwnd == hwnd);
-        }
+        public bool TryFocus(long hwnd) =>
+            focusResults is not null && focusResults.TryGetValue(hwnd, out bool result)
+                ? result
+                : windows.Any(window => window.Hwnd == hwnd);
     }
 }

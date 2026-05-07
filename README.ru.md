@@ -1,4 +1,4 @@
-# Okno
+# Computer Use для Windows через MCP для AI-агентов — Okno
 
 [English](README.md) | [**Русский**](README.ru.md) | [简体中文](README.zh-CN.md)
 
@@ -103,42 +103,47 @@ Okno не является главным выбором, если тебе ну
 
 ## Быстрый старт
 
-Самый короткий поддержанный путь сегодня — **Codex на Windows** с локальным
-plugin, который поставляется из этого репозитория.
+Рекомендуемый способ установки на Windows — использовать **Okno Setup**.
 
 ### Что нужно заранее
 
 - Windows 11
-- Codex на Windows
-- PowerShell
-- доступ к сети, если установленной копии плагина при первом запуске
-  понадобится подтянуть pinned runtime release
+- Codex на Windows для рекомендованного режима `Codex`
+- доступ к сети, если во время установки нужно подтянуть runtime или plugin
+  assets
 
-### 1. Склонировать репозиторий
+### 1. Получить файлы установки
 
-```powershell
-git clone https://github.com/vitalcc55/Okno.git
-cd Okno
-```
+Скачай GUI installer package:
 
-### 2. Установить локальный plugin из записи в marketplace репозитория
+- `okno-setup-<version>-win-x64.zip`
 
-Точки входа в репозитории:
+Эти файлы установки публикуются вместе с файлами runtime и plugin bundle.
 
-- [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)
-- [plugins/computer-use-win](plugins/computer-use-win)
-- [plugins/computer-use-win/.codex-plugin/plugin.json](plugins/computer-use-win/.codex-plugin/plugin.json)
-- [plugins/computer-use-win/.mcp.json](plugins/computer-use-win/.mcp.json)
+### 2. Установить для Codex или только runtime
 
-### 3. Перезапустить Codex или открыть новый thread
+GUI path:
 
-Установленный plugin запускается из Codex plugin cache, а не из корня
-репозитория. Если в установленной копии уже есть валидированный runtime bundle,
-launcher использует его напрямую. Если runtime bundle отсутствует или
-повреждён, launcher берёт pinned runtime release, описанный в
-[plugins/computer-use-win/runtime-release.json](plugins/computer-use-win/runtime-release.json),
-проверяет SHA256 и `okno-runtime-bundle-manifest.json`, и только после этого
-поднимает MCP host.
+1. Распакуй `okno-setup-<version>-win-x64.zip`.
+2. Запусти `Okno Setup.exe`.
+3. Выбери `Install for Codex (Recommended)` или
+   `Install runtime only (Advanced)`.
+
+### 3. Перезапустить Codex или использовать runtime-only snippet
+
+Режим `Codex` теперь:
+
+- ставит shared runtime в `%LocalAppData%\Okno\computer-use-win`;
+- ставит thin plugin в `<codex-home>/plugins/computer-use-win`;
+- обновляет `%USERPROFILE%\.agents\plugins\marketplace.json`;
+- требует от пользователя только перезапустить Codex.
+
+Режим `runtime-only` ставит тот же shared runtime и возвращает готовый MCP
+snippet `command + args`.
+
+После первой успешной установки `Okno Setup.exe` также создаёт стабильную
+per-user maintenance shell copy и регистрирует `Okno` в Windows
+`Установленные приложения`.
 
 ### 4. Пройти первый рабочий цикл
 
@@ -148,10 +153,31 @@ launcher использует его напрямую. Если runtime bundle �
 4. выполнить действие;
 5. подтвердить результат через `observeAfter=true` или новый `get_app_state`.
 
-Для обычных MCP-клиентов по `STDIO` и для maintainer-сценария из исходников см.
+Для обычных MCP-клиентов по `STDIO`, installer-first runtime-only path и
+source-based сценария разработки см.
 [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md).
-Мейнтейнеры по-прежнему могут явно собрать plugin-local bundle командой
+Разработчики по-прежнему могут клонировать репозиторий и явно собрать
+plugin-local bundle командой
 `scripts/codex/publish-computer-use-win-plugin.ps1`.
+
+### Обновление, починка и удаление
+
+Пока обновление делается через повторный запуск более новой сборки
+`Okno Setup.exe`:
+
+1. скачать более новую сборку `Okno Setup.exe`;
+2. запустить этот новый `Okno Setup.exe`;
+3. снова выбрать тот же режим, который нужно обновить.
+
+Тот же `Okno Setup.exe` также обслуживает:
+
+- переустановку или обновление, если выбранный режим уже установлен;
+- `Repair` для выбранного режима;
+- `Remove Okno` для полного удаления локальной установки Okno.
+
+Запись в Windows `Установленные приложения` ведёт в тот же maintenance shell,
+поэтому `Параметры -> Установленные приложения -> Okno -> Удалить` запускает
+тот же remove-all lifecycle.
 
 ## Публичный набор инструментов
 
@@ -187,23 +213,6 @@ launcher использует его напрямую. Если runtime bundle �
 - Слабодоказанные действия надо воспринимать как `dispatch + verify`, а не как
   слепой успех.
 
-## Карта документации
-
-Если нужен не только front page:
-
-- product docs: [docs/product/index.md](docs/product/index.md)
-- product spec: [docs/product/okno-spec.md](docs/product/okno-spec.md)
-- roadmap: [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md)
-- product vision: [docs/product/okno-vision.md](docs/product/okno-vision.md)
-- architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
-- public capability docs:
-  [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
-- пути установки:
-  [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)
-- generated interfaces:
-  [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
-- commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
-
 ## Статус
 
 Okno уже можно использовать сегодня как локальный Windows plugin/runtime для
@@ -211,20 +220,18 @@ Codex и как локальную MCP surface поверх `STDIO`.
 
 Что уже выглядит сильно:
 
-- публичная возможность уже shipped и устанавливается из source repo;
-- для обычных MCP-клиентов уже определён release-backed runtime contract;
-- runtime bundle и plugin install surface уже существуют;
+- публичная возможность уже ставится через текущие Windows-файлы установки;
+- для обычных MCP-клиентов уже определён runtime contract;
+- shared runtime store, installer core и WinUI setup shell уже существуют;
 - public contract, smoke path и verification loop реальны;
 - проект уже давно вышел из research-prototype стадии.
 
 Что пока честно остаётся правдой:
 
-- установка всё ещё developer-oriented;
-- путь установки плагина в Codex сегодня всё ещё опирается на checkout
-  репозитория;
-- GitHub runtime releases должны существовать, прежде чем сценарий установки
-  plugin без локально собранного runtime станет основной публичной историей;
-- one-click consumer distribution пока не является текущей формой продукта.
+- текущие Windows-файлы установки распространяются без code signing;
+- source-based installation остаётся developer fallback, а не main user story;
+- signed consumer distribution, `winget` и `MSI` — это следующие distribution-этапы;
+- публикация подписанных installer-файлов — отдельный шаг относительно текущей реализации в репозитории.
 
 ## Лицензия
 

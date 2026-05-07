@@ -1,0 +1,95 @@
+# Task State
+
+goal: Довести installer-wave до финального `0.2.0` release state с одним `Okno Setup.exe`, где пользователь получает install/reinstall/update/repair/remove для `Codex` и `runtime-only`, плюс Windows `Installed apps` integration.
+stage: Installer-wave закрыта как `0.2.0` unsigned release; signing явно снят из scope этой release model.
+done:
+- `SetupShellController` переведён из install-only presenter в state-aware lifecycle controller:
+  - различает `None`, `RuntimeOnly`, `Codex`, `CodexAndRuntimeOnly`;
+  - primary action сам выбирает `Install` или `Reinstall` для выбранного mode;
+  - отдельные operation paths добавлены для `Repair` и full `RemoveAll`.
+- В `ComputerUseWinInstallerService` добавлен canonical aggregate remove path `UninstallAll()`:
+  - удаляет Codex integration;
+  - удаляет runtime-only receipt;
+  - удаляет shared runtime store;
+  - не блокирует full remove из-за malformed personal marketplace и не переписывает такой файл.
+- Добавлен `OknoSetupShellRegistrationService`:
+  - stable maintenance shell under `%LocalAppData%\Okno\setup-shell\current`;
+  - Start Menu shortcut `Okno Setup`;
+  - `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Okno`;
+  - deferred self-cleanup when remove-all runs from the stable shell itself.
+- `Okno Setup.exe` получил shell CLI surface:
+  - `--operation remove-all`
+  - `--quiet`
+  - Windows Settings uninstall path теперь сводится к тому же maintenance shell, а не к отдельному uninstall executable.
+- WinUI shell обновлён до native lifecycle UX:
+  - single-page window;
+  - mode selector всегда видим;
+  - primary button = install/reinstall depending on state;
+  - grouped maintenance actions через `CommandBar`;
+  - destructive full remove через `ContentDialog`;
+  - runtime-only snippet copy path preserved.
+- Root front doors и install runbook синхронизированы под final lifecycle model:
+  - `README.md`
+  - `README.ru.md`
+  - `README.zh-CN.md`
+  - `docs/runbooks/computer-use-win-install.md`
+  - `docs/exec-plans/completed/completed-2026-05-07-okno-setup-installer-wave.md`
+  - `docs/CHANGELOG.md`
+- Public release version поднята до `0.2.0`:
+  - `Directory.Build.props`
+  - `plugins/computer-use-win/.codex-plugin/plugin.json`
+  - `plugins/computer-use-win/runtime-release.json`
+  - current smoke/proof/test surfaces and release packaging expectations.
+- Setup app release surface больше не использует perpetual pre-release wording:
+  - setup archive renamed to `okno-setup-<version>-win-x64.zip`;
+  - root README и runbook больше не ведут через bootstrap shell как user-facing install path;
+  - release workflow теперь публикует runtime zip, plugin zip и setup app zip как public release assets.
+- Тесты расширены под lifecycle slice:
+  - state mapping / reinstall / repair / remove-all;
+  - stable shell registration + uninstall registry entry;
+  - immediate vs deferred maintenance shell cleanup;
+  - remove-all with malformed marketplace;
+  - release packaging runbook contract updated for lifecycle section.
+next:
+- При user approval подготовить release commit, tag `v0.2.0` и release publication actions.
+- Если понадобится follow-up после этого релиза, следующим отдельным слоем будет уже не signing blocker, а optional distribution polish (`winget`, `MSI`, richer Windows uninstall/distribution story).
+edited_files:
+- src/WinBridge.Setup.Core/ComputerUseWinRuntimeContracts.cs
+- src/WinBridge.Setup.Core/ComputerUseWinInstallerService.cs
+- src/WinBridge.Setup.Core/SetupShellController.cs
+- src/WinBridge.Setup.Core/OknoSetupShellRegistrationService.cs
+- src/WinBridge.Setup.App/SetupAppLaunchOptions.cs
+- src/WinBridge.Setup.App/Program.cs
+- src/WinBridge.Setup.App/App.xaml.cs
+- src/WinBridge.Setup.App/Views/MainPage.xaml
+- src/WinBridge.Setup.App/Views/MainPage.xaml.cs
+- src/WinBridge.Setup.App/Strings/en-US/Resources.resw
+- src/WinBridge.Setup.App/Strings/ru-RU/Resources.resw
+- src/WinBridge.Setup.App/Strings/zh-CN/Resources.resw
+- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.SetupShellController.cs
+- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.InstallerCore.cs
+- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.ReleasePackaging.cs
+- README.md
+- README.ru.md
+- README.zh-CN.md
+- docs/runbooks/computer-use-win-install.md
+- docs/exec-plans/completed/completed-2026-05-07-okno-setup-installer-wave.md
+- Directory.Build.props
+- plugins/computer-use-win/.codex-plugin/plugin.json
+- plugins/computer-use-win/runtime-release.json
+- .github/workflows/release-computer-use-win-runtime.yml
+- scripts/codex/package-okno-setup-app-release.ps1
+- scripts/codex/prove-computer-use-win-cache-install.ps1
+- scripts/smoke.ps1
+- docs/generated/commands.md
+- docs/CHANGELOG.md
+verify_status:
+- `scripts/build.ps1`: green
+- lifecycle targeted contour: green (`11/11`)
+- `scripts/test.ps1`: green (`WinBridge.Runtime.Tests 669/669`, `WinBridge.Server.IntegrationTests 484/484`)
+- `scripts/refresh-generated-docs.ps1`: green
+- `scripts/codex/verify.ps1`: green
+- manual WinUI launch proof: staged app opened a real top-level window with title `Okno Setup`
+open_questions:
+- Делать ли в этом же цикле tag/push/GitHub release publication для `v0.2.0`, или сначала отдельный human sanity pass по release text?
+- Нужен ли после `0.2.0` отдельный follow-up only for richer distribution channels (`winget`/`MSI`)?

@@ -1,4 +1,4 @@
-# Okno
+# 通过 MCP 为 AI 智能体提供 Windows Computer Use — Okno
 
 [English](README.md) | [Русский](README.ru.md) | [**简体中文**](README.zh-CN.md)
 
@@ -92,41 +92,45 @@ Okno 的设计围绕四条产品规则展开。
 
 ## 快速开始
 
-当前最短、最受支持的路径是：**Windows 上的 Codex** 加上本仓库提供的
-本地 plugin。
+Windows 上推荐的安装方式现在是直接使用 **Okno Setup**。
 
 ### 前置条件
 
 - Windows 11
-- Windows 上的 Codex
-- PowerShell
-- 如果安装后的 plugin 副本在首次启动时需要解析其 pinned runtime
-  release，则需要网络访问
+- 推荐的 `Codex` 模式需要 Windows 上的 Codex
+- 如果安装过程中需要解析 runtime 或 plugin assets，则需要网络访问
 
-### 1. 克隆仓库
+### 1. 获取安装文件
 
-```powershell
-git clone https://github.com/vitalcc55/Okno.git
-cd Okno
-```
+下载 GUI installer package：
 
-### 2. 从仓库 marketplace 条目安装本地 plugin
+- `okno-setup-<version>-win-x64.zip`
 
-相关入口：
+这些安装文件会与 runtime 和 plugin bundle 文件一起发布。
 
-- [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)
-- [plugins/computer-use-win](plugins/computer-use-win)
-- [plugins/computer-use-win/.codex-plugin/plugin.json](plugins/computer-use-win/.codex-plugin/plugin.json)
-- [plugins/computer-use-win/.mcp.json](plugins/computer-use-win/.mcp.json)
+### 2. 安装到 Codex，或只安装 runtime
 
-### 3. 重启 Codex 或打开新的 thread
+GUI path:
 
-安装后的 plugin 运行于 Codex plugin cache，而不是仓库根目录。如果安装
-副本里已经存在经过校验的 runtime bundle，launcher 会直接使用它。如果
-runtime bundle 缺失或无效，launcher 会按
-[plugins/computer-use-win/runtime-release.json](plugins/computer-use-win/runtime-release.json)
-中描述的 pinned runtime release 进行解析，校验 SHA256 和
-`okno-runtime-bundle-manifest.json`，然后才启动 MCP host。
+1. 解压 `okno-setup-<version>-win-x64.zip`。
+2. 运行 `Okno Setup.exe`。
+3. 选择 `Install for Codex (Recommended)` 或
+   `Install runtime only (Advanced)`。
+
+### 3. 重启 Codex，或使用 runtime-only snippet
+
+`Codex` 模式现在会：
+
+- 把 shared runtime 安装到 `%LocalAppData%\Okno\computer-use-win`；
+- 把 thin plugin 安装到 `<codex-home>/plugins/computer-use-win`；
+- 更新 `%USERPROFILE%\.agents\plugins\marketplace.json`；
+- 只要求用户重启 Codex。
+
+`runtime-only` 模式会安装同一个 shared runtime，并返回可以直接粘贴的
+MCP `command + args` snippet。
+
+第一次成功安装后，`Okno Setup.exe` 还会创建稳定的 per-user
+maintenance shell copy，并把 `Okno` 注册到 Windows `Installed apps`。
 
 ### 4. 跑通第一次操作循环
 
@@ -136,11 +140,31 @@ runtime bundle 缺失或无效，launcher 会按
 4. 执行动作；
 5. 通过 `observeAfter=true` 或新的 `get_app_state` 验证结果。
 
-如果你要给通用 MCP `STDIO` 客户端使用，或者要走维护者的源码工作流，请
+如果你要给通用 MCP `STDIO` 客户端使用、走 installer-first runtime-only
+path，或者要走 source-based 开发工作流，请
 参见
 [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)。
-维护者仍可通过 `scripts/codex/publish-computer-use-win-plugin.ps1` 显式生成
-plugin-local bundle。
+开发者仍可克隆仓库，并通过
+`scripts/codex/publish-computer-use-win-plugin.ps1` 显式生成 plugin-local
+bundle。
+
+### 更新、修复和删除
+
+目前更新仍然是手动重新运行较新版本的 `Okno Setup.exe`：
+
+1. 下载更新版本的 `Okno Setup.exe`；
+2. 运行新的 `Okno Setup.exe`；
+3. 再次选择你要刷新的同一安装模式。
+
+同一个 `Okno Setup.exe` 也负责：
+
+- 当所选模式已经存在时执行重新安装或更新；
+- 对所选模式执行 `Repair`；
+- 通过 `Remove Okno` 完整删除本地 Okno 安装。
+
+Windows `Installed apps` 中的卸载入口也会回到同一个 maintenance shell，
+因此 `Settings -> Installed apps -> Okno -> Uninstall` 走的是同一个
+remove-all lifecycle。
 
 ## 公开工具 surface
 
@@ -172,23 +196,6 @@ plugin-local bundle。
 - blocked 或 sensitive targets 仍然需要明确的策略约束。
 - 对低置信动作，正确理解应该是 `dispatch + verify`，而不是盲目当成成功。
 
-## 文档地图
-
-如果你需要的不只是 front page：
-
-- product docs: [docs/product/index.md](docs/product/index.md)
-- product spec: [docs/product/okno-spec.md](docs/product/okno-spec.md)
-- roadmap: [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md)
-- product vision: [docs/product/okno-vision.md](docs/product/okno-vision.md)
-- architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
-- public capability docs:
-  [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
-- 安装路径说明：
-  [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)
-- generated interfaces:
-  [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
-- commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
-
 ## 当前状态
 
 今天的 Okno 已经可以作为 Codex 的本地 Windows plugin/runtime 使用，也可
@@ -196,19 +203,18 @@ plugin-local bundle。
 
 已经比较成熟的部分：
 
-- 公开 capability 已经 shipped，并且可以从 source repo 安装；
-- 面向通用 MCP 客户端的 release-backed runtime contract 已经定义完成；
-- runtime bundle 和 plugin install surface 已经存在；
+- 公开 capability 已经可以通过当前 Windows 安装文件安装；
+- 面向通用 MCP 客户端的 runtime contract 已经定义完成；
+- shared runtime store、installer core 和 WinUI setup shell 已经存在；
 - public contract、smoke path 和 verification loop 都是真实可运行的；
 - 项目早已不是 research prototype。
 
 仍需诚实说明的部分：
 
-- 安装体验依然偏向开发者；
-- Codex plugin 的安装路径目前仍依赖本地仓库 checkout；
-- 在“无需本地预先构建 runtime 的 plugin 安装路径”成为主要公开路径
-  之前，GitHub runtime releases 仍必须先存在；
-- 一键式 consumer distribution 不是当前产品形态。
+- 当前 Windows 安装文件以不带 code signing 的形式发布；
+- source-based installation 仍然是 developer fallback，而不是 main user story；
+- signed consumer distribution、`winget` 和 `MSI` 仍属于后续 distribution 工作；
+- 发布已签名的 installer 文件，是和当前仓库实现分开的单独步骤。
 
 ## 许可证
 

@@ -9,313 +9,239 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed class RuntimeBundleResolverTests
 {
+    private const string DebugConfiguration = "debug";
+    private const string ReleaseConfiguration = "release";
+    private const string ServerProjectName = "WinBridge.Server";
+    private const string HelperProjectName = "WinBridge.SmokeWindowHost";
+    private const string IntegrationTestsProjectName = "WinBridge.Server.IntegrationTests";
+    private const string ServerDllFileName = "Okno.Server.dll";
+    private const string ServerExeFileName = "Okno.Server.exe";
+    private const string HelperExeFileName = "WinBridge.SmokeWindowHost.exe";
+    private const string IntegrationTestsDllFileName = "WinBridge.Server.IntegrationTests.dll";
+    private const string FallbackSourceContextName = "fallback_build_cache";
+    private const string ArtifactsSourceContextName = "artifacts_root";
+
+    private static readonly string RepositoryRoot = GetRepositoryRoot();
+    private static readonly string ResolveBundleScriptPath = ScriptPath("codex", "resolve-okno-test-bundle.ps1");
+    private static readonly string PrepareBundleScriptPath = ScriptPath("codex", "prepare-okno-test-bundle.ps1");
+    private static readonly string ResolveLaunchTargetScriptPath = ScriptPath("codex", "resolve-okno-server-launch-target.ps1");
+    private static readonly string CommonScriptPath = ScriptPath("common.ps1");
+
     [Fact]
     public void ResolveOknoTestBundleRunIdOverrideDoesNotMixAmbientArtifactsState()
     {
-        string repoRoot = GetRepositoryRoot();
-        string explicitRunId = "resolver-explicit-run";
-        string ambientRunId = "resolver-ambient-run";
-        string fallbackRelativePath = "resolver-fallback-marker-" + Guid.NewGuid().ToString("N");
-        string fallbackMarker = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", fallbackRelativePath);
-        string fallbackHelperMarker = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", fallbackRelativePath);
-        string ambientArtifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", ambientRunId);
-        string ambientRunRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", ambientRunId);
+        const string explicitRunId = "resolver-explicit-run";
+        const string ambientRunId = "resolver-ambient-run";
+        using TemporaryDirectories cleanup = new();
 
-        try
-        {
-            CreateMarkerFile(Path.Combine(fallbackMarker, "Okno.Server.dll"));
-            CreateMarkerFile(Path.Combine(fallbackHelperMarker, "WinBridge.SmokeWindowHost.exe"));
+        string explicitRunRoot = cleanup.Add(RunRootFor(explicitRunId));
+        string fallbackRelativePath = UniqueName("resolver-fallback-marker");
+        string fallbackMarker = cleanup.Add(RepoPath("src", ServerProjectName, "bin", fallbackRelativePath));
+        string fallbackHelperMarker = cleanup.Add(RepoPath("tests", HelperProjectName, "bin", fallbackRelativePath));
 
-            JsonElement payload = InvokeBundleResolver(
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-RunId");
-                    startInfo.ArgumentList.Add(explicitRunId);
-                    startInfo.Environment["WINBRIDGE_RUN_ID"] = ambientRunId;
-                    startInfo.Environment["WINBRIDGE_RUN_ROOT"] = ambientRunRoot;
-                    startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = ambientArtifactsRoot;
-                });
+        CreateMarkerFile(Path.Combine(fallbackMarker, ServerDllFileName));
+        CreateMarkerFile(Path.Combine(fallbackHelperMarker, HelperExeFileName));
 
-            Assert.Equal(explicitRunId, payload.GetProperty("runId").GetString());
-            Assert.Equal(
-                Path.Combine(repoRoot, ".tmp", ".codex", "runs", explicitRunId),
-                payload.GetProperty("runRoot").GetString());
-            Assert.True(string.IsNullOrEmpty(payload.GetProperty("artifactsRoot").GetString()));
-            Assert.Equal("fallback_build_cache", payload.GetProperty("preferredSourceContext").GetString());
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(fallbackMarker);
-            DeleteDirectoryIfExists(fallbackHelperMarker);
-            DeleteDirectoryIfExists(Path.Combine(repoRoot, ".tmp", ".codex", "runs", explicitRunId));
-        }
+        JsonElement payload = InvokeBundleResolver(
+            startInfo =>
+            {
+                AddArguments(startInfo, "-RunId", explicitRunId);
+                startInfo.Environment["WINBRIDGE_RUN_ID"] = ambientRunId;
+                startInfo.Environment["WINBRIDGE_RUN_ROOT"] = RunRootFor(ambientRunId);
+                startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = ArtifactsRootFor(ambientRunId);
+            });
+
+        Assert.Equal(explicitRunId, JsonString(payload, "runId"));
+        Assert.Equal(explicitRunRoot, JsonString(payload, "runRoot"));
+        Assert.True(string.IsNullOrEmpty(JsonNullableString(payload, "artifactsRoot")));
+        Assert.Equal(FallbackSourceContextName, JsonString(payload, "preferredSourceContext"));
     }
 
     [Fact]
     public void ResolveOknoTestBundleAssemblyBaseDirectoryWinsOverAmbientDllEnvironment()
     {
-        string repoRoot = GetRepositoryRoot();
-        string runId = "resolver-assembly-run";
-        string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", runId);
-        string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", runId);
-        string assemblyBaseDirectory = Path.Combine(artifactsRoot, "bin", "WinBridge.Server.IntegrationTests", "debug");
-        string ambientRoot = Path.Combine(repoRoot, ".tmp", ".codex", "resolver-ambient-dll", Guid.NewGuid().ToString("N"));
-        string ambientServerDll = Path.Combine(ambientRoot, "server", "Okno.Server.dll");
-        string ambientHelperExe = Path.Combine(ambientRoot, "helper", "WinBridge.SmokeWindowHost.exe");
+        TestRunContext context = CreateRunContext("resolver-assembly-run");
+        using TemporaryDirectories cleanup = new(context.RunRoot, context.ArtifactsRoot);
 
-        try
-        {
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.Server", "debug", "Okno.Server.dll"));
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.SmokeWindowHost", "debug", "WinBridge.SmokeWindowHost.exe"));
-            CreateMarkerFile(Path.Combine(assemblyBaseDirectory, "WinBridge.Server.IntegrationTests.dll"));
-            CreateMarkerFile(ambientServerDll);
-            CreateMarkerFile(ambientHelperExe);
+        string assemblyBaseDirectory = ArtifactOutputDirectory(
+            context.ArtifactsRoot,
+            IntegrationTestsProjectName,
+            DebugConfiguration);
+        string ambientRoot = cleanup.Add(CodexPath("resolver-ambient-dll", Guid.NewGuid().ToString("N")));
+        string ambientServerDll = Path.Combine(ambientRoot, "server", ServerDllFileName);
+        string ambientHelperExe = Path.Combine(ambientRoot, "helper", HelperExeFileName);
 
-            JsonElement payload = InvokeBundleResolver(
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-AssemblyBaseDirectory");
-                    startInfo.ArgumentList.Add(assemblyBaseDirectory);
-                    startInfo.Environment["WINBRIDGE_SERVER_DLL"] = ambientServerDll;
-                    startInfo.Environment["WINBRIDGE_SMOKE_HELPER_EXE"] = ambientHelperExe;
-                });
+        CreateServerArtifact(context.ArtifactsRoot, DebugConfiguration);
+        CreateHelperArtifact(context.ArtifactsRoot, DebugConfiguration);
+        CreateMarkerFile(Path.Combine(assemblyBaseDirectory, IntegrationTestsDllFileName));
+        CreateMarkerFile(ambientServerDll);
+        CreateMarkerFile(ambientHelperExe);
 
-            Assert.Equal(runId, payload.GetProperty("runId").GetString());
-            Assert.Equal(runRoot, payload.GetProperty("runRoot").GetString());
-            Assert.Equal(artifactsRoot, payload.GetProperty("artifactsRoot").GetString());
-            Assert.Equal("artifacts_root", payload.GetProperty("preferredSourceContext").GetString());
-            Assert.StartsWith(runRoot, payload.GetProperty("serverDll").GetString()!, StringComparison.OrdinalIgnoreCase);
-            Assert.StartsWith(runRoot, payload.GetProperty("helperExe").GetString()!, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(runRoot);
-            DeleteDirectoryIfExists(artifactsRoot);
-            DeleteDirectoryIfExists(ambientRoot);
-        }
+        JsonElement payload = InvokeBundleResolver(
+            startInfo =>
+            {
+                AddArguments(startInfo, "-AssemblyBaseDirectory", assemblyBaseDirectory);
+                startInfo.Environment["WINBRIDGE_SERVER_DLL"] = ambientServerDll;
+                startInfo.Environment["WINBRIDGE_SMOKE_HELPER_EXE"] = ambientHelperExe;
+            });
+
+        Assert.Equal(context.RunId, JsonString(payload, "runId"));
+        Assert.Equal(context.RunRoot, JsonString(payload, "runRoot"));
+        Assert.Equal(context.ArtifactsRoot, JsonString(payload, "artifactsRoot"));
+        Assert.Equal(ArtifactsSourceContextName, JsonString(payload, "preferredSourceContext"));
+        Assert.StartsWith(context.RunRoot, JsonString(payload, "serverDll"), StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(context.RunRoot, JsonString(payload, "helperExe"), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void PrepareOknoTestBundleSelectsOneCoherentRelativeOutputContext()
     {
-        string repoRoot = GetRepositoryRoot();
-        string runId = "resolver-coherent-pair";
-        string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", runId);
-        string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", runId);
+        TestRunContext context = CreateRunContext("resolver-coherent-pair");
+        using TemporaryDirectories cleanup = new(context.RunRoot, context.ArtifactsRoot);
 
-        try
-        {
-            DateTime utcNow = DateTime.UtcNow;
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.Server", "debug", "Okno.Server.dll"), utcNow.AddMinutes(10));
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.SmokeWindowHost", "debug", "WinBridge.SmokeWindowHost.exe"), utcNow);
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.Server", "release", "Okno.Server.dll"), utcNow.AddMinutes(5));
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.SmokeWindowHost", "release", "WinBridge.SmokeWindowHost.exe"), utcNow.AddMinutes(5));
+        DateTime utcNow = DateTime.UtcNow;
+        CreateServerArtifact(context.ArtifactsRoot, DebugConfiguration, utcNow.AddMinutes(10));
+        CreateHelperArtifact(context.ArtifactsRoot, DebugConfiguration, utcNow);
+        CreateServerArtifact(context.ArtifactsRoot, ReleaseConfiguration, utcNow.AddMinutes(5));
+        CreateHelperArtifact(context.ArtifactsRoot, ReleaseConfiguration, utcNow.AddMinutes(5));
 
-            using JsonDocument payload = InvokeJsonScript(
-                Path.Combine(repoRoot, "scripts", "codex", "prepare-okno-test-bundle.ps1"),
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-RepoRoot");
-                    startInfo.ArgumentList.Add(repoRoot);
-                    startInfo.ArgumentList.Add("-RunId");
-                    startInfo.ArgumentList.Add(runId);
-                    startInfo.ArgumentList.Add("-ArtifactsRoot");
-                    startInfo.ArgumentList.Add(artifactsRoot);
-                });
+        using JsonDocument payload = InvokePrepareBundle(
+            startInfo => AddArguments(startInfo, "-RunId", context.RunId, "-ArtifactsRoot", context.ArtifactsRoot));
+        BundleManifestSources manifestSources = ReadBundleManifestSources(payload.RootElement);
 
-            string manifestPath = payload.RootElement.GetProperty("manifestPath").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest path was not returned.");
-            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
-            string serverSourceDirectory = manifest.RootElement.GetProperty("serverSourceDirectory").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest did not contain serverSourceDirectory.");
-            string helperSourceDirectory = manifest.RootElement.GetProperty("helperSourceDirectory").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest did not contain helperSourceDirectory.");
-
-            Assert.EndsWith(Path.Combine("WinBridge.Server", "release"), serverSourceDirectory, StringComparison.OrdinalIgnoreCase);
-            Assert.EndsWith(Path.Combine("WinBridge.SmokeWindowHost", "release"), helperSourceDirectory, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(runRoot);
-            DeleteDirectoryIfExists(artifactsRoot);
-        }
+        Assert.EndsWith(
+            Path.Combine(ServerProjectName, ReleaseConfiguration),
+            manifestSources.ServerSourceDirectory,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(
+            Path.Combine(HelperProjectName, ReleaseConfiguration),
+            manifestSources.HelperSourceDirectory,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void ResolveOknoTestBundleAssemblyBaseDirectoryPinsSameRelativeOutputContext()
     {
-        string repoRoot = GetRepositoryRoot();
-        string runId = "resolver-assembly-relative-context";
-        string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", runId);
-        string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", runId);
-        string releaseAssemblyBaseDirectory = Path.Combine(artifactsRoot, "bin", "WinBridge.Server.IntegrationTests", "release");
+        TestRunContext context = CreateRunContext("resolver-assembly-relative-context");
+        using TemporaryDirectories cleanup = new(context.RunRoot, context.ArtifactsRoot);
 
-        try
-        {
-            DateTime utcNow = DateTime.UtcNow;
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.Server", "debug", "Okno.Server.dll"), utcNow.AddMinutes(10));
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.SmokeWindowHost", "debug", "WinBridge.SmokeWindowHost.exe"), utcNow.AddMinutes(10));
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.Server", "release", "Okno.Server.dll"), utcNow.AddMinutes(5));
-            CreateMarkerFile(Path.Combine(artifactsRoot, "bin", "WinBridge.SmokeWindowHost", "release", "WinBridge.SmokeWindowHost.exe"), utcNow.AddMinutes(5));
-            CreateMarkerFile(Path.Combine(releaseAssemblyBaseDirectory, "WinBridge.Server.IntegrationTests.dll"), utcNow.AddMinutes(6));
+        string releaseAssemblyBaseDirectory = ArtifactOutputDirectory(
+            context.ArtifactsRoot,
+            IntegrationTestsProjectName,
+            ReleaseConfiguration);
+        DateTime utcNow = DateTime.UtcNow;
+        CreateServerArtifact(context.ArtifactsRoot, DebugConfiguration, utcNow.AddMinutes(10));
+        CreateHelperArtifact(context.ArtifactsRoot, DebugConfiguration, utcNow.AddMinutes(10));
+        CreateServerArtifact(context.ArtifactsRoot, ReleaseConfiguration, utcNow.AddMinutes(5));
+        CreateHelperArtifact(context.ArtifactsRoot, ReleaseConfiguration, utcNow.AddMinutes(5));
+        CreateMarkerFile(Path.Combine(releaseAssemblyBaseDirectory, IntegrationTestsDllFileName), utcNow.AddMinutes(6));
 
-            JsonElement payload = InvokeBundleResolver(
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-AssemblyBaseDirectory");
-                    startInfo.ArgumentList.Add(releaseAssemblyBaseDirectory);
-                });
+        JsonElement payload = InvokeBundleResolver(
+            startInfo => AddArguments(startInfo, "-AssemblyBaseDirectory", releaseAssemblyBaseDirectory));
+        BundleManifestSources manifestSources = ReadBundleManifestSources(payload);
 
-            string manifestPath = payload.GetProperty("manifestPath").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest path was not returned.");
-            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
-            string serverSourceDirectory = manifest.RootElement.GetProperty("serverSourceDirectory").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest did not contain serverSourceDirectory.");
-            string helperSourceDirectory = manifest.RootElement.GetProperty("helperSourceDirectory").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest did not contain helperSourceDirectory.");
-
-            Assert.EndsWith(Path.Combine("WinBridge.Server", "release"), serverSourceDirectory, StringComparison.OrdinalIgnoreCase);
-            Assert.EndsWith(Path.Combine("WinBridge.SmokeWindowHost", "release"), helperSourceDirectory, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(runRoot);
-            DeleteDirectoryIfExists(artifactsRoot);
-        }
+        Assert.EndsWith(
+            Path.Combine(ServerProjectName, ReleaseConfiguration),
+            manifestSources.ServerSourceDirectory,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(
+            Path.Combine(HelperProjectName, ReleaseConfiguration),
+            manifestSources.HelperSourceDirectory,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void ResolveOknoTestBundleFallbackAssemblyBaseDirectoryPinsSameRelativeOutputContext()
     {
-        string repoRoot = GetRepositoryRoot();
-        string runId = "resolver-fallback-assembly-relative-context";
-        string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", runId);
-        string marker = "resolver-fallback-relative-" + Guid.NewGuid().ToString("N");
-        string serverBinRoot = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", marker);
-        string helperBinRoot = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", marker);
-        string testBinRoot = Path.Combine(repoRoot, "tests", "WinBridge.Server.IntegrationTests", "bin", marker);
-        string releaseAssemblyBaseDirectory = Path.Combine(testBinRoot, "release");
+        TestRunContext context = CreateRunContext("resolver-fallback-assembly-relative-context");
+        using TemporaryDirectories cleanup = new(context.RunRoot);
 
-        try
-        {
-            DateTime utcNow = DateTime.UtcNow;
-            CreateMarkerFile(Path.Combine(serverBinRoot, "debug", "Okno.Server.dll"), utcNow.AddMinutes(10));
-            CreateMarkerFile(Path.Combine(helperBinRoot, "debug", "WinBridge.SmokeWindowHost.exe"), utcNow.AddMinutes(10));
-            CreateMarkerFile(Path.Combine(serverBinRoot, "release", "Okno.Server.dll"), utcNow.AddMinutes(5));
-            CreateMarkerFile(Path.Combine(helperBinRoot, "release", "WinBridge.SmokeWindowHost.exe"), utcNow.AddMinutes(5));
-            CreateMarkerFile(Path.Combine(releaseAssemblyBaseDirectory, "WinBridge.Server.IntegrationTests.dll"), utcNow.AddMinutes(6));
+        string marker = UniqueName("resolver-fallback-relative");
+        string serverBinRoot = cleanup.Add(RepoPath("src", ServerProjectName, "bin", marker));
+        string helperBinRoot = cleanup.Add(RepoPath("tests", HelperProjectName, "bin", marker));
+        string testBinRoot = cleanup.Add(RepoPath("tests", IntegrationTestsProjectName, "bin", marker));
+        string releaseAssemblyBaseDirectory = Path.Combine(testBinRoot, ReleaseConfiguration);
 
-            JsonElement payload = InvokeBundleResolver(
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-RunId");
-                    startInfo.ArgumentList.Add(runId);
-                    startInfo.ArgumentList.Add("-AssemblyBaseDirectory");
-                    startInfo.ArgumentList.Add(releaseAssemblyBaseDirectory);
-                });
+        DateTime utcNow = DateTime.UtcNow;
+        CreateMarkerFile(Path.Combine(serverBinRoot, DebugConfiguration, ServerDllFileName), utcNow.AddMinutes(10));
+        CreateMarkerFile(Path.Combine(helperBinRoot, DebugConfiguration, HelperExeFileName), utcNow.AddMinutes(10));
+        CreateMarkerFile(Path.Combine(serverBinRoot, ReleaseConfiguration, ServerDllFileName), utcNow.AddMinutes(5));
+        CreateMarkerFile(Path.Combine(helperBinRoot, ReleaseConfiguration, HelperExeFileName), utcNow.AddMinutes(5));
+        CreateMarkerFile(Path.Combine(releaseAssemblyBaseDirectory, IntegrationTestsDllFileName), utcNow.AddMinutes(6));
 
-            string manifestPath = payload.GetProperty("manifestPath").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest path was not returned.");
-            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
-            string serverSourceDirectory = manifest.RootElement.GetProperty("serverSourceDirectory").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest did not contain serverSourceDirectory.");
-            string helperSourceDirectory = manifest.RootElement.GetProperty("helperSourceDirectory").GetString()
-                ?? throw new InvalidOperationException("Bundle manifest did not contain helperSourceDirectory.");
+        JsonElement payload = InvokeBundleResolver(
+            startInfo => AddArguments(
+                startInfo,
+                "-RunId",
+                context.RunId,
+                "-AssemblyBaseDirectory",
+                releaseAssemblyBaseDirectory));
+        BundleManifestSources manifestSources = ReadBundleManifestSources(payload);
 
-            Assert.Equal(Path.Combine(serverBinRoot, "release"), serverSourceDirectory, StringComparer.OrdinalIgnoreCase);
-            Assert.Equal(Path.Combine(helperBinRoot, "release"), helperSourceDirectory, StringComparer.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(runRoot);
-            DeleteDirectoryIfExists(serverBinRoot);
-            DeleteDirectoryIfExists(helperBinRoot);
-            DeleteDirectoryIfExists(testBinRoot);
-        }
+        Assert.Equal(
+            Path.Combine(serverBinRoot, ReleaseConfiguration),
+            manifestSources.ServerSourceDirectory,
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(
+            Path.Combine(helperBinRoot, ReleaseConfiguration),
+            manifestSources.HelperSourceDirectory,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void ResolveWinBridgeVerificationContextPinsBundleSourceToExecutedConfiguration()
     {
-        string repoRoot = GetRepositoryRoot();
-        string runId = "resolver-verification-context";
-        string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", runId);
-        string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", runId);
-        string scriptRoot = Path.Combine(repoRoot, ".tmp", ".codex", "resolver-tests", Guid.NewGuid().ToString("N"));
+        TestRunContext context = CreateRunContext("resolver-verification-context");
+        using TemporaryDirectories cleanup = new(context.RunRoot, context.ArtifactsRoot);
+
+        string scriptRoot = cleanup.Add(CodexPath("resolver-tests", Guid.NewGuid().ToString("N")));
         string scriptPath = Path.Combine(scriptRoot, "resolve-verification-context.ps1");
 
-        try
-        {
-            DateTime utcNow = DateTime.UtcNow;
-            CreateMarkerFile(
-                Path.Combine(artifactsRoot, "bin", "WinBridge.Server.IntegrationTests", "debug", "WinBridge.Server.IntegrationTests.dll"),
-                utcNow);
-            CreateMarkerFile(
-                Path.Combine(artifactsRoot, "bin", "WinBridge.Server.IntegrationTests", "release", "WinBridge.Server.IntegrationTests.dll"),
-                utcNow.AddMinutes(10));
+        DateTime utcNow = DateTime.UtcNow;
+        CreateIntegrationTestAssemblyArtifact(context.ArtifactsRoot, DebugConfiguration, utcNow);
+        CreateIntegrationTestAssemblyArtifact(context.ArtifactsRoot, ReleaseConfiguration, utcNow.AddMinutes(10));
+        WriteVerificationContextProbeScript(scriptRoot, scriptPath, context.ArtifactsRoot);
 
-            Directory.CreateDirectory(scriptRoot);
-            File.WriteAllText(
-                scriptPath,
-                string.Join(
-                    Environment.NewLine,
-                    "$ErrorActionPreference = 'Stop'",
-                    $". '{PowerShellSingleQuote(Path.Combine(repoRoot, "scripts", "common.ps1"))}'",
-                    $"$env:WINBRIDGE_ARTIFACTS_ROOT = '{PowerShellSingleQuote(artifactsRoot)}'",
-                    $"$context = Resolve-WinBridgeVerificationContext -RepoRoot '{PowerShellSingleQuote(repoRoot)}'",
-                    "[pscustomobject]@{",
-                    "    bundleSourceRelativePath = $context.BundleSourceRelativePath",
-                    "    dotnetTestArguments = $context.DotnetTestArguments",
-                    "    integrationTestAssembly = $context.IntegrationTestAssembly",
-                    "} | ConvertTo-Json -Depth 4 -Compress"),
-                Encoding.UTF8);
+        using JsonDocument payload = InvokeJsonScript(scriptPath, _ => { });
+        JsonElement root = payload.RootElement;
+        string[] dotnetTestArguments = JsonStringArray(root, "dotnetTestArguments");
 
-            using JsonDocument payload = InvokeJsonScript(scriptPath, repoRoot, _ => { });
-            JsonElement root = payload.RootElement;
-            string? bundleSourceRelativePath = root.GetProperty("bundleSourceRelativePath").GetString();
-            string[] dotnetTestArguments = root.GetProperty("dotnetTestArguments")
-                .EnumerateArray()
-                .Select(value => value.GetString() ?? string.Empty)
-                .ToArray();
-            string? integrationTestAssembly = root.GetProperty("integrationTestAssembly").GetString();
+        Assert.Equal(DebugConfiguration, JsonString(root, "bundleSourceRelativePath"), ignoreCase: true);
+        Assert.Contains("--configuration", dotnetTestArguments);
+        Assert.Contains("Debug", dotnetTestArguments);
+        Assert.EndsWith(
+            Path.Combine(IntegrationTestsProjectName, DebugConfiguration, IntegrationTestsDllFileName),
+            JsonString(root, "integrationTestAssembly"),
+            StringComparison.OrdinalIgnoreCase);
+    }
 
-            Assert.Equal("debug", bundleSourceRelativePath, ignoreCase: true);
-            Assert.Contains("--configuration", dotnetTestArguments);
-            Assert.Contains("Debug", dotnetTestArguments);
-            Assert.EndsWith(
-                Path.Combine("WinBridge.Server.IntegrationTests", "debug", "WinBridge.Server.IntegrationTests.dll"),
-                integrationTestAssembly,
-                StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(runRoot);
-            DeleteDirectoryIfExists(artifactsRoot);
-            DeleteDirectoryIfExists(scriptRoot);
-        }
+    [Fact]
+    public void ResolveWinBridgeVerificationContextFailsClosedWhenArtifactsRootDoesNotContainStagedIntegrationAssembly()
+    {
+        TestRunContext context = CreateRunContext("resolver-verification-context-missing-artifacts");
+        using TemporaryDirectories cleanup = new(context.RunRoot, context.ArtifactsRoot);
+
+        string scriptRoot = cleanup.Add(CodexPath("resolver-tests", Guid.NewGuid().ToString("N")));
+        string scriptPath = Path.Combine(scriptRoot, "resolve-verification-context-missing-artifacts.ps1");
+        WriteVerificationContextProbeScript(scriptRoot, scriptPath, context.ArtifactsRoot);
+
+        ScriptInvocationResult result = InvokePowerShellScript(scriptPath, _ => { });
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("expected staged test artifacts", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(IntegrationTestsDllFileName, result.Stderr, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void ResolveOknoTestBundleRejectsConflictingExplicitExecutionContext()
     {
-        string repoRoot = GetRepositoryRoot();
-        ScriptInvocationResult result = InvokePowerShellScript(
-            Path.Combine(repoRoot, "scripts", "codex", "resolve-okno-test-bundle.ps1"),
-            repoRoot,
-            startInfo =>
-            {
-                startInfo.ArgumentList.Add("-RepoRoot");
-                startInfo.ArgumentList.Add(repoRoot);
-                startInfo.ArgumentList.Add("-RunRoot");
-                startInfo.ArgumentList.Add(Path.Combine(repoRoot, ".tmp", ".codex", "runs", "local"));
-                startInfo.ArgumentList.Add("-ArtifactsRoot");
-                startInfo.ArgumentList.Add(Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", "ci-proof"));
-            });
+        ScriptInvocationResult result = InvokeBundleResolverRaw(
+            startInfo => AddArguments(
+                startInfo,
+                "-RunRoot",
+                RunRootFor("local"),
+                "-ArtifactsRoot",
+                ArtifactsRootFor("ci-proof")));
 
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("Explicit execution context is internally inconsistent", result.Stderr, StringComparison.Ordinal);
@@ -326,111 +252,69 @@ public sealed class RuntimeBundleResolverTests
     [Fact]
     public void PrepareOknoTestBundlePreferredSourceContextDoesNotResetAmbientRunContext()
     {
-        string repoRoot = GetRepositoryRoot();
-        string runId = "resolver-preferred-source-run";
-        string runRoot = Path.Combine(repoRoot, ".tmp", ".codex", "runs", runId);
-        string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", runId);
-        string fallbackRelativePath = "resolver-preferred-source-" + Guid.NewGuid().ToString("N");
-        string fallbackMarker = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", fallbackRelativePath);
-        string fallbackHelperMarker = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", fallbackRelativePath);
+        TestRunContext context = CreateRunContext("resolver-preferred-source-run");
+        using TemporaryDirectories cleanup = new(context.RunRoot, context.ArtifactsRoot);
 
-        try
-        {
-            CreateMarkerFile(Path.Combine(fallbackMarker, "Okno.Server.dll"));
-            CreateMarkerFile(Path.Combine(fallbackHelperMarker, "WinBridge.SmokeWindowHost.exe"));
+        string fallbackRelativePath = UniqueName("resolver-preferred-source");
+        string fallbackMarker = cleanup.Add(RepoPath("src", ServerProjectName, "bin", fallbackRelativePath));
+        string fallbackHelperMarker = cleanup.Add(RepoPath("tests", HelperProjectName, "bin", fallbackRelativePath));
 
-            using JsonDocument payload = InvokeJsonScript(
-                Path.Combine(repoRoot, "scripts", "codex", "prepare-okno-test-bundle.ps1"),
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-RepoRoot");
-                    startInfo.ArgumentList.Add(repoRoot);
-                    startInfo.ArgumentList.Add("-PreferredSourceContextName");
-                    startInfo.ArgumentList.Add("fallback_build_cache");
-                    startInfo.Environment["WINBRIDGE_RUN_ID"] = runId;
-                    startInfo.Environment["WINBRIDGE_RUN_ROOT"] = runRoot;
-                    startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = artifactsRoot;
-                });
+        CreateMarkerFile(Path.Combine(fallbackMarker, ServerDllFileName));
+        CreateMarkerFile(Path.Combine(fallbackHelperMarker, HelperExeFileName));
 
-            JsonElement root = payload.RootElement;
-            Assert.Equal(runId, root.GetProperty("runId").GetString());
-            Assert.Equal(artifactsRoot, root.GetProperty("artifactsRoot").GetString());
-            Assert.Equal(
-                Path.Combine(runRoot, "test-bundle", "okno-test-bundle.json"),
-                root.GetProperty("manifestPath").GetString());
-            Assert.Equal("fallback_build_cache", root.GetProperty("sourceContextName").GetString());
-            Assert.StartsWith(runRoot, root.GetProperty("serverDll").GetString()!, StringComparison.OrdinalIgnoreCase);
-            Assert.StartsWith(runRoot, root.GetProperty("helperExe").GetString()!, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(runRoot);
-            DeleteDirectoryIfExists(artifactsRoot);
-            DeleteDirectoryIfExists(fallbackMarker);
-            DeleteDirectoryIfExists(fallbackHelperMarker);
-        }
+        using JsonDocument payload = InvokePrepareBundle(
+            startInfo =>
+            {
+                AddArguments(startInfo, "-PreferredSourceContextName", FallbackSourceContextName);
+                startInfo.Environment["WINBRIDGE_RUN_ID"] = context.RunId;
+                startInfo.Environment["WINBRIDGE_RUN_ROOT"] = context.RunRoot;
+                startInfo.Environment["WINBRIDGE_ARTIFACTS_ROOT"] = context.ArtifactsRoot;
+            });
+
+        JsonElement root = payload.RootElement;
+        Assert.Equal(context.RunId, JsonString(root, "runId"));
+        Assert.Equal(context.ArtifactsRoot, JsonString(root, "artifactsRoot"));
+        Assert.Equal(context.BundleManifestPath, JsonString(root, "manifestPath"));
+        Assert.Equal(FallbackSourceContextName, JsonString(root, "sourceContextName"));
+        Assert.StartsWith(context.RunRoot, JsonString(root, "serverDll"), StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(context.RunRoot, JsonString(root, "helperExe"), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void PrepareOknoTestBundleAllowsNonCanonicalRunRootWithExplicitRunId()
     {
-        string repoRoot = GetRepositoryRoot();
-        string runId = "resolver-custom-run-root";
-        string customRunRoot = Path.Combine(repoRoot, ".tmp", ".codex", "custom-run-root", Guid.NewGuid().ToString("N"));
-        string fallbackRelativePath = "resolver-custom-run-root-" + Guid.NewGuid().ToString("N");
-        string fallbackMarker = Path.Combine(repoRoot, "src", "WinBridge.Server", "bin", fallbackRelativePath);
-        string fallbackHelperMarker = Path.Combine(repoRoot, "tests", "WinBridge.SmokeWindowHost", "bin", fallbackRelativePath);
+        const string runId = "resolver-custom-run-root";
+        using TemporaryDirectories cleanup = new();
 
-        try
-        {
-            CreateMarkerFile(Path.Combine(fallbackMarker, "Okno.Server.dll"));
-            CreateMarkerFile(Path.Combine(fallbackHelperMarker, "WinBridge.SmokeWindowHost.exe"));
+        string customRunRoot = cleanup.Add(CodexPath("custom-run-root", Guid.NewGuid().ToString("N")));
+        string fallbackRelativePath = UniqueName("resolver-custom-run-root");
+        string fallbackMarker = cleanup.Add(RepoPath("src", ServerProjectName, "bin", fallbackRelativePath));
+        string fallbackHelperMarker = cleanup.Add(RepoPath("tests", HelperProjectName, "bin", fallbackRelativePath));
 
-            using JsonDocument payload = InvokeJsonScript(
-                Path.Combine(repoRoot, "scripts", "codex", "prepare-okno-test-bundle.ps1"),
-                repoRoot,
-                startInfo =>
-                {
-                    startInfo.ArgumentList.Add("-RepoRoot");
-                    startInfo.ArgumentList.Add(repoRoot);
-                    startInfo.ArgumentList.Add("-RunId");
-                    startInfo.ArgumentList.Add(runId);
-                    startInfo.ArgumentList.Add("-RunRoot");
-                    startInfo.ArgumentList.Add(customRunRoot);
-                });
+        CreateMarkerFile(Path.Combine(fallbackMarker, ServerDllFileName));
+        CreateMarkerFile(Path.Combine(fallbackHelperMarker, HelperExeFileName));
 
-            JsonElement root = payload.RootElement;
-            Assert.Equal(runId, root.GetProperty("runId").GetString());
-            Assert.Equal(Path.Combine(customRunRoot, "test-bundle", "okno-test-bundle.json"), root.GetProperty("manifestPath").GetString());
-            Assert.StartsWith(Path.Combine(customRunRoot, "test-bundle"), root.GetProperty("serverDll").GetString()!, StringComparison.OrdinalIgnoreCase);
-            Assert.StartsWith(Path.Combine(customRunRoot, "test-bundle"), root.GetProperty("helperExe").GetString()!, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(customRunRoot);
-            DeleteDirectoryIfExists(fallbackMarker);
-            DeleteDirectoryIfExists(fallbackHelperMarker);
-        }
+        using JsonDocument payload = InvokePrepareBundle(
+            startInfo => AddArguments(startInfo, "-RunId", runId, "-RunRoot", customRunRoot));
+
+        JsonElement root = payload.RootElement;
+        string customBundleDirectory = BundleDirectory(customRunRoot);
+        Assert.Equal(runId, JsonString(root, "runId"));
+        Assert.Equal(Path.Combine(customBundleDirectory, "okno-test-bundle.json"), JsonString(root, "manifestPath"));
+        Assert.StartsWith(customBundleDirectory, JsonString(root, "serverDll"), StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(customBundleDirectory, JsonString(root, "helperExe"), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void ResolveOknoTestBundleRejectsManifestPathCombinedWithRunId()
     {
-        string repoRoot = GetRepositoryRoot();
-        string manifestPath = Path.Combine(repoRoot, ".tmp", ".codex", "runs", "local", "test-bundle", "okno-test-bundle.json");
-        ScriptInvocationResult result = InvokePowerShellScript(
-            Path.Combine(repoRoot, "scripts", "codex", "resolve-okno-test-bundle.ps1"),
-            repoRoot,
-            startInfo =>
-            {
-                startInfo.ArgumentList.Add("-RepoRoot");
-                startInfo.ArgumentList.Add(repoRoot);
-                startInfo.ArgumentList.Add("-ManifestPath");
-                startInfo.ArgumentList.Add(manifestPath);
-                startInfo.ArgumentList.Add("-RunId");
-                startInfo.ArgumentList.Add("ci-proof");
-            });
+        ScriptInvocationResult result = InvokeBundleResolverRaw(
+            startInfo => AddArguments(
+                startInfo,
+                "-ManifestPath",
+                Path.Combine(RunRootFor("local"), "test-bundle", "okno-test-bundle.json"),
+                "-RunId",
+                "ci-proof"));
 
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("Explicit manifest request is incompatible", result.Stderr, StringComparison.Ordinal);
@@ -440,47 +324,47 @@ public sealed class RuntimeBundleResolverTests
     [Fact]
     public void ResolveOknoServerLaunchTargetPrefersAppHostWhenBundleContainsExecutable()
     {
-        string repoRoot = GetRepositoryRoot();
-        string artifactsRoot = Path.Combine(repoRoot, ".tmp", ".codex", "artifacts", "local");
-
-        using JsonDocument payload = InvokeJsonScript(
-            Path.Combine(repoRoot, "scripts", "codex", "resolve-okno-server-launch-target.ps1"),
-            repoRoot,
-            startInfo =>
-            {
-                startInfo.ArgumentList.Add("-RepoRoot");
-                startInfo.ArgumentList.Add(repoRoot);
-                startInfo.ArgumentList.Add("-ArtifactsRoot");
-                startInfo.ArgumentList.Add(artifactsRoot);
-                startInfo.ArgumentList.Add("-PreferredSourceContextName");
-                startInfo.ArgumentList.Add("artifacts_root");
-                startInfo.ArgumentList.Add("-ForcePrepare");
-            });
+        using JsonDocument payload = InvokeLaunchTargetResolver(
+            startInfo => AddArguments(
+                startInfo,
+                "-ArtifactsRoot",
+                ArtifactsRootFor("local"),
+                "-PreferredSourceContextName",
+                ArtifactsSourceContextName,
+                "-ForcePrepare"));
 
         JsonElement root = payload.RootElement;
-        Assert.Equal("apphost", root.GetProperty("launchMode").GetString());
-        Assert.EndsWith("Okno.Server.exe", root.GetProperty("launchTarget").GetString(), StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith("Okno.Server.dll", root.GetProperty("serverDll").GetString(), StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith("Okno.Server.exe", root.GetProperty("serverExe").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("apphost", JsonString(root, "launchMode"));
+        Assert.EndsWith(ServerExeFileName, JsonString(root, "launchTarget"), StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(ServerDllFileName, JsonString(root, "serverDll"), StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(ServerExeFileName, JsonString(root, "serverExe"), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static JsonElement InvokeBundleResolver(string repoRoot, Action<ProcessStartInfo> configure)
+    private static JsonElement InvokeBundleResolver(Action<ProcessStartInfo> configure)
     {
-        using JsonDocument payload = InvokeJsonScript(
-            Path.Combine(repoRoot, "scripts", "codex", "resolve-okno-test-bundle.ps1"),
-            repoRoot,
-            startInfo =>
-            {
-                startInfo.ArgumentList.Add("-RepoRoot");
-                startInfo.ArgumentList.Add(repoRoot);
-                configure(startInfo);
-            });
+        using JsonDocument payload = InvokeJsonScript(ResolveBundleScriptPath, WithRepoRootArgument(configure));
         return payload.RootElement.Clone();
     }
 
-    private static JsonDocument InvokeJsonScript(string scriptPath, string workingDirectory, Action<ProcessStartInfo> configure)
+    private static ScriptInvocationResult InvokeBundleResolverRaw(Action<ProcessStartInfo> configure) =>
+        InvokePowerShellScript(ResolveBundleScriptPath, WithRepoRootArgument(configure));
+
+    private static JsonDocument InvokePrepareBundle(Action<ProcessStartInfo> configure) =>
+        InvokeJsonScript(PrepareBundleScriptPath, WithRepoRootArgument(configure));
+
+    private static JsonDocument InvokeLaunchTargetResolver(Action<ProcessStartInfo> configure) =>
+        InvokeJsonScript(ResolveLaunchTargetScriptPath, WithRepoRootArgument(configure));
+
+    private static Action<ProcessStartInfo> WithRepoRootArgument(Action<ProcessStartInfo> configure) =>
+        startInfo =>
+        {
+            AddArguments(startInfo, "-RepoRoot", RepositoryRoot);
+            configure(startInfo);
+        };
+
+    private static JsonDocument InvokeJsonScript(string scriptPath, Action<ProcessStartInfo> configure)
     {
-        ScriptInvocationResult result = InvokePowerShellScript(scriptPath, workingDirectory, configure);
+        ScriptInvocationResult result = InvokePowerShellScript(scriptPath, configure);
         Assert.True(
             result.ExitCode == 0,
             $"Resolver failed. ExitCode={result.ExitCode}. stderr='{result.Stderr.Trim()}', stdout='{result.Stdout.Trim()}'.");
@@ -488,12 +372,12 @@ public sealed class RuntimeBundleResolverTests
         return JsonDocument.Parse(result.Stdout);
     }
 
-    private static ScriptInvocationResult InvokePowerShellScript(string scriptPath, string workingDirectory, Action<ProcessStartInfo> configure)
+    private static ScriptInvocationResult InvokePowerShellScript(string scriptPath, Action<ProcessStartInfo> configure)
     {
         ProcessStartInfo startInfo = new()
         {
             FileName = "powershell",
-            WorkingDirectory = workingDirectory,
+            WorkingDirectory = RepositoryRoot,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -501,25 +385,64 @@ public sealed class RuntimeBundleResolverTests
             StandardErrorEncoding = Encoding.UTF8,
         };
 
-        startInfo.ArgumentList.Add("-NoLogo");
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-NonInteractive");
-        startInfo.ArgumentList.Add("-ExecutionPolicy");
-        startInfo.ArgumentList.Add("Bypass");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(scriptPath);
-
+        AddArguments(
+            startInfo,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            scriptPath);
         configure(startInfo);
 
         using Process process = new() { StartInfo = startInfo };
         process.Start();
 
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderr = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
 
-        return new ScriptInvocationResult(process.ExitCode, stdout, stderr);
+        return new ScriptInvocationResult(process.ExitCode, stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult());
     }
+
+    private static void WriteVerificationContextProbeScript(string scriptRoot, string scriptPath, string artifactsRoot)
+    {
+        Directory.CreateDirectory(scriptRoot);
+        File.WriteAllText(
+            scriptPath,
+            string.Join(
+                Environment.NewLine,
+                "$ErrorActionPreference = 'Stop'",
+                $". '{PowerShellSingleQuote(CommonScriptPath)}'",
+                $"$env:WINBRIDGE_ARTIFACTS_ROOT = '{PowerShellSingleQuote(artifactsRoot)}'",
+                $"$context = Resolve-WinBridgeVerificationContext -RepoRoot '{PowerShellSingleQuote(RepositoryRoot)}'",
+                "[pscustomobject]@{",
+                "    bundleSourceRelativePath = $context.BundleSourceRelativePath",
+                "    dotnetTestArguments = $context.DotnetTestArguments",
+                "    integrationTestAssembly = $context.IntegrationTestAssembly",
+                "} | ConvertTo-Json -Depth 4 -Compress"),
+            Encoding.UTF8);
+    }
+
+    private static BundleManifestSources ReadBundleManifestSources(JsonElement payload)
+    {
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(JsonString(payload, "manifestPath")));
+        return new BundleManifestSources(
+            JsonString(manifest.RootElement, "serverSourceDirectory"),
+            JsonString(manifest.RootElement, "helperSourceDirectory"));
+    }
+
+    private static void CreateServerArtifact(string artifactsRoot, string configuration, DateTime? lastWriteTimeUtc = null) =>
+        CreateMarkerFile(Path.Combine(ArtifactOutputDirectory(artifactsRoot, ServerProjectName, configuration), ServerDllFileName), lastWriteTimeUtc);
+
+    private static void CreateHelperArtifact(string artifactsRoot, string configuration, DateTime? lastWriteTimeUtc = null) =>
+        CreateMarkerFile(Path.Combine(ArtifactOutputDirectory(artifactsRoot, HelperProjectName, configuration), HelperExeFileName), lastWriteTimeUtc);
+
+    private static void CreateIntegrationTestAssemblyArtifact(string artifactsRoot, string configuration, DateTime? lastWriteTimeUtc = null) =>
+        CreateMarkerFile(
+            Path.Combine(ArtifactOutputDirectory(artifactsRoot, IntegrationTestsProjectName, configuration), IntegrationTestsDllFileName),
+            lastWriteTimeUtc);
 
     private static void CreateMarkerFile(string path, DateTime? lastWriteTimeUtc = null)
     {
@@ -528,6 +451,49 @@ public sealed class RuntimeBundleResolverTests
         File.SetLastWriteTimeUtc(path, lastWriteTimeUtc ?? DateTime.UtcNow);
     }
 
+    private static void AddArguments(ProcessStartInfo startInfo, params string[] arguments)
+    {
+        foreach (string argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+    }
+
+    private static string JsonString(JsonElement element, string propertyName) =>
+        element.GetProperty(propertyName).GetString()
+        ?? throw new InvalidOperationException($"JSON property '{propertyName}' was not returned.");
+
+    private static string? JsonNullableString(JsonElement element, string propertyName) =>
+        element.GetProperty(propertyName).GetString();
+
+    private static string[] JsonStringArray(JsonElement element, string propertyName) =>
+        element.GetProperty(propertyName)
+            .EnumerateArray()
+            .Select(value => value.GetString() ?? string.Empty)
+            .ToArray();
+
+    private static TestRunContext CreateRunContext(string runId) =>
+        new(runId, RunRootFor(runId), ArtifactsRootFor(runId));
+
+    private static string RunRootFor(string runId) => CodexPath("runs", runId);
+
+    private static string ArtifactsRootFor(string runId) => CodexPath("artifacts", runId);
+
+    private static string BundleDirectory(string runRoot) => Path.Combine(runRoot, "test-bundle");
+
+    private static string ArtifactOutputDirectory(string artifactsRoot, string projectName, string configuration) =>
+        Path.Combine(artifactsRoot, "bin", projectName, configuration);
+
+    private static string UniqueName(string prefix) => prefix + "-" + Guid.NewGuid().ToString("N");
+
+    private static string ScriptPath(params string[] parts) => Path.Combine([RepositoryRoot, "scripts", .. parts]);
+
+    private static string CodexPath(params string[] parts) => Path.Combine([RepositoryRoot, ".tmp", ".codex", .. parts]);
+
+    private static string RepoPath(params string[] parts) => Path.Combine([RepositoryRoot, .. parts]);
+
+    private static string PowerShellSingleQuote(string value) => value.Replace("'", "''", StringComparison.Ordinal);
+
     private static void DeleteDirectoryIfExists(string path)
     {
         if (Directory.Exists(path))
@@ -535,10 +501,6 @@ public sealed class RuntimeBundleResolverTests
             Directory.Delete(path, recursive: true);
         }
     }
-
-    private static string PowerShellSingleQuote(string value) => value.Replace("'", "''", StringComparison.Ordinal);
-
-    private sealed record ScriptInvocationResult(int ExitCode, string Stdout, string Stderr);
 
     private static string GetRepositoryRoot()
     {
@@ -555,4 +517,40 @@ public sealed class RuntimeBundleResolverTests
 
         throw new InvalidOperationException("Не удалось определить корень репозитория WinBridge.");
     }
+
+    private sealed class TemporaryDirectories : IDisposable
+    {
+        private readonly List<string> paths = [];
+
+        public TemporaryDirectories(params string[] initialPaths)
+        {
+            foreach (string path in initialPaths)
+            {
+                Add(path);
+            }
+        }
+
+        public string Add(string path)
+        {
+            paths.Add(path);
+            return path;
+        }
+
+        public void Dispose()
+        {
+            for (int i = paths.Count - 1; i >= 0; --i)
+            {
+                DeleteDirectoryIfExists(paths[i]);
+            }
+        }
+    }
+
+    private sealed record TestRunContext(string RunId, string RunRoot, string ArtifactsRoot)
+    {
+        public string BundleManifestPath => Path.Combine(BundleDirectory(RunRoot), "okno-test-bundle.json");
+    }
+
+    private sealed record BundleManifestSources(string ServerSourceDirectory, string HelperSourceDirectory);
+
+    private sealed record ScriptInvocationResult(int ExitCode, string Stdout, string Stderr);
 }

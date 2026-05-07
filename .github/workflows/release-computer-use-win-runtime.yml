@@ -1,4 +1,4 @@
-name: release-computer-use-win-runtime
+name: release-computer-use-win-distribution
 
 on:
   workflow_dispatch:
@@ -48,10 +48,33 @@ jobs:
           "tag=v$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Package runtime release asset
-        id: package
+        id: package_runtime
         shell: pwsh
         run: |
-          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-runtime-release.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64"
+          $releaseBaseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/"
+          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-runtime-release.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64" -RuntimeDownloadBaseUrl $releaseBaseUrl
+          $json = $payload | ConvertFrom-Json
+          "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "asset_name=$($json.assetName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "descriptor_path=$($json.descriptorPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "result_path=$($json.resultPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Package plugin release asset
+        id: package_plugin
+        shell: pwsh
+        run: |
+          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-plugin-release.ps1 -Version "${{ steps.version.outputs.version }}" -RuntimePackagingResultPath "${{ steps.package_runtime.outputs.result_path }}"
+          $json = $payload | ConvertFrom-Json
+          "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "asset_name=$($json.assetName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Package WinUI setup app asset
+        id: package_setup_app
+        shell: pwsh
+        run: |
+          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-okno-setup-app-release.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64" -RuntimePackagingResultPath "${{ steps.package_runtime.outputs.result_path }}"
           $json = $payload | ConvertFrom-Json
           "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -64,7 +87,7 @@ jobs:
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
           if (-not (gh release view $tag 2>$null)) {
-            gh release create $tag --draft --title "Okno Computer Use for Windows Runtime $tag" --notes "Draft runtime release for Computer Use for Windows." --target "${{ github.sha }}"
+            gh release create $tag --draft --title "Okno Computer Use for Windows $tag" --notes "Draft distribution release for Computer Use for Windows." --target "${{ github.sha }}"
           }
 
       - name: Upload release assets to draft
@@ -73,12 +96,22 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
-          gh release upload $tag "${{ steps.package.outputs.archive_path }}" "${{ steps.package.outputs.checksum_path }}" --clobber
+          gh release upload $tag "${{ steps.package_runtime.outputs.archive_path }}" "${{ steps.package_runtime.outputs.checksum_path }}" "${{ steps.package_plugin.outputs.archive_path }}" "${{ steps.package_plugin.outputs.checksum_path }}" "${{ steps.package_setup_app.outputs.archive_path }}" "${{ steps.package_setup_app.outputs.checksum_path }}" --clobber
 
       - name: Attest runtime archive
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: ${{ steps.package.outputs.archive_path }}
+          subject-path: ${{ steps.package_runtime.outputs.archive_path }}
+
+      - name: Attest plugin archive
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.package_plugin.outputs.archive_path }}
+
+      - name: Attest setup app archive
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.package_setup_app.outputs.archive_path }}
 
       - name: Publish release
         env:

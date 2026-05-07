@@ -16,30 +16,30 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed class WindowWaitToolTests
 {
+    private const string RunId = "window-wait-tests";
+    private const string SemanticSmokeButtonAutomationId = "RunSemanticSmokeButton";
+
     [Fact]
     public async Task WaitUsesExplicitTargetAndPublishesRuntimePayload()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        WindowDescriptor explicitWindow = CreateWindow(hwnd: 202, title: "Explicit", isForeground: false);
-        WindowDescriptor activeWindow = CreateWindow(hwnd: 303, title: "Active", isForeground: true);
-        FakeWaitService waitService = new((target, request, _) => Task.FromResult(CreateDoneResult(target, request)));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow, explicitWindow, activeWindow],
-            attachedWindow: attachedWindow,
-            waitService: waitService);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
+        WindowDescriptor explicitWindow = CreateExplicitWindow();
+        WindowDescriptor activeWindow = CreateActiveWindow();
+        FakeWaitService waitService = CreateWaitService(CreateDoneResult);
+        WindowTools tools = CreateToolsWithAttachedWindow(waitService, attachedWindow, explicitWindow, activeWindow);
 
         CallToolResult result = await tools.Wait(
             condition: WaitConditionValues.ElementExists,
-            selector: new WaitElementSelector(AutomationId: "RunSemanticSmokeButton"),
+            selector: new WaitElementSelector(AutomationId: SemanticSmokeButtonAutomationId),
             hwnd: explicitWindow.Hwnd,
             timeoutMs: 1500);
 
         Assert.False(result.IsError);
         Assert.Equal(explicitWindow.Hwnd, waitService.LastTarget?.Window?.Hwnd);
         Assert.Equal(WaitTargetSourceValues.Explicit, waitService.LastTarget?.Source);
-        Assert.Equal("RunSemanticSmokeButton", waitService.LastRequest?.Selector?.AutomationId);
-        Assert.Single(result.Content);
-        TextContentBlock textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Equal(SemanticSmokeButtonAutomationId, waitService.LastRequest?.Selector?.AutomationId);
+
+        TextContentBlock textBlock = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
         Assert.Contains("\"condition\":\"element_exists\"", textBlock.Text, StringComparison.Ordinal);
 
         JsonElement payload = AssertStructuredPayload(result);
@@ -47,22 +47,17 @@ public sealed class WindowWaitToolTests
         Assert.Equal(WaitConditionValues.ElementExists, payload.GetProperty("condition").GetString());
         Assert.Equal(WaitTargetSourceValues.Explicit, payload.GetProperty("targetSource").GetString());
         Assert.Equal(explicitWindow.Hwnd, payload.GetProperty("window").GetProperty("hwnd").GetInt64());
-        Assert.Equal("RunSemanticSmokeButton", payload.GetProperty("matchedElement").GetProperty("automationId").GetString());
+        Assert.Equal(SemanticSmokeButtonAutomationId, payload.GetProperty("matchedElement").GetProperty("automationId").GetString());
     }
 
     [Fact]
     public async Task WaitUsesAttachedTargetWhenExplicitTargetIsMissing()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        FakeWaitService waitService = new((target, request, _) => Task.FromResult(CreateDoneResult(target, request)));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            waitService: waitService);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
+        FakeWaitService waitService = CreateWaitService(CreateDoneResult);
+        WindowTools tools = CreateToolsWithAttachedWindow(waitService, attachedWindow);
 
-        CallToolResult result = await tools.Wait(
-            condition: WaitConditionValues.ActiveWindowMatches,
-            timeoutMs: 1200);
+        CallToolResult result = await tools.Wait(condition: WaitConditionValues.ActiveWindowMatches, timeoutMs: 1200);
 
         Assert.False(result.IsError);
         Assert.Equal(WaitTargetSourceValues.Attached, waitService.LastTarget?.Source);
@@ -73,16 +68,11 @@ public sealed class WindowWaitToolTests
     [Fact]
     public async Task WaitUsesActiveTargetWhenNoExplicitOrAttachedTargetExists()
     {
-        WindowDescriptor activeWindow = CreateWindow(hwnd: 303, title: "Active", isForeground: true);
-        FakeWaitService waitService = new((target, request, _) => Task.FromResult(CreateDoneResult(target, request)));
-        WindowTools tools = CreateTools(
-            windows: [activeWindow],
-            attachedWindow: null,
-            waitService: waitService);
+        WindowDescriptor activeWindow = CreateActiveWindow();
+        FakeWaitService waitService = CreateWaitService(CreateDoneResult);
+        WindowTools tools = CreateToolsWithoutAttachedWindow(waitService, activeWindow);
 
-        CallToolResult result = await tools.Wait(
-            condition: WaitConditionValues.ActiveWindowMatches,
-            timeoutMs: 900);
+        CallToolResult result = await tools.Wait(condition: WaitConditionValues.ActiveWindowMatches, timeoutMs: 900);
 
         Assert.False(result.IsError);
         Assert.Equal(activeWindow.Hwnd, waitService.LastTarget?.Window?.Hwnd);
@@ -92,20 +82,14 @@ public sealed class WindowWaitToolTests
     [Fact]
     public async Task WaitPublishesVisualEvidenceStatusAsFlatLastObservedField()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        FakeWaitService waitService = new((target, request, _) => Task.FromResult(CreateVisualDoneResult(target, request)));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            waitService: waitService);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
+        FakeWaitService waitService = CreateWaitService(CreateVisualDoneResult);
+        WindowTools tools = CreateToolsWithAttachedWindow(waitService, attachedWindow);
 
-        CallToolResult result = await tools.Wait(
-            condition: WaitConditionValues.VisualChanged,
-            timeoutMs: 1200);
+        CallToolResult result = await tools.Wait(condition: WaitConditionValues.VisualChanged, timeoutMs: 1200);
 
         Assert.False(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        JsonElement lastObserved = payload.GetProperty("lastObserved");
+        JsonElement lastObserved = AssertStructuredPayload(result).GetProperty("lastObserved");
         Assert.Equal(WaitVisualEvidenceStatusValues.Timeout, lastObserved.GetProperty("visualEvidenceStatus").GetString());
         Assert.False(lastObserved.TryGetProperty("visualBaselineArtifactPath", out _));
         Assert.False(lastObserved.TryGetProperty("visualCurrentArtifactPath", out _));
@@ -118,26 +102,12 @@ public sealed class WindowWaitToolTests
     [InlineData(WaitStatusValues.Done, false)]
     public async Task WaitMapsRuntimeStatusToIsError(string status, bool expectedIsError)
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        FakeWaitService waitService = new((target, request, _) => Task.FromResult(
-            new WaitResult(
-                Status: status,
-                Condition: request.Condition,
-                TargetSource: target.Source,
-                TargetFailureCode: target.FailureCode,
-                Reason: status == WaitStatusValues.Done ? null : "wait failed",
-                Window: CreateObservedWindow(target.Window ?? attachedWindow),
-                TimeoutMs: request.TimeoutMs,
-                ElapsedMs: 50,
-                AttemptCount: 2)));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            waitService: waitService);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
+        FakeWaitService waitService = CreateWaitService(
+            (target, request) => CreateRuntimeStatusResult(status, target, request, attachedWindow));
+        WindowTools tools = CreateToolsWithAttachedWindow(waitService, attachedWindow);
 
-        CallToolResult result = await tools.Wait(
-            condition: WaitConditionValues.ActiveWindowMatches,
-            timeoutMs: 1000);
+        CallToolResult result = await tools.Wait(condition: WaitConditionValues.ActiveWindowMatches, timeoutMs: 1000);
 
         Assert.Equal(expectedIsError, result.IsError);
     }
@@ -145,25 +115,18 @@ public sealed class WindowWaitToolTests
     [Fact]
     public async Task WaitPassesStaleExplicitResolutionToRuntimeWithoutFallback()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
-        WindowDescriptor activeWindow = CreateWindow(hwnd: 303, title: "Active", isForeground: true);
-        FakeWaitService waitService = new((target, request, _) => Task.FromResult(
-            new WaitResult(
-                Status: WaitStatusValues.Failed,
-                Condition: request.Condition,
-                TargetSource: target.Source,
-                TargetFailureCode: target.FailureCode,
-                Reason: "stale target",
-                TimeoutMs: request.TimeoutMs)));
-        WindowTools tools = CreateTools(
-            windows: [attachedWindow, activeWindow],
-            attachedWindow: attachedWindow,
-            waitService: waitService);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
+        WindowDescriptor activeWindow = CreateActiveWindow();
+        FakeWaitService waitService = CreateWaitService((target, request) => new WaitResult(
+            Status: WaitStatusValues.Failed,
+            Condition: request.Condition,
+            TargetSource: target.Source,
+            TargetFailureCode: target.FailureCode,
+            Reason: "stale target",
+            TimeoutMs: request.TimeoutMs));
+        WindowTools tools = CreateToolsWithAttachedWindow(waitService, attachedWindow, activeWindow);
 
-        CallToolResult result = await tools.Wait(
-            condition: WaitConditionValues.ActiveWindowMatches,
-            hwnd: 999,
-            timeoutMs: 800);
+        CallToolResult result = await tools.Wait(condition: WaitConditionValues.ActiveWindowMatches, hwnd: 999, timeoutMs: 800);
 
         Assert.True(result.IsError);
         Assert.Null(waitService.LastTarget?.Window);
@@ -174,72 +137,59 @@ public sealed class WindowWaitToolTests
     [Fact]
     public async Task WaitReturnsFailedToolResultWhenServiceThrowsUnexpectedException()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
         FakeWaitService waitService = new((_, _, _) => throw new InvalidOperationException("secret internal failure"));
-        TestContext context = CreateContext(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            waitService: waitService);
+        TestContext context = CreateContextWithAttachedWindow(waitService, attachedWindow);
 
-        CallToolResult result = await context.Tools.Wait(
-            condition: WaitConditionValues.ActiveWindowMatches,
-            timeoutMs: 700);
+        CallToolResult result = await context.Tools.Wait(condition: WaitConditionValues.ActiveWindowMatches, timeoutMs: 700);
 
-        Assert.True(result.IsError);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(WaitStatusValues.Failed, payload.GetProperty("status").GetString());
-        Assert.Equal("Server не смог завершить wait request.", payload.GetProperty("reason").GetString());
-        string artifactPath = payload.GetProperty("artifactPath").GetString()!;
-        Assert.True(File.Exists(artifactPath), $"Wait artifact '{artifactPath}' was not created.");
-
-        string[] eventLines = await File.ReadAllLinesAsync(context.EventsPath);
-        Assert.Contains(eventLines, line => line.Contains("\"event_name\":\"wait.runtime.completed\"", StringComparison.Ordinal));
-        Assert.DoesNotContain(eventLines, line => line.Contains("secret internal failure", StringComparison.Ordinal));
-        Assert.Contains(
-            eventLines,
-            line => line.Contains("\"redacted_fields\":\"exception_message\"", StringComparison.Ordinal));
+        await AssertUnexpectedFailureIsMaterializedWithoutSecretAsync(context, result, "secret internal failure");
     }
 
     [Fact]
     public async Task WaitReturnsFailedToolResultWhenTargetResolutionThrowsUnexpectedException()
     {
-        WindowDescriptor attachedWindow = CreateWindow(hwnd: 101, title: "Attached", isForeground: false);
+        WindowDescriptor attachedWindow = CreateAttachedWindow();
         FakeWaitService waitService = new((_, _, _) => throw new NotSupportedException("Wait service не должен вызываться."));
-        TestContext context = CreateContext(
-            windows: [attachedWindow],
-            attachedWindow: attachedWindow,
-            waitService: waitService,
-            windowTargetResolver: new ThrowingWindowTargetResolver(new InvalidOperationException("secret resolution failure")));
+        TestContext context = CreateContextWithAttachedWindow(
+            waitService,
+            attachedWindow,
+            new ThrowingWindowTargetResolver(new InvalidOperationException("secret resolution failure")));
 
-        CallToolResult result = await context.Tools.Wait(
-            condition: WaitConditionValues.ActiveWindowMatches,
-            timeoutMs: 700);
+        CallToolResult result = await context.Tools.Wait(condition: WaitConditionValues.ActiveWindowMatches, timeoutMs: 700);
 
-        Assert.True(result.IsError);
         Assert.Equal(0, waitService.Calls);
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.Equal(WaitStatusValues.Failed, payload.GetProperty("status").GetString());
-        Assert.Equal("Server не смог завершить wait request.", payload.GetProperty("reason").GetString());
-        string artifactPath = payload.GetProperty("artifactPath").GetString()!;
-        Assert.True(File.Exists(artifactPath), $"Wait artifact '{artifactPath}' was not created.");
-
-        string[] eventLines = await File.ReadAllLinesAsync(context.EventsPath);
-        Assert.Contains(eventLines, line => line.Contains("\"event_name\":\"wait.runtime.completed\"", StringComparison.Ordinal));
-        Assert.DoesNotContain(eventLines, line => line.Contains("secret resolution failure", StringComparison.Ordinal));
-        Assert.Contains(
-            eventLines,
-            line => line.Contains("\"redacted_fields\":\"exception_message\"", StringComparison.Ordinal));
+        await AssertUnexpectedFailureIsMaterializedWithoutSecretAsync(context, result, "secret resolution failure");
     }
 
     [Fact]
     public void LiveHandlerDefaultsMatchCanonicalWaitDefaults()
     {
-        MethodInfo method = typeof(WindowTools).GetMethod(nameof(WindowTools.Wait))!;
-        ParameterInfo timeoutParameter = method
+        ParameterInfo timeoutParameter = typeof(WindowTools)
+            .GetMethod(nameof(WindowTools.Wait))!
             .GetParameters()
             .Single(parameter => string.Equals(parameter.Name, "timeoutMs", StringComparison.Ordinal));
 
         Assert.Equal(WaitDefaults.TimeoutMs, Assert.IsType<int>(timeoutParameter.DefaultValue));
+    }
+
+    private static async Task AssertUnexpectedFailureIsMaterializedWithoutSecretAsync(
+        TestContext context,
+        CallToolResult result,
+        string secret)
+    {
+        Assert.True(result.IsError);
+        JsonElement payload = AssertStructuredPayload(result);
+        Assert.Equal(WaitStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal("Server не смог завершить wait request.", payload.GetProperty("reason").GetString());
+
+        string artifactPath = payload.GetProperty("artifactPath").GetString()!;
+        Assert.True(File.Exists(artifactPath), $"Wait artifact '{artifactPath}' was not created.");
+
+        string[] eventLines = await File.ReadAllLinesAsync(context.EventsPath);
+        Assert.Contains(eventLines, line => line.Contains("\"event_name\":\"wait.runtime.completed\"", StringComparison.Ordinal));
+        Assert.DoesNotContain(eventLines, line => line.Contains(secret, StringComparison.Ordinal));
+        Assert.Contains(eventLines, line => line.Contains("\"redacted_fields\":\"exception_message\"", StringComparison.Ordinal));
     }
 
     private static JsonElement AssertStructuredPayload(CallToolResult result)
@@ -248,11 +198,20 @@ public sealed class WindowWaitToolTests
         return result.StructuredContent!.Value;
     }
 
-    private static WindowTools CreateTools(
-        IReadOnlyList<WindowDescriptor> windows,
-        WindowDescriptor? attachedWindow,
-        FakeWaitService waitService) =>
-        CreateContext(windows, attachedWindow, waitService).Tools;
+    private static WindowTools CreateToolsWithAttachedWindow(
+        FakeWaitService waitService,
+        WindowDescriptor attachedWindow,
+        params WindowDescriptor[] otherWindows) =>
+        CreateContext([attachedWindow, ..otherWindows], attachedWindow, waitService).Tools;
+
+    private static WindowTools CreateToolsWithoutAttachedWindow(FakeWaitService waitService, params WindowDescriptor[] windows) =>
+        CreateContext(windows, null, waitService).Tools;
+
+    private static TestContext CreateContextWithAttachedWindow(
+        FakeWaitService waitService,
+        WindowDescriptor attachedWindow,
+        IWindowTargetResolver? windowTargetResolver = null) =>
+        CreateContext([attachedWindow], attachedWindow, waitService, windowTargetResolver);
 
     private static TestContext CreateContext(
         IReadOnlyList<WindowDescriptor> windows,
@@ -261,18 +220,20 @@ public sealed class WindowWaitToolTests
         IWindowTargetResolver? windowTargetResolver = null)
     {
         string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        string diagnosticsRoot = Path.Combine(root, "artifacts", "diagnostics");
+        string runDirectory = Path.Combine(diagnosticsRoot, RunId);
         Directory.CreateDirectory(root);
 
         AuditLogOptions options = new(
             ContentRootPath: root,
             EnvironmentName: "Tests",
-            RunId: "window-wait-tests",
-            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
-            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "window-wait-tests"),
-            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "window-wait-tests", "events.jsonl"),
-            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "window-wait-tests", "summary.md"));
+            RunId: RunId,
+            DiagnosticsRoot: diagnosticsRoot,
+            RunDirectory: runDirectory,
+            EventsPath: Path.Combine(runDirectory, "events.jsonl"),
+            SummaryPath: Path.Combine(runDirectory, "summary.md"));
         AuditLog auditLog = new(options, TimeProvider.System);
-        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("window-wait-tests"));
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext(RunId));
 
         if (attachedWindow is not null)
         {
@@ -300,15 +261,18 @@ public sealed class WindowWaitToolTests
             options.EventsPath);
     }
 
+    private static FakeWaitService CreateWaitService(Func<WaitTargetResolution, WaitRequest, WaitResult> resultFactory) =>
+        new((target, request, _) => Task.FromResult(resultFactory(target, request)));
+
     private static WaitResult CreateDoneResult(WaitTargetResolution target, WaitRequest request)
     {
-        WindowDescriptor targetWindow = target.Window ?? CreateWindow(hwnd: 909, title: "Fallback", isForeground: true);
+        WindowDescriptor targetWindow = target.Window ?? CreateFallbackWindow();
         ObservedWindowDescriptor observedWindow = CreateObservedWindow(targetWindow);
         UiaElementSnapshot matchedElement = new()
         {
             ElementId = "rid:1.2/button",
             Name = "Run semantic smoke",
-            AutomationId = request.Selector?.AutomationId ?? "RunSemanticSmokeButton",
+            AutomationId = request.Selector?.AutomationId ?? SemanticSmokeButtonAutomationId,
             ControlType = request.Selector?.ControlType ?? "button",
             ControlTypeId = 50000,
             IsControlElement = true,
@@ -335,7 +299,7 @@ public sealed class WindowWaitToolTests
 
     private static WaitResult CreateVisualDoneResult(WaitTargetResolution target, WaitRequest request)
     {
-        WindowDescriptor targetWindow = target.Window ?? CreateWindow(hwnd: 909, title: "Fallback", isForeground: true);
+        WindowDescriptor targetWindow = target.Window ?? CreateFallbackWindow();
         ObservedWindowDescriptor observedWindow = CreateObservedWindow(targetWindow);
         return new WaitResult(
             Status: WaitStatusValues.Done,
@@ -353,20 +317,35 @@ public sealed class WindowWaitToolTests
             AttemptCount: 3);
     }
 
-    private static WindowDescriptor CreateWindow(
-        long hwnd,
-        string title,
-        bool isForeground,
-        int processId = 123,
-        int threadId = 456,
-        string className = "OknoWindow") =>
+    private static WaitResult CreateRuntimeStatusResult(
+        string status,
+        WaitTargetResolution target,
+        WaitRequest request,
+        WindowDescriptor fallbackWindow) =>
+        new(
+            Status: status,
+            Condition: request.Condition,
+            TargetSource: target.Source,
+            TargetFailureCode: target.FailureCode,
+            Reason: status == WaitStatusValues.Done ? null : "wait failed",
+            Window: CreateObservedWindow(target.Window ?? fallbackWindow),
+            TimeoutMs: request.TimeoutMs,
+            ElapsedMs: 50,
+            AttemptCount: 2);
+
+    private static WindowDescriptor CreateAttachedWindow() => CreateWindow(101, "Attached", isForeground: false);
+    private static WindowDescriptor CreateExplicitWindow() => CreateWindow(202, "Explicit", isForeground: false);
+    private static WindowDescriptor CreateActiveWindow() => CreateWindow(303, "Active", isForeground: true);
+    private static WindowDescriptor CreateFallbackWindow() => CreateWindow(909, "Fallback", isForeground: true);
+
+    private static WindowDescriptor CreateWindow(long hwnd, string title, bool isForeground) =>
         new(
             Hwnd: hwnd,
             Title: title,
             ProcessName: "okno-tests",
-            ProcessId: processId,
-            ThreadId: threadId,
-            ClassName: className,
+            ProcessId: 123,
+            ThreadId: 456,
+            ClassName: "OknoWindow",
             Bounds: new Bounds(10, 20, 210, 220),
             IsForeground: isForeground,
             IsVisible: true,
@@ -414,19 +393,10 @@ public sealed class WindowWaitToolTests
 
     private sealed class ThrowingWindowTargetResolver(Exception exception) : IWindowTargetResolver
     {
-        public WindowDescriptor? ResolveExplicitOrAttachedWindow(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
-            throw exception;
-
-        public LiveWindowIdentityResolution ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow) =>
-            throw exception;
-
-        public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
-            throw exception;
-
-        public InputTargetResolution ResolveInputTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
-            throw exception;
-
-        public WaitTargetResolution ResolveWaitTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
-            throw exception;
+        public WindowDescriptor? ResolveExplicitOrAttachedWindow(long? explicitHwnd, WindowDescriptor? attachedWindow) => throw exception;
+        public LiveWindowIdentityResolution ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow) => throw exception;
+        public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) => throw exception;
+        public InputTargetResolution ResolveInputTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) => throw exception;
+        public WaitTargetResolution ResolveWaitTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) => throw exception;
     }
 }

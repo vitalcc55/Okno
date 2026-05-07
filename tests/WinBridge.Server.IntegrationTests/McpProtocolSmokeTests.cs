@@ -64,2201 +64,1381 @@ public sealed class McpProtocolSmokeTests
     [Fact]
     public async Task InitializeNegotiatesMcp20251125ProtocolVersion()
     {
-        using Process process = StartServer();
+        await using ServerSession server = StartServerSession();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument initializeResponse = await InitializeAsync(session);
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            JsonElement initializeResult = initializeResponse.RootElement.GetProperty("result");
-            Assert.Equal("2025-11-25", initializeResult.GetProperty("protocolVersion").GetString());
-            Assert.Equal("Okno.Server", initializeResult.GetProperty("serverInfo").GetProperty("name").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement initializeResult = initializeResponse.RootElement.GetProperty("result");
+        Assert.Equal("2025-11-25", initializeResult.GetProperty("protocolVersion").GetString());
+        Assert.Equal("Okno.Server", initializeResult.GetProperty("serverInfo").GetProperty("name").GetString());
     }
 
     [Fact]
     public async Task InitializePublishesMinimalServerInfoWithoutDescription()
     {
-        using Process process = StartServer();
+        await using ServerSession server = StartServerSession();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument initializeResponse = await InitializeAsync(session);
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            JsonElement serverInfo = initializeResponse.RootElement.GetProperty("result").GetProperty("serverInfo");
-            Assert.Equal("Okno.Server", serverInfo.GetProperty("name").GetString());
-            Assert.False(string.IsNullOrWhiteSpace(serverInfo.GetProperty("version").GetString()));
-            Assert.False(serverInfo.TryGetProperty("description", out _));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement serverInfo = initializeResponse.RootElement.GetProperty("result").GetProperty("serverInfo");
+        Assert.Equal("Okno.Server", serverInfo.GetProperty("name").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(serverInfo.GetProperty("version").GetString()));
+        Assert.False(serverInfo.TryGetProperty("description", out _));
     }
 
     [Fact]
     public async Task ToolsListPublishesWindowsWaitWithFinalSchemaAndAnnotations()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument toolsResponse = await ListToolsAsync(session);
+        JsonElement waitDescriptor = GetToolDescriptor(toolsResponse, ToolNames.WindowsWait);
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        Assert.False(string.IsNullOrWhiteSpace(waitDescriptor.GetProperty("description").GetString()));
+        JsonElement annotations = waitDescriptor.GetProperty("annotations");
+        Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
+        Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
+        Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
 
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument toolsResponse = await session.SendRequestAsync(
-                "tools/list",
-                new { },
-                "tools/list");
-            JsonElement waitDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsWait);
-
-            Assert.False(string.IsNullOrWhiteSpace(waitDescriptor.GetProperty("description").GetString()));
-            JsonElement annotations = waitDescriptor.GetProperty("annotations");
-            Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
-            Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
-
-            JsonElement properties = waitDescriptor.GetProperty("inputSchema").GetProperty("properties");
-            Assert.False(properties.TryGetProperty("until", out _));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("condition").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("selector").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("expectedText").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("hwnd").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("timeoutMs").GetProperty("description").GetString()));
-            JsonElement selectorType = properties.GetProperty("selector").GetProperty("type");
-            Assert.Contains("object", selectorType.EnumerateArray().Select(item => item.GetString()));
-            JsonElement selectorProperties = properties.GetProperty("selector").GetProperty("properties");
-            Assert.True(selectorProperties.TryGetProperty("name", out _));
-            Assert.True(selectorProperties.TryGetProperty("automationId", out _));
-            Assert.True(selectorProperties.TryGetProperty("controlType", out _));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement properties = waitDescriptor.GetProperty("inputSchema").GetProperty("properties");
+        Assert.False(properties.TryGetProperty("until", out _));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("condition").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("selector").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("expectedText").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("hwnd").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("timeoutMs").GetProperty("description").GetString()));
+        JsonElement selectorType = properties.GetProperty("selector").GetProperty("type");
+        Assert.Contains("object", selectorType.EnumerateArray().Select(item => item.GetString()));
+        JsonElement selectorProperties = properties.GetProperty("selector").GetProperty("properties");
+        Assert.True(selectorProperties.TryGetProperty("name", out _));
+        Assert.True(selectorProperties.TryGetProperty("automationId", out _));
+        Assert.True(selectorProperties.TryGetProperty("controlType", out _));
     }
 
     [Fact]
     public async Task ToolsListPublishesComputerUseWinProfileWithOnlyCuratedOperatorTools()
     {
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument toolsResponse = await ListToolsAsync(session);
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        string[] toolNames = toolsResponse.RootElement
+            .GetProperty("result")
+            .GetProperty("tools")
+            .EnumerateArray()
+            .Select(tool => tool.GetProperty("name").GetString()!)
+            .OrderBy(static item => item, StringComparer.Ordinal)
+            .ToArray();
 
-            await session.SendNotificationAsync("notifications/initialized");
+        Assert.Equal(
+            [
+                ToolNames.ComputerUseWinClick,
+                ToolNames.ComputerUseWinDrag,
+                ToolNames.ComputerUseWinGetAppState,
+                ToolNames.ComputerUseWinListApps,
+                ToolNames.ComputerUseWinPerformSecondaryAction,
+                ToolNames.ComputerUseWinPressKey,
+                ToolNames.ComputerUseWinScroll,
+                ToolNames.ComputerUseWinSetValue,
+                ToolNames.ComputerUseWinTypeText,
+            ],
+            toolNames);
 
-            using JsonDocument toolsResponse = await session.SendRequestAsync(
-                "tools/list",
-                new { },
-                "tools/list");
+        JsonElement clickDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinClick);
+        JsonElement pressKeyDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinPressKey);
+        JsonElement dragDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinDrag);
+        JsonElement secondaryActionDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinPerformSecondaryAction);
+        JsonElement scrollDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinScroll);
+        JsonElement setValueDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinSetValue);
+        JsonElement typeTextDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinTypeText);
+        JsonElement listAppsDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinListApps);
+        JsonElement getAppStateDescriptor = GetToolDescriptor(toolsResponse, ToolNames.ComputerUseWinGetAppState);
+        JsonElement clickProperties = clickDescriptor.GetProperty("inputSchema").GetProperty("properties");
+        JsonElement pressKeyProperties = pressKeyDescriptor.GetProperty("inputSchema").GetProperty("properties");
+        JsonElement dragSchema = dragDescriptor.GetProperty("inputSchema");
+        JsonElement dragProperties = dragSchema.GetProperty("properties");
+        JsonElement secondaryActionSchema = secondaryActionDescriptor.GetProperty("inputSchema");
+        JsonElement secondaryActionProperties = secondaryActionSchema.GetProperty("properties");
+        JsonElement scrollSchema = scrollDescriptor.GetProperty("inputSchema");
+        JsonElement scrollProperties = scrollSchema.GetProperty("properties");
+        JsonElement setValueSchema = setValueDescriptor.GetProperty("inputSchema");
+        JsonElement setValueProperties = setValueSchema.GetProperty("properties");
+        JsonElement typeTextSchema = typeTextDescriptor.GetProperty("inputSchema");
+        JsonElement typeTextProperties = typeTextSchema.GetProperty("properties");
+        JsonElement getAppStateSchema = getAppStateDescriptor.GetProperty("inputSchema");
+        JsonElement getAppStateProperties = getAppStateSchema.GetProperty("properties");
+        AssertSchemaRequiredContains(clickDescriptor.GetProperty("inputSchema"), "stateToken");
+        AssertSchemaRequiredContains(dragSchema, "stateToken");
+        AssertSchemaRequiredContains(pressKeyDescriptor.GetProperty("inputSchema"), "stateToken");
+        AssertSchemaRequiredContains(pressKeyDescriptor.GetProperty("inputSchema"), "key");
+        AssertSchemaRequiredContains(secondaryActionSchema, "stateToken");
+        AssertSchemaRequiredContains(secondaryActionSchema, "elementIndex");
+        AssertSchemaRequiredContains(scrollSchema, "stateToken");
+        AssertSchemaRequiredContains(scrollSchema, "direction");
+        AssertSchemaRequiredContains(setValueSchema, "stateToken");
+        AssertSchemaRequiredContains(setValueSchema, "elementIndex");
+        AssertSchemaRequiredContains(setValueSchema, "valueKind");
+        AssertSchemaRequiredContains(typeTextSchema, "stateToken");
+        AssertSchemaRequiredContains(typeTextSchema, "text");
 
-            string[] toolNames = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Select(tool => tool.GetProperty("name").GetString()!)
-                .OrderBy(static item => item, StringComparer.Ordinal)
-                .ToArray();
+        JsonElement getAppStateAnnotations = getAppStateDescriptor.GetProperty("annotations");
+        JsonElement listAppsAnnotations = listAppsDescriptor.GetProperty("annotations");
+        Assert.False(listAppsAnnotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.True(listAppsAnnotations.GetProperty("destructiveHint").GetBoolean());
+        Assert.False(listAppsAnnotations.GetProperty("idempotentHint").GetBoolean());
+        Assert.True(listAppsAnnotations.GetProperty("openWorldHint").GetBoolean());
+        Assert.False(getAppStateAnnotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.False(getAppStateAnnotations.GetProperty("destructiveHint").GetBoolean());
+        Assert.False(getAppStateAnnotations.GetProperty("idempotentHint").GetBoolean());
+        Assert.True(getAppStateAnnotations.GetProperty("openWorldHint").GetBoolean());
+        Assert.True(getAppStateProperties.TryGetProperty("windowId", out JsonElement windowIdProperty));
+        Assert.True(getAppStateProperties.TryGetProperty("hwnd", out JsonElement getAppStateHwndProperty));
+        Assert.False(getAppStateProperties.TryGetProperty("appId", out _));
+        Assert.Contains("string", windowIdProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
+        Assert.Contains("null", windowIdProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
+        Assert.Equal(@".*\S.*", windowIdProperty.GetProperty("pattern").GetString());
+        Assert.Contains("integer", getAppStateHwndProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
+        string[] conflictingSelectors = getAppStateSchema.GetProperty("not").GetProperty("required").EnumerateArray()
+            .Select(item => item.GetString())
+            .Where(static item => item is not null)
+            .Cast<string>()
+            .ToArray();
+        Assert.Equal(["windowId", "hwnd"], conflictingSelectors);
 
-            Assert.Equal(
-                [
-                    ToolNames.ComputerUseWinClick,
-                    ToolNames.ComputerUseWinDrag,
-                    ToolNames.ComputerUseWinGetAppState,
-                    ToolNames.ComputerUseWinListApps,
-                    ToolNames.ComputerUseWinPerformSecondaryAction,
-                    ToolNames.ComputerUseWinPressKey,
-                    ToolNames.ComputerUseWinScroll,
-                    ToolNames.ComputerUseWinSetValue,
-                    ToolNames.ComputerUseWinTypeText,
-                ],
-                toolNames);
+        Assert.Equal(
+            [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+            clickProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+        Assert.Equal(
+            [InputButtonValues.Left, InputButtonValues.Right],
+            clickProperties.GetProperty("button").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+        Assert.Equal("string", pressKeyProperties.GetProperty("key").GetProperty("type").GetString());
+        Assert.Equal(1, pressKeyProperties.GetProperty("repeat").GetProperty("minimum").GetInt32());
+        Assert.Equal(InputActionScalarConstraints.MaximumKeypressRepeat, pressKeyProperties.GetProperty("repeat").GetProperty("maximum").GetInt32());
+        Assert.Equal(1, dragProperties.GetProperty("fromElementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal(1, dragProperties.GetProperty("toElementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal(
+            [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
+            dragProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+        JsonElement[] dragSelectorSets = [.. dragSchema.GetProperty("allOf").EnumerateArray()];
+        Assert.Equal(2, dragSelectorSets.Length);
+        Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromElementIndex"));
+        Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromPoint"));
+        Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toElementIndex"));
+        Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toPoint"));
+        Assert.Equal(1, secondaryActionProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.False(secondaryActionProperties.TryGetProperty("point", out _));
+        Assert.Equal(1, scrollProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal(
+            ["up", "down", "left", "right"],
+            scrollProperties.GetProperty("direction").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+        Assert.Equal(1, scrollProperties.GetProperty("pages").GetProperty("minimum").GetInt32());
+        Assert.Equal(1, setValueProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal(
+            ["text", "number"],
+            setValueProperties.GetProperty("valueKind").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+        Assert.Equal("string", setValueProperties.GetProperty("textValue").GetProperty("type").GetString());
+        Assert.Equal("number", setValueProperties.GetProperty("numberValue").GetProperty("type").GetString());
+        Assert.Equal(1, typeTextProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal("string", typeTextProperties.GetProperty("text").GetProperty("type").GetString());
+        Assert.Equal("boolean", typeTextProperties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
+        Assert.Equal("boolean", typeTextProperties.GetProperty("confirm").GetProperty("type").GetString());
+        Assert.Equal("object", typeTextProperties.GetProperty("point").GetProperty("type").GetString());
+        Assert.Equal(
+            [InputCoordinateSpaceValues.CapturePixels],
+            typeTextProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
+        Assert.Equal("boolean", clickProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+        Assert.Equal("boolean", pressKeyProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+        Assert.Equal("boolean", dragProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+        Assert.Equal("boolean", scrollProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+        Assert.Equal("boolean", typeTextProperties.GetProperty("observeAfter").GetProperty("type").GetString());
+        Assert.False(setValueProperties.TryGetProperty("observeAfter", out _));
+        Assert.False(secondaryActionProperties.TryGetProperty("observeAfter", out _));
+        Assert.False(typeTextProperties.TryGetProperty("key", out _));
+        Assert.False(typeTextProperties.TryGetProperty("valueKind", out _));
 
-            JsonElement clickDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinClick);
-            JsonElement pressKeyDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinPressKey);
-            JsonElement dragDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinDrag);
-            JsonElement secondaryActionDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinPerformSecondaryAction);
-            JsonElement scrollDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinScroll);
-            JsonElement setValueDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinSetValue);
-            JsonElement typeTextDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinTypeText);
-            JsonElement listAppsDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinListApps);
-            JsonElement getAppStateDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.ComputerUseWinGetAppState);
-            JsonElement clickProperties = clickDescriptor.GetProperty("inputSchema").GetProperty("properties");
-            JsonElement pressKeyProperties = pressKeyDescriptor.GetProperty("inputSchema").GetProperty("properties");
-            JsonElement dragSchema = dragDescriptor.GetProperty("inputSchema");
-            JsonElement dragProperties = dragSchema.GetProperty("properties");
-            JsonElement secondaryActionSchema = secondaryActionDescriptor.GetProperty("inputSchema");
-            JsonElement secondaryActionProperties = secondaryActionSchema.GetProperty("properties");
-            JsonElement scrollSchema = scrollDescriptor.GetProperty("inputSchema");
-            JsonElement scrollProperties = scrollSchema.GetProperty("properties");
-            JsonElement setValueSchema = setValueDescriptor.GetProperty("inputSchema");
-            JsonElement setValueProperties = setValueSchema.GetProperty("properties");
-            JsonElement typeTextSchema = typeTextDescriptor.GetProperty("inputSchema");
-            JsonElement typeTextProperties = typeTextSchema.GetProperty("properties");
-            JsonElement getAppStateSchema = getAppStateDescriptor.GetProperty("inputSchema");
-            JsonElement getAppStateProperties = getAppStateSchema.GetProperty("properties");
-            AssertSchemaRequiredContains(clickDescriptor.GetProperty("inputSchema"), "stateToken");
-            AssertSchemaRequiredContains(dragSchema, "stateToken");
-            AssertSchemaRequiredContains(pressKeyDescriptor.GetProperty("inputSchema"), "stateToken");
-            AssertSchemaRequiredContains(pressKeyDescriptor.GetProperty("inputSchema"), "key");
-            AssertSchemaRequiredContains(secondaryActionSchema, "stateToken");
-            AssertSchemaRequiredContains(secondaryActionSchema, "elementIndex");
-            AssertSchemaRequiredContains(scrollSchema, "stateToken");
-            AssertSchemaRequiredContains(scrollSchema, "direction");
-            AssertSchemaRequiredContains(setValueSchema, "stateToken");
-            AssertSchemaRequiredContains(setValueSchema, "elementIndex");
-            AssertSchemaRequiredContains(setValueSchema, "valueKind");
-            AssertSchemaRequiredContains(typeTextSchema, "stateToken");
-            AssertSchemaRequiredContains(typeTextSchema, "text");
+        JsonElement[] selectorModes = [.. clickDescriptor.GetProperty("inputSchema").GetProperty("oneOf").EnumerateArray()];
+        Assert.Equal(2, selectorModes.Length);
+        Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
+        Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
 
-            JsonElement getAppStateAnnotations = getAppStateDescriptor.GetProperty("annotations");
-            JsonElement listAppsAnnotations = listAppsDescriptor.GetProperty("annotations");
-            Assert.False(listAppsAnnotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.True(listAppsAnnotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.False(listAppsAnnotations.GetProperty("idempotentHint").GetBoolean());
-            Assert.True(listAppsAnnotations.GetProperty("openWorldHint").GetBoolean());
-            Assert.False(getAppStateAnnotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(getAppStateAnnotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.False(getAppStateAnnotations.GetProperty("idempotentHint").GetBoolean());
-            Assert.True(getAppStateAnnotations.GetProperty("openWorldHint").GetBoolean());
-            Assert.True(getAppStateProperties.TryGetProperty("windowId", out JsonElement windowIdProperty));
-            Assert.True(getAppStateProperties.TryGetProperty("hwnd", out JsonElement getAppStateHwndProperty));
-            Assert.False(getAppStateProperties.TryGetProperty("appId", out _));
-            Assert.Contains("string", windowIdProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
-            Assert.Contains("null", windowIdProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
-            Assert.Equal(@".*\S.*", windowIdProperty.GetProperty("pattern").GetString());
-            Assert.Contains("integer", getAppStateHwndProperty.GetProperty("type").EnumerateArray().Select(item => item.GetString()));
-            string[] conflictingSelectors = getAppStateSchema.GetProperty("not").GetProperty("required").EnumerateArray()
-                .Select(item => item.GetString())
-                .Where(static item => item is not null)
-                .Cast<string>()
-                .ToArray();
-            Assert.Equal(["windowId", "hwnd"], conflictingSelectors);
-
-            Assert.Equal(
-                [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
-                clickProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
-            Assert.Equal(
-                [InputButtonValues.Left, InputButtonValues.Right],
-                clickProperties.GetProperty("button").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
-            Assert.Equal("string", pressKeyProperties.GetProperty("key").GetProperty("type").GetString());
-            Assert.Equal(1, pressKeyProperties.GetProperty("repeat").GetProperty("minimum").GetInt32());
-            Assert.Equal(InputActionScalarConstraints.MaximumKeypressRepeat, pressKeyProperties.GetProperty("repeat").GetProperty("maximum").GetInt32());
-            Assert.Equal(1, dragProperties.GetProperty("fromElementIndex").GetProperty("minimum").GetInt32());
-            Assert.Equal(1, dragProperties.GetProperty("toElementIndex").GetProperty("minimum").GetInt32());
-            Assert.Equal(
-                [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
-                dragProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
-            JsonElement[] dragSelectorSets = [.. dragSchema.GetProperty("allOf").EnumerateArray()];
-            Assert.Equal(2, dragSelectorSets.Length);
-            Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromElementIndex"));
-            Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromPoint"));
-            Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toElementIndex"));
-            Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toPoint"));
-            Assert.Equal(1, secondaryActionProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
-            Assert.False(secondaryActionProperties.TryGetProperty("point", out _));
-            Assert.Equal(1, scrollProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
-            Assert.Equal(
-                ["up", "down", "left", "right"],
-                scrollProperties.GetProperty("direction").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
-            Assert.Equal(1, scrollProperties.GetProperty("pages").GetProperty("minimum").GetInt32());
-            Assert.Equal(1, setValueProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
-            Assert.Equal(
-                ["text", "number"],
-                setValueProperties.GetProperty("valueKind").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
-            Assert.Equal("string", setValueProperties.GetProperty("textValue").GetProperty("type").GetString());
-            Assert.Equal("number", setValueProperties.GetProperty("numberValue").GetProperty("type").GetString());
-            Assert.Equal(1, typeTextProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
-            Assert.Equal("string", typeTextProperties.GetProperty("text").GetProperty("type").GetString());
-            Assert.Equal("boolean", typeTextProperties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
-            Assert.Equal("boolean", typeTextProperties.GetProperty("confirm").GetProperty("type").GetString());
-            Assert.Equal("object", typeTextProperties.GetProperty("point").GetProperty("type").GetString());
-            Assert.Equal(
-                [InputCoordinateSpaceValues.CapturePixels],
-                typeTextProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
-            Assert.Equal("boolean", clickProperties.GetProperty("observeAfter").GetProperty("type").GetString());
-            Assert.Equal("boolean", pressKeyProperties.GetProperty("observeAfter").GetProperty("type").GetString());
-            Assert.Equal("boolean", dragProperties.GetProperty("observeAfter").GetProperty("type").GetString());
-            Assert.Equal("boolean", scrollProperties.GetProperty("observeAfter").GetProperty("type").GetString());
-            Assert.Equal("boolean", typeTextProperties.GetProperty("observeAfter").GetProperty("type").GetString());
-            Assert.False(setValueProperties.TryGetProperty("observeAfter", out _));
-            Assert.False(secondaryActionProperties.TryGetProperty("observeAfter", out _));
-            Assert.False(typeTextProperties.TryGetProperty("key", out _));
-            Assert.False(typeTextProperties.TryGetProperty("valueKind", out _));
-
-            JsonElement[] selectorModes = [.. clickDescriptor.GetProperty("inputSchema").GetProperty("oneOf").EnumerateArray()];
-            Assert.Equal(2, selectorModes.Length);
-            Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
-            Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
-
-            Assert.False(clickDescriptor.TryGetProperty("icons", out _));
-            Assert.False(getAppStateDescriptor.TryGetProperty("icons", out _));
-            Assert.Equal("optional", clickDescriptor.GetProperty("execution").GetProperty("taskSupport").GetString());
-            Assert.Equal("optional", getAppStateDescriptor.GetProperty("execution").GetProperty("taskSupport").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        Assert.False(clickDescriptor.TryGetProperty("icons", out _));
+        Assert.False(getAppStateDescriptor.TryGetProperty("icons", out _));
+        Assert.Equal("optional", clickDescriptor.GetProperty("execution").GetProperty("taskSupport").GetString());
+        Assert.Equal("optional", getAppStateDescriptor.GetProperty("execution").GetProperty("taskSupport").GetString());
     }
 
     [Fact]
     public async Task ComputerUseWinGetAppStateRequiresApprovalBeforeReturningState()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Approval {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument response = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument response = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                });
-
-            JsonElement payload = response.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
-            Assert.True(payload.GetProperty("approvalRequired").GetBoolean());
-            Assert.Equal(ComputerUseWinFailureCodeValues.ApprovalRequired, payload.GetProperty("failureCode").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement payload = response.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.ApprovalRequired, payload.GetProperty("status").GetString());
+        Assert.True(payload.GetProperty("approvalRequired").GetBoolean());
+        Assert.Equal(ComputerUseWinFailureCodeValues.ApprovalRequired, payload.GetProperty("failureCode").GetString());
     }
 
     [Fact]
     public async Task ComputerUseWinClickUsesStateTokenAndElementIndexAfterApprovedAppState()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Click {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument stateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement statePayload = stateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, statePayload.GetProperty("status").GetString());
+        Assert.Contains(
+            stateResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
+            block => block.GetProperty("type").GetString() == "image");
 
-            await session.SendNotificationAsync("notifications/initialized");
+        string stateToken = statePayload.GetProperty("stateToken").GetString()!;
+        JsonElement targetElement = statePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
+        int elementIndex = targetElement.GetProperty("index").GetInt32();
 
-            using JsonDocument stateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        using JsonDocument clickResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinClick,
+            new
+            {
+                stateToken,
+                elementIndex,
+                observeAfter = true,
+            });
 
-            JsonElement statePayload = stateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, statePayload.GetProperty("status").GetString());
-            Assert.Contains(
-                stateResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
-                block => block.GetProperty("type").GetString() == "image");
+        JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
+        Assert.False(clickPayload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.Equal(helperHwnd, clickPayload.GetProperty("targetHwnd").GetInt64());
+        Assert.Equal(elementIndex, clickPayload.GetProperty("elementIndex").GetInt32());
+        Assert.Contains(
+            clickResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
+            block => block.GetProperty("type").GetString() == "image");
+        JsonElement successorState = clickPayload.GetProperty("successorState");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
+        string successorToken = successorState.GetProperty("stateToken").GetString()!;
+        Assert.NotEqual(stateToken, successorToken);
 
-            string stateToken = statePayload.GetProperty("stateToken").GetString()!;
-            JsonElement targetElement = statePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
-            int elementIndex = targetElement.GetProperty("index").GetInt32();
+        using JsonDocument followUpResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinPressKey,
+            new
+            {
+                stateToken = successorToken,
+                key = "tab",
+            });
 
-            using JsonDocument clickResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinClick,
-                new
-                {
-                    stateToken,
-                    elementIndex,
-                    observeAfter = true,
-                });
-
-            JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
-            Assert.False(clickPayload.GetProperty("refreshStateRecommended").GetBoolean());
-            Assert.Equal(helperHwnd, clickPayload.GetProperty("targetHwnd").GetInt64());
-            Assert.Equal(elementIndex, clickPayload.GetProperty("elementIndex").GetInt32());
-            Assert.Contains(
-                clickResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
-                block => block.GetProperty("type").GetString() == "image");
-            JsonElement successorState = clickPayload.GetProperty("successorState");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
-            string successorToken = successorState.GetProperty("stateToken").GetString()!;
-            Assert.NotEqual(stateToken, successorToken);
-
-            using JsonDocument followUpResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinPressKey,
-                new
-                {
-                    stateToken = successorToken,
-                    key = "tab",
-                });
-
-            JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
-            Assert.Equal(helperHwnd, followUpPayload.GetProperty("targetHwnd").GetInt64());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
+        Assert.Equal(helperHwnd, followUpPayload.GetProperty("targetHwnd").GetInt64());
     }
 
     [Fact]
     public async Task ComputerUseWinPressKeyMovesKeyboardFocusThroughApprovedAppState()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper PressKey {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        string focusedNameBefore = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean())
+            .GetProperty("name")
+            .GetString()!;
+        Assert.Equal("Run semantic smoke", focusedNameBefore);
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument pressKeyResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinPressKey,
+            new
+            {
+                stateToken,
+                key = "tab",
+            });
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement pressKeyPayload = pressKeyResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, pressKeyPayload.GetProperty("status").GetString());
+        Assert.Equal(helperHwnd, pressKeyPayload.GetProperty("targetHwnd").GetInt64());
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            string focusedNameBefore = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean())
-                .GetProperty("name")
-                .GetString()!;
-            Assert.Equal("Run semantic smoke", focusedNameBefore);
+        using JsonDocument secondStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument pressKeyResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinPressKey,
-                new
-                {
-                    stateToken,
-                    key = "tab",
-                });
-
-            JsonElement pressKeyPayload = pressKeyResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, pressKeyPayload.GetProperty("status").GetString());
-            Assert.Equal(helperHwnd, pressKeyPayload.GetProperty("targetHwnd").GetInt64());
-
-            using JsonDocument secondStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
-            string focusedNameAfter = secondStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean())
-                .GetProperty("name")
-                .GetString()!;
-            Assert.NotEqual(focusedNameBefore, focusedNameAfter);
-            Assert.Equal("Transient wait target", focusedNameAfter);
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+        string focusedNameAfter = secondStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean())
+            .GetProperty("name")
+            .GetString()!;
+        Assert.NotEqual(focusedNameBefore, focusedNameAfter);
+        Assert.Equal("Transient wait target", focusedNameAfter);
     }
 
     [Fact]
     public async Task ComputerUseWinSetValueUpdatesSemanticMirrorThroughApprovedAppState()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper SetValue {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement targetElement = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
+        int elementIndex = targetElement.GetProperty("index").GetInt32();
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument setValueResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinSetValue,
+            new
+            {
+                stateToken,
+                elementIndex,
+                valueKind = "text",
+                textValue = "stage four semantic value",
+            });
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement setValuePayload = setValueResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Done, setValuePayload.GetProperty("status").GetString());
+        Assert.Equal(helperHwnd, setValuePayload.GetProperty("targetHwnd").GetInt64());
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement targetElement = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
-            int elementIndex = targetElement.GetProperty("index").GetInt32();
+        using JsonDocument secondStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument setValueResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinSetValue,
-                new
-                {
-                    stateToken,
-                    elementIndex,
-                    valueKind = "text",
-                    textValue = "stage four semantic value",
-                });
-
-            JsonElement setValuePayload = setValueResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Done, setValuePayload.GetProperty("status").GetString());
-            Assert.Equal(helperHwnd, setValuePayload.GetProperty("targetHwnd").GetInt64());
-
-            using JsonDocument secondStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
-            Assert.Contains(
-                secondStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
-                element => string.Equals(element.GetProperty("name").GetString(), "Query mirror: stage four semantic value", StringComparison.Ordinal));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+        Assert.Contains(
+            secondStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+            element => string.Equals(element.GetProperty("name").GetString(), "Query mirror: stage four semantic value", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task ComputerUseWinSetValueUpdatesRangeMirrorThroughApprovedAppState()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper SetValue Range {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement targetElement = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("name").GetString(), "Smoke range input", StringComparison.Ordinal)
+                && string.Equals(element.GetProperty("controlType").GetString(), "edit", StringComparison.Ordinal));
+        int elementIndex = targetElement.GetProperty("index").GetInt32();
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument setValueResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinSetValue,
+            new
+            {
+                stateToken,
+                elementIndex,
+                valueKind = "number",
+                numberValue = 9,
+            });
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement setValuePayload = setValueResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Done, setValuePayload.GetProperty("status").GetString());
+        Assert.Equal(helperHwnd, setValuePayload.GetProperty("targetHwnd").GetInt64());
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement targetElement = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("name").GetString(), "Smoke range input", StringComparison.Ordinal)
-                    && string.Equals(element.GetProperty("controlType").GetString(), "edit", StringComparison.Ordinal));
-            int elementIndex = targetElement.GetProperty("index").GetInt32();
+        using JsonDocument secondStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument setValueResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinSetValue,
-                new
-                {
-                    stateToken,
-                    elementIndex,
-                    valueKind = "number",
-                    numberValue = 9,
-                });
-
-            JsonElement setValuePayload = setValueResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Done, setValuePayload.GetProperty("status").GetString());
-            Assert.Equal(helperHwnd, setValuePayload.GetProperty("targetHwnd").GetInt64());
-
-            using JsonDocument secondStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
-            Assert.Contains(
-                secondStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
-                element => string.Equals(element.GetProperty("name").GetString(), "Range mirror: 9", StringComparison.Ordinal));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+        Assert.Contains(
+            secondStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+            element => string.Equals(element.GetProperty("name").GetString(), "Range mirror: 9", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task ComputerUseWinTypeTextUpdatesQueryMirrorAfterExplicitFocusProof()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper TypeText {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement queryInputElement = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
+        int queryInputIndex = queryInputElement.GetProperty("index").GetInt32();
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument clickResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinClick,
+            new
+            {
+                stateToken = firstStateToken,
+                elementIndex = queryInputIndex,
+                confirm = false,
+            });
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement queryInputElement = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("name").GetString(), "Smoke query input", StringComparison.Ordinal));
-            int queryInputIndex = queryInputElement.GetProperty("index").GetInt32();
+        using JsonDocument focusedStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument clickResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinClick,
-                new
-                {
-                    stateToken = firstStateToken,
-                    elementIndex = queryInputIndex,
-                    confirm = false,
-                });
+        JsonElement focusedStatePayload = focusedStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, focusedStatePayload.GetProperty("status").GetString());
+        string focusedStateToken = focusedStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement focusedElement = focusedStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean());
+        Assert.Equal("Smoke query input", focusedElement.GetProperty("name").GetString());
 
-            JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
+        using JsonDocument typeTextResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinTypeText,
+            new
+            {
+                stateToken = focusedStateToken,
+                text = "stage five typed text",
+            });
 
-            using JsonDocument focusedStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
+        Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
 
-            JsonElement focusedStatePayload = focusedStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, focusedStatePayload.GetProperty("status").GetString());
-            string focusedStateToken = focusedStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement focusedElement = focusedStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean());
-            Assert.Equal("Smoke query input", focusedElement.GetProperty("name").GetString());
+        using JsonDocument finalStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument typeTextResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinTypeText,
-                new
-                {
-                    stateToken = focusedStateToken,
-                    text = "stage five typed text",
-                });
-
-            JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
-            Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
-
-            using JsonDocument finalStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
-            Assert.Contains(
-                finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
-                element => string.Equals(element.GetProperty("name").GetString(), "Query mirror: stage five typed text", StringComparison.Ordinal));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
+        Assert.Contains(
+            finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+            element => string.Equals(element.GetProperty("name").GetString(), "Query mirror: stage five typed text", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task ComputerUseWinTypeTextFocusedFallbackUpdatesPoorUiaMirror()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Focused Fallback {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement fallbackTarget = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("name").GetString(), "Poor UIA text target", StringComparison.Ordinal));
+        string?[] fallbackActions = fallbackTarget.GetProperty("actions").EnumerateArray()
+            .Select(item => item.GetString())
+            .ToArray();
+        Assert.Contains(ToolNames.ComputerUseWinClick, fallbackActions);
+        Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, fallbackActions);
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument clickResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinClick,
+            new
+            {
+                stateToken = firstStateToken,
+                elementIndex = fallbackTarget.GetProperty("index").GetInt32(),
+                confirm = false,
+            });
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement fallbackTarget = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("name").GetString(), "Poor UIA text target", StringComparison.Ordinal));
-            string?[] fallbackActions = fallbackTarget.GetProperty("actions").EnumerateArray()
-                .Select(item => item.GetString())
-                .ToArray();
-            Assert.Contains(ToolNames.ComputerUseWinClick, fallbackActions);
-            Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, fallbackActions);
+        using JsonDocument focusedStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument clickResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinClick,
-                new
-                {
-                    stateToken = firstStateToken,
-                    elementIndex = fallbackTarget.GetProperty("index").GetInt32(),
-                    confirm = false,
-                });
+        JsonElement focusedStatePayload = focusedStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, focusedStatePayload.GetProperty("status").GetString());
+        string focusedStateToken = focusedStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement focusedElement = focusedStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean());
+        Assert.Equal("Poor UIA text target", focusedElement.GetProperty("name").GetString());
+        string?[] focusedActions = focusedElement.GetProperty("actions").EnumerateArray()
+            .Select(item => item.GetString())
+            .ToArray();
+        Assert.Contains(ToolNames.ComputerUseWinClick, focusedActions);
+        Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, focusedActions);
 
-            JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
+        using JsonDocument typeTextResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinTypeText,
+            new
+            {
+                stateToken = focusedStateToken,
+                text = "fallback typed text",
+                allowFocusedFallback = true,
+                confirm = true,
+                observeAfter = true,
+            });
 
-            using JsonDocument focusedStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
+        Assert.False(typeTextPayload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+        Assert.Contains(
+            typeTextResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
+            block => block.GetProperty("type").GetString() == "image");
+        JsonElement successorState = typeTextPayload.GetProperty("successorState");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
+        string successorToken = successorState.GetProperty("stateToken").GetString()!;
+        Assert.NotEqual(focusedStateToken, successorToken);
 
-            JsonElement focusedStatePayload = focusedStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, focusedStatePayload.GetProperty("status").GetString());
-            string focusedStateToken = focusedStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement focusedElement = focusedStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .Single(element => element.GetProperty("hasKeyboardFocus").GetBoolean());
-            Assert.Equal("Poor UIA text target", focusedElement.GetProperty("name").GetString());
-            string?[] focusedActions = focusedElement.GetProperty("actions").EnumerateArray()
-                .Select(item => item.GetString())
-                .ToArray();
-            Assert.Contains(ToolNames.ComputerUseWinClick, focusedActions);
-            Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, focusedActions);
+        using JsonDocument followUpResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinPressKey,
+            new
+            {
+                stateToken = successorToken,
+                key = "tab",
+            });
 
-            using JsonDocument typeTextResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinTypeText,
-                new
-                {
-                    stateToken = focusedStateToken,
-                    text = "fallback typed text",
-                    allowFocusedFallback = true,
-                    confirm = true,
-                    observeAfter = true,
-                });
+        JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
 
-            JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
-            Assert.False(typeTextPayload.GetProperty("refreshStateRecommended").GetBoolean());
-            Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
-            Assert.Contains(
-                typeTextResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
-                block => block.GetProperty("type").GetString() == "image");
-            JsonElement successorState = typeTextPayload.GetProperty("successorState");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
-            string successorToken = successorState.GetProperty("stateToken").GetString()!;
-            Assert.NotEqual(focusedStateToken, successorToken);
+        using JsonDocument finalStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument followUpResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinPressKey,
-                new
-                {
-                    stateToken = successorToken,
-                    key = "tab",
-                });
-
-            JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
-
-            using JsonDocument finalStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
-            Assert.Contains(
-                finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
-                element => string.Equals(element.GetProperty("name").GetString(), "Poor UIA mirror: fallback typed text", StringComparison.Ordinal));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
+        Assert.Contains(
+            finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+            element => string.Equals(element.GetProperty("name").GetString(), "Poor UIA mirror: fallback typed text", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task ComputerUseWinTypeTextCoordinateConfirmedFallbackUpdatesMirror()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Coordinate Fallback {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement coordinateTarget = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed text target", StringComparison.Ordinal));
+        Assert.False(coordinateTarget.GetProperty("hasKeyboardFocus").GetBoolean());
+        string?[] coordinateTargetActions = coordinateTarget.GetProperty("actions").EnumerateArray()
+            .Select(item => item.GetString())
+            .ToArray();
+        Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, coordinateTargetActions);
 
-            await session.SendNotificationAsync("notifications/initialized");
+        Assert.DoesNotContain(
+            firstStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+            element =>
+                element.GetProperty("hasKeyboardFocus").GetBoolean()
+                && string.Equals(
+                    element.GetProperty("name").GetString(),
+                    "Coordinate-confirmed text target",
+                    StringComparison.Ordinal));
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        (int pointX, int pointY) = GetCaptureRelativeCenterPoint(firstStatePayload, coordinateTarget);
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string firstStateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement coordinateTarget = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed text target", StringComparison.Ordinal));
-            Assert.False(coordinateTarget.GetProperty("hasKeyboardFocus").GetBoolean());
-            string?[] coordinateTargetActions = coordinateTarget.GetProperty("actions").EnumerateArray()
-                .Select(item => item.GetString())
-                .ToArray();
-            Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, coordinateTargetActions);
+        using JsonDocument typeTextResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinTypeText,
+            new
+            {
+                stateToken = firstStateToken,
+                point = new { x = pointX, y = pointY },
+                text = "coordinate smoke text",
+                allowFocusedFallback = true,
+                confirm = true,
+                observeAfter = true,
+            });
 
-            Assert.DoesNotContain(
-                firstStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
-                element =>
-                    element.GetProperty("hasKeyboardFocus").GetBoolean()
-                    && string.Equals(
-                        element.GetProperty("name").GetString(),
-                        "Coordinate-confirmed text target",
-                        StringComparison.Ordinal));
+        JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
+        Assert.False(typeTextPayload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+        Assert.Contains(
+            typeTextResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
+            block => block.GetProperty("type").GetString() == "image");
+        JsonElement successorState = typeTextPayload.GetProperty("successorState");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
+        string successorToken = successorState.GetProperty("stateToken").GetString()!;
+        Assert.NotEqual(firstStateToken, successorToken);
+        Assert.Contains(
+            successorState.GetProperty("accessibilityTree").EnumerateArray(),
+            element => string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed mirror: coordinate smoke text", StringComparison.Ordinal));
 
-            (int pointX, int pointY) = GetCaptureRelativeCenterPoint(firstStatePayload, coordinateTarget);
+        using JsonDocument followUpResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinPressKey,
+            new
+            {
+                stateToken = successorToken,
+                key = "tab",
+            });
 
-            using JsonDocument typeTextResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinTypeText,
-                new
-                {
-                    stateToken = firstStateToken,
-                    point = new { x = pointX, y = pointY },
-                    text = "coordinate smoke text",
-                    allowFocusedFallback = true,
-                    confirm = true,
-                    observeAfter = true,
-                });
+        JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
 
-            JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
-            Assert.False(typeTextPayload.GetProperty("refreshStateRecommended").GetBoolean());
-            Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
-            Assert.Contains(
-                typeTextResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
-                block => block.GetProperty("type").GetString() == "image");
-            JsonElement successorState = typeTextPayload.GetProperty("successorState");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
-            string successorToken = successorState.GetProperty("stateToken").GetString()!;
-            Assert.NotEqual(firstStateToken, successorToken);
-            Assert.Contains(
-                successorState.GetProperty("accessibilityTree").EnumerateArray(),
-                element => string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed mirror: coordinate smoke text", StringComparison.Ordinal));
+        using JsonDocument finalStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument followUpResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinPressKey,
-                new
-                {
-                    stateToken = successorToken,
-                    key = "tab",
-                });
-
-            JsonElement followUpPayload = followUpResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, followUpPayload.GetProperty("status").GetString());
-
-            using JsonDocument finalStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
-            Assert.Contains(
-                finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
-                element => string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed mirror: coordinate smoke text", StringComparison.Ordinal));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement finalStatePayload = finalStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, finalStatePayload.GetProperty("status").GetString());
+        Assert.Contains(
+            finalStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+            element => string.Equals(element.GetProperty("name").GetString(), "Coordinate-confirmed mirror: coordinate smoke text", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task ComputerUseWinScrollUpdatesScrollMirrorThroughApprovedAppState()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Scroll {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        string initialMirror = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element => element.GetProperty("name").GetString()!.StartsWith("Scroll mirror:", StringComparison.Ordinal))
+            .GetProperty("name")
+            .GetString()!;
+        JsonElement scrollTarget = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("name").GetString(), "Smoke scroll list", StringComparison.Ordinal)
+                && string.Equals(element.GetProperty("controlType").GetString(), "list", StringComparison.Ordinal));
+        int elementIndex = scrollTarget.GetProperty("index").GetInt32();
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument scrollResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinScroll,
+            new
+            {
+                stateToken,
+                elementIndex,
+                direction = "down",
+                pages = 1,
+            });
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement scrollPayload = scrollResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Done, scrollPayload.GetProperty("status").GetString());
+        Assert.Equal(helperHwnd, scrollPayload.GetProperty("targetHwnd").GetInt64());
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            string initialMirror = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element => element.GetProperty("name").GetString()!.StartsWith("Scroll mirror:", StringComparison.Ordinal))
-                .GetProperty("name")
-                .GetString()!;
-            JsonElement scrollTarget = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("name").GetString(), "Smoke scroll list", StringComparison.Ordinal)
-                    && string.Equals(element.GetProperty("controlType").GetString(), "list", StringComparison.Ordinal));
-            int elementIndex = scrollTarget.GetProperty("index").GetInt32();
+        using JsonDocument secondStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument scrollResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinScroll,
-                new
-                {
-                    stateToken,
-                    elementIndex,
-                    direction = "down",
-                    pages = 1,
-                });
-
-            JsonElement scrollPayload = scrollResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Done, scrollPayload.GetProperty("status").GetString());
-            Assert.Equal(helperHwnd, scrollPayload.GetProperty("targetHwnd").GetInt64());
-
-            using JsonDocument secondStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
-            string updatedMirror = secondStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element => element.GetProperty("name").GetString()!.StartsWith("Scroll mirror:", StringComparison.Ordinal))
-                .GetProperty("name")
-                .GetString()!;
-            Assert.NotEqual(initialMirror, updatedMirror);
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+        string updatedMirror = secondStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element => element.GetProperty("name").GetString()!.StartsWith("Scroll mirror:", StringComparison.Ordinal))
+            .GetProperty("name")
+            .GetString()!;
+        Assert.NotEqual(initialMirror, updatedMirror);
     }
 
     [Fact]
     public async Task ComputerUseWinPerformSecondaryActionTogglesCheckboxStateThroughApprovedAppState()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Secondary {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement toggleTarget = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("controlType").GetString(), "check_box", StringComparison.Ordinal)
+                && element.GetProperty("name").GetString()!.StartsWith("Remember semantic selection:", StringComparison.Ordinal));
+        string initialName = toggleTarget.GetProperty("name").GetString()!;
+        int elementIndex = toggleTarget.GetProperty("index").GetInt32();
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument secondaryActionResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new
+            {
+                stateToken,
+                elementIndex,
+                confirm = true,
+            });
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement secondaryActionPayload = secondaryActionResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Done, secondaryActionPayload.GetProperty("status").GetString());
+        Assert.Equal(helperHwnd, secondaryActionPayload.GetProperty("targetHwnd").GetInt64());
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement toggleTarget = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("controlType").GetString(), "check_box", StringComparison.Ordinal)
-                    && element.GetProperty("name").GetString()!.StartsWith("Remember semantic selection:", StringComparison.Ordinal));
-            string initialName = toggleTarget.GetProperty("name").GetString()!;
-            int elementIndex = toggleTarget.GetProperty("index").GetInt32();
+        using JsonDocument secondStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument secondaryActionResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinPerformSecondaryAction,
-                new
-                {
-                    stateToken,
-                    elementIndex,
-                    confirm = true,
-                });
-
-            JsonElement secondaryActionPayload = secondaryActionResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Done, secondaryActionPayload.GetProperty("status").GetString());
-            Assert.Equal(helperHwnd, secondaryActionPayload.GetProperty("targetHwnd").GetInt64());
-
-            using JsonDocument secondStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
-            string updatedName = secondStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element =>
-                    string.Equals(element.GetProperty("controlType").GetString(), "check_box", StringComparison.Ordinal)
-                    && element.GetProperty("name").GetString()!.StartsWith("Remember semantic selection:", StringComparison.Ordinal))
-                .GetProperty("name")
-                .GetString()!;
-            Assert.NotEqual(initialName, updatedName);
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+        string updatedName = secondStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element =>
+                string.Equals(element.GetProperty("controlType").GetString(), "check_box", StringComparison.Ordinal)
+                && element.GetProperty("name").GetString()!.StartsWith("Remember semantic selection:", StringComparison.Ordinal))
+            .GetProperty("name")
+            .GetString()!;
+        Assert.NotEqual(initialName, updatedName);
     }
 
     [Fact]
     public async Task ComputerUseWinDragUpdatesDragMirrorThroughApprovedAppState()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Drag {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement sourceTarget = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element => string.Equals(element.GetProperty("name").GetString(), "Drag source token", StringComparison.Ordinal));
+        JsonElement destinationTarget = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag destination target:", StringComparison.Ordinal));
+        string initialMirror = firstStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag mirror:", StringComparison.Ordinal))
+            .GetProperty("name")
+            .GetString()!;
+        Assert.Contains(
+            ToolNames.ComputerUseWinDrag,
+            sourceTarget.GetProperty("actions").EnumerateArray().Select(item => item.GetString()));
+        Assert.Contains(
+            ToolNames.ComputerUseWinDrag,
+            destinationTarget.GetProperty("actions").EnumerateArray().Select(item => item.GetString()));
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument dragResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinDrag,
+            new
+            {
+                stateToken,
+                fromElementIndex = sourceTarget.GetProperty("index").GetInt32(),
+                toElementIndex = destinationTarget.GetProperty("index").GetInt32(),
+                confirm = true,
+            });
 
-            using JsonDocument firstStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
+        JsonElement dragPayload = dragResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, dragPayload.GetProperty("status").GetString());
+        Assert.Equal(helperHwnd, dragPayload.GetProperty("targetHwnd").GetInt64());
+        Assert.True(dragPayload.GetProperty("refreshStateRecommended").GetBoolean());
 
-            JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
-            string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
-            JsonElement sourceTarget = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element => string.Equals(element.GetProperty("name").GetString(), "Drag source token", StringComparison.Ordinal));
-            JsonElement destinationTarget = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag destination target:", StringComparison.Ordinal));
-            string initialMirror = firstStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag mirror:", StringComparison.Ordinal))
-                .GetProperty("name")
-                .GetString()!;
-            Assert.Contains(
-                ToolNames.ComputerUseWinDrag,
-                sourceTarget.GetProperty("actions").EnumerateArray().Select(item => item.GetString()));
-            Assert.Contains(
-                ToolNames.ComputerUseWinDrag,
-                destinationTarget.GetProperty("actions").EnumerateArray().Select(item => item.GetString()));
+        using JsonDocument secondStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-            using JsonDocument dragResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinDrag,
-                new
-                {
-                    stateToken,
-                    fromElementIndex = sourceTarget.GetProperty("index").GetInt32(),
-                    toElementIndex = destinationTarget.GetProperty("index").GetInt32(),
-                    confirm = true,
-                });
-
-            JsonElement dragPayload = dragResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, dragPayload.GetProperty("status").GetString());
-            Assert.Equal(helperHwnd, dragPayload.GetProperty("targetHwnd").GetInt64());
-            Assert.True(dragPayload.GetProperty("refreshStateRecommended").GetBoolean());
-
-            using JsonDocument secondStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
-            string updatedMirror = secondStatePayload
-                .GetProperty("accessibilityTree")
-                .EnumerateArray()
-                .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag mirror:", StringComparison.Ordinal))
-                .GetProperty("name")
-                .GetString()!;
-            Assert.NotEqual(initialMirror, updatedMirror);
-            Assert.Equal("Drag mirror: dropped", updatedMirror);
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+        string updatedMirror = secondStatePayload
+            .GetProperty("accessibilityTree")
+            .EnumerateArray()
+            .First(element => element.GetProperty("name").GetString()!.StartsWith("Drag mirror:", StringComparison.Ordinal))
+            .GetProperty("name")
+            .GetString()!;
+        Assert.NotEqual(initialMirror, updatedMirror);
+        Assert.Equal("Drag mirror: dropped", updatedMirror);
     }
 
     [Fact]
     public async Task ComputerUseWinGetAppStateDoesNotAttachWindowWhenRequestIsInvalid()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Failed Observation {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument failedStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+                maxNodes = UiaSnapshotRequestValidator.MaxNodesCeiling + 1,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        JsonElement failedResult = failedStateResponse.RootElement.GetProperty("result");
+        Assert.True(failedResult.GetProperty("isError").GetBoolean());
+        JsonElement failedPayload = failedResult.GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Failed, failedPayload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, failedPayload.GetProperty("failureCode").GetString());
+        Assert.Contains("maxNodes", failedPayload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
 
-            await session.SendNotificationAsync("notifications/initialized");
+        using JsonDocument noArgsResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new { });
 
-            using JsonDocument failedStateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                    maxNodes = UiaSnapshotRequestValidator.MaxNodesCeiling + 1,
-                });
-
-            JsonElement failedResult = failedStateResponse.RootElement.GetProperty("result");
-            Assert.True(failedResult.GetProperty("isError").GetBoolean());
-            JsonElement failedPayload = failedResult.GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Failed, failedPayload.GetProperty("status").GetString());
-            Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, failedPayload.GetProperty("failureCode").GetString());
-            Assert.Contains("maxNodes", failedPayload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
-
-            using JsonDocument noArgsResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new { });
-
-            JsonElement noArgsPayload = noArgsResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Failed, noArgsPayload.GetProperty("status").GetString());
-            Assert.Equal(ComputerUseWinFailureCodeValues.MissingTarget, noArgsPayload.GetProperty("failureCode").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement noArgsPayload = noArgsResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Failed, noArgsPayload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.MissingTarget, noArgsPayload.GetProperty("failureCode").GetString());
     }
 
     [Fact]
     public async Task ComputerUseWinGetAppStateRejectsInvalidMaxNodesBeforeObservation()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Snapshot Failure {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument stateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+                maxNodes = UiaSnapshotRequestValidator.MaxNodesCeiling + 1,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument stateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                    maxNodes = UiaSnapshotRequestValidator.MaxNodesCeiling + 1,
-                });
-
-            JsonElement result = stateResponse.RootElement.GetProperty("result");
-            Assert.True(result.GetProperty("isError").GetBoolean());
-            JsonElement payload = result.GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
-            Assert.Contains("maxNodes", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
-            Assert.False(payload.TryGetProperty("stateToken", out _));
-            Assert.False(payload.TryGetProperty("accessibilityTree", out _));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement result = stateResponse.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        JsonElement payload = result.GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
+        Assert.Contains("maxNodes", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(payload.TryGetProperty("stateToken", out _));
+        Assert.False(payload.TryGetProperty("accessibilityTree", out _));
     }
 
     [Fact]
     public async Task ComputerUseWinGetAppStatePublishesObservedKeyboardFocus()
     {
-        using Process helper = StartHelperWindow(
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
             title: $"Okno Smoke Helper Focus {Guid.NewGuid():N}",
             lifetimeMs: 20000);
-        long helperHwnd = await WaitForMainWindowAsync(helper);
-        await Task.Delay(750);
-        using Process process = StartServer(ToolSurfaceProfileValues.ComputerUseWin);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument stateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument stateResponse = await session.CallToolAsync(
-                ToolNames.ComputerUseWinGetAppState,
-                new
-                {
-                    hwnd = helperHwnd,
-                    confirm = true,
-                });
-
-            JsonElement payload = stateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
-            Assert.Equal(ComputerUseWinStatusValues.Ok, payload.GetProperty("status").GetString());
-            Assert.Contains(
-                payload.GetProperty("accessibilityTree").EnumerateArray(),
-                element => element.GetProperty("hasKeyboardFocus").GetBoolean());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-            await StopHelperWindowAsync(helper);
-        }
+        JsonElement payload = stateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, payload.GetProperty("status").GetString());
+        Assert.Contains(
+            payload.GetProperty("accessibilityTree").EnumerateArray(),
+            element => element.GetProperty("hasKeyboardFocus").GetBoolean());
     }
 
     [Fact]
     public async Task ToolsListPublishesWindowsLaunchProcessWithSchemaAndAnnotations()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument toolsResponse = await ListToolsAsync(session);
+        JsonElement launchDescriptor = GetToolDescriptor(toolsResponse, ToolNames.WindowsLaunchProcess);
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        Assert.False(string.IsNullOrWhiteSpace(launchDescriptor.GetProperty("description").GetString()));
+        JsonElement annotations = launchDescriptor.GetProperty("annotations");
+        Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
+        Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
+        Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
 
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument toolsResponse = await session.SendRequestAsync(
-                "tools/list",
-                new { },
-                "tools/list");
-            JsonElement launchDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsLaunchProcess);
-
-            Assert.False(string.IsNullOrWhiteSpace(launchDescriptor.GetProperty("description").GetString()));
-            JsonElement annotations = launchDescriptor.GetProperty("annotations");
-            Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
-            Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
-
-            JsonElement properties = launchDescriptor.GetProperty("inputSchema").GetProperty("properties");
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("executable").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("args").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("workingDirectory").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("waitForWindow").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("timeoutMs").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("dryRun").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("confirm").GetProperty("description").GetString()));
-            AssertSchemaTypeContains(properties.GetProperty("args").GetProperty("type"), "array");
-            AssertSchemaTypeContains(properties.GetProperty("executable").GetProperty("type"), "string");
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement properties = launchDescriptor.GetProperty("inputSchema").GetProperty("properties");
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("executable").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("args").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("workingDirectory").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("waitForWindow").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("timeoutMs").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("dryRun").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("confirm").GetProperty("description").GetString()));
+        AssertSchemaTypeContains(properties.GetProperty("args").GetProperty("type"), "array");
+        AssertSchemaTypeContains(properties.GetProperty("executable").GetProperty("type"), "string");
     }
 
     [Fact]
     public async Task ToolsListPublishesWindowsOpenTargetWithSchemaAndAnnotations()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument toolsResponse = await ListToolsAsync(session);
+        JsonElement openTargetDescriptor = GetToolDescriptor(toolsResponse, ToolNames.WindowsOpenTarget);
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        Assert.False(string.IsNullOrWhiteSpace(openTargetDescriptor.GetProperty("description").GetString()));
+        JsonElement annotations = openTargetDescriptor.GetProperty("annotations");
+        Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
+        Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
+        Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
 
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument toolsResponse = await session.SendRequestAsync(
-                "tools/list",
-                new { },
-                "tools/list");
-            JsonElement openTargetDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsOpenTarget);
-
-            Assert.False(string.IsNullOrWhiteSpace(openTargetDescriptor.GetProperty("description").GetString()));
-            JsonElement annotations = openTargetDescriptor.GetProperty("annotations");
-            Assert.False(annotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.False(annotations.GetProperty("idempotentHint").GetBoolean());
-            Assert.True(annotations.GetProperty("openWorldHint").GetBoolean());
-
-            JsonElement properties = openTargetDescriptor.GetProperty("inputSchema").GetProperty("properties");
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("targetKind").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("target").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("dryRun").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("confirm").GetProperty("description").GetString()));
-            AssertSchemaTypeContains(properties.GetProperty("targetKind").GetProperty("type"), "string");
-            AssertSchemaTypeContains(properties.GetProperty("target").GetProperty("type"), "string");
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement properties = openTargetDescriptor.GetProperty("inputSchema").GetProperty("properties");
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("targetKind").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("target").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("dryRun").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(properties.GetProperty("confirm").GetProperty("description").GetString()));
+        AssertSchemaTypeContains(properties.GetProperty("targetKind").GetProperty("type"), "string");
+        AssertSchemaTypeContains(properties.GetProperty("target").GetProperty("type"), "string");
     }
 
     [Fact]
     public async Task ToolsListPublishesImplementedWindowsInputWithClickFirstRequestSchema()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument toolsResponse = await ListToolsAsync(session);
+        JsonElement inputDescriptor = GetToolDescriptor(toolsResponse, ToolNames.WindowsInput);
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+        Assert.False(string.IsNullOrWhiteSpace(inputDescriptor.GetProperty("description").GetString()));
+        JsonElement properties = inputDescriptor.GetProperty("inputSchema").GetProperty("properties");
+        Assert.True(properties.TryGetProperty("actions", out JsonElement actionsProperty));
+        Assert.True(properties.TryGetProperty("hwnd", out JsonElement hwndProperty));
+        Assert.True(properties.TryGetProperty("confirm", out JsonElement confirmProperty));
+        Assert.False(properties.TryGetProperty("actionsJson", out _));
+        Assert.False(string.IsNullOrWhiteSpace(actionsProperty.GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(hwndProperty.GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(confirmProperty.GetProperty("description").GetString()));
+        AssertSchemaTypeContains(actionsProperty.GetProperty("type"), "array");
+        JsonElement actionItemProperties = actionsProperty.GetProperty("items").GetProperty("properties");
+        Assert.True(actionItemProperties.TryGetProperty("type", out _));
+        Assert.True(actionItemProperties.TryGetProperty("point", out _));
+        Assert.True(actionItemProperties.TryGetProperty("coordinateSpace", out _));
+        Assert.True(actionItemProperties.TryGetProperty("button", out _));
+        Assert.True(actionItemProperties.TryGetProperty("captureReference", out _));
+        Assert.False(actionItemProperties.TryGetProperty("path", out _));
+        Assert.False(actionItemProperties.TryGetProperty("keys", out _));
+        Assert.False(actionItemProperties.TryGetProperty("text", out _));
+        Assert.False(actionItemProperties.TryGetProperty("key", out _));
+        Assert.False(actionItemProperties.TryGetProperty("repeat", out _));
+        Assert.False(actionItemProperties.TryGetProperty("delta", out _));
+        Assert.False(actionItemProperties.TryGetProperty("direction", out _));
 
-            await session.SendNotificationAsync("notifications/initialized");
+        JsonElement actionBranches = actionsProperty.GetProperty("items").GetProperty("oneOf");
+        Assert.Equal(3, actionBranches.GetArrayLength());
 
-            using JsonDocument toolsResponse = await session.SendRequestAsync(
-                "tools/list",
-                new { },
-                "tools/list");
-            JsonElement inputDescriptor = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools")
-                .EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsInput);
+        JsonElement clickBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Click);
+        AssertSchemaRequiredContains(clickBranch, "type", "point", "coordinateSpace");
+        AssertSchemaPropertyDoesNotAllowNull(clickBranch, "point");
+        AssertSchemaPropertyDoesNotAllowNull(clickBranch, "coordinateSpace");
+        Assert.True(clickBranch.GetProperty("properties").TryGetProperty("button", out _));
+        AssertSchemaPropertyDoesNotAllowNull(clickBranch, "button");
+        Assert.True(clickBranch.GetProperty("properties").TryGetProperty("captureReference", out _));
+        AssertSchemaPropertyDoesNotAllowNull(clickBranch, "captureReference");
+        Assert.False(clickBranch.GetProperty("properties").TryGetProperty("text", out _));
 
-            Assert.False(string.IsNullOrWhiteSpace(inputDescriptor.GetProperty("description").GetString()));
-            JsonElement properties = inputDescriptor.GetProperty("inputSchema").GetProperty("properties");
-            Assert.True(properties.TryGetProperty("actions", out JsonElement actionsProperty));
-            Assert.True(properties.TryGetProperty("hwnd", out JsonElement hwndProperty));
-            Assert.True(properties.TryGetProperty("confirm", out JsonElement confirmProperty));
-            Assert.False(properties.TryGetProperty("actionsJson", out _));
-            Assert.False(string.IsNullOrWhiteSpace(actionsProperty.GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(hwndProperty.GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(confirmProperty.GetProperty("description").GetString()));
-            AssertSchemaTypeContains(actionsProperty.GetProperty("type"), "array");
-            JsonElement actionItemProperties = actionsProperty.GetProperty("items").GetProperty("properties");
-            Assert.True(actionItemProperties.TryGetProperty("type", out _));
-            Assert.True(actionItemProperties.TryGetProperty("point", out _));
-            Assert.True(actionItemProperties.TryGetProperty("coordinateSpace", out _));
-            Assert.True(actionItemProperties.TryGetProperty("button", out _));
-            Assert.True(actionItemProperties.TryGetProperty("captureReference", out _));
-            Assert.False(actionItemProperties.TryGetProperty("path", out _));
-            Assert.False(actionItemProperties.TryGetProperty("keys", out _));
-            Assert.False(actionItemProperties.TryGetProperty("text", out _));
-            Assert.False(actionItemProperties.TryGetProperty("key", out _));
-            Assert.False(actionItemProperties.TryGetProperty("repeat", out _));
-            Assert.False(actionItemProperties.TryGetProperty("delta", out _));
-            Assert.False(actionItemProperties.TryGetProperty("direction", out _));
+        JsonElement moveBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Move);
+        AssertSchemaRequiredContains(moveBranch, "type", "point", "coordinateSpace");
+        Assert.False(moveBranch.GetProperty("properties").TryGetProperty("button", out _));
 
-            JsonElement actionBranches = actionsProperty.GetProperty("items").GetProperty("oneOf");
-            Assert.Equal(3, actionBranches.GetArrayLength());
+        JsonElement doubleClickBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.DoubleClick);
+        AssertSchemaRequiredContains(doubleClickBranch, "type", "point", "coordinateSpace");
+        Assert.False(doubleClickBranch.GetProperty("properties").TryGetProperty("button", out _));
 
-            JsonElement clickBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Click);
-            AssertSchemaRequiredContains(clickBranch, "type", "point", "coordinateSpace");
-            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "point");
-            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "coordinateSpace");
-            Assert.True(clickBranch.GetProperty("properties").TryGetProperty("button", out _));
-            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "button");
-            Assert.True(clickBranch.GetProperty("properties").TryGetProperty("captureReference", out _));
-            AssertSchemaPropertyDoesNotAllowNull(clickBranch, "captureReference");
-            Assert.False(clickBranch.GetProperty("properties").TryGetProperty("text", out _));
+        JsonElement pointSchema = actionItemProperties.GetProperty("point");
+        AssertSchemaRequiredContains(pointSchema, "x", "y");
+        AssertSchemaPropertyDoesNotAllowNull(pointSchema, "x");
+        AssertSchemaPropertyDoesNotAllowNull(pointSchema, "y");
 
-            JsonElement moveBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.Move);
-            AssertSchemaRequiredContains(moveBranch, "type", "point", "coordinateSpace");
-            Assert.False(moveBranch.GetProperty("properties").TryGetProperty("button", out _));
-
-            JsonElement doubleClickBranch = FindActionSchemaBranch(actionBranches, InputActionTypeValues.DoubleClick);
-            AssertSchemaRequiredContains(doubleClickBranch, "type", "point", "coordinateSpace");
-            Assert.False(doubleClickBranch.GetProperty("properties").TryGetProperty("button", out _));
-
-            JsonElement pointSchema = actionItemProperties.GetProperty("point");
-            AssertSchemaRequiredContains(pointSchema, "x", "y");
-            AssertSchemaPropertyDoesNotAllowNull(pointSchema, "x");
-            AssertSchemaPropertyDoesNotAllowNull(pointSchema, "y");
-
-            JsonElement captureReferenceSchema = actionItemProperties.GetProperty("captureReference");
-            AssertSchemaRequiredContains(captureReferenceSchema, "bounds", "pixelWidth", "pixelHeight");
-            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "bounds");
-            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "pixelWidth");
-            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "pixelHeight");
-            AssertSchemaIntegerPropertyHasMinimum(captureReferenceSchema, "pixelWidth", 1);
-            AssertSchemaIntegerPropertyHasMinimum(captureReferenceSchema, "pixelHeight", 1);
-            AssertSchemaPropertyAllowsNull(captureReferenceSchema, "effectiveDpi");
-            AssertSchemaPropertyAllowsNull(captureReferenceSchema, "capturedAtUtc");
-            Assert.True(captureReferenceSchema.GetProperty("properties").TryGetProperty("frameBounds", out JsonElement frameBoundsSchema));
-            Assert.True(captureReferenceSchema.GetProperty("properties").TryGetProperty("targetIdentity", out JsonElement targetIdentitySchema));
-            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "frameBounds");
-            AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "targetIdentity");
-            AssertSchemaRequiredContains(
-                captureReferenceSchema.GetProperty("properties").GetProperty("bounds"),
-                "left",
-                "top",
-                "right",
-                "bottom");
-            JsonElement boundsSchema = captureReferenceSchema.GetProperty("properties").GetProperty("bounds");
-            AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "left");
-            AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "top");
-            AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "right");
-            AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "bottom");
-            AssertSchemaRequiredContains(frameBoundsSchema, "left", "top", "right", "bottom");
-            AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "left");
-            AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "top");
-            AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "right");
-            AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "bottom");
-            AssertSchemaRequiredContains(targetIdentitySchema, "hwnd", "processId", "threadId", "className");
-            AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "hwnd");
-            AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "processId");
-            AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "threadId");
-            AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "className");
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement captureReferenceSchema = actionItemProperties.GetProperty("captureReference");
+        AssertSchemaRequiredContains(captureReferenceSchema, "bounds", "pixelWidth", "pixelHeight");
+        AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "bounds");
+        AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "pixelWidth");
+        AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "pixelHeight");
+        AssertSchemaIntegerPropertyHasMinimum(captureReferenceSchema, "pixelWidth", 1);
+        AssertSchemaIntegerPropertyHasMinimum(captureReferenceSchema, "pixelHeight", 1);
+        AssertSchemaPropertyAllowsNull(captureReferenceSchema, "effectiveDpi");
+        AssertSchemaPropertyAllowsNull(captureReferenceSchema, "capturedAtUtc");
+        Assert.True(captureReferenceSchema.GetProperty("properties").TryGetProperty("frameBounds", out JsonElement frameBoundsSchema));
+        Assert.True(captureReferenceSchema.GetProperty("properties").TryGetProperty("targetIdentity", out JsonElement targetIdentitySchema));
+        AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "frameBounds");
+        AssertSchemaPropertyDoesNotAllowNull(captureReferenceSchema, "targetIdentity");
+        AssertSchemaRequiredContains(
+            captureReferenceSchema.GetProperty("properties").GetProperty("bounds"),
+            "left",
+            "top",
+            "right",
+            "bottom");
+        JsonElement boundsSchema = captureReferenceSchema.GetProperty("properties").GetProperty("bounds");
+        AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "left");
+        AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "top");
+        AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "right");
+        AssertSchemaPropertyDoesNotAllowNull(boundsSchema, "bottom");
+        AssertSchemaRequiredContains(frameBoundsSchema, "left", "top", "right", "bottom");
+        AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "left");
+        AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "top");
+        AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "right");
+        AssertSchemaPropertyDoesNotAllowNull(frameBoundsSchema, "bottom");
+        AssertSchemaRequiredContains(targetIdentitySchema, "hwnd", "processId", "threadId", "className");
+        AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "hwnd");
+        AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "processId");
+        AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "threadId");
+        AssertSchemaPropertyDoesNotAllowNull(targetIdentitySchema, "className");
     }
 
     [Fact]
     public async Task OpenTargetRejectsUnsupportedExtraFieldAsToolLevelFailedResult()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument response = await CallToolAsync(
+            session,
+            ToolNames.WindowsOpenTarget,
+            new
+            {
+                targetKind = "document",
+                target = @"C:\Docs\report.pdf",
+                workingDirectory = @"C:\Docs",
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument response = await CallToolAsync(
-                session,
-                ToolNames.WindowsOpenTarget,
-                new
-                {
-                    targetKind = "document",
-                    target = @"C:\Docs\report.pdf",
-                    workingDirectory = @"C:\Docs",
-                });
-
-            JsonElement result = response.RootElement.GetProperty("result");
-            Assert.True(result.GetProperty("isError").GetBoolean());
-            JsonElement payload = result.GetProperty("structuredContent");
-            Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("decision").GetString());
-            Assert.Equal(OpenTargetFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement result = response.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        JsonElement payload = result.GetProperty("structuredContent");
+        Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("decision").GetString());
+        Assert.Equal(OpenTargetFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
     }
 
     [Fact]
     public async Task LaunchProcessRejectsEnvironmentOverridesAsToolLevelFailedResult()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
-
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
+        using JsonDocument response = await CallToolAsync(
+            session,
+            ToolNames.WindowsLaunchProcess,
+            new
+            {
+                executable = "notepad.exe",
+                environment = new
                 {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
+                    FOO = "bar",
                 },
-                "initialize");
+            });
 
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument response = await CallToolAsync(
-                session,
-                ToolNames.WindowsLaunchProcess,
-                new
-                {
-                    executable = "notepad.exe",
-                    environment = new
-                    {
-                        FOO = "bar",
-                    },
-                });
-
-            JsonElement result = response.RootElement.GetProperty("result");
-            Assert.True(result.GetProperty("isError").GetBoolean());
-            JsonElement payload = result.GetProperty("structuredContent");
-            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
-            Assert.Equal(LaunchProcessFailureCodeValues.UnsupportedEnvironmentOverrides, payload.GetProperty("failureCode").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement result = response.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        JsonElement payload = result.GetProperty("structuredContent");
+        Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
+        Assert.Equal(LaunchProcessFailureCodeValues.UnsupportedEnvironmentOverrides, payload.GetProperty("failureCode").GetString());
     }
 
     [Fact]
     public async Task LaunchProcessRejectsUnsupportedExtraFieldAsToolLevelFailedResult()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument response = await CallToolAsync(
+            session,
+            ToolNames.WindowsLaunchProcess,
+            new
+            {
+                executable = "notepad.exe",
+                extraField = "unexpected",
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument response = await CallToolAsync(
-                session,
-                ToolNames.WindowsLaunchProcess,
-                new
-                {
-                    executable = "notepad.exe",
-                    extraField = "unexpected",
-                });
-
-            JsonElement result = response.RootElement.GetProperty("result");
-            Assert.True(result.GetProperty("isError").GetBoolean());
-            JsonElement payload = result.GetProperty("structuredContent");
-            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
-            Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement result = response.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        JsonElement payload = result.GetProperty("structuredContent");
+        Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
+        Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
     }
 
     [Fact]
     public async Task LaunchProcessRejectsMissingExecutableAsToolLevelFailedResult()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument response = await CallToolAsync(
+            session,
+            ToolNames.WindowsLaunchProcess,
+            new { });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument response = await CallToolAsync(
-                session,
-                ToolNames.WindowsLaunchProcess,
-                new { });
-
-            JsonElement result = response.RootElement.GetProperty("result");
-            Assert.True(result.GetProperty("isError").GetBoolean());
-            JsonElement payload = result.GetProperty("structuredContent");
-            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
-            Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement result = response.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        JsonElement payload = result.GetProperty("structuredContent");
+        Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
+        Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
     }
 
     [Fact]
     public async Task LaunchProcessRejectsWrongTypeArgsAsToolLevelFailedResult()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument response = await CallToolAsync(
+            session,
+            ToolNames.WindowsLaunchProcess,
+            new
+            {
+                executable = "notepad.exe",
+                args = "--flag",
+            });
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument response = await CallToolAsync(
-                session,
-                ToolNames.WindowsLaunchProcess,
-                new
-                {
-                    executable = "notepad.exe",
-                    args = "--flag",
-                });
-
-            JsonElement result = response.RootElement.GetProperty("result");
-            Assert.True(result.GetProperty("isError").GetBoolean());
-            JsonElement payload = result.GetProperty("structuredContent");
-            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
-            Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement result = response.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        JsonElement payload = result.GetProperty("structuredContent");
+        Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Equal(LaunchProcessStatusValues.Failed, payload.GetProperty("decision").GetString());
+        Assert.Equal(LaunchProcessFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
     }
 
     [Fact]
     public async Task OknoContractPublishesImplementedInputExecutionPolicyWithSnakeCaseDescriptorFields()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        using JsonDocument contractResponse = await session.CallToolAsync(ToolNames.OknoContract, new { });
+        using JsonDocument contractPayload = JsonDocument.Parse(GetToolTextPayload(contractResponse));
+        JsonElement implementedDescriptor = contractPayload.RootElement
+            .GetProperty("implementedTools")
+            .EnumerateArray()
+            .Single(item => item.GetProperty("name").GetString() == ToolNames.OknoContract);
+        JsonElement inputDescriptor = contractPayload.RootElement
+            .GetProperty("implementedTools")
+            .EnumerateArray()
+            .Single(item => item.GetProperty("name").GetString() == ToolNames.WindowsInput);
 
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument contractResponse = await session.CallToolAsync(ToolNames.OknoContract, new { });
-            using JsonDocument contractPayload = JsonDocument.Parse(GetToolTextPayload(contractResponse));
-            JsonElement implementedDescriptor = contractPayload.RootElement
-                .GetProperty("implementedTools")
-                .EnumerateArray()
-                .Single(item => item.GetProperty("name").GetString() == ToolNames.OknoContract);
-            JsonElement inputDescriptor = contractPayload.RootElement
-                .GetProperty("implementedTools")
-                .EnumerateArray()
-                .Single(item => item.GetProperty("name").GetString() == ToolNames.WindowsInput);
-
-            Assert.True(implementedDescriptor.TryGetProperty("planned_phase", out JsonElement implementedPlannedPhase));
-            Assert.Equal(JsonValueKind.Null, implementedPlannedPhase.ValueKind);
-            Assert.True(implementedDescriptor.TryGetProperty("suggested_alternative", out JsonElement implementedSuggestedAlternative));
-            Assert.Equal(JsonValueKind.Null, implementedSuggestedAlternative.ValueKind);
-            Assert.True(implementedDescriptor.TryGetProperty("execution_policy", out JsonElement implementedExecutionPolicy));
-            Assert.Equal(JsonValueKind.Null, implementedExecutionPolicy.ValueKind);
-            Assert.False(implementedDescriptor.TryGetProperty("plannedPhase", out _));
-            Assert.False(implementedDescriptor.TryGetProperty("suggestedAlternative", out _));
-            Assert.False(implementedDescriptor.TryGetProperty("executionPolicy", out _));
-            Assert.Equal(JsonValueKind.Null, inputDescriptor.GetProperty("planned_phase").ValueKind);
-            Assert.False(inputDescriptor.TryGetProperty("plannedPhase", out _));
-            Assert.Equal("os_side_effect", inputDescriptor.GetProperty("safety_class").GetString());
-            Assert.False(inputDescriptor.TryGetProperty("safetyClass", out _));
-            Assert.True(inputDescriptor.TryGetProperty("execution_policy", out JsonElement executionPolicy));
-            Assert.False(inputDescriptor.TryGetProperty("executionPolicy", out _));
-            Assert.Equal("input", executionPolicy.GetProperty("policy_group").GetString());
-            Assert.False(executionPolicy.TryGetProperty("policyGroup", out _));
-            Assert.Equal("destructive", executionPolicy.GetProperty("risk_level").GetString());
-            Assert.False(executionPolicy.TryGetProperty("riskLevel", out _));
-            Assert.False(executionPolicy.GetProperty("supports_dry_run").GetBoolean());
-            Assert.False(executionPolicy.TryGetProperty("supportsDryRun", out _));
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        Assert.True(implementedDescriptor.TryGetProperty("planned_phase", out JsonElement implementedPlannedPhase));
+        Assert.Equal(JsonValueKind.Null, implementedPlannedPhase.ValueKind);
+        Assert.True(implementedDescriptor.TryGetProperty("suggested_alternative", out JsonElement implementedSuggestedAlternative));
+        Assert.Equal(JsonValueKind.Null, implementedSuggestedAlternative.ValueKind);
+        Assert.True(implementedDescriptor.TryGetProperty("execution_policy", out JsonElement implementedExecutionPolicy));
+        Assert.Equal(JsonValueKind.Null, implementedExecutionPolicy.ValueKind);
+        Assert.False(implementedDescriptor.TryGetProperty("plannedPhase", out _));
+        Assert.False(implementedDescriptor.TryGetProperty("suggestedAlternative", out _));
+        Assert.False(implementedDescriptor.TryGetProperty("executionPolicy", out _));
+        Assert.Equal(JsonValueKind.Null, inputDescriptor.GetProperty("planned_phase").ValueKind);
+        Assert.False(inputDescriptor.TryGetProperty("plannedPhase", out _));
+        Assert.Equal("os_side_effect", inputDescriptor.GetProperty("safety_class").GetString());
+        Assert.False(inputDescriptor.TryGetProperty("safetyClass", out _));
+        Assert.True(inputDescriptor.TryGetProperty("execution_policy", out JsonElement executionPolicy));
+        Assert.False(inputDescriptor.TryGetProperty("executionPolicy", out _));
+        Assert.Equal("input", executionPolicy.GetProperty("policy_group").GetString());
+        Assert.False(executionPolicy.TryGetProperty("policyGroup", out _));
+        Assert.Equal("destructive", executionPolicy.GetProperty("risk_level").GetString());
+        Assert.False(executionPolicy.TryGetProperty("riskLevel", out _));
+        Assert.False(executionPolicy.GetProperty("supports_dry_run").GetBoolean());
+        Assert.False(executionPolicy.TryGetProperty("supportsDryRun", out _));
     }
 
     [Fact]
     public async Task DeferredActionToolsReturnStructuredUnsupportedPayloadWithoutTransportError()
     {
-        using Process process = StartServer();
-
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
-
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
         string[] expectedDeferredTools =
         [
             ToolNames.WindowsClipboardGet,
@@ -2266,423 +1446,319 @@ public sealed class McpProtocolSmokeTests
             ToolNames.WindowsUiaAction,
         ];
 
-        try
+        Assert.Equal(
+            expectedDeferredTools,
+            ToolContractManifest.Deferred.Select(item => item.Name).ToArray());
+
+        foreach (string toolName in expectedDeferredTools)
         {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
+            using JsonDocument response = await session.CallToolAsync(
+                toolName,
+                CreateDeferredInvocationArguments(toolName));
 
-            await session.SendNotificationAsync("notifications/initialized");
+            Assert.False(
+                response.RootElement.TryGetProperty("error", out _),
+                $"Deferred tool '{toolName}' must not fail through transport-level error.");
 
-            Assert.Equal(
-                expectedDeferredTools,
-                ToolContractManifest.Deferred.Select(item => item.Name).ToArray());
+            JsonElement result = response.RootElement.GetProperty("result");
+            Assert.True(result.TryGetProperty("content", out JsonElement content));
+            Assert.Equal(JsonValueKind.Array, content.ValueKind);
+            Assert.True(content.GetArrayLength() > 0);
 
-            foreach (string toolName in expectedDeferredTools)
-            {
-                using JsonDocument response = await session.CallToolAsync(
-                    toolName,
-                    CreateDeferredInvocationArguments(toolName));
+            using JsonDocument payload = JsonDocument.Parse(GetToolTextPayload(response));
+            JsonElement root = payload.RootElement;
+            ToolDescriptor descriptor = ToolContractManifest.Deferred.Single(item => item.Name == toolName);
 
-                Assert.False(
-                    response.RootElement.TryGetProperty("error", out _),
-                    $"Deferred tool '{toolName}' must not fail through transport-level error.");
-
-                JsonElement result = response.RootElement.GetProperty("result");
-                Assert.True(result.TryGetProperty("content", out JsonElement content));
-                Assert.Equal(JsonValueKind.Array, content.ValueKind);
-                Assert.True(content.GetArrayLength() > 0);
-
-                using JsonDocument payload = JsonDocument.Parse(GetToolTextPayload(response));
-                JsonElement root = payload.RootElement;
-                ToolDescriptor descriptor = ToolContractManifest.Deferred.Single(item => item.Name == toolName);
-
-                Assert.Equal(toolName, root.GetProperty("toolName").GetString());
-                Assert.Equal("unsupported", root.GetProperty("status").GetString());
-                Assert.Equal(descriptor.PlannedPhase, root.GetProperty("plannedPhase").GetString());
-                Assert.Equal(descriptor.SuggestedAlternative, root.GetProperty("suggestedAlternative").GetString());
-                Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("reason").GetString()));
-            }
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
+            Assert.Equal(toolName, root.GetProperty("toolName").GetString());
+            Assert.Equal("unsupported", root.GetProperty("status").GetString());
+            Assert.Equal(descriptor.PlannedPhase, root.GetProperty("plannedPhase").GetString());
+            Assert.Equal(descriptor.SuggestedAlternative, root.GetProperty("suggestedAlternative").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("reason").GetString()));
         }
     }
 
     [Fact]
     public async Task WindowsInputCallMaterializesMalformedActionElementAsToolLevelFailedResult()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
-
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
+        using JsonDocument response = await session.CallToolAsync(
+            ToolNames.WindowsInput,
+            new
+            {
+                actions = new object[]
                 {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
+                    "bad",
                 },
-                "initialize");
+            });
 
-            await session.SendNotificationAsync("notifications/initialized");
+        Assert.False(
+            response.RootElement.TryGetProperty("error", out _),
+            "Implemented windows.input must not fail through transport-level error for malformed action element.");
 
-            using JsonDocument response = await session.CallToolAsync(
-                ToolNames.WindowsInput,
-                new
-                {
-                    actions = new object[]
-                    {
-                        "bad",
-                    },
-                });
-
-            Assert.False(
-                response.RootElement.TryGetProperty("error", out _),
-                "Implemented windows.input must not fail through transport-level error for malformed action element.");
-
-            JsonElement result = response.RootElement.GetProperty("result");
-            Assert.True(result.GetProperty("isError").GetBoolean());
-            JsonElement root = result.GetProperty("structuredContent");
-            Assert.Equal(InputStatusValues.Failed, root.GetProperty("status").GetString());
-            Assert.Equal(InputStatusValues.Failed, root.GetProperty("decision").GetString());
-            Assert.Equal(InputFailureCodeValues.InvalidRequest, root.GetProperty("failureCode").GetString());
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement result = response.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        JsonElement root = result.GetProperty("structuredContent");
+        Assert.Equal(InputStatusValues.Failed, root.GetProperty("status").GetString());
+        Assert.Equal(InputStatusValues.Failed, root.GetProperty("decision").GetString());
+        Assert.Equal(InputFailureCodeValues.InvalidRequest, root.GetProperty("failureCode").GetString());
     }
 
     [Fact]
     public async Task WindowsWaitRejectsExpectedTextForNonTextAppearsThroughStdio()
     {
-        using Process process = StartServer();
+        await using ServerSession server = await StartInitializedServerSessionAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
-
-        try
-        {
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
+        using JsonDocument waitResponse = await session.CallToolAsync(
+            ToolNames.WindowsWait,
+            new
+            {
+                condition = WaitConditionValues.FocusIs,
+                selector = new
                 {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
+                    automationId = "SearchBox",
                 },
-                "initialize");
+                expectedText = "Ready",
+                timeoutMs = 500,
+            });
 
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument waitResponse = await session.CallToolAsync(
-                ToolNames.WindowsWait,
-                new
-                {
-                    condition = WaitConditionValues.FocusIs,
-                    selector = new
-                    {
-                        automationId = "SearchBox",
-                    },
-                    expectedText = "Ready",
-                    timeoutMs = 500,
-                });
-
-            JsonElement result = waitResponse.RootElement.GetProperty("result");
-            Assert.True(result.GetProperty("isError").GetBoolean());
-            JsonElement payload = result.GetProperty("structuredContent");
-            Assert.Equal(WaitStatusValues.Failed, payload.GetProperty("status").GetString());
-            Assert.Contains("expectedText", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
-        }
+        JsonElement result = waitResponse.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        JsonElement payload = result.GetProperty("structuredContent");
+        Assert.Equal(WaitStatusValues.Failed, payload.GetProperty("status").GetString());
+        Assert.Contains("expectedText", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task InitializeAndValidateCoreOknoToolsThroughStdio()
     {
-        using Process process = StartServer();
-        using Process helperProcess = StartHelperWindow();
+        await using ServerSession server = StartServerSession();
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync();
+        McpRequestSession session = server.Mcp;
 
-        await using StreamWriter writer = process.StandardInput;
-        using StreamReader reader = process.StandardOutput;
-        McpRequestSession session = new(reader, writer);
+        Assert.True(
+            await WaitUntilAsync(() => TryGetProcessDpiAwareness(server.Process, out int awareness) && awareness == ProcessPerMonitorDpiAware),
+            "Okno.Server did not reach per-monitor DPI awareness during startup.");
 
-        try
+        using JsonDocument initializeResponse = await InitializeAsync(session);
+        JsonElement initializeRoot = initializeResponse.RootElement;
+        Assert.True(initializeRoot.TryGetProperty("result", out JsonElement initializeResult));
+        Assert.True(initializeResult.TryGetProperty("serverInfo", out JsonElement serverInfo));
+        Assert.Equal("Okno.Server", serverInfo.GetProperty("name").GetString());
+
+        await session.SendNotificationAsync("notifications/initialized");
+
+        using JsonDocument toolsResponse = await ListToolsAsync(session);
+        JsonElement tools = toolsResponse.RootElement
+            .GetProperty("result")
+            .GetProperty("tools");
+
+        string[] toolNames = tools.EnumerateArray()
+            .Select(tool => tool.GetProperty("name").GetString())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Cast<string>()
+            .ToArray();
+
+        foreach (string requiredTool in ToolContractManifest.SmokeRequiredToolNames)
         {
-            Assert.True(
-                await WaitUntilAsync(() => TryGetProcessDpiAwareness(process, out int awareness) && awareness == ProcessPerMonitorDpiAware),
-                "Okno.Server did not reach per-monitor DPI awareness during startup.");
-
-            using JsonDocument initializeResponse = await session.SendRequestAsync(
-                "initialize",
-                new
-                {
-                    protocolVersion = "2025-11-25",
-                    capabilities = new { },
-                    clientInfo = new
-                    {
-                        name = "Okno.IntegrationTests",
-                        version = "0.1.0",
-                    },
-                },
-                "initialize");
-            JsonElement initializeRoot = initializeResponse.RootElement;
-            Assert.True(initializeRoot.TryGetProperty("result", out JsonElement initializeResult));
-            Assert.True(initializeResult.TryGetProperty("serverInfo", out JsonElement serverInfo));
-            Assert.Equal("Okno.Server", serverInfo.GetProperty("name").GetString());
-
-            await session.SendNotificationAsync("notifications/initialized");
-
-            using JsonDocument toolsResponse = await session.SendRequestAsync(
-                "tools/list",
-                new { },
-                "tools/list");
-            JsonElement tools = toolsResponse.RootElement
-                .GetProperty("result")
-                .GetProperty("tools");
-
-            string[] toolNames = tools.EnumerateArray()
-                .Select(tool => tool.GetProperty("name").GetString())
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Cast<string>()
-                .ToArray();
-
-            foreach (string requiredTool in ToolContractManifest.SmokeRequiredToolNames)
-            {
-                Assert.Contains(requiredTool, toolNames);
-            }
-
-            JsonElement captureDescriptor = tools.EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsCapture);
-            Assert.False(string.IsNullOrWhiteSpace(captureDescriptor.GetProperty("description").GetString()));
-            Assert.Contains("explicit hwnd", captureDescriptor.GetProperty("description").GetString(), StringComparison.OrdinalIgnoreCase);
-            JsonElement captureAnnotations = captureDescriptor.GetProperty("annotations");
-            Assert.False(captureAnnotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(captureAnnotations.GetProperty("idempotentHint").GetBoolean());
-            Assert.False(captureAnnotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.True(captureAnnotations.GetProperty("openWorldHint").GetBoolean());
-            JsonElement captureProperties = captureDescriptor.GetProperty("inputSchema").GetProperty("properties");
-            Assert.False(string.IsNullOrWhiteSpace(captureProperties.GetProperty("scope").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(captureProperties.GetProperty("monitorId").GetProperty("description").GetString()));
-            Assert.Contains("desktop", captureProperties.GetProperty("hwnd").GetProperty("description").GetString(), StringComparison.OrdinalIgnoreCase);
-
-            JsonElement listMonitorsDescriptor = tools.EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsListMonitors);
-            Assert.False(string.IsNullOrWhiteSpace(listMonitorsDescriptor.GetProperty("description").GetString()));
-            JsonElement listMonitorsAnnotations = listMonitorsDescriptor.GetProperty("annotations");
-            Assert.True(listMonitorsAnnotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(listMonitorsAnnotations.GetProperty("destructiveHint").GetBoolean());
-
-            JsonElement activateDescriptor = tools.EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsActivateWindow);
-            Assert.False(string.IsNullOrWhiteSpace(activateDescriptor.GetProperty("description").GetString()));
-            JsonElement activateAnnotations = activateDescriptor.GetProperty("annotations");
-            Assert.False(activateAnnotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(activateAnnotations.GetProperty("destructiveHint").GetBoolean());
-
-            JsonElement uiaSnapshotDescriptor = tools.EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.WindowsUiaSnapshot);
-            Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotDescriptor.GetProperty("description").GetString()));
-            JsonElement uiaSnapshotAnnotations = uiaSnapshotDescriptor.GetProperty("annotations");
-            Assert.True(uiaSnapshotAnnotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.True(uiaSnapshotAnnotations.GetProperty("idempotentHint").GetBoolean());
-            Assert.False(uiaSnapshotAnnotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.True(uiaSnapshotAnnotations.GetProperty("openWorldHint").GetBoolean());
-            JsonElement uiaSnapshotProperties = uiaSnapshotDescriptor.GetProperty("inputSchema").GetProperty("properties");
-            Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("hwnd").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("depth").GetProperty("description").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("maxNodes").GetProperty("description").GetString()));
-
-            JsonElement healthDescriptor = tools.EnumerateArray()
-                .Single(tool => tool.GetProperty("name").GetString() == ToolNames.OknoHealth);
-            string healthDescription = healthDescriptor.GetProperty("description").GetString()!;
-            Assert.Equal(ToolDescriptions.OknoHealthTool, healthDescription);
-
-            using JsonDocument healthResponse = await session.CallToolAsync(ToolNames.OknoHealth, new { });
-            JsonElement healthResult = healthResponse.RootElement.GetProperty("result");
-            Assert.False(healthResult.TryGetProperty("isError", out JsonElement healthIsError) && healthIsError.GetBoolean());
-            using JsonDocument healthPayload = JsonDocument.Parse(GetToolTextPayload(healthResponse));
-            JsonElement healthRoot = healthPayload.RootElement;
-            Assert.Equal("Okno", healthRoot.GetProperty("service").GetString());
-            AssertHealthTopLevelContract(healthRoot);
-            AssertHealthReadinessShape(healthRoot);
-
-            using JsonDocument monitorsResponse = await session.CallToolAsync(ToolNames.WindowsListMonitors, new { });
-            using JsonDocument monitorsPayload = JsonDocument.Parse(GetToolTextPayload(monitorsResponse));
-            JsonElement monitorsRoot = monitorsPayload.RootElement;
-            int monitorCount = monitorsRoot.GetProperty("count").GetInt32();
-            Assert.True(monitorCount > 0, "Smoke contract requires at least one active monitor.");
-            Assert.False(string.IsNullOrWhiteSpace(monitorsRoot.GetProperty("diagnostics").GetProperty("identityMode").GetString()));
-            Assert.Equal(monitorCount, healthRoot.GetProperty("activeMonitorCount").GetInt32());
-            Assert.Equal(
-                monitorsRoot.GetProperty("diagnostics").GetProperty("identityMode").GetString(),
-                healthRoot.GetProperty("displayIdentity").GetProperty("identityMode").GetString());
-            string primaryMonitorId = monitorsRoot.GetProperty("monitors")[0].GetProperty("monitorId").GetString()!;
-            long helperHwnd = await WaitForMainWindowAsync(helperProcess);
-
-            using JsonDocument windowsPayload = await WaitForVisibleHelperWindowAsync(session, helperHwnd);
-            JsonElement windowsRoot = windowsPayload.RootElement;
-            int count = windowsRoot.GetProperty("count").GetInt32();
-            Assert.True(count > 0, "Smoke contract requires at least one visible window.");
-            Assert.Contains(
-                windowsRoot.GetProperty("windows").EnumerateArray().Select(window => window.GetProperty("hwnd").GetInt64()),
-                hwnd => hwnd == helperHwnd);
-
-            using JsonDocument desktopCaptureResponse = await session.CallToolAsync(
-                ToolNames.WindowsCapture,
-                new
-                {
-                    scope = "desktop",
-                    monitorId = primaryMonitorId,
-                });
-            JsonElement desktopCaptureResult = desktopCaptureResponse.RootElement.GetProperty("result");
-            Assert.False(desktopCaptureResult.GetProperty("isError").GetBoolean());
-            JsonElement desktopStructuredContent = desktopCaptureResult.GetProperty("structuredContent");
-            Assert.Equal("desktop", desktopStructuredContent.GetProperty("scope").GetString());
-            Assert.Equal(primaryMonitorId, desktopStructuredContent.GetProperty("monitorId").GetString());
-            Assert.Equal("physical_pixels", desktopStructuredContent.GetProperty("coordinateSpace").GetString());
-
-            using JsonDocument attachResponse = await session.CallToolAsync(ToolNames.WindowsAttachWindow, new { hwnd = helperHwnd });
-            using JsonDocument attachPayload = JsonDocument.Parse(GetToolTextPayload(attachResponse));
-            JsonElement attachRoot = attachPayload.RootElement;
-            string attachStatus = attachRoot.GetProperty("status").GetString()!;
-            Assert.Contains(attachStatus, AttachSuccessStates);
-
-            using JsonDocument sessionResponse = await session.CallToolAsync(ToolNames.OknoSessionState, new { });
-            using JsonDocument sessionPayload = JsonDocument.Parse(GetToolTextPayload(sessionResponse));
-            JsonElement sessionRoot = sessionPayload.RootElement;
-            Assert.Equal("window", sessionRoot.GetProperty("mode").GetString());
-            Assert.Equal(helperHwnd, sessionRoot.GetProperty("attachedWindow").GetProperty("window").GetProperty("hwnd").GetInt64());
-
-            using JsonDocument uiaSnapshotResponse = await WaitForSemanticUiaSnapshotAsync(session);
-            JsonElement uiaSnapshotResult = uiaSnapshotResponse.RootElement.GetProperty("result");
-            Assert.False(uiaSnapshotResult.GetProperty("isError").GetBoolean());
-            JsonElement uiaSnapshotStructured = uiaSnapshotResult.GetProperty("structuredContent");
-            Assert.Equal(UiaSnapshotStatusValues.Done, uiaSnapshotStructured.GetProperty("status").GetString());
-            Assert.Equal(UiaSnapshotTargetSourceValues.Attached, uiaSnapshotStructured.GetProperty("targetSource").GetString());
-            Assert.Equal(helperHwnd, uiaSnapshotStructured.GetProperty("window").GetProperty("hwnd").GetInt64());
-            Assert.Equal("control", uiaSnapshotStructured.GetProperty("view").GetString());
-            Assert.Equal(5, uiaSnapshotStructured.GetProperty("requestedDepth").GetInt32());
-            Assert.Equal(128, uiaSnapshotStructured.GetProperty("requestedMaxNodes").GetInt32());
-            string uiaArtifactPath = uiaSnapshotStructured.GetProperty("artifactPath").GetString()!;
-            Assert.True(File.Exists(uiaArtifactPath), $"UIA snapshot artifact '{uiaArtifactPath}' was not created.");
-
-            JsonElement uiaContent = uiaSnapshotResult.GetProperty("content");
-            Assert.Equal(1, uiaContent.GetArrayLength());
-            Assert.Equal("text", uiaContent[0].GetProperty("type").GetString());
-            Assert.Contains("\"targetSource\":\"attached\"", uiaContent[0].GetProperty("text").GetString(), StringComparison.Ordinal);
-
-            JsonElement uiaRoot = uiaSnapshotStructured.GetProperty("root");
-            JsonElement smokeButton = AssertUiaNodeExists(uiaRoot, "button", "Run semantic smoke");
-            Assert.Contains("invoke", smokeButton.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()));
-            JsonElement smokeCheckbox = AssertUiaNodeExists(uiaRoot, "check_box", "Remember semantic selection: on");
-            Assert.Contains("toggle", smokeCheckbox.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()));
-            JsonElement smokeEdit = AssertUiaNodeExists(uiaRoot, "edit", "Smoke query input");
-            string[] editPatterns = smokeEdit.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()!).ToArray();
-            Assert.True(editPatterns.Contains("value", StringComparer.Ordinal) || editPatterns.Contains("text", StringComparer.Ordinal));
-            AssertUiaNodeExists(uiaRoot, "tree", "Smoke navigation tree");
-            AssertUiaNodeExists(uiaRoot, "tree_item", "Workspace");
-            AssertUiaNodeExists(uiaRoot, "tree_item", "Inbox");
-
-            using JsonDocument captureResponse = await session.CallToolAsync(ToolNames.WindowsCapture, new { scope = "window" });
-            JsonElement captureResult = captureResponse.RootElement.GetProperty("result");
-            Assert.False(captureResult.GetProperty("isError").GetBoolean());
-
-            JsonElement structuredContent = captureResult.GetProperty("structuredContent");
-            Assert.Equal("window", structuredContent.GetProperty("scope").GetString());
-            Assert.Equal(helperHwnd, structuredContent.GetProperty("hwnd").GetInt64());
-            Assert.Equal("physical_pixels", structuredContent.GetProperty("coordinateSpace").GetString());
-            Assert.True(structuredContent.GetProperty("effectiveDpi").GetInt32() >= 96);
-            Assert.True(structuredContent.GetProperty("pixelWidth").GetInt32() > 0);
-            Assert.True(structuredContent.GetProperty("pixelHeight").GetInt32() > 0);
-
-            JsonElement content = captureResult.GetProperty("content");
-            Assert.Equal(2, content.GetArrayLength());
-            Assert.Equal("text", content[0].GetProperty("type").GetString());
-            Assert.Equal("image", content[1].GetProperty("type").GetString());
-            Assert.Equal("image/png", content[1].GetProperty("mimeType").GetString());
-            Assert.False(string.IsNullOrWhiteSpace(content[1].GetProperty("data").GetString()));
-
-            string artifactPath = structuredContent.GetProperty("artifactPath").GetString()!;
-            Assert.True(File.Exists(artifactPath), $"Capture artifact '{artifactPath}' was not created.");
-
-            Assert.True(MinimizeWindow(helperHwnd), "Smoke helper window did not accept minimize request.");
-            Assert.True(await WaitUntilAsync(() => IsIconic(new IntPtr(helperHwnd))), "Smoke helper window did not become minimized in time.");
-
-            using JsonDocument minimizedCaptureResponse = await session.CallToolAsync(ToolNames.WindowsCapture, new { scope = "window" });
-            JsonElement minimizedCaptureResult = minimizedCaptureResponse.RootElement.GetProperty("result");
-            Assert.True(minimizedCaptureResult.GetProperty("isError").GetBoolean());
-            JsonElement minimizedPayload = minimizedCaptureResult.GetProperty("structuredContent");
-            Assert.Contains("Свернутое окно", minimizedPayload.GetProperty("reason").GetString(), StringComparison.Ordinal);
-
-            using JsonDocument activateResponse = await session.CallToolAsync(ToolNames.WindowsActivateWindow, new { });
-            JsonElement activateResult = activateResponse.RootElement
-                .GetProperty("result");
-            JsonElement activateRoot = activateResult
-                .GetProperty("structuredContent");
-            string activateStatus = activateRoot.GetProperty("status").GetString()!;
-            Assert.Contains(activateStatus, ["done", "ambiguous"]);
-            Assert.Equal(activateStatus == "ambiguous", activateResult.GetProperty("isError").GetBoolean());
-            Assert.True(activateRoot.GetProperty("wasMinimized").GetBoolean());
-            Assert.Equal(helperHwnd, activateRoot.GetProperty("window").GetProperty("hwnd").GetInt64());
-            Assert.Equal(activateStatus == "done", activateRoot.GetProperty("isForeground").GetBoolean());
-
-            using JsonDocument helperCaptureResponse = await WaitForSuccessfulWindowCaptureAsync(session);
-            JsonElement helperCaptureResult = helperCaptureResponse.RootElement.GetProperty("result");
-            Assert.False(helperCaptureResult.GetProperty("isError").GetBoolean());
-            JsonElement helperStructured = helperCaptureResult.GetProperty("structuredContent");
-            Assert.Equal(helperHwnd, helperStructured.GetProperty("hwnd").GetInt64());
-
-            process.StandardInput.Close();
-            await WaitForExitAsync(process);
+            Assert.Contains(requiredTool, toolNames);
         }
-        finally
-        {
-            if (!helperProcess.HasExited)
-            {
-                helperProcess.Kill(entireProcessTree: true);
-                await helperProcess.WaitForExitAsync().WaitAsync(ProcessExitTimeout);
-            }
 
-            if (!process.HasExited)
+        JsonElement captureDescriptor = GetToolDescriptor(tools, ToolNames.WindowsCapture);
+        Assert.False(string.IsNullOrWhiteSpace(captureDescriptor.GetProperty("description").GetString()));
+        Assert.Contains("explicit hwnd", captureDescriptor.GetProperty("description").GetString(), StringComparison.OrdinalIgnoreCase);
+        JsonElement captureAnnotations = captureDescriptor.GetProperty("annotations");
+        Assert.False(captureAnnotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.False(captureAnnotations.GetProperty("idempotentHint").GetBoolean());
+        Assert.False(captureAnnotations.GetProperty("destructiveHint").GetBoolean());
+        Assert.True(captureAnnotations.GetProperty("openWorldHint").GetBoolean());
+        JsonElement captureProperties = captureDescriptor.GetProperty("inputSchema").GetProperty("properties");
+        Assert.False(string.IsNullOrWhiteSpace(captureProperties.GetProperty("scope").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(captureProperties.GetProperty("monitorId").GetProperty("description").GetString()));
+        Assert.Contains("desktop", captureProperties.GetProperty("hwnd").GetProperty("description").GetString(), StringComparison.OrdinalIgnoreCase);
+
+        JsonElement listMonitorsDescriptor = GetToolDescriptor(tools, ToolNames.WindowsListMonitors);
+        Assert.False(string.IsNullOrWhiteSpace(listMonitorsDescriptor.GetProperty("description").GetString()));
+        JsonElement listMonitorsAnnotations = listMonitorsDescriptor.GetProperty("annotations");
+        Assert.True(listMonitorsAnnotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.False(listMonitorsAnnotations.GetProperty("destructiveHint").GetBoolean());
+
+        JsonElement activateDescriptor = GetToolDescriptor(tools, ToolNames.WindowsActivateWindow);
+        Assert.False(string.IsNullOrWhiteSpace(activateDescriptor.GetProperty("description").GetString()));
+        JsonElement activateAnnotations = activateDescriptor.GetProperty("annotations");
+        Assert.False(activateAnnotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.False(activateAnnotations.GetProperty("destructiveHint").GetBoolean());
+
+        JsonElement uiaSnapshotDescriptor = GetToolDescriptor(tools, ToolNames.WindowsUiaSnapshot);
+        Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotDescriptor.GetProperty("description").GetString()));
+        JsonElement uiaSnapshotAnnotations = uiaSnapshotDescriptor.GetProperty("annotations");
+        Assert.True(uiaSnapshotAnnotations.GetProperty("readOnlyHint").GetBoolean());
+        Assert.True(uiaSnapshotAnnotations.GetProperty("idempotentHint").GetBoolean());
+        Assert.False(uiaSnapshotAnnotations.GetProperty("destructiveHint").GetBoolean());
+        Assert.True(uiaSnapshotAnnotations.GetProperty("openWorldHint").GetBoolean());
+        JsonElement uiaSnapshotProperties = uiaSnapshotDescriptor.GetProperty("inputSchema").GetProperty("properties");
+        Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("hwnd").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("depth").GetProperty("description").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(uiaSnapshotProperties.GetProperty("maxNodes").GetProperty("description").GetString()));
+
+        JsonElement healthDescriptor = GetToolDescriptor(tools, ToolNames.OknoHealth);
+        string healthDescription = healthDescriptor.GetProperty("description").GetString()!;
+        Assert.Equal(ToolDescriptions.OknoHealthTool, healthDescription);
+
+        using JsonDocument healthResponse = await session.CallToolAsync(ToolNames.OknoHealth, new { });
+        JsonElement healthResult = healthResponse.RootElement.GetProperty("result");
+        Assert.False(healthResult.TryGetProperty("isError", out JsonElement healthIsError) && healthIsError.GetBoolean());
+        using JsonDocument healthPayload = JsonDocument.Parse(GetToolTextPayload(healthResponse));
+        JsonElement healthRoot = healthPayload.RootElement;
+        Assert.Equal("Okno", healthRoot.GetProperty("service").GetString());
+        AssertHealthTopLevelContract(healthRoot);
+        AssertHealthReadinessShape(healthRoot);
+
+        using JsonDocument monitorsResponse = await session.CallToolAsync(ToolNames.WindowsListMonitors, new { });
+        using JsonDocument monitorsPayload = JsonDocument.Parse(GetToolTextPayload(monitorsResponse));
+        JsonElement monitorsRoot = monitorsPayload.RootElement;
+        int monitorCount = monitorsRoot.GetProperty("count").GetInt32();
+        Assert.True(monitorCount > 0, "Smoke contract requires at least one active monitor.");
+        Assert.False(string.IsNullOrWhiteSpace(monitorsRoot.GetProperty("diagnostics").GetProperty("identityMode").GetString()));
+        Assert.Equal(monitorCount, healthRoot.GetProperty("activeMonitorCount").GetInt32());
+        Assert.Equal(
+            monitorsRoot.GetProperty("diagnostics").GetProperty("identityMode").GetString(),
+            healthRoot.GetProperty("displayIdentity").GetProperty("identityMode").GetString());
+        string primaryMonitorId = monitorsRoot.GetProperty("monitors")[0].GetProperty("monitorId").GetString()!;
+        long helperHwnd = helper.Hwnd;
+
+        using JsonDocument windowsPayload = await WaitForVisibleHelperWindowAsync(session, helperHwnd);
+        JsonElement windowsRoot = windowsPayload.RootElement;
+        int count = windowsRoot.GetProperty("count").GetInt32();
+        Assert.True(count > 0, "Smoke contract requires at least one visible window.");
+        Assert.Contains(
+            windowsRoot.GetProperty("windows").EnumerateArray().Select(window => window.GetProperty("hwnd").GetInt64()),
+            hwnd => hwnd == helperHwnd);
+
+        using JsonDocument desktopCaptureResponse = await session.CallToolAsync(
+            ToolNames.WindowsCapture,
+            new
             {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync().WaitAsync(ProcessExitTimeout);
-            }
-        }
+                scope = "desktop",
+                monitorId = primaryMonitorId,
+            });
+        JsonElement desktopCaptureResult = desktopCaptureResponse.RootElement.GetProperty("result");
+        Assert.False(desktopCaptureResult.GetProperty("isError").GetBoolean());
+        JsonElement desktopStructuredContent = desktopCaptureResult.GetProperty("structuredContent");
+        Assert.Equal("desktop", desktopStructuredContent.GetProperty("scope").GetString());
+        Assert.Equal(primaryMonitorId, desktopStructuredContent.GetProperty("monitorId").GetString());
+        Assert.Equal("physical_pixels", desktopStructuredContent.GetProperty("coordinateSpace").GetString());
+
+        using JsonDocument attachResponse = await session.CallToolAsync(ToolNames.WindowsAttachWindow, new { hwnd = helperHwnd });
+        using JsonDocument attachPayload = JsonDocument.Parse(GetToolTextPayload(attachResponse));
+        JsonElement attachRoot = attachPayload.RootElement;
+        string attachStatus = attachRoot.GetProperty("status").GetString()!;
+        Assert.Contains(attachStatus, AttachSuccessStates);
+
+        using JsonDocument sessionResponse = await session.CallToolAsync(ToolNames.OknoSessionState, new { });
+        using JsonDocument sessionPayload = JsonDocument.Parse(GetToolTextPayload(sessionResponse));
+        JsonElement sessionRoot = sessionPayload.RootElement;
+        Assert.Equal("window", sessionRoot.GetProperty("mode").GetString());
+        Assert.Equal(helperHwnd, sessionRoot.GetProperty("attachedWindow").GetProperty("window").GetProperty("hwnd").GetInt64());
+
+        using JsonDocument uiaSnapshotResponse = await WaitForSemanticUiaSnapshotAsync(session);
+        JsonElement uiaSnapshotResult = uiaSnapshotResponse.RootElement.GetProperty("result");
+        Assert.False(uiaSnapshotResult.GetProperty("isError").GetBoolean());
+        JsonElement uiaSnapshotStructured = uiaSnapshotResult.GetProperty("structuredContent");
+        Assert.Equal(UiaSnapshotStatusValues.Done, uiaSnapshotStructured.GetProperty("status").GetString());
+        Assert.Equal(UiaSnapshotTargetSourceValues.Attached, uiaSnapshotStructured.GetProperty("targetSource").GetString());
+        Assert.Equal(helperHwnd, uiaSnapshotStructured.GetProperty("window").GetProperty("hwnd").GetInt64());
+        Assert.Equal("control", uiaSnapshotStructured.GetProperty("view").GetString());
+        Assert.Equal(5, uiaSnapshotStructured.GetProperty("requestedDepth").GetInt32());
+        Assert.Equal(128, uiaSnapshotStructured.GetProperty("requestedMaxNodes").GetInt32());
+        string uiaArtifactPath = uiaSnapshotStructured.GetProperty("artifactPath").GetString()!;
+        Assert.True(File.Exists(uiaArtifactPath), $"UIA snapshot artifact '{uiaArtifactPath}' was not created.");
+
+        JsonElement uiaContent = uiaSnapshotResult.GetProperty("content");
+        Assert.Equal(1, uiaContent.GetArrayLength());
+        Assert.Equal("text", uiaContent[0].GetProperty("type").GetString());
+        Assert.Contains("\"targetSource\":\"attached\"", uiaContent[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+
+        JsonElement uiaRoot = uiaSnapshotStructured.GetProperty("root");
+        JsonElement smokeButton = AssertUiaNodeExists(uiaRoot, "button", "Run semantic smoke");
+        Assert.Contains("invoke", smokeButton.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()));
+        JsonElement smokeCheckbox = AssertUiaNodeExists(uiaRoot, "check_box", "Remember semantic selection: on");
+        Assert.Contains("toggle", smokeCheckbox.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()));
+        JsonElement smokeEdit = AssertUiaNodeExists(uiaRoot, "edit", "Smoke query input");
+        string[] editPatterns = smokeEdit.GetProperty("patterns").EnumerateArray().Select(item => item.GetString()!).ToArray();
+        Assert.True(editPatterns.Contains("value", StringComparer.Ordinal) || editPatterns.Contains("text", StringComparer.Ordinal));
+        AssertUiaNodeExists(uiaRoot, "tree", "Smoke navigation tree");
+        AssertUiaNodeExists(uiaRoot, "tree_item", "Workspace");
+        AssertUiaNodeExists(uiaRoot, "tree_item", "Inbox");
+
+        using JsonDocument captureResponse = await session.CallToolAsync(ToolNames.WindowsCapture, new { scope = "window" });
+        JsonElement captureResult = captureResponse.RootElement.GetProperty("result");
+        Assert.False(captureResult.GetProperty("isError").GetBoolean());
+
+        JsonElement structuredContent = captureResult.GetProperty("structuredContent");
+        Assert.Equal("window", structuredContent.GetProperty("scope").GetString());
+        Assert.Equal(helperHwnd, structuredContent.GetProperty("hwnd").GetInt64());
+        Assert.Equal("physical_pixels", structuredContent.GetProperty("coordinateSpace").GetString());
+        Assert.True(structuredContent.GetProperty("effectiveDpi").GetInt32() >= 96);
+        Assert.True(structuredContent.GetProperty("pixelWidth").GetInt32() > 0);
+        Assert.True(structuredContent.GetProperty("pixelHeight").GetInt32() > 0);
+
+        JsonElement content = captureResult.GetProperty("content");
+        Assert.Equal(2, content.GetArrayLength());
+        Assert.Equal("text", content[0].GetProperty("type").GetString());
+        Assert.Equal("image", content[1].GetProperty("type").GetString());
+        Assert.Equal("image/png", content[1].GetProperty("mimeType").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(content[1].GetProperty("data").GetString()));
+
+        string artifactPath = structuredContent.GetProperty("artifactPath").GetString()!;
+        Assert.True(File.Exists(artifactPath), $"Capture artifact '{artifactPath}' was not created.");
+
+        Assert.True(MinimizeWindow(helperHwnd), "Smoke helper window did not accept minimize request.");
+        Assert.True(await WaitUntilAsync(() => IsIconic(new IntPtr(helperHwnd))), "Smoke helper window did not become minimized in time.");
+
+        using JsonDocument minimizedCaptureResponse = await session.CallToolAsync(ToolNames.WindowsCapture, new { scope = "window" });
+        JsonElement minimizedCaptureResult = minimizedCaptureResponse.RootElement.GetProperty("result");
+        Assert.True(minimizedCaptureResult.GetProperty("isError").GetBoolean());
+        JsonElement minimizedPayload = minimizedCaptureResult.GetProperty("structuredContent");
+        Assert.Contains("Свернутое окно", minimizedPayload.GetProperty("reason").GetString(), StringComparison.Ordinal);
+
+        using JsonDocument activateResponse = await session.CallToolAsync(ToolNames.WindowsActivateWindow, new { });
+        JsonElement activateResult = activateResponse.RootElement
+            .GetProperty("result");
+        JsonElement activateRoot = activateResult
+            .GetProperty("structuredContent");
+        string activateStatus = activateRoot.GetProperty("status").GetString()!;
+        Assert.Contains(activateStatus, ["done", "ambiguous"]);
+        Assert.Equal(activateStatus == "ambiguous", activateResult.GetProperty("isError").GetBoolean());
+        Assert.True(activateRoot.GetProperty("wasMinimized").GetBoolean());
+        Assert.Equal(helperHwnd, activateRoot.GetProperty("window").GetProperty("hwnd").GetInt64());
+        Assert.Equal(activateStatus == "done", activateRoot.GetProperty("isForeground").GetBoolean());
+
+        using JsonDocument helperCaptureResponse = await WaitForSuccessfulWindowCaptureAsync(session);
+        JsonElement helperCaptureResult = helperCaptureResponse.RootElement.GetProperty("result");
+        Assert.False(helperCaptureResult.GetProperty("isError").GetBoolean());
+        JsonElement helperStructured = helperCaptureResult.GetProperty("structuredContent");
+        Assert.Equal(helperHwnd, helperStructured.GetProperty("hwnd").GetInt64());
     }
+
+    private static Task<JsonDocument> ListToolsAsync(McpRequestSession session) =>
+        session.SendRequestAsync(
+            "tools/list",
+            new { },
+            "tools/list");
+
+    private static JsonElement GetToolDescriptor(JsonDocument toolsResponse, string toolName) =>
+        GetToolDescriptor(
+            toolsResponse.RootElement
+                .GetProperty("result")
+                .GetProperty("tools"),
+            toolName);
+
+    private static JsonElement GetToolDescriptor(JsonElement tools, string toolName) =>
+        tools.EnumerateArray()
+            .Single(tool => tool.GetProperty("name").GetString() == toolName);
 
     private static string GetToolTextPayload(JsonDocument response) =>
         response.RootElement
@@ -2725,6 +1801,116 @@ public sealed class McpProtocolSmokeTests
         int result = GetProcessDpiAwarenessNative(process.Handle, out int processAwareness);
         awareness = processAwareness;
         return result == 0;
+    }
+
+    private static Task<JsonDocument> InitializeAsync(McpRequestSession session) =>
+        session.SendRequestAsync(
+            "initialize",
+            new
+            {
+                protocolVersion = "2025-11-25",
+                capabilities = new { },
+                clientInfo = new
+                {
+                    name = "Okno.IntegrationTests",
+                    version = "0.2.0",
+                },
+            },
+            "initialize");
+
+    private static ServerSession StartServerSession(string? toolSurfaceProfile = null) =>
+        new(StartServer(toolSurfaceProfile));
+
+    private static async Task<ServerSession> StartInitializedServerSessionAsync(string? toolSurfaceProfile = null)
+    {
+        ServerSession server = StartServerSession(toolSurfaceProfile);
+        try
+        {
+            using JsonDocument _ = await InitializeAsync(server.Mcp);
+            await server.Mcp.SendNotificationAsync("notifications/initialized");
+            return server;
+        }
+        catch
+        {
+            await server.DisposeAsync();
+            throw;
+        }
+    }
+
+    private static async Task<HelperWindowScope> StartHelperWindowScopeAsync(string? title = null, int? lifetimeMs = null)
+    {
+        Process process = StartHelperWindow(title, lifetimeMs);
+        try
+        {
+            long hwnd = await WaitForMainWindowAsync(process);
+            Assert.True(
+                await WaitUntilAsync(() => IsHelperWindowReady(process, hwnd)),
+                "Smoke helper window did not become visible and idle in time.");
+            return new HelperWindowScope(process, hwnd);
+        }
+        catch
+        {
+            await StopHelperWindowAsync(process);
+            process.Dispose();
+            throw;
+        }
+    }
+
+    private static bool IsHelperWindowReady(Process process, long hwnd)
+    {
+        if (process.HasExited)
+        {
+            return false;
+        }
+
+        process.Refresh();
+        return process.MainWindowHandle.ToInt64() == hwnd && IsWindowVisible(new IntPtr(hwnd));
+    }
+
+    private sealed class ServerSession(Process process) : IAsyncDisposable
+    {
+        public Process Process { get; } = process;
+        public McpRequestSession Mcp { get; } = new(process.StandardOutput, process.StandardInput);
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                if (!Process.HasExited)
+                {
+                    Process.StandardInput.Close();
+                    await WaitForExitAsync(Process);
+                }
+            }
+            finally
+            {
+                if (!Process.HasExited)
+                {
+                    Process.Kill(entireProcessTree: true);
+                    await Process.WaitForExitAsync().WaitAsync(ProcessExitTimeout);
+                }
+
+                Process.Dispose();
+            }
+        }
+    }
+
+    private sealed class HelperWindowScope(Process process, long hwnd) : IAsyncDisposable
+    {
+        public Process Process { get; } = process;
+        public long Hwnd { get; } = hwnd;
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await StopHelperWindowAsync(Process);
+            }
+            finally
+            {
+                Process.Dispose();
+            }
+        }
     }
 
     private sealed class McpRequestSession(StreamReader reader, StreamWriter writer)
@@ -3289,18 +2475,7 @@ public sealed class McpProtocolSmokeTests
         Assert.Equal(minimum, propertySchema.GetProperty("minimum").GetInt32());
     }
 
-    private static void AssertSchemaIntegerPropertyRejectsConst(JsonElement schema, string propertyName, int constValue)
-    {
-        JsonElement propertySchema = schema.GetProperty("properties").GetProperty(propertyName);
-        Assert.Equal(constValue, propertySchema.GetProperty("not").GetProperty("const").GetInt32());
-    }
 
-    private static void AssertSchemaStringPropertyRejectsWhitespaceOnly(JsonElement schema, string propertyName)
-    {
-        JsonElement propertySchema = schema.GetProperty("properties").GetProperty(propertyName);
-        Assert.Equal(1, propertySchema.GetProperty("minLength").GetInt32());
-        Assert.Equal(@"\S", propertySchema.GetProperty("pattern").GetString());
-    }
 
     private static bool SchemaTypeAllowsNull(JsonElement typeElement)
     {
@@ -3464,6 +2639,9 @@ public sealed class McpProtocolSmokeTests
 
     [DllImport("user32.dll")]
     private static extern bool IsIconic(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
 
     [DllImport("shcore.dll", EntryPoint = "GetProcessDpiAwareness")]
     private static extern int GetProcessDpiAwarenessNative(IntPtr processHandle, out int awareness);

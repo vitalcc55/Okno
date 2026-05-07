@@ -17,6 +17,35 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed class ComputerUseWinArchitectureTests
 {
+    private const string NonBlankJsonStringPattern = @".*\S.*";
+
+    private static readonly Lazy<ToolContractProfile> ComputerUseWinProfile = new(
+        static () => ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin));
+
+    private static readonly Lazy<string[]> PublishedComputerUseWinToolNames = new(
+        static () => ComputerUseWinToolRegistration.Create(static () => null!)
+            .Select(static tool => tool.ProtocolTool.Name)
+            .OrderBy(static item => item, StringComparer.Ordinal)
+            .ToArray());
+
+    private static readonly Lazy<IReadOnlyDictionary<string, JsonElement>> ComputerUseWinInputSchemasByToolName = new(
+        static () => ComputerUseWinToolRegistration.Create(static () => null!)
+            .ToDictionary(
+                static tool => tool.ProtocolTool.Name,
+                static tool => tool.ProtocolTool.InputSchema,
+                StringComparer.Ordinal));
+
+    private static readonly Lazy<string[]> ComputerUseWinToolFactoryMethodNames = new(
+        static () => typeof(ComputerUseWinToolRegistration)
+            .GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly)
+            .Where(method => method.Name.StartsWith("Create", StringComparison.Ordinal)
+                && method.Name.EndsWith("Tool", StringComparison.Ordinal)
+                && method.GetParameters().Length == 1
+                && method.GetParameters()[0].ParameterType == typeof(Func<ComputerUseWinTools>))
+            .Select(static method => method.Name)
+            .OrderBy(static item => item, StringComparer.Ordinal)
+            .ToArray());
+
     [Fact]
     public void BlockPolicyUsesCanonicalProcessIdentityReturnedByRuntime()
     {
@@ -25,7 +54,7 @@ public sealed class ComputerUseWinArchitectureTests
         bool isBlocked = ComputerUseWinTargetPolicy.TryGetBlockedReason(window, out string? reason);
 
         Assert.True(isBlocked);
-        Assert.Contains("powershell", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "powershell");
     }
 
     [Theory]
@@ -38,7 +67,7 @@ public sealed class ComputerUseWinArchitectureTests
         bool isBlocked = ComputerUseWinTargetPolicy.TryGetBlockedReason(window, out string? reason);
 
         Assert.True(isBlocked);
-        Assert.Contains(processName, reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, processName);
     }
 
     [Fact]
@@ -77,7 +106,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Repeat: 1,
                 Confirm: false));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
+        AssertValidationFailure(failure);
     }
 
     [Fact]
@@ -90,127 +119,67 @@ public sealed class ComputerUseWinArchitectureTests
                 Repeat: InputActionScalarConstraints.MaximumKeypressRepeat + 1,
                 Confirm: true));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("repeat", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "repeat");
     }
 
     [Fact]
     public void PlaybookProviderMatchesBareRuntimeProcessName()
     {
-        string root = CreateTempDirectory();
-        try
-        {
-            string instructionsRoot = Path.Combine(root, "references", "AppInstructions");
-            Directory.CreateDirectory(instructionsRoot);
-            File.WriteAllLines(
-                Path.Combine(instructionsRoot, "FileExplorer.md"),
-                ["Открой нужную папку.", "", "Используй левую панель только после get_app_state."]);
+        using TempDirectoryScope temp = new();
+        string instructionsRoot = CreateAppInstructionsRoot(temp.Root);
+        File.WriteAllLines(
+            Path.Combine(instructionsRoot, "FileExplorer.md"),
+            ["Открой нужную папку.", "", "Используй левую панель только после get_app_state."]);
+        ComputerUseWinPlaybookProvider provider = CreatePlaybookProvider(temp.Root, instructionsRoot);
 
-            ComputerUseWinPlaybookProvider provider = new(
-                new ComputerUseWinOptions(
-                    PluginRoot: root,
-                    AppInstructionsRoot: instructionsRoot,
-                    ApprovalStorePath: Path.Combine(root, "AppApprovals.json")));
+        IReadOnlyList<string> instructions = provider.GetInstructions("explorer");
 
-            IReadOnlyList<string> instructions = provider.GetInstructions("explorer");
-
-            Assert.Equal(
-                ["Открой нужную папку.", "Используй левую панель только после get_app_state."],
-                instructions);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(root);
-        }
+        Assert.Equal(
+            ["Открой нужную папку.", "Используй левую панель только после get_app_state."],
+            instructions);
     }
 
     [Fact]
     public void PlaybookProviderRaisesUnavailableWhenPlaybookPathIsUnreadable()
     {
-        string root = CreateTempDirectory();
-        try
-        {
-            string instructionsRoot = Path.Combine(root, "references", "AppInstructions");
-            Directory.CreateDirectory(instructionsRoot);
-            Directory.CreateDirectory(Path.Combine(instructionsRoot, "FileExplorer.md"));
+        using TempDirectoryScope temp = new();
+        string instructionsRoot = CreateAppInstructionsRoot(temp.Root);
+        Directory.CreateDirectory(Path.Combine(instructionsRoot, "FileExplorer.md"));
+        ComputerUseWinPlaybookProvider provider = CreatePlaybookProvider(temp.Root, instructionsRoot);
 
-            ComputerUseWinPlaybookProvider provider = new(
-                new ComputerUseWinOptions(
-                    PluginRoot: root,
-                    AppInstructionsRoot: instructionsRoot,
-                    ApprovalStorePath: Path.Combine(root, "AppApprovals.json")));
-
-            Assert.Throws<ComputerUseWinInstructionUnavailableException>(() => provider.GetInstructions("explorer"));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(root);
-        }
+        Assert.Throws<ComputerUseWinInstructionUnavailableException>(() => provider.GetInstructions("explorer"));
     }
 
     [Fact]
     public void PlaybookProviderRaisesUnavailableWhenMappedPlaybookAssetIsMissing()
     {
-        string root = CreateTempDirectory();
-        try
-        {
-            string instructionsRoot = Path.Combine(root, "references", "AppInstructions");
-            Directory.CreateDirectory(instructionsRoot);
+        using TempDirectoryScope temp = new();
+        string instructionsRoot = CreateAppInstructionsRoot(temp.Root);
+        ComputerUseWinPlaybookProvider provider = CreatePlaybookProvider(temp.Root, instructionsRoot);
 
-            ComputerUseWinPlaybookProvider provider = new(
-                new ComputerUseWinOptions(
-                    PluginRoot: root,
-                    AppInstructionsRoot: instructionsRoot,
-                    ApprovalStorePath: Path.Combine(root, "AppApprovals.json")));
-
-            Assert.Throws<ComputerUseWinInstructionUnavailableException>(() => provider.GetInstructions("explorer"));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(root);
-        }
+        Assert.Throws<ComputerUseWinInstructionUnavailableException>(() => provider.GetInstructions("explorer"));
     }
 
     [Fact]
     public void AffordanceResolverPublishesTypeTextOnlyForFocusedEditableTargets()
     {
-        UiaElementSnapshot unfocusedNode = new()
-        {
-            ElementId = "path:0",
-            ControlType = "edit",
-            BoundingRectangle = new Bounds(10, 20, 110, 40),
-            IsEnabled = true,
-            IsOffscreen = false,
-            IsReadOnly = false,
-            Patterns = ["value"],
-        };
-        UiaElementSnapshot focusedNode = unfocusedNode with
-        {
-            HasKeyboardFocus = true,
-        };
+        UiaElementSnapshot unfocusedNode = CreateEnabledUiaElement(
+            elementId: "path:0",
+            controlType: "edit",
+            bounds: new Bounds(10, 20, 110, 40),
+            isReadOnly: false,
+            patterns: ["value"]);
+        UiaElementSnapshot focusedNode = unfocusedNode with { HasKeyboardFocus = true };
 
-        IReadOnlyList<string> unfocusedActions = ComputerUseWinAffordanceResolver.Resolve(unfocusedNode);
-        IReadOnlyList<string> focusedActions = ComputerUseWinAffordanceResolver.Resolve(focusedNode);
-        IReadOnlyList<string> documentActions = ComputerUseWinAffordanceResolver.Resolve(
-            new UiaElementSnapshot
-            {
-                ElementId = "path:document",
-                ControlType = "document",
-                BoundingRectangle = new Bounds(20, 30, 180, 120),
-                IsEnabled = true,
-                IsOffscreen = false,
-                HasKeyboardFocus = true,
-            });
-        IReadOnlyList<string> missingWritableProofActions = ComputerUseWinAffordanceResolver.Resolve(
-            focusedNode with
-            {
-                IsReadOnly = null,
-            });
-        IReadOnlyList<string> readOnlyActions = ComputerUseWinAffordanceResolver.Resolve(
-            focusedNode with
-            {
-                IsReadOnly = true,
-            });
+        IReadOnlyList<string> unfocusedActions = ResolveAffordances(unfocusedNode);
+        IReadOnlyList<string> focusedActions = ResolveAffordances(focusedNode);
+        IReadOnlyList<string> documentActions = ResolveAffordances(CreateEnabledUiaElement(
+            elementId: "path:document",
+            controlType: "document",
+            bounds: new Bounds(20, 30, 180, 120),
+            hasKeyboardFocus: true));
+        IReadOnlyList<string> missingWritableProofActions = ResolveAffordances(focusedNode with { IsReadOnly = null });
+        IReadOnlyList<string> readOnlyActions = ResolveAffordances(focusedNode with { IsReadOnly = true });
 
         Assert.Contains(ToolNames.ComputerUseWinClick, unfocusedActions);
         Assert.Contains(ToolNames.ComputerUseWinSetValue, unfocusedActions);
@@ -218,40 +187,13 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.Contains(ToolNames.ComputerUseWinTypeText, focusedActions);
         Assert.Contains(
             ToolNames.ComputerUseWinScroll,
-            ComputerUseWinAffordanceResolver.Resolve(
-                new UiaElementSnapshot
-                {
-                    ElementId = "path:scroll",
-                    ControlType = "list",
-                    BoundingRectangle = new Bounds(12, 22, 140, 120),
-                    IsEnabled = true,
-                    IsOffscreen = false,
-                    Patterns = ["scroll"],
-                }));
+            ResolveAffordances(CreateEnabledUiaElement("path:scroll", "list", new Bounds(12, 22, 140, 120), patterns: ["scroll"])));
         Assert.Contains(
             ToolNames.ComputerUseWinPerformSecondaryAction,
-            ComputerUseWinAffordanceResolver.Resolve(
-                new UiaElementSnapshot
-                {
-                    ElementId = "path:toggle",
-                    ControlType = "check_box",
-                    BoundingRectangle = new Bounds(24, 104, 244, 128),
-                    IsEnabled = true,
-                    IsOffscreen = false,
-                    Patterns = ["toggle"],
-                }));
+            ResolveAffordances(CreateEnabledUiaElement("path:toggle", "check_box", new Bounds(24, 104, 244, 128), patterns: ["toggle"])));
         Assert.DoesNotContain(
             ToolNames.ComputerUseWinPerformSecondaryAction,
-            ComputerUseWinAffordanceResolver.Resolve(
-                new UiaElementSnapshot
-                {
-                    ElementId = "path:leaf-like",
-                    ControlType = "tree_item",
-                    BoundingRectangle = new Bounds(24, 252, 120, 276),
-                    IsEnabled = true,
-                    IsOffscreen = false,
-                    Patterns = ["expand_collapse"],
-                }));
+            ResolveAffordances(CreateEnabledUiaElement("path:leaf-like", "tree_item", new Bounds(24, 252, 120, 276), patterns: ["expand_collapse"])));
         Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, documentActions);
         Assert.DoesNotContain(ToolNames.ComputerUseWinSetValue, missingWritableProofActions);
         Assert.DoesNotContain(ToolNames.ComputerUseWinTypeText, missingWritableProofActions);
@@ -271,8 +213,7 @@ public sealed class ComputerUseWinArchitectureTests
                 NumberValue: null,
                 Confirm: false));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("elementIndex", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "elementIndex");
     }
 
     [Fact]
@@ -287,8 +228,7 @@ public sealed class ComputerUseWinArchitectureTests
                 NumberValue: null,
                 Confirm: false));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("valueKind", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "valueKind");
     }
 
     [Fact]
@@ -314,33 +254,20 @@ public sealed class ComputerUseWinArchitectureTests
                 Text: string.Empty,
                 Confirm: false));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("text", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "text");
     }
 
     [Fact]
     public void TypeTextValidatorRequiresConfirmForFocusedFallbackOptIn()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","text":"typed text","allowFocusedFallback":true,"confirm":false}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["text"] = document.RootElement.GetProperty("text").Clone(),
-            ["allowFocusedFallback"] = document.RootElement.GetProperty("allowFocusedFallback").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","text":"typed text","allowFocusedFallback":true,"confirm":false}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinTypeTextRequest(),
-            out ComputerUseWinTypeTextRequest request,
-            out string? reason,
+            new ComputerUseWinTypeTextRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinTypeTextRequest(), request);
-        Assert.Contains("confirm", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("unmapped", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "confirm");
+        AssertFailureReasonDoesNotContain(reason, "unmapped");
     }
 
     [Fact]
@@ -391,8 +318,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Confirm: true,
                 AllowFocusedFallback: true));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("capture_pixels", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "capture_pixels");
     }
 
     [Fact]
@@ -408,8 +334,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Confirm: true,
                 AllowFocusedFallback: false));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("allowFocusedFallback", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "allowFocusedFallback");
     }
 
     [Fact]
@@ -425,8 +350,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Confirm: false,
                 AllowFocusedFallback: true));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("confirm", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "confirm");
     }
 
     [Fact]
@@ -442,8 +366,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Confirm: true,
                 AllowFocusedFallback: true));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("point", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "point");
     }
 
     [Fact]
@@ -459,8 +382,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Confirm: true,
                 AllowFocusedFallback: true));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("coordinateSpace", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "coordinateSpace");
     }
 
     [Fact]
@@ -476,34 +398,20 @@ public sealed class ComputerUseWinArchitectureTests
                 Confirm: true,
                 AllowFocusedFallback: true));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("coordinateSpace", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "coordinateSpace");
     }
 
     [Fact]
     public void TypeTextBinderRejectsMalformedCoordinatePointBeforeDispatch()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true},"text":"typed text","allowFocusedFallback":true,"confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["text"] = document.RootElement.GetProperty("text").Clone(),
-            ["allowFocusedFallback"] = document.RootElement.GetProperty("allowFocusedFallback").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true},"text":"typed text","allowFocusedFallback":true,"confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinTypeTextRequest(),
-            out ComputerUseWinTypeTextRequest request,
-            out string? reason,
+            new ComputerUseWinTypeTextRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinTypeTextRequest(), request);
-        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("unmapped", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "point");
+        AssertFailureReasonDoesNotContain(reason, "unmapped");
     }
 
     [Fact]
@@ -519,8 +427,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Pages: 1,
                 Confirm: false));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("elementIndex", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "elementIndex");
     }
 
     [Fact]
@@ -536,8 +443,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Pages: 1,
                 Confirm: true));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("point", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "point");
     }
 
     [Fact]
@@ -551,9 +457,7 @@ public sealed class ComputerUseWinArchitectureTests
                 Pages: 11,
                 Confirm: false));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("pages", failure, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("10", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "pages", "10");
     }
 
     [Fact]
@@ -565,29 +469,15 @@ public sealed class ComputerUseWinArchitectureTests
                 ElementIndex: null,
                 Confirm: false));
 
-        Assert.False(string.IsNullOrWhiteSpace(failure));
-        Assert.Contains("elementIndex", failure, StringComparison.OrdinalIgnoreCase);
+        AssertValidationFailure(failure, "elementIndex");
     }
 
     [Fact]
     public void ComputerUseWinProfilePublishesImplementedDragAlongsideShippedOperatorTools()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
-
-        string[] publishedToolNames = tools
-            .Select(tool => tool.ProtocolTool.Name)
-            .OrderBy(static item => item, StringComparer.Ordinal)
-            .ToArray();
-        string[] factoryMethodNames = typeof(ComputerUseWinToolRegistration)
-            .GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly)
-            .Where(method => method.Name.StartsWith("Create", StringComparison.Ordinal)
-                && method.Name.EndsWith("Tool", StringComparison.Ordinal)
-                && method.GetParameters().Length == 1
-                && method.GetParameters()[0].ParameterType == typeof(Func<ComputerUseWinTools>))
-            .Select(method => method.Name)
-            .OrderBy(static item => item, StringComparer.Ordinal)
-            .ToArray();
+        ToolContractProfile profile = GetComputerUseWinProfile();
+        string[] publishedToolNames = GetPublishedComputerUseWinToolNames();
+        string[] factoryMethodNames = GetComputerUseWinToolFactoryMethodNames();
 
         Assert.Equal(
             profile.ImplementedNames.OrderBy(static item => item, StringComparer.Ordinal).ToArray(),
@@ -600,27 +490,21 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ComputerUseWinDeferredWaveIsEmptyAfterDragPromotion()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
-
+        ToolContractProfile profile = GetComputerUseWinProfile();
         string[] deferredNames = profile.Deferred
             .Select(static descriptor => descriptor.Name)
             .OrderBy(static item => item, StringComparer.Ordinal)
             .ToArray();
-        string[] publishedToolNames = tools
-            .Select(tool => tool.ProtocolTool.Name)
-            .OrderBy(static item => item, StringComparer.Ordinal)
-            .ToArray();
 
         Assert.Empty(deferredNames);
-        Assert.Contains("drag", publishedToolNames);
+        Assert.Contains("drag", GetPublishedComputerUseWinToolNames());
     }
 
     [Fact]
     public void ComputerUseWinListAppsMetadataReflectsStatefulSelectorIssuance()
     {
         var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        ToolContractProfile profile = ToolContractManifest.GetProfile(ToolSurfaceProfileValues.ComputerUseWin);
+        ToolContractProfile profile = GetComputerUseWinProfile();
         JsonElement listAppsDescriptor = JsonSerializer.SerializeToElement(
             ToolContractExporter.CreateDocument(ToolSurfaceProfileValues.ComputerUseWin)
                 .Tools
@@ -656,95 +540,27 @@ public sealed class ComputerUseWinArchitectureTests
     public void ComputerUseWinHandlersResolveFromServiceCollection()
     {
         using TempDirectoryScope temp = new();
-        ServiceCollection services = new();
+        using ServiceProvider provider = BuildComputerUseWinServiceProviderForResolutionTest(temp.Root);
 
-        services.AddSingleton(CreateAuditLog(temp.Root));
-        services.AddSingleton<ISessionManager>(new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-stage-2-service-graph")));
-        services.AddSingleton<IWindowManager>(new ServiceGraphWindowManager());
-        services.AddSingleton<IWindowActivationService>(new FakeWindowActivationService(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true)));
-        services.AddSingleton<ICaptureService>(new NoopCaptureService());
-        services.AddSingleton<IUiAutomationService>(new FakeUiAutomationService());
-        services.AddSingleton<IUiAutomationSetValueService>(new FakeUiAutomationSetValueService());
-        services.AddSingleton<IInputService>(new FakeInputService());
-        services.AddSingleton(new ComputerUseWinOptions(
-            PluginRoot: temp.Root,
-            AppInstructionsRoot: Path.Combine(temp.Root, "references", "AppInstructions"),
-            ApprovalStorePath: Path.Combine(temp.Root, "AppApprovals.json")));
-        services.AddSingleton<ComputerUseWinApprovalStore>();
-        services.AddSingleton<ComputerUseWinExecutionTargetCatalog>();
-        services.AddSingleton<ComputerUseWinAppDiscoveryService>();
-        services.AddSingleton<IComputerUseWinInstructionProvider, EmptyInstructionProvider>();
-        services.AddSingleton(static provider => new ComputerUseWinAppStateObserver(
-            provider.GetRequiredService<ICaptureService>(),
-            provider.GetRequiredService<IUiAutomationService>(),
-            provider.GetRequiredService<IComputerUseWinInstructionProvider>()));
-        services.AddSingleton(static provider => new ComputerUseWinClickExecutionCoordinator(
-            provider.GetRequiredService<IWindowActivationService>(),
-            new ComputerUseWinClickTargetResolver(provider.GetRequiredService<IUiAutomationService>()),
-            provider.GetRequiredService<IInputService>()));
-        services.AddSingleton(static provider => new ComputerUseWinDragExecutionCoordinator(
-            provider.GetRequiredService<IWindowActivationService>(),
-            new ComputerUseWinDragTargetResolver(provider.GetRequiredService<IUiAutomationService>()),
-            provider.GetRequiredService<IInputService>()));
-        services.AddSingleton(static provider => new ComputerUseWinPressKeyExecutionCoordinator(
-            provider.GetRequiredService<IWindowActivationService>(),
-            provider.GetRequiredService<IInputService>()));
-        services.AddSingleton(static provider => new ComputerUseWinSetValueExecutionCoordinator(
-            provider.GetRequiredService<IWindowActivationService>(),
-            provider.GetRequiredService<IUiAutomationService>(),
-            provider.GetRequiredService<IUiAutomationSetValueService>()));
-        services.AddSingleton(static provider => new ComputerUseWinTypeTextExecutionCoordinator(
-            provider.GetRequiredService<IWindowActivationService>(),
-            provider.GetRequiredService<IUiAutomationService>(),
-            provider.GetRequiredService<IInputService>()));
-        services.AddSingleton<IUiAutomationScrollService>(new FakeUiAutomationScrollService());
-        services.AddSingleton(static provider => new ComputerUseWinScrollExecutionCoordinator(
-            provider.GetRequiredService<IWindowActivationService>(),
-            provider.GetRequiredService<IUiAutomationService>(),
-            provider.GetRequiredService<IUiAutomationScrollService>(),
-            provider.GetRequiredService<IInputService>()));
-        services.AddSingleton<IUiAutomationSecondaryActionService>(new FakeUiAutomationSecondaryActionService());
-        services.AddSingleton(static provider => new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
-            provider.GetRequiredService<IWindowActivationService>(),
-            provider.GetRequiredService<IUiAutomationService>(),
-            provider.GetRequiredService<IUiAutomationSecondaryActionService>()));
-        services.AddSingleton<ComputerUseWinStateStore>();
-        services.AddSingleton<ComputerUseWinStoredStateResolver>();
-        services.AddSingleton<ComputerUseWinActionRequestExecutor>();
-        services.AddSingleton<ComputerUseWinListAppsHandler>();
-        services.AddSingleton<ComputerUseWinGetAppStateHandler>();
-        services.AddSingleton<ComputerUseWinClickHandler>();
-        services.AddSingleton<ComputerUseWinDragHandler>();
-        services.AddSingleton<ComputerUseWinPerformSecondaryActionHandler>();
-        services.AddSingleton<ComputerUseWinPressKeyHandler>();
-        services.AddSingleton<ComputerUseWinScrollHandler>();
-        services.AddSingleton<ComputerUseWinSetValueHandler>();
-        services.AddSingleton<ComputerUseWinTypeTextHandler>();
-        services.AddSingleton<ComputerUseWinTools>();
-
-        using ServiceProvider provider = services.BuildServiceProvider();
-
-        Assert.IsType<ComputerUseWinListAppsHandler>(provider.GetRequiredService<ComputerUseWinListAppsHandler>());
-        Assert.IsType<ComputerUseWinGetAppStateHandler>(provider.GetRequiredService<ComputerUseWinGetAppStateHandler>());
-        Assert.IsType<ComputerUseWinClickHandler>(provider.GetRequiredService<ComputerUseWinClickHandler>());
-        Assert.IsType<ComputerUseWinDragHandler>(provider.GetRequiredService<ComputerUseWinDragHandler>());
-        Assert.IsType<ComputerUseWinPerformSecondaryActionHandler>(provider.GetRequiredService<ComputerUseWinPerformSecondaryActionHandler>());
-        Assert.IsType<ComputerUseWinPressKeyHandler>(provider.GetRequiredService<ComputerUseWinPressKeyHandler>());
-        Assert.IsType<ComputerUseWinScrollHandler>(provider.GetRequiredService<ComputerUseWinScrollHandler>());
-        Assert.IsType<ComputerUseWinSetValueHandler>(provider.GetRequiredService<ComputerUseWinSetValueHandler>());
-        Assert.IsType<ComputerUseWinTypeTextHandler>(provider.GetRequiredService<ComputerUseWinTypeTextHandler>());
-        Assert.IsType<ComputerUseWinActionRequestExecutor>(provider.GetRequiredService<ComputerUseWinActionRequestExecutor>());
-        Assert.IsType<ComputerUseWinExecutionTargetCatalog>(provider.GetRequiredService<ComputerUseWinExecutionTargetCatalog>());
-        Assert.IsType<ComputerUseWinTools>(provider.GetRequiredService<ComputerUseWinTools>());
+        AssertServiceResolves<ComputerUseWinListAppsHandler>(provider);
+        AssertServiceResolves<ComputerUseWinGetAppStateHandler>(provider);
+        AssertServiceResolves<ComputerUseWinClickHandler>(provider);
+        AssertServiceResolves<ComputerUseWinDragHandler>(provider);
+        AssertServiceResolves<ComputerUseWinPerformSecondaryActionHandler>(provider);
+        AssertServiceResolves<ComputerUseWinPressKeyHandler>(provider);
+        AssertServiceResolves<ComputerUseWinScrollHandler>(provider);
+        AssertServiceResolves<ComputerUseWinSetValueHandler>(provider);
+        AssertServiceResolves<ComputerUseWinTypeTextHandler>(provider);
+        AssertServiceResolves<ComputerUseWinActionRequestExecutor>(provider);
+        AssertServiceResolves<ComputerUseWinExecutionTargetCatalog>(provider);
+        AssertServiceResolves<ComputerUseWinTools>(provider);
     }
 
     [Fact]
     public void ComputerUseWinManualSchemasRelyOnJsonSchema202012DefaultWithoutExplicitSchemaKeyword()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-
-        JsonElement getAppStateSchema = tools.Single(tool => tool.ProtocolTool.Name == ToolNames.ComputerUseWinGetAppState).ProtocolTool.InputSchema;
-        JsonElement clickSchema = tools.Single(tool => tool.ProtocolTool.Name == ToolNames.ComputerUseWinClick).ProtocolTool.InputSchema;
+        JsonElement getAppStateSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinGetAppState);
+        JsonElement clickSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinClick);
 
         Assert.False(getAppStateSchema.TryGetProperty("$schema", out _));
         Assert.False(clickSchema.TryGetProperty("$schema", out _));
@@ -790,11 +606,7 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ToolRequestBinderRejectsUnknownPropertiesForComputerUseRequests()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"unexpected":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["unexpected"] = document.RootElement.GetProperty("unexpected").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"unexpected":true}""");
 
         bool success = ToolRequestBinder.TryBind(
             arguments,
@@ -803,485 +615,247 @@ public sealed class ComputerUseWinArchitectureTests
             out string? reason);
 
         Assert.False(success);
-        Assert.Contains("unexpected", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "unexpected");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsSchemaInvalidRangeForComputerUseRequests()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"maxNodes":2048}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["maxNodes"] = document.RootElement.GetProperty("maxNodes").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"maxNodes":2048}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinGetAppStateRequest(),
-            out ComputerUseWinGetAppStateRequest request,
-            out string? reason,
+            new ComputerUseWinGetAppStateRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinGetAppStateRequest(), request);
-        Assert.Contains("1024", reason, StringComparison.Ordinal);
+        AssertFailureReasonContains(reason, "1024");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsNestedAdditionalPropertiesForComputerUseClickPoint()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true}}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true}}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("extra", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "point", "extra");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsExplicitNullPointForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":null,"confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":null,"confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             ComputerUseWinRequestContractValidator.Validate);
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("JSON object", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "point", "JSON object");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsExplicitNullPointForComputerUseTypeText()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":null,"text":"typed text","allowFocusedFallback":true,"confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["text"] = document.RootElement.GetProperty("text").Clone(),
-            ["allowFocusedFallback"] = document.RootElement.GetProperty("allowFocusedFallback").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":null,"text":"typed text","allowFocusedFallback":true,"confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinTypeTextRequest(),
-            out ComputerUseWinTypeTextRequest request,
-            out string? reason,
+            new ComputerUseWinTypeTextRequest(),
             ComputerUseWinRequestContractValidator.Validate);
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinTypeTextRequest(), request);
-        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("JSON object", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "point", "JSON object");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsNestedAdditionalPropertiesForComputerUseScrollPoint()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true},"direction":"down","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["direction"] = document.RootElement.GetProperty("direction").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":{"x":10,"y":20,"extra":true},"direction":"down","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinScrollRequest(),
-            out ComputerUseWinScrollRequest request,
-            out string? reason,
+            new ComputerUseWinScrollRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinScrollRequest(), request);
-        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("extra", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "point", "extra");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsExplicitNullPointForComputerUseScroll()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":null,"direction":"down","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["direction"] = document.RootElement.GetProperty("direction").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":null,"direction":"down","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinScrollRequest(),
-            out ComputerUseWinScrollRequest request,
-            out string? reason,
+            new ComputerUseWinScrollRequest(),
             ComputerUseWinRequestContractValidator.Validate);
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinScrollRequest(), request);
-        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("JSON object", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "point", "JSON object");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsOutOfRangePagesForComputerUseScroll()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"direction":"down","pages":11}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
-            ["direction"] = document.RootElement.GetProperty("direction").Clone(),
-            ["pages"] = document.RootElement.GetProperty("pages").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","elementIndex":1,"direction":"down","pages":11}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinScrollRequest(),
-            out ComputerUseWinScrollRequest request,
-            out string? reason,
+            new ComputerUseWinScrollRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinScrollRequest(), request);
-        Assert.Contains("pages", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("10", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "pages", "10");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsUnsupportedCoordinateSpaceForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"bogus","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"bogus","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "coordinateSpace");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsWhitespaceCoordinateSpaceForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"   ","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"   ","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "coordinateSpace");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsWhitespaceCoordinateSpaceForComputerUseScrollPoint()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"   ","direction":"down","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
-            ["direction"] = document.RootElement.GetProperty("direction").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","point":{"x":10,"y":20},"coordinateSpace":"   ","direction":"down","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinScrollRequest(),
-            out ComputerUseWinScrollRequest request,
-            out string? reason,
+            new ComputerUseWinScrollRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinScrollRequest(), request);
-        Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "coordinateSpace");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsWhitespaceCoordinateSpaceForComputerUseDragPointPath()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","fromPoint":{"x":10,"y":20},"toPoint":{"x":30,"y":40},"coordinateSpace":"   ","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["fromPoint"] = document.RootElement.GetProperty("fromPoint").Clone(),
-            ["toPoint"] = document.RootElement.GetProperty("toPoint").Clone(),
-            ["coordinateSpace"] = document.RootElement.GetProperty("coordinateSpace").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","fromPoint":{"x":10,"y":20},"toPoint":{"x":30,"y":40},"coordinateSpace":"   ","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinDragRequest(),
-            out ComputerUseWinDragRequest request,
-            out string? reason,
+            new ComputerUseWinDragRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinDragRequest(), request);
-        Assert.Contains("coordinateSpace", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "coordinateSpace");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsExplicitNullPointsForComputerUseDrag()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","fromPoint":null,"toPoint":null,"confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["fromPoint"] = document.RootElement.GetProperty("fromPoint").Clone(),
-            ["toPoint"] = document.RootElement.GetProperty("toPoint").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","fromPoint":null,"toPoint":null,"confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinDragRequest(),
-            out ComputerUseWinDragRequest request,
-            out string? reason,
+            new ComputerUseWinDragRequest(),
             ComputerUseWinRequestContractValidator.Validate);
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinDragRequest(), request);
-        Assert.Contains("fromPoint", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("JSON object", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "fromPoint", "JSON object");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsUnsupportedButtonForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"button":"middle","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
-            ["button"] = document.RootElement.GetProperty("button").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","elementIndex":1,"button":"middle","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("button", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "button");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsWhitespaceButtonForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"button":"   ","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
-            ["button"] = document.RootElement.GetProperty("button").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","elementIndex":1,"button":"   ","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("button", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "button");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsMissingStateTokenForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"elementIndex":1,"confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"elementIndex":1,"confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("stateToken", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "stateToken");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsMissingSelectorForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("elementIndex", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "elementIndex", "point");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsWhitespaceStateTokenForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"   ","elementIndex":1,"confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"   ","elementIndex":1,"confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("stateToken", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "stateToken");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsConflictingSelectorsForGetAppState()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"windowId":"cw_explorer_123","hwnd":123}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["windowId"] = document.RootElement.GetProperty("windowId").Clone(),
-            ["hwnd"] = document.RootElement.GetProperty("hwnd").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"windowId":"cw_explorer_123","hwnd":123}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinGetAppStateRequest(),
-            out ComputerUseWinGetAppStateRequest request,
-            out string? reason,
+            new ComputerUseWinGetAppStateRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinGetAppStateRequest(), request);
-        Assert.Contains("windowId", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("hwnd", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "windowId", "hwnd");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsWhitespaceWindowIdWhenHwndIsPresent()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"windowId":"   ","hwnd":123}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["windowId"] = document.RootElement.GetProperty("windowId").Clone(),
-            ["hwnd"] = document.RootElement.GetProperty("hwnd").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"windowId":"   ","hwnd":123}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinGetAppStateRequest(),
-            out ComputerUseWinGetAppStateRequest request,
-            out string? reason,
+            new ComputerUseWinGetAppStateRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinGetAppStateRequest(), request);
-        Assert.Contains("windowId", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "windowId");
     }
 
     [Fact]
     public void ToolRequestBinderRejectsConflictingSelectorsForComputerUseClick()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"stateToken":"token-1","elementIndex":1,"point":{"x":10,"y":20},"confirm":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["stateToken"] = document.RootElement.GetProperty("stateToken").Clone(),
-            ["elementIndex"] = document.RootElement.GetProperty("elementIndex").Clone(),
-            ["point"] = document.RootElement.GetProperty("point").Clone(),
-            ["confirm"] = document.RootElement.GetProperty("confirm").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"stateToken":"token-1","elementIndex":1,"point":{"x":10,"y":20},"confirm":true}""");
 
-        bool success = ToolRequestBinder.TryBind(
+        string? reason = BindInvalidRequestAndAssertFallback(
             arguments,
-            fallbackRequest: new ComputerUseWinClickRequest(),
-            out ComputerUseWinClickRequest request,
-            out string? reason,
+            new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-
-        Assert.False(success);
-        Assert.Equal(new ComputerUseWinClickRequest(), request);
-        Assert.Contains("elementIndex", reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("point", reason, StringComparison.OrdinalIgnoreCase);
+        AssertFailureReasonContains(reason, "elementIndex", "point");
     }
 
     [Fact]
@@ -1362,90 +936,51 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ComputerUseWinClickToolSchemaPublishesOnlyAllowedButtonAndCoordinateSpaceValues()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var clickTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinClick, StringComparison.Ordinal));
-        JsonElement inputSchema = clickTool.ProtocolTool.InputSchema;
-        JsonElement properties = inputSchema.GetProperty("properties");
+        JsonElement properties = GetComputerUseWinInputSchemaProperties(ToolNames.ComputerUseWinClick);
 
-        JsonElement button = properties.GetProperty("button");
-        Assert.Equal("string", button.GetProperty("type")[0].GetString());
-        Assert.Equal("null", button.GetProperty("type")[1].GetString());
-        Assert.Equal(
-            [InputButtonValues.Left, InputButtonValues.Right],
-            button.GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
-
-        JsonElement coordinateSpace = properties.GetProperty("coordinateSpace");
-        Assert.Equal("string", coordinateSpace.GetProperty("type")[0].GetString());
-        Assert.Equal("null", coordinateSpace.GetProperty("type")[1].GetString());
-        Assert.Equal(
-            [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
-            coordinateSpace.GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
-        Assert.Equal("object", properties.GetProperty("point").GetProperty("type").GetString());
+        AssertNullableStringEnum(properties.GetProperty("button"), [InputButtonValues.Left, InputButtonValues.Right]);
+        AssertNullableStringEnum(properties.GetProperty("coordinateSpace"), [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels]);
+        AssertSchemaPropertyType(properties, "point", "object");
     }
 
     [Fact]
     public void ComputerUseWinClickToolSchemaRequiresStateTokenAndExactlyOneSelector()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var clickTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinClick, StringComparison.Ordinal));
-        JsonElement inputSchema = clickTool.ProtocolTool.InputSchema;
+        JsonElement inputSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinClick);
+        JsonElement[] selectorModes = GetSchemaBranches(inputSchema, "oneOf");
 
-        string[] required = inputSchema.GetProperty("required").EnumerateArray()
-            .Select(item => item.GetString())
-            .Where(static item => item is not null)
-            .Cast<string>()
-            .ToArray();
-        Assert.Equal(["stateToken"], required);
-
-        JsonElement[] selectorModes = [.. inputSchema.GetProperty("oneOf").EnumerateArray()];
+        AssertRequiredProperties(inputSchema, ["stateToken"]);
         Assert.Equal(2, selectorModes.Length);
-        Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
-        Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
+        Assert.Contains(selectorModes, mode => RequiresSchemaProperty(mode, "elementIndex"));
+        Assert.Contains(selectorModes, mode => RequiresSchemaProperty(mode, "point"));
     }
 
     [Fact]
     public void ComputerUseWinClickToolSchemaRejectsWhitespaceOnlyStateToken()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var clickTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinClick, StringComparison.Ordinal));
-        JsonElement inputSchema = clickTool.ProtocolTool.InputSchema;
+        JsonElement properties = GetComputerUseWinInputSchemaProperties(ToolNames.ComputerUseWinClick);
 
-        Assert.Equal(@".*\S.*", inputSchema.GetProperty("properties").GetProperty("stateToken").GetProperty("pattern").GetString());
+        AssertSchemaPropertyPattern(properties, "stateToken", NonBlankJsonStringPattern);
     }
 
     [Fact]
     public void ComputerUseWinTypeTextToolSchemaExposesFocusedFallbackOptIn()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var typeTextTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinTypeText, StringComparison.Ordinal));
-        JsonElement inputSchema = typeTextTool.ProtocolTool.InputSchema;
+        JsonElement inputSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinTypeText);
         JsonElement properties = inputSchema.GetProperty("properties");
 
-        string[] required = inputSchema.GetProperty("required").EnumerateArray()
-            .Select(item => item.GetString())
-            .Where(static item => item is not null)
-            .Cast<string>()
-            .ToArray();
-
-        Assert.Equal(["stateToken", "text"], required);
-        Assert.Equal("boolean", properties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
-        Assert.Equal("boolean", properties.GetProperty("confirm").GetProperty("type").GetString());
-        Assert.Equal("object", properties.GetProperty("point").GetProperty("type").GetString());
+        AssertRequiredProperties(inputSchema, ["stateToken", "text"]);
+        AssertSchemaPropertyType(properties, "allowFocusedFallback", "boolean");
+        AssertSchemaPropertyType(properties, "confirm", "boolean");
+        AssertSchemaPropertyType(properties, "point", "object");
         Assert.Equal(
             [InputCoordinateSpaceValues.CapturePixels],
-            properties.GetProperty("coordinateSpace")
-                .GetProperty("enum")
-                .EnumerateArray()
-                .Select(item => item.GetString())
-                .Where(static item => item is not null)
-                .Cast<string>()
-                .ToArray());
+            ReadJsonStringArray(properties.GetProperty("coordinateSpace").GetProperty("enum")));
     }
 
     [Fact]
     public void ComputerUseWinSelectedActionSchemasExposeObserveAfterOptIn()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
         string[] observeAfterTools =
         [
             ToolNames.ComputerUseWinClick,
@@ -1457,64 +992,35 @@ public sealed class ComputerUseWinArchitectureTests
 
         foreach (string toolName in observeAfterTools)
         {
-            JsonElement properties = tools
-                .Single(tool => string.Equals(tool.ProtocolTool.Name, toolName, StringComparison.Ordinal))
-                .ProtocolTool
-                .InputSchema
-                .GetProperty("properties");
-
-            Assert.Equal("boolean", properties.GetProperty("observeAfter").GetProperty("type").GetString());
+            AssertSchemaPropertyType(GetComputerUseWinInputSchemaProperties(toolName), "observeAfter", "boolean");
         }
 
-        JsonElement setValueProperties = tools
-            .Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinSetValue, StringComparison.Ordinal))
-            .ProtocolTool
-            .InputSchema
-            .GetProperty("properties");
-        JsonElement secondaryActionProperties = tools
-            .Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinPerformSecondaryAction, StringComparison.Ordinal))
-            .ProtocolTool
-            .InputSchema
-            .GetProperty("properties");
-
-        Assert.False(setValueProperties.TryGetProperty("observeAfter", out _));
-        Assert.False(secondaryActionProperties.TryGetProperty("observeAfter", out _));
+        Assert.False(GetComputerUseWinInputSchemaProperties(ToolNames.ComputerUseWinSetValue).TryGetProperty("observeAfter", out _));
+        Assert.False(GetComputerUseWinInputSchemaProperties(ToolNames.ComputerUseWinPerformSecondaryAction).TryGetProperty("observeAfter", out _));
     }
 
     [Fact]
     public void ComputerUseWinScrollToolSchemaBoundsPagesAndRequiresNonNullSelectorBranches()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var scrollTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinScroll, StringComparison.Ordinal));
-        JsonElement inputSchema = scrollTool.ProtocolTool.InputSchema;
+        JsonElement inputSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinScroll);
         JsonElement properties = inputSchema.GetProperty("properties");
+        JsonElement[] selectorModes = GetSchemaBranches(inputSchema, "oneOf");
+        JsonElement elementBranch = selectorModes.Single(mode => RequiresSchemaProperty(mode, "elementIndex"));
+        JsonElement pointBranch = selectorModes.Single(mode => RequiresSchemaProperty(mode, "point"));
 
         Assert.Equal(10, properties.GetProperty("pages").GetProperty("maximum").GetInt32());
-        Assert.Equal("object", properties.GetProperty("point").GetProperty("type").GetString());
-
-        JsonElement[] selectorModes = [.. inputSchema.GetProperty("oneOf").EnumerateArray()];
-        JsonElement elementBranch = selectorModes.Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
-        JsonElement pointBranch = selectorModes.Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
-
-        Assert.Equal("integer", elementBranch.GetProperty("properties").GetProperty("elementIndex").GetProperty("type").GetString());
-        Assert.Equal("object", pointBranch.GetProperty("properties").GetProperty("point").GetProperty("type").GetString());
+        AssertSchemaPropertyType(properties, "point", "object");
+        AssertBranchPropertyType(elementBranch, "elementIndex", "integer");
+        AssertBranchPropertyType(pointBranch, "point", "object");
     }
 
     [Fact]
     public void ComputerUseWinDragToolSchemaRequiresStateTokenAndSeparateSourceDestinationModes()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var dragTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinDrag, StringComparison.Ordinal));
-        JsonElement inputSchema = dragTool.ProtocolTool.InputSchema;
+        JsonElement inputSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinDrag);
         JsonElement properties = inputSchema.GetProperty("properties");
 
-        string[] required = inputSchema.GetProperty("required").EnumerateArray()
-            .Select(item => item.GetString())
-            .Where(static item => item is not null)
-            .Cast<string>()
-            .ToArray();
-
-        Assert.Equal(["stateToken"], required);
+        AssertRequiredProperties(inputSchema, ["stateToken"]);
         Assert.True(inputSchema.TryGetProperty("allOf", out JsonElement allOf));
         JsonElement[] selectorModes = [.. allOf.EnumerateArray()];
         Assert.Equal(2, selectorModes.Length);
@@ -1522,39 +1028,27 @@ public sealed class ComputerUseWinArchitectureTests
             selectorModes,
             mode => Assert.True(mode.TryGetProperty("oneOf", out _)));
 
-        JsonElement sourceBranch = selectorModes[0].GetProperty("oneOf").EnumerateArray()
-            .Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromElementIndex"));
-        JsonElement sourcePointBranch = selectorModes[0].GetProperty("oneOf").EnumerateArray()
-            .Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromPoint"));
-        JsonElement destinationBranch = selectorModes[1].GetProperty("oneOf").EnumerateArray()
-            .Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toElementIndex"));
-        JsonElement destinationPointBranch = selectorModes[1].GetProperty("oneOf").EnumerateArray()
-            .Single(mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toPoint"));
+        JsonElement sourceBranch = GetSchemaBranchRequiring(selectorModes[0].GetProperty("oneOf"), "fromElementIndex");
+        JsonElement sourcePointBranch = GetSchemaBranchRequiring(selectorModes[0].GetProperty("oneOf"), "fromPoint");
+        JsonElement destinationBranch = GetSchemaBranchRequiring(selectorModes[1].GetProperty("oneOf"), "toElementIndex");
+        JsonElement destinationPointBranch = GetSchemaBranchRequiring(selectorModes[1].GetProperty("oneOf"), "toPoint");
 
-        Assert.Equal("integer", sourceBranch.GetProperty("properties").GetProperty("fromElementIndex").GetProperty("type").GetString());
-        Assert.Equal("object", sourcePointBranch.GetProperty("properties").GetProperty("fromPoint").GetProperty("type").GetString());
-        Assert.Equal("integer", destinationBranch.GetProperty("properties").GetProperty("toElementIndex").GetProperty("type").GetString());
-        Assert.Equal("object", destinationPointBranch.GetProperty("properties").GetProperty("toPoint").GetProperty("type").GetString());
-        Assert.Equal("object", properties.GetProperty("fromPoint").GetProperty("type").GetString());
-        Assert.Equal("object", properties.GetProperty("toPoint").GetProperty("type").GetString());
-        Assert.Equal(@".*\S.*", properties.GetProperty("stateToken").GetProperty("pattern").GetString());
+        AssertBranchPropertyType(sourceBranch, "fromElementIndex", "integer");
+        AssertBranchPropertyType(sourcePointBranch, "fromPoint", "object");
+        AssertBranchPropertyType(destinationBranch, "toElementIndex", "integer");
+        AssertBranchPropertyType(destinationPointBranch, "toPoint", "object");
+        AssertSchemaPropertyType(properties, "fromPoint", "object");
+        AssertSchemaPropertyType(properties, "toPoint", "object");
+        AssertSchemaPropertyPattern(properties, "stateToken", NonBlankJsonStringPattern);
     }
 
     [Fact]
     public void ComputerUseWinSecondaryActionToolSchemaRequiresStateTokenAndElementIndex()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var secondaryActionTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinPerformSecondaryAction, StringComparison.Ordinal));
-        JsonElement inputSchema = secondaryActionTool.ProtocolTool.InputSchema;
+        JsonElement inputSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinPerformSecondaryAction);
         JsonElement properties = inputSchema.GetProperty("properties");
 
-        string[] required = inputSchema.GetProperty("required").EnumerateArray()
-            .Select(item => item.GetString())
-            .Where(static item => item is not null)
-            .Cast<string>()
-            .ToArray();
-
-        Assert.Equal(["stateToken", "elementIndex"], required);
+        AssertRequiredProperties(inputSchema, ["stateToken", "elementIndex"]);
         Assert.Equal(1, properties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
         Assert.False(properties.TryGetProperty("point", out _));
     }
@@ -1574,26 +1068,17 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ComputerUseWinGetAppStateToolSchemaRejectsConflictingSelectors()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var getAppStateTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinGetAppState, StringComparison.Ordinal));
-        JsonElement inputSchema = getAppStateTool.ProtocolTool.InputSchema;
+        JsonElement inputSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinGetAppState);
 
-        string[] notRequired = inputSchema.GetProperty("not").GetProperty("required").EnumerateArray()
-            .Select(item => item.GetString())
-            .Where(static item => item is not null)
-            .Cast<string>()
-            .ToArray();
-        Assert.Equal(["windowId", "hwnd"], notRequired);
+        Assert.Equal(["windowId", "hwnd"], ReadJsonStringArray(inputSchema.GetProperty("not").GetProperty("required")));
     }
 
     [Fact]
     public void ComputerUseWinGetAppStateToolSchemaRejectsWhitespaceOnlyWindowId()
     {
-        var tools = ComputerUseWinToolRegistration.Create(static () => null!);
-        var getAppStateTool = tools.Single(tool => string.Equals(tool.ProtocolTool.Name, ToolNames.ComputerUseWinGetAppState, StringComparison.Ordinal));
-        JsonElement inputSchema = getAppStateTool.ProtocolTool.InputSchema;
+        JsonElement properties = GetComputerUseWinInputSchemaProperties(ToolNames.ComputerUseWinGetAppState);
 
-        Assert.Equal(@".*\S.*", inputSchema.GetProperty("properties").GetProperty("windowId").GetProperty("pattern").GetString());
+        AssertSchemaPropertyPattern(properties, "windowId", NonBlankJsonStringPattern);
     }
 
     [Fact]
@@ -1613,12 +1098,7 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ToolRequestBinderPreservesJsonExtensionDataPatternForWindowInputDto()
     {
-        using JsonDocument document = JsonDocument.Parse("""{"actions":[],"unexpected":true}""");
-        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal)
-        {
-            ["actions"] = document.RootElement.GetProperty("actions").Clone(),
-            ["unexpected"] = document.RootElement.GetProperty("unexpected").Clone(),
-        };
+        Dictionary<string, JsonElement> arguments = CreateToolArguments("""{"actions":[],"unexpected":true}""");
 
         bool success = ToolRequestBinder.TryBind(
             arguments,
@@ -1710,56 +1190,33 @@ public sealed class ComputerUseWinArchitectureTests
     [Fact]
     public void ApprovalStoreRecoversFromCorruptJsonAndRewritesAtomically()
     {
-        string root = CreateTempDirectory();
-        try
-        {
-            string storePath = Path.Combine(root, "AppApprovals.json");
-            File.WriteAllText(storePath, "{not valid json");
-            ComputerUseWinApprovalStore store = new(
-                new ComputerUseWinOptions(
-                    PluginRoot: root,
-                    AppInstructionsRoot: Path.Combine(root, "references", "AppInstructions"),
-                    ApprovalStorePath: storePath));
+        using TempDirectoryScope temp = new();
+        string storePath = Path.Combine(temp.Root, "AppApprovals.json");
+        File.WriteAllText(storePath, "{not valid json");
+        ComputerUseWinApprovalStore store = new(CreateComputerUseWinOptions(temp.Root, approvalStorePath: storePath));
 
-            Assert.False(store.IsApproved("explorer"));
+        Assert.False(store.IsApproved("explorer"));
 
-            store.Approve("explorer");
+        store.Approve("explorer");
 
-            string json = File.ReadAllText(storePath);
-            string[] values = JsonSerializer.Deserialize<string[]>(json)!;
-            Assert.Contains("explorer", values, StringComparer.OrdinalIgnoreCase);
-            Assert.Empty(Directory.EnumerateFiles(root, "*.tmp", SearchOption.TopDirectoryOnly));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(root);
-        }
+        string json = File.ReadAllText(storePath);
+        string[] values = JsonSerializer.Deserialize<string[]>(json)!;
+        Assert.Contains("explorer", values, StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(Directory.EnumerateFiles(temp.Root, "*.tmp", SearchOption.TopDirectoryOnly));
     }
 
     [Fact]
     public void ApprovalStoreDoesNotThrowWhenPersistPathCannotBeReplaced()
     {
-        string root = CreateTempDirectory();
-        string unwritableStorePath = Path.Combine(root, "approval-store-as-directory");
+        using TempDirectoryScope temp = new();
+        string unwritableStorePath = Path.Combine(temp.Root, "approval-store-as-directory");
         Directory.CreateDirectory(unwritableStorePath);
+        ComputerUseWinApprovalStore store = new(CreateComputerUseWinOptions(temp.Root, approvalStorePath: unwritableStorePath));
 
-        try
-        {
-            ComputerUseWinApprovalStore store = new(
-                new ComputerUseWinOptions(
-                    PluginRoot: root,
-                    AppInstructionsRoot: Path.Combine(root, "references", "AppInstructions"),
-                    ApprovalStorePath: unwritableStorePath));
+        store.Approve("explorer");
 
-            store.Approve("explorer");
-
-            Assert.True(store.IsApproved("explorer"));
-            Assert.Empty(Directory.EnumerateFiles(root, "*.tmp", SearchOption.TopDirectoryOnly));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(root);
-        }
+        Assert.True(store.IsApproved("explorer"));
+        Assert.Empty(Directory.EnumerateFiles(temp.Root, "*.tmp", SearchOption.TopDirectoryOnly));
     }
 
     [Fact]
@@ -1769,6 +1226,230 @@ public sealed class ComputerUseWinArchitectureTests
 
         Assert.DoesNotContain("write-computer-use-win-plugin-repo-root-hint.ps1", readme, StringComparison.Ordinal);
         Assert.Contains("publish-computer-use-win-plugin.ps1", readme, StringComparison.Ordinal);
+    }
+
+    private static UiaElementSnapshot CreateEnabledUiaElement(
+        string elementId,
+        string controlType,
+        Bounds bounds,
+        bool hasKeyboardFocus = false,
+        bool? isReadOnly = null,
+        string[]? patterns = null)
+    {
+        return new UiaElementSnapshot
+        {
+            ElementId = elementId,
+            ControlType = controlType,
+            BoundingRectangle = bounds,
+            IsEnabled = true,
+            IsOffscreen = false,
+            HasKeyboardFocus = hasKeyboardFocus,
+            IsReadOnly = isReadOnly,
+            Patterns = patterns ?? [],
+        };
+    }
+
+    private static IReadOnlyList<string> ResolveAffordances(UiaElementSnapshot element) =>
+        ComputerUseWinAffordanceResolver.Resolve(element);
+
+    private static ToolContractProfile GetComputerUseWinProfile() =>
+        ComputerUseWinProfile.Value;
+
+    private static string[] GetPublishedComputerUseWinToolNames() =>
+        PublishedComputerUseWinToolNames.Value;
+
+    private static string[] GetComputerUseWinToolFactoryMethodNames() =>
+        ComputerUseWinToolFactoryMethodNames.Value;
+
+    private static void AssertValidationFailure(string? failure, params string[] expectedFragments)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(failure));
+
+        foreach (string expectedFragment in expectedFragments)
+        {
+            Assert.Contains(expectedFragment, failure, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private static void AssertFailureReasonContains(string? reason, params string[] expectedFragments)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(reason));
+
+        foreach (string expectedFragment in expectedFragments)
+        {
+            Assert.Contains(expectedFragment, reason, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private static void AssertFailureReasonDoesNotContain(string? reason, string unexpectedFragment)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(reason));
+        Assert.DoesNotContain(unexpectedFragment, reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? BindInvalidRequestAndAssertFallback<TRequest>(
+        Dictionary<string, JsonElement> arguments,
+        TRequest fallbackRequest,
+        Func<TRequest, string?>? validate = null)
+    {
+        TRequest request;
+        string? reason;
+        bool success = validate is null
+            ? ToolRequestBinder.TryBind(arguments, fallbackRequest, out request, out reason)
+            : ToolRequestBinder.TryBind(arguments, fallbackRequest, out request, out reason, validate);
+
+        Assert.False(success);
+        Assert.Equal(fallbackRequest, request);
+
+        return reason;
+    }
+
+    private static JsonElement GetComputerUseWinInputSchema(string toolName) =>
+        ComputerUseWinInputSchemasByToolName.Value[toolName];
+
+    private static JsonElement GetComputerUseWinInputSchemaProperties(string toolName) =>
+        GetComputerUseWinInputSchema(toolName).GetProperty("properties");
+
+    private static void AssertNullableStringEnum(JsonElement schemaProperty, string[] expectedValues)
+    {
+        JsonElement type = schemaProperty.GetProperty("type");
+
+        Assert.Equal("string", type[0].GetString());
+        Assert.Equal("null", type[1].GetString());
+        Assert.Equal(expectedValues, ReadJsonStringArray(schemaProperty.GetProperty("enum")));
+    }
+
+    private static void AssertRequiredProperties(JsonElement inputSchema, string[] expectedProperties) =>
+        Assert.Equal(expectedProperties, ReadJsonStringArray(inputSchema.GetProperty("required")));
+
+    private static void AssertSchemaPropertyPattern(JsonElement properties, string propertyName, string expectedPattern) =>
+        Assert.Equal(expectedPattern, properties.GetProperty(propertyName).GetProperty("pattern").GetString());
+
+    private static void AssertSchemaPropertyType(JsonElement properties, string propertyName, string expectedType) =>
+        Assert.Equal(expectedType, properties.GetProperty(propertyName).GetProperty("type").GetString());
+
+    private static void AssertBranchPropertyType(JsonElement branch, string propertyName, string expectedType) =>
+        AssertSchemaPropertyType(branch.GetProperty("properties"), propertyName, expectedType);
+
+    private static JsonElement[] GetSchemaBranches(JsonElement schema, string compositionKeyword) =>
+        [.. schema.GetProperty(compositionKeyword).EnumerateArray()];
+
+    private static JsonElement GetSchemaBranchRequiring(JsonElement branches, string requiredPropertyName) =>
+        branches.EnumerateArray().Single(mode => RequiresSchemaProperty(mode, requiredPropertyName));
+
+    private static bool RequiresSchemaProperty(JsonElement schema, string propertyName) =>
+        schema.GetProperty("required").EnumerateArray().Any(item => item.GetString() == propertyName);
+
+    private static string[] ReadJsonStringArray(JsonElement array) =>
+        array.EnumerateArray()
+            .Select(static item => item.GetString())
+            .Where(static item => item is not null)
+            .Cast<string>()
+            .ToArray();
+
+
+    private static ServiceProvider BuildComputerUseWinServiceProviderForResolutionTest(string root)
+    {
+        ServiceCollection services = new();
+
+        services.AddSingleton(CreateAuditLog(root));
+        services.AddSingleton<ISessionManager>(new InMemorySessionManager(TimeProvider.System, new SessionContext("computer-use-win-stage-2-service-graph")));
+        services.AddSingleton<IWindowManager>(new ServiceGraphWindowManager());
+        services.AddSingleton<IWindowActivationService>(new FakeWindowActivationService(static window => ActivateWindowResult.Done(window, wasMinimized: false, isForeground: true)));
+        services.AddSingleton<ICaptureService>(new NoopCaptureService());
+        services.AddSingleton<IUiAutomationService>(new FakeUiAutomationService());
+        services.AddSingleton<IUiAutomationSetValueService>(new FakeUiAutomationSetValueService());
+        services.AddSingleton<IInputService>(new FakeInputService());
+        services.AddSingleton(CreateComputerUseWinOptions(root));
+        services.AddSingleton<ComputerUseWinApprovalStore>();
+        services.AddSingleton<ComputerUseWinExecutionTargetCatalog>();
+        services.AddSingleton<ComputerUseWinAppDiscoveryService>();
+        services.AddSingleton<IComputerUseWinInstructionProvider, EmptyInstructionProvider>();
+        services.AddSingleton(static provider => new ComputerUseWinAppStateObserver(
+            provider.GetRequiredService<ICaptureService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IComputerUseWinInstructionProvider>()));
+        services.AddSingleton(static provider => new ComputerUseWinClickExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            new ComputerUseWinClickTargetResolver(provider.GetRequiredService<IUiAutomationService>()),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton(static provider => new ComputerUseWinDragExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            new ComputerUseWinDragTargetResolver(provider.GetRequiredService<IUiAutomationService>()),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton(static provider => new ComputerUseWinPressKeyExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton(static provider => new ComputerUseWinSetValueExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationSetValueService>()));
+        services.AddSingleton(static provider => new ComputerUseWinTypeTextExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton<IUiAutomationScrollService>(new FakeUiAutomationScrollService());
+        services.AddSingleton(static provider => new ComputerUseWinScrollExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationScrollService>(),
+            provider.GetRequiredService<IInputService>()));
+        services.AddSingleton<IUiAutomationSecondaryActionService>(new FakeUiAutomationSecondaryActionService());
+        services.AddSingleton(static provider => new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
+            provider.GetRequiredService<IWindowActivationService>(),
+            provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationSecondaryActionService>()));
+        services.AddSingleton<ComputerUseWinStateStore>();
+        services.AddSingleton<ComputerUseWinStoredStateResolver>();
+        services.AddSingleton<ComputerUseWinActionRequestExecutor>();
+        services.AddSingleton<ComputerUseWinListAppsHandler>();
+        services.AddSingleton<ComputerUseWinGetAppStateHandler>();
+        services.AddSingleton<ComputerUseWinClickHandler>();
+        services.AddSingleton<ComputerUseWinDragHandler>();
+        services.AddSingleton<ComputerUseWinPerformSecondaryActionHandler>();
+        services.AddSingleton<ComputerUseWinPressKeyHandler>();
+        services.AddSingleton<ComputerUseWinScrollHandler>();
+        services.AddSingleton<ComputerUseWinSetValueHandler>();
+        services.AddSingleton<ComputerUseWinTypeTextHandler>();
+        services.AddSingleton<ComputerUseWinTools>();
+
+        return services.BuildServiceProvider();
+    }
+
+    private static void AssertServiceResolves<TService>(IServiceProvider provider)
+        where TService : notnull =>
+        Assert.IsType<TService>(provider.GetRequiredService<TService>());
+
+    private static string CreateAppInstructionsRoot(string root)
+    {
+        string instructionsRoot = Path.Combine(root, "references", "AppInstructions");
+        Directory.CreateDirectory(instructionsRoot);
+        return instructionsRoot;
+    }
+
+    private static ComputerUseWinPlaybookProvider CreatePlaybookProvider(string root, string instructionsRoot) =>
+        new(CreateComputerUseWinOptions(root, appInstructionsRoot: instructionsRoot));
+
+    private static ComputerUseWinOptions CreateComputerUseWinOptions(
+        string root,
+        string? appInstructionsRoot = null,
+        string? approvalStorePath = null) =>
+        new(
+            PluginRoot: root,
+            AppInstructionsRoot: appInstructionsRoot ?? Path.Combine(root, "references", "AppInstructions"),
+            ApprovalStorePath: approvalStorePath ?? Path.Combine(root, "AppApprovals.json"));
+
+    private static Dictionary<string, JsonElement> CreateToolArguments(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        Dictionary<string, JsonElement> arguments = new(StringComparer.Ordinal);
+
+        foreach (JsonProperty property in document.RootElement.EnumerateObject())
+        {
+            arguments[property.Name] = property.Value.Clone();
+        }
+
+        return arguments;
     }
 
     private static ComputerUseWinStoredState CreateStoredState(DateTimeOffset capturedAtUtc) =>
@@ -1806,13 +1487,6 @@ public sealed class ComputerUseWinArchitectureTests
             Bounds: new Bounds(0, 0, 640, 480),
             IsForeground: true,
             IsVisible: true);
-
-    private static string CreateTempDirectory()
-    {
-        string path = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
 
     private static string ResolveRepoPath(string relativePath)
     {

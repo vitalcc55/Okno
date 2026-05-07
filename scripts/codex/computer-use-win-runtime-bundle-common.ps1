@@ -1,4 +1,6 @@
 $script:ComputerUseWinRuntimeBundleManifestFileName = 'okno-runtime-bundle-manifest.json'
+$script:ComputerUseWinRuntimeServerExeRelativePath = 'Okno.Server.exe'
+$script:ComputerUseWinFirstWaveRuntimeRid = 'win-x64'
 
 function Get-ComputerUseWinRuntimeBundleManifestPath {
     param(
@@ -70,6 +72,322 @@ function Copy-DirectoryContents {
 
         Copy-Item -LiteralPath $_.FullName -Destination $destinationPath -Force
     }
+}
+
+function New-ComputerUseWinRuntimeReleaseDescriptor {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Version,
+        [Parameter(Mandatory)]
+        [string] $Rid,
+        [Parameter(Mandatory)]
+        [string] $AssetName,
+        [Parameter(Mandatory)]
+        [string] $DownloadUrl,
+        [Parameter(Mandatory)]
+        [string] $Sha256
+    )
+
+    [pscustomobject]@{
+        formatVersion = 1
+        version = $Version
+        rid = $Rid
+        tag = "v$Version"
+        assetName = $AssetName
+        downloadUrl = $DownloadUrl
+        sha256 = $Sha256
+        serverExeRelativePath = $script:ComputerUseWinRuntimeServerExeRelativePath
+        bundleManifestName = $script:ComputerUseWinRuntimeBundleManifestFileName
+    }
+}
+
+function Write-ComputerUseWinRuntimeReleaseDescriptor {
+    param(
+        [Parameter(Mandatory)]
+        [string] $DescriptorPath,
+        [Parameter(Mandatory)]
+        [string] $Version,
+        [Parameter(Mandatory)]
+        [string] $Rid,
+        [Parameter(Mandatory)]
+        [string] $AssetName,
+        [Parameter(Mandatory)]
+        [string] $DownloadUrl,
+        [Parameter(Mandatory)]
+        [string] $Sha256
+    )
+
+    $descriptorDirectory = Split-Path -Parent $DescriptorPath
+    if (-not [string]::IsNullOrWhiteSpace($descriptorDirectory)) {
+        New-Item -ItemType Directory -Path $descriptorDirectory -Force | Out-Null
+    }
+
+    New-ComputerUseWinRuntimeReleaseDescriptor `
+        -Version $Version `
+        -Rid $Rid `
+        -AssetName $AssetName `
+        -DownloadUrl $DownloadUrl `
+        -Sha256 $Sha256 |
+        ConvertTo-Json -Depth 6 |
+        Set-Content -Path $DescriptorPath -Encoding UTF8
+}
+
+function Read-ComputerUseWinRuntimeReleaseDescriptor {
+    param(
+        [Parameter(Mandatory)]
+        [string] $DescriptorPath
+    )
+
+    $resolvedDescriptorPath = [System.IO.Path]::GetFullPath($DescriptorPath)
+    if (-not (Test-Path $resolvedDescriptorPath -PathType Leaf)) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' is missing."
+    }
+
+    $descriptor = Get-Content -Path $resolvedDescriptorPath -Raw | ConvertFrom-Json
+    if ($null -eq $descriptor) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' is empty."
+    }
+
+    return $descriptor
+}
+
+function Read-ComputerUseWinRuntimePackagingResult {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ResultPath
+    )
+
+    $resolvedResultPath = [System.IO.Path]::GetFullPath($ResultPath)
+    if (-not (Test-Path $resolvedResultPath -PathType Leaf)) {
+        throw "Runtime packaging result '$resolvedResultPath' is missing."
+    }
+
+    $result = Get-Content -Path $resolvedResultPath -Raw | ConvertFrom-Json
+    if ($null -eq $result) {
+        throw "Runtime packaging result '$resolvedResultPath' is empty."
+    }
+
+    return $result
+}
+
+function Get-ComputerUseWinRuntimeAssetSha256 {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Path
+    )
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            return ([System.BitConverter]::ToString($sha256.ComputeHash($stream)) -replace '-', '').ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+function Get-ComputerUseWinChecksumFileEntry {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ChecksumPath,
+        [Parameter(Mandatory)]
+        [string] $AssetName
+    )
+
+    foreach ($rawLine in Get-Content $ChecksumPath) {
+        $line = $rawLine.Trim()
+        if ($line.EndsWith("*$AssetName", [System.StringComparison]::Ordinal)) {
+            return ($line -split '\s+', 2)[0].Trim().ToLowerInvariant()
+        }
+    }
+
+    throw "Checksum file '$ChecksumPath' does not contain an entry for '$AssetName'."
+}
+
+function Get-ComputerUseWinSupportedPackagingRid {
+    return $script:ComputerUseWinFirstWaveRuntimeRid
+}
+
+function Assert-ComputerUseWinRuntimeDescriptorMatchesPackagingArguments {
+    param(
+        [Parameter(Mandatory)]
+        [string] $DescriptorPath,
+        [Parameter(Mandatory)]
+        [string] $Version,
+        [Parameter(Mandatory)]
+        [string] $Rid,
+        [string] $ExpectedAssetName = '',
+        [string] $ExpectedDownloadUrl = '',
+        [string] $ExpectedSha256 = '',
+        [string] $ExpectedServerExeRelativePath = $script:ComputerUseWinRuntimeServerExeRelativePath,
+        [string] $ExpectedBundleManifestName = $script:ComputerUseWinRuntimeBundleManifestFileName
+    )
+
+    $resolvedDescriptorPath = [System.IO.Path]::GetFullPath($DescriptorPath)
+    $descriptor = Read-ComputerUseWinRuntimeReleaseDescriptor -DescriptorPath $resolvedDescriptorPath
+
+    $expectedTag = "v$Version"
+    if ([string]::IsNullOrWhiteSpace($ExpectedAssetName)) {
+        $ExpectedAssetName = "okno-computer-use-win-runtime-$Version-$Rid.zip"
+    }
+
+    if ([int]$descriptor.formatVersion -ne 1) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' uses unsupported formatVersion '$($descriptor.formatVersion)'."
+    }
+
+    $hasMissingRequiredField =
+        [string]::IsNullOrWhiteSpace([string]$descriptor.version) `
+        -or [string]::IsNullOrWhiteSpace([string]$descriptor.rid) `
+        -or [string]::IsNullOrWhiteSpace([string]$descriptor.tag) `
+        -or [string]::IsNullOrWhiteSpace([string]$descriptor.assetName) `
+        -or [string]::IsNullOrWhiteSpace([string]$descriptor.downloadUrl) `
+        -or [string]::IsNullOrWhiteSpace([string]$descriptor.sha256) `
+        -or [string]::IsNullOrWhiteSpace([string]$descriptor.serverExeRelativePath) `
+        -or [string]::IsNullOrWhiteSpace([string]$descriptor.bundleManifestName)
+    if ($hasMissingRequiredField) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' is missing one or more required fields."
+    }
+
+    if ([string]$descriptor.version -ne $Version) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' version '$($descriptor.version)' does not match packaging version '$Version'."
+    }
+
+    if ([string]$descriptor.rid -ne $Rid) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' RID '$($descriptor.rid)' does not match packaging RID '$Rid'."
+    }
+
+    if ([string]$descriptor.tag -ne $expectedTag) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' tag '$($descriptor.tag)' does not match expected '$expectedTag'."
+    }
+
+    if ([string]$descriptor.assetName -ne $ExpectedAssetName) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' assetName '$($descriptor.assetName)' does not match expected '$ExpectedAssetName'."
+    }
+
+    $hasUnexpectedDownloadUrl = -not [string]::IsNullOrWhiteSpace($ExpectedDownloadUrl) `
+        -and [string]$descriptor.downloadUrl -ne $ExpectedDownloadUrl
+    if ($hasUnexpectedDownloadUrl) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' downloadUrl '$($descriptor.downloadUrl)' does not match expected '$ExpectedDownloadUrl'."
+    }
+
+    $hasUnexpectedSha256 = -not [string]::IsNullOrWhiteSpace($ExpectedSha256) `
+        -and [string]$descriptor.sha256 -ne $ExpectedSha256
+    if ($hasUnexpectedSha256) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' sha256 '$($descriptor.sha256)' does not match expected '$ExpectedSha256'."
+    }
+
+    if ([string]$descriptor.serverExeRelativePath -ne $ExpectedServerExeRelativePath) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' serverExeRelativePath '$($descriptor.serverExeRelativePath)' does not match expected '$ExpectedServerExeRelativePath'."
+    }
+
+    if ([string]$descriptor.bundleManifestName -ne $ExpectedBundleManifestName) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' bundleManifestName '$($descriptor.bundleManifestName)' does not match expected '$ExpectedBundleManifestName'."
+    }
+
+    if (-not ([string]$descriptor.sha256 -match '^[0-9a-f]{64}$')) {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' sha256 must be a 64-character lowercase hex string."
+    }
+
+    try {
+        $descriptorUri = [Uri]::new([string]$descriptor.downloadUrl)
+        if (-not $descriptorUri.IsAbsoluteUri) {
+            throw [System.InvalidOperationException]::new("downloadUrl must be absolute.")
+        }
+    }
+    catch {
+        throw "Runtime release descriptor '$resolvedDescriptorPath' has invalid downloadUrl '$($descriptor.downloadUrl)'."
+    }
+}
+
+function Resolve-ComputerUseWinRuntimePackagingDescriptorPath {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RuntimePackagingResultPath,
+        [Parameter(Mandatory)]
+        [string] $ExpectedVersion,
+        [Parameter(Mandatory)]
+        [string] $ExpectedRid
+    )
+
+    $resolvedResultPath = [System.IO.Path]::GetFullPath($RuntimePackagingResultPath)
+    $result = Read-ComputerUseWinRuntimePackagingResult -ResultPath $resolvedResultPath
+
+    $requiredFields = @(
+        'version',
+        'rid',
+        'tag',
+        'assetName',
+        'archivePath',
+        'checksumPath',
+        'descriptorPath',
+        'downloadUrl',
+        'sha256')
+    foreach ($field in $requiredFields) {
+        if ([string]::IsNullOrWhiteSpace([string]$result.$field)) {
+            throw "Runtime packaging result '$resolvedResultPath' is missing required field '$field'."
+        }
+    }
+
+    if ([string]$result.version -ne $ExpectedVersion) {
+        throw "Runtime packaging result '$resolvedResultPath' version '$($result.version)' does not match expected '$ExpectedVersion'."
+    }
+
+    if ([string]$result.rid -ne $ExpectedRid) {
+        throw "Runtime packaging result '$resolvedResultPath' RID '$($result.rid)' does not match expected '$ExpectedRid'."
+    }
+
+    if ([string]$result.tag -ne "v$ExpectedVersion") {
+        throw "Runtime packaging result '$resolvedResultPath' tag '$($result.tag)' does not match expected 'v$ExpectedVersion'."
+    }
+
+    if ([string]$result.assetName -ne "okno-computer-use-win-runtime-$ExpectedVersion-$ExpectedRid.zip") {
+        throw "Runtime packaging result '$resolvedResultPath' assetName '$($result.assetName)' does not match expected runtime release contract."
+    }
+
+    $resolvedArchivePath = [System.IO.Path]::GetFullPath([string]$result.archivePath)
+    $resolvedChecksumPath = [System.IO.Path]::GetFullPath([string]$result.checksumPath)
+    $resolvedDescriptorPath = [System.IO.Path]::GetFullPath([string]$result.descriptorPath)
+
+    if (-not (Test-Path $resolvedArchivePath -PathType Leaf)) {
+        throw "Runtime packaging result '$resolvedResultPath' references missing archive '$resolvedArchivePath'."
+    }
+
+    if (-not (Test-Path $resolvedChecksumPath -PathType Leaf)) {
+        throw "Runtime packaging result '$resolvedResultPath' references missing checksum file '$resolvedChecksumPath'."
+    }
+
+    if (-not (Test-Path $resolvedDescriptorPath -PathType Leaf)) {
+        throw "Runtime packaging result '$resolvedResultPath' references missing descriptor '$resolvedDescriptorPath'."
+    }
+
+    if ([System.IO.Path]::GetFileName($resolvedArchivePath) -ne [string]$result.assetName) {
+        throw "Runtime packaging result '$resolvedResultPath' archivePath '$resolvedArchivePath' does not match assetName '$($result.assetName)'."
+    }
+
+    $checksumSha256 = Get-ComputerUseWinChecksumFileEntry -ChecksumPath $resolvedChecksumPath -AssetName ([string]$result.assetName)
+    if ($checksumSha256 -ne ([string]$result.sha256).ToLowerInvariant()) {
+        throw "Runtime packaging result '$resolvedResultPath' checksum file proof does not match declared sha256 '$($result.sha256)'."
+    }
+
+    $archiveSha256 = Get-ComputerUseWinRuntimeAssetSha256 -Path $resolvedArchivePath
+    if ($archiveSha256 -ne ([string]$result.sha256).ToLowerInvariant()) {
+        throw "Runtime packaging result '$resolvedResultPath' archive proof does not match declared sha256 '$($result.sha256)'."
+    }
+
+    Assert-ComputerUseWinRuntimeDescriptorMatchesPackagingArguments `
+        -DescriptorPath $resolvedDescriptorPath `
+        -Version $ExpectedVersion `
+        -Rid $ExpectedRid `
+        -ExpectedAssetName ([string]$result.assetName) `
+        -ExpectedDownloadUrl ([string]$result.downloadUrl) `
+        -ExpectedSha256 ([string]$result.sha256)
+
+    return $resolvedDescriptorPath
 }
 
 function New-ComputerUseWinRuntimeBundleManifest {
@@ -215,6 +533,7 @@ function Publish-ComputerUseWinRuntimeBundleToDirectory {
         & dotnet publish $serverProjectPath `
             --configuration Release `
             --runtime $Rid `
+            --disable-build-servers `
             --self-contained true `
             -p:UseAppHost=true `
             -p:UiaWorkerPublishSelfContained=true `

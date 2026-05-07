@@ -12,33 +12,30 @@ using WinBridge.Runtime.Waiting;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Runtime.Windows.Launch;
 using WinBridge.Runtime.Windows.Shell;
-using WinBridge.Runtime.Windows.UIA;
 using WinBridge.Server.Tools;
 
 namespace WinBridge.Server.IntegrationTests;
 
 public sealed class WindowOpenTargetToolTests
 {
+    private const string RunId = "open-target-tool-tests";
+    private const string DocumentTarget = @"C:\Docs\report.pdf";
+    private const string FolderTarget = @"C:\Docs";
+    private const string HttpsUrlTarget = "https://example.test/docs?q=hidden#fragment";
+    private const string MailtoUrlTarget = "mailto:user@example.test";
+
     [Fact]
     public async Task OpenTargetReturnsBlockedPayloadWithoutInvokingRuntimeService()
     {
         TestContext context = CreateContext(
-            decision: CreateDecision(
-                ToolExecutionDecisionKind.Blocked,
-                ToolExecutionMode.Live,
-                GuardReasonCodeValues.CapabilityNotImplemented,
-                GuardSeverityValues.Blocked));
+            kind: ToolExecutionDecisionKind.Blocked,
+            reasonCode: GuardReasonCodeValues.CapabilityNotImplemented,
+            severity: GuardSeverityValues.Blocked);
 
-        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
-        {
-            TargetKind = OpenTargetKindValues.Document,
-            Target = @"C:\Docs\report.pdf",
-        });
+        CallToolResult result = await context.Tools.OpenTarget(DocumentRequest());
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal(OpenTargetStatusValues.Blocked, payload.GetProperty("status").GetString());
-        Assert.Equal(OpenTargetStatusValues.Blocked, payload.GetProperty("decision").GetString());
+        JsonElement payload = AssertPayload(result, expectedIsError: true);
+        AssertStatusAndDecision(payload, OpenTargetStatusValues.Blocked);
         Assert.Equal(0, context.OpenTargetService.Calls);
         Assert.Equal(1, context.Gate.Calls);
         Assert.True(payload.TryGetProperty("preview", out _));
@@ -48,23 +45,13 @@ public sealed class WindowOpenTargetToolTests
     public async Task OpenTargetReturnsNeedsConfirmationPayloadWithoutInvokingRuntimeService()
     {
         TestContext context = CreateContext(
-            decision: CreateDecision(
-                ToolExecutionDecisionKind.NeedsConfirmation,
-                ToolExecutionMode.Live,
-                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                GuardSeverityValues.Warning,
-                requiresConfirmation: true));
+            kind: ToolExecutionDecisionKind.NeedsConfirmation,
+            requiresConfirmation: true);
 
-        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
-        {
-            TargetKind = OpenTargetKindValues.Document,
-            Target = @"C:\Docs\report.pdf",
-        });
+        CallToolResult result = await context.Tools.OpenTarget(DocumentRequest());
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal(OpenTargetStatusValues.NeedsConfirmation, payload.GetProperty("status").GetString());
-        Assert.Equal(OpenTargetStatusValues.NeedsConfirmation, payload.GetProperty("decision").GetString());
+        JsonElement payload = AssertPayload(result, expectedIsError: true);
+        AssertStatusAndDecision(payload, OpenTargetStatusValues.NeedsConfirmation);
         Assert.True(payload.GetProperty("requiresConfirmation").GetBoolean());
         Assert.Equal(0, context.OpenTargetService.Calls);
         Assert.True(payload.TryGetProperty("preview", out _));
@@ -74,22 +61,15 @@ public sealed class WindowOpenTargetToolTests
     public async Task OpenTargetReturnsDryRunOnlyPayloadWithoutInvokingRuntimeService()
     {
         TestContext context = CreateContext(
-            decision: CreateDecision(
-                ToolExecutionDecisionKind.DryRunOnly,
-                ToolExecutionMode.DryRun,
-                GuardReasonCodeValues.CapabilityDryRunPreviewUnavailable,
-                GuardSeverityValues.Blocked));
+            kind: ToolExecutionDecisionKind.DryRunOnly,
+            mode: ToolExecutionMode.DryRun,
+            reasonCode: GuardReasonCodeValues.CapabilityDryRunPreviewUnavailable,
+            severity: GuardSeverityValues.Blocked);
 
-        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
-        {
-            TargetKind = OpenTargetKindValues.Folder,
-            Target = @"C:\Docs",
-        });
+        CallToolResult result = await context.Tools.OpenTarget(FolderRequest());
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal(OpenTargetStatusValues.DryRunOnly, payload.GetProperty("status").GetString());
-        Assert.Equal(OpenTargetStatusValues.DryRunOnly, payload.GetProperty("decision").GetString());
+        JsonElement payload = AssertPayload(result, expectedIsError: true);
+        AssertStatusAndDecision(payload, OpenTargetStatusValues.DryRunOnly);
         Assert.Equal(0, context.OpenTargetService.Calls);
         Assert.True(payload.TryGetProperty("preview", out _));
     }
@@ -97,24 +77,12 @@ public sealed class WindowOpenTargetToolTests
     [Fact]
     public async Task OpenTargetAllowedDryRunReturnsPreviewWithoutInvokingRuntimeService()
     {
-        TestContext context = CreateContext(
-            decision: CreateDecision(
-                ToolExecutionDecisionKind.Allowed,
-                ToolExecutionMode.DryRun,
-                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                GuardSeverityValues.Warning));
+        TestContext context = CreateContext(mode: ToolExecutionMode.DryRun);
 
-        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
-        {
-            TargetKind = OpenTargetKindValues.Url,
-            Target = "https://example.test/docs?q=hidden#fragment",
-            DryRun = true,
-        });
+        CallToolResult result = await context.Tools.OpenTarget(UrlRequest(HttpsUrlTarget, dryRun: true));
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.False(result.IsError);
-        Assert.Equal(OpenTargetStatusValues.Done, payload.GetProperty("status").GetString());
-        Assert.Equal(OpenTargetStatusValues.Done, payload.GetProperty("decision").GetString());
+        JsonElement payload = AssertPayload(result, expectedIsError: false);
+        AssertStatusAndDecision(payload, OpenTargetStatusValues.Done);
         Assert.True(payload.TryGetProperty("preview", out JsonElement preview));
         Assert.Equal(OpenTargetKindValues.Url, preview.GetProperty("targetKind").GetString());
         Assert.Equal("https", preview.GetProperty("uriScheme").GetString());
@@ -130,34 +98,21 @@ public sealed class WindowOpenTargetToolTests
     [Fact]
     public async Task OpenTargetAllowedLiveReturnsRuntimePayload()
     {
-        FakeOpenTargetService openTargetService = new(
-            (_, _) => Task.FromResult(
-                new OpenTargetResult(
-                    Status: OpenTargetStatusValues.Done,
-                    Decision: OpenTargetStatusValues.Done,
-                    ResultMode: OpenTargetResultModeValues.HandlerProcessObserved,
-                    TargetKind: OpenTargetKindValues.Document,
-                    TargetIdentity: "report.pdf",
-                    AcceptedAtUtc: new DateTimeOffset(2026, 4, 8, 13, 20, 0, TimeSpan.Zero),
-                    HandlerProcessId: 4242,
-                    ArtifactPath: @"C:\artifacts\diagnostics\launch\open-target-20260408T132000000-demo.json")));
-        TestContext context = CreateContext(
-            decision: CreateDecision(
-                ToolExecutionDecisionKind.Allowed,
-                ToolExecutionMode.Live,
-                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                GuardSeverityValues.Warning),
-            openTargetService: openTargetService);
+        FakeOpenTargetService openTargetService = ReturningOpenTargetResult(
+            new OpenTargetResult(
+                Status: OpenTargetStatusValues.Done,
+                Decision: OpenTargetStatusValues.Done,
+                ResultMode: OpenTargetResultModeValues.HandlerProcessObserved,
+                TargetKind: OpenTargetKindValues.Document,
+                TargetIdentity: "report.pdf",
+                AcceptedAtUtc: new DateTimeOffset(2026, 4, 8, 13, 20, 0, TimeSpan.Zero),
+                HandlerProcessId: 4242,
+                ArtifactPath: @"C:\artifacts\diagnostics\launch\open-target-20260408T132000000-demo.json"));
+        TestContext context = CreateContext(openTargetService: openTargetService);
 
-        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
-        {
-            TargetKind = OpenTargetKindValues.Document,
-            Target = @"C:\Docs\report.pdf",
-            Confirm = true,
-        });
+        CallToolResult result = await context.Tools.OpenTarget(DocumentRequest(confirm: true));
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.False(result.IsError);
+        JsonElement payload = AssertPayload(result, expectedIsError: false);
         Assert.Equal(OpenTargetStatusValues.Done, payload.GetProperty("status").GetString());
         Assert.Equal(OpenTargetResultModeValues.HandlerProcessObserved, payload.GetProperty("resultMode").GetString());
         Assert.Equal(4242, payload.GetProperty("handlerProcessId").GetInt32());
@@ -168,35 +123,21 @@ public sealed class WindowOpenTargetToolTests
     [Fact]
     public async Task OpenTargetAllowedLiveRuntimeFailureReturnsFailedDecision()
     {
-        FakeOpenTargetService openTargetService = new(
-            (_, _) => Task.FromResult(
-                new OpenTargetResult(
-                    Status: OpenTargetStatusValues.Failed,
-                    Decision: OpenTargetStatusValues.Failed,
-                    FailureCode: OpenTargetFailureCodeValues.TargetNotFound,
-                    Reason: "Shell-open target не найден.",
-                    TargetKind: OpenTargetKindValues.Document,
-                    TargetIdentity: "report.pdf",
-                    ArtifactPath: @"C:\artifacts\diagnostics\launch\open-target-20260408T132500000-failed.json")));
-        TestContext context = CreateContext(
-            decision: CreateDecision(
-                ToolExecutionDecisionKind.Allowed,
-                ToolExecutionMode.Live,
-                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                GuardSeverityValues.Warning),
-            openTargetService: openTargetService);
+        FakeOpenTargetService openTargetService = ReturningOpenTargetResult(
+            new OpenTargetResult(
+                Status: OpenTargetStatusValues.Failed,
+                Decision: OpenTargetStatusValues.Failed,
+                FailureCode: OpenTargetFailureCodeValues.TargetNotFound,
+                Reason: "Shell-open target не найден.",
+                TargetKind: OpenTargetKindValues.Document,
+                TargetIdentity: "report.pdf",
+                ArtifactPath: @"C:\artifacts\diagnostics\launch\open-target-20260408T132500000-failed.json"));
+        TestContext context = CreateContext(openTargetService: openTargetService);
 
-        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
-        {
-            TargetKind = OpenTargetKindValues.Document,
-            Target = @"C:\Docs\missing.pdf",
-            Confirm = true,
-        });
+        CallToolResult result = await context.Tools.OpenTarget(DocumentRequest(@"C:\Docs\missing.pdf", confirm: true));
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("status").GetString());
-        Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("decision").GetString());
+        JsonElement payload = AssertPayload(result, expectedIsError: true);
+        AssertStatusAndDecision(payload, OpenTargetStatusValues.Failed);
         Assert.Equal(OpenTargetFailureCodeValues.TargetNotFound, payload.GetProperty("failureCode").GetString());
         Assert.Equal(1, context.OpenTargetService.Calls);
     }
@@ -204,27 +145,13 @@ public sealed class WindowOpenTargetToolTests
     [Fact]
     public async Task OpenTargetAllowedLiveUnexpectedServiceFailureDoesNotDowncastToShellRejectedTarget()
     {
-        FakeOpenTargetService openTargetService = new(
-            (_, _) => throw new InvalidOperationException("boom"));
-        TestContext context = CreateContext(
-            decision: CreateDecision(
-                ToolExecutionDecisionKind.Allowed,
-                ToolExecutionMode.Live,
-                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                GuardSeverityValues.Warning),
-            openTargetService: openTargetService);
+        FakeOpenTargetService openTargetService = new((_, _) => throw new InvalidOperationException("boom"));
+        TestContext context = CreateContext(openTargetService: openTargetService);
 
-        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
-        {
-            TargetKind = OpenTargetKindValues.Document,
-            Target = @"C:\Docs\report.pdf",
-            Confirm = true,
-        });
+        CallToolResult result = await context.Tools.OpenTarget(DocumentRequest(confirm: true));
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
-        Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("status").GetString());
-        Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("decision").GetString());
+        JsonElement payload = AssertPayload(result, expectedIsError: true);
+        AssertStatusAndDecision(payload, OpenTargetStatusValues.Failed);
         Assert.False(payload.TryGetProperty("failureCode", out _));
         Assert.Equal(1, context.OpenTargetService.Calls);
     }
@@ -232,21 +159,11 @@ public sealed class WindowOpenTargetToolTests
     [Fact]
     public async Task OpenTargetInvalidRequestReturnsFailedPayloadWithoutRuntimeInvocation()
     {
-        TestContext context = CreateContext(
-            decision: CreateDecision(
-                ToolExecutionDecisionKind.Allowed,
-                ToolExecutionMode.Live,
-                GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
-                GuardSeverityValues.Warning));
+        TestContext context = CreateContext();
 
-        CallToolResult result = await context.Tools.OpenTarget(new OpenTargetRequest
-        {
-            TargetKind = OpenTargetKindValues.Url,
-            Target = "mailto:user@example.test",
-        });
+        CallToolResult result = await context.Tools.OpenTarget(UrlRequest(MailtoUrlTarget));
 
-        JsonElement payload = AssertStructuredPayload(result);
-        Assert.True(result.IsError);
+        JsonElement payload = AssertPayload(result, expectedIsError: true);
         Assert.Equal(OpenTargetStatusValues.Failed, payload.GetProperty("status").GetString());
         Assert.Equal(OpenTargetFailureCodeValues.UnsupportedUriScheme, payload.GetProperty("failureCode").GetString());
         Assert.Equal(1, context.Gate.Calls);
@@ -255,26 +172,18 @@ public sealed class WindowOpenTargetToolTests
     }
 
     private static TestContext CreateContext(
-        ToolExecutionDecision decision,
-        FakeOpenTargetService? openTargetService = null,
-        Action? onGateEvaluate = null)
+        ToolExecutionDecisionKind kind = ToolExecutionDecisionKind.Allowed,
+        ToolExecutionMode mode = ToolExecutionMode.Live,
+        string? reasonCode = null,
+        string? severity = null,
+        bool requiresConfirmation = false,
+        FakeOpenTargetService? openTargetService = null)
     {
-        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-
-        AuditLogOptions options = new(
-            ContentRootPath: root,
-            EnvironmentName: "Tests",
-            RunId: "open-target-tool-tests",
-            DiagnosticsRoot: Path.Combine(root, "artifacts", "diagnostics"),
-            RunDirectory: Path.Combine(root, "artifacts", "diagnostics", "open-target-tool-tests"),
-            EventsPath: Path.Combine(root, "artifacts", "diagnostics", "open-target-tool-tests", "events.jsonl"),
-            SummaryPath: Path.Combine(root, "artifacts", "diagnostics", "open-target-tool-tests", "summary.md"));
-
+        AuditLogOptions options = CreateAuditLogOptions();
         AuditLog auditLog = new(options, TimeProvider.System);
-        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext("open-target-tool-tests"));
-        FakeWindowManager windowManager = new([]);
-        FakeToolExecutionGate gate = new(decision, onGateEvaluate);
+        InMemorySessionManager sessionManager = new(TimeProvider.System, new SessionContext(RunId));
+        EmptyWindowManager windowManager = new();
+        FakeToolExecutionGate gate = new(CreateDecision(kind, mode, reasonCode, severity, requiresConfirmation));
         FakeOpenTargetService effectiveOpenTargetService = openTargetService ?? new FakeOpenTargetService();
         WaitResultMaterializer waitResultMaterializer = new(auditLog, options, WaitOptions.Default);
 
@@ -299,12 +208,29 @@ public sealed class WindowOpenTargetToolTests
             options);
     }
 
+    private static AuditLogOptions CreateAuditLogOptions()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "winbridge-tests", Guid.NewGuid().ToString("N"));
+        string diagnosticsRoot = Path.Combine(root, "artifacts", "diagnostics");
+        string runDirectory = Path.Combine(diagnosticsRoot, RunId);
+        Directory.CreateDirectory(root);
+
+        return new AuditLogOptions(
+            ContentRootPath: root,
+            EnvironmentName: "Tests",
+            RunId: RunId,
+            DiagnosticsRoot: diagnosticsRoot,
+            RunDirectory: runDirectory,
+            EventsPath: Path.Combine(runDirectory, "events.jsonl"),
+            SummaryPath: Path.Combine(runDirectory, "summary.md"));
+    }
+
     private static ToolExecutionDecision CreateDecision(
         ToolExecutionDecisionKind kind,
         ToolExecutionMode mode,
-        string reasonCode,
-        string severity,
-        bool requiresConfirmation = false) =>
+        string? reasonCode,
+        string? severity,
+        bool requiresConfirmation) =>
         new(
             Kind: kind,
             Mode: mode,
@@ -312,8 +238,8 @@ public sealed class WindowOpenTargetToolTests
             Reasons:
             [
                 new GuardReason(
-                    reasonCode,
-                    severity,
+                    reasonCode ?? GuardReasonCodeValues.LaunchElevationBoundaryUnconfirmed,
+                    severity ?? GuardSeverityValues.Warning,
                     "Open target boundary test reason.",
                     CapabilitySummaryValues.Launch),
             ],
@@ -321,12 +247,35 @@ public sealed class WindowOpenTargetToolTests
             DryRunSupported: true,
             GuardCapability: CapabilitySummaryValues.Launch);
 
-    private static JsonElement AssertStructuredPayload(CallToolResult result)
+    private static OpenTargetRequest DocumentRequest(string target = DocumentTarget, bool confirm = false) =>
+        confirm
+            ? new() { TargetKind = OpenTargetKindValues.Document, Target = target, Confirm = true }
+            : new() { TargetKind = OpenTargetKindValues.Document, Target = target };
+
+    private static OpenTargetRequest FolderRequest() =>
+        new() { TargetKind = OpenTargetKindValues.Folder, Target = FolderTarget };
+
+    private static OpenTargetRequest UrlRequest(string target, bool dryRun = false) =>
+        dryRun
+            ? new() { TargetKind = OpenTargetKindValues.Url, Target = target, DryRun = true }
+            : new() { TargetKind = OpenTargetKindValues.Url, Target = target };
+
+    private static FakeOpenTargetService ReturningOpenTargetResult(OpenTargetResult result) =>
+        new((_, _) => Task.FromResult(result));
+
+    private static JsonElement AssertPayload(CallToolResult result, bool expectedIsError)
     {
+        Assert.Equal(expectedIsError, result.IsError);
         Assert.NotNull(result.StructuredContent);
         Assert.Single(result.Content);
         Assert.IsType<TextContentBlock>(result.Content[0]);
         return result.StructuredContent!.Value;
+    }
+
+    private static void AssertStatusAndDecision(JsonElement payload, string expectedValue)
+    {
+        Assert.Equal(expectedValue, payload.GetProperty("status").GetString());
+        Assert.Equal(expectedValue, payload.GetProperty("decision").GetString());
     }
 
     private sealed record TestContext(
@@ -335,20 +284,21 @@ public sealed class WindowOpenTargetToolTests
         FakeOpenTargetService OpenTargetService,
         AuditLogOptions AuditOptions);
 
-    private sealed class FakeWindowManager(IReadOnlyList<WindowDescriptor> windows) : IWindowManager
+    private sealed class EmptyWindowManager : IWindowManager
     {
-        public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible) => windows;
+        private static readonly WindowDescriptor[] EmptyWindows = [];
 
-        public WindowDescriptor? GetWindow(long hwnd) =>
-            windows.FirstOrDefault(window => window.Hwnd == hwnd);
+        public IReadOnlyList<WindowDescriptor> ListWindows(bool includeInvisible) => EmptyWindows;
 
-        public WindowDescriptor? FindWindow(WindowSelector selector) =>
-            windows.Count > 0 ? windows[0] : null;
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Implements IWindowManager test double contract.")]
+        public WindowDescriptor? GetWindow(long hwnd) => null;
 
-        public WindowDescriptor? GetForegroundWindow() =>
-            windows.FirstOrDefault(window => window.IsForeground);
+        public WindowDescriptor? FindWindow(WindowSelector selector) => null;
 
-        public bool TryFocus(long hwnd) => windows.Any(window => window.Hwnd == hwnd);
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Implements IWindowManager test double contract.")]
+        public WindowDescriptor? GetForegroundWindow() => null;
+
+        public bool TryFocus(long hwnd) => false;
     }
 
     private sealed class NoopCaptureService : ICaptureService
@@ -375,37 +325,30 @@ public sealed class WindowOpenTargetToolTests
             Calls++;
             LastRequest = request;
 
-            if (handler is null)
-            {
-                throw new NotSupportedException("OpenTarget service не должен вызываться в этом тесте.");
-            }
-
-            return handler(request, cancellationToken);
+            return handler?.Invoke(request, cancellationToken)
+                ?? throw new NotSupportedException("OpenTarget service не должен вызываться в этом тесте.");
         }
     }
 
-    private sealed class FakeToolExecutionGate(ToolExecutionDecision decision, Action? onEvaluate = null) : IToolExecutionGate
+    private sealed class FakeToolExecutionGate(ToolExecutionDecision decision) : IToolExecutionGate
     {
         public int Calls { get; private set; }
 
         public ToolExecutionIntent? LastIntent { get; private set; }
 
-        public ToolExecutionDecision Evaluate(ToolExecutionPolicyDescriptor policy, ToolExecutionIntent intent)
-        {
-            Calls++;
-            LastIntent = intent;
-            onEvaluate?.Invoke();
-            return decision;
-        }
+        public ToolExecutionDecision Evaluate(ToolExecutionPolicyDescriptor policy, ToolExecutionIntent intent) =>
+            RecordIntentAndReturnDecision(intent);
 
         public ToolExecutionDecision Evaluate(
             ToolExecutionPolicyDescriptor policy,
             RuntimeGuardAssessment assessment,
-            ToolExecutionIntent intent)
+            ToolExecutionIntent intent) =>
+            RecordIntentAndReturnDecision(intent);
+
+        private ToolExecutionDecision RecordIntentAndReturnDecision(ToolExecutionIntent intent)
         {
             Calls++;
             LastIntent = intent;
-            onEvaluate?.Invoke();
             return decision;
         }
     }
