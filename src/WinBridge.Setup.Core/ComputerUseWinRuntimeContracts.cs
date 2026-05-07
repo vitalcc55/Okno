@@ -40,6 +40,22 @@ public enum ComputerUseWinInstallMode
     Codex,
 }
 
+public enum SetupShellInstalledState
+{
+    None,
+    RuntimeOnly,
+    Codex,
+    CodexAndRuntimeOnly,
+}
+
+public enum SetupShellOperationKind
+{
+    Install,
+    Reinstall,
+    Repair,
+    RemoveAll,
+}
+
 public sealed record ComputerUseWinInstalledRuntimeState(
     [property: JsonPropertyName("formatVersion")] int FormatVersion,
     [property: JsonPropertyName("rid")] string Rid,
@@ -111,6 +127,10 @@ public sealed record ComputerUseWinInstallerResult(
     [property: JsonPropertyName("installedAtUtc")] DateTimeOffset InstalledAtUtc,
     [property: JsonPropertyName("updatedAtUtc")] DateTimeOffset UpdatedAtUtc);
 
+public sealed record ComputerUseWinInstallerOperation(
+    SetupShellOperationKind OperationKind,
+    ComputerUseWinInstallMode? Mode);
+
 public sealed record ComputerUseWinInstallerStatus(
     [property: JsonPropertyName("formatVersion")] int FormatVersion,
     [property: JsonPropertyName("codexHome")] string CodexHome,
@@ -118,3 +138,53 @@ public sealed record ComputerUseWinInstallerStatus(
     [property: JsonPropertyName("runtimeStatus")] ComputerUseWinRuntimeStatus RuntimeStatus,
     [property: JsonPropertyName("runtimeOnlyInstall")] ComputerUseWinInstallReceipt? RuntimeOnlyInstall,
     [property: JsonPropertyName("codexInstall")] ComputerUseWinInstallReceipt? CodexInstall);
+
+public sealed record SetupShellModePresentation(
+    SetupShellInstalledState InstalledState,
+    SetupShellOperationKind PrimaryActionKind,
+    string PrimaryActionLabel,
+    string SummaryTitle,
+    string SummaryDetail,
+    string FooterHint,
+    bool ShowCodexPaths,
+    bool CanRepair,
+    bool CanRemove);
+
+public sealed record SetupShellStatusSnapshot(
+    string CodexHome,
+    string RuntimeStoreRoot,
+    string PluginSourceRoot,
+    string MarketplacePath,
+    SetupShellInstalledState InstalledState,
+    bool HasRuntimeOnlyInstall,
+    bool HasCodexInstall,
+    bool RuntimeReady,
+    string? RuntimeFailureReason,
+    string Headline,
+    string Detail);
+
+public sealed record SetupShellOperationSummary(
+    SetupShellOperationKind OperationKind,
+    string Title,
+    string Message,
+    string? RuntimeRoot,
+    string? PluginSourceRoot,
+    string? MarketplacePath,
+    string? Snippet,
+    bool RestartRequired,
+    bool CleanupScheduled);
+
+public sealed record OknoSetupShellRegistrationOptions(
+    string ShellRoot,
+    string ShellExecutablePath,
+    string ShortcutPath,
+    string UninstallRegistryKeyPath,
+    string DisplayName,
+    string Publisher,
+    Func<int, Action<string>?> DeferredCleanupProcessFactory,
+    Action<string, string> CopyDirectoryContents,
+    Action<string, string> CreateShortcut,
+    Action<string, IReadOnlyDictionary<string, object>> WriteRegistryValues,
+    Action<string> DeleteRegistryKey,
+    Action<string> DeleteDirectory,
+    Func<string, bool> RegistryKeyExists);

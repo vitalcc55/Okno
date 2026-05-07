@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using System.Reflection;
+using WinBridge.Setup.Core;
 
 namespace WinBridge.Setup.App;
 
@@ -8,11 +9,18 @@ public static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        SetupAppLaunchOptions launchOptions = SetupAppLaunchOptions.Parse(args);
         string windowsAppRuntimeBaseDirectory = ResolveWindowsAppRuntimeBaseDirectory();
         EnsureUnpackagedRuntimeAliases(windowsAppRuntimeBaseDirectory);
         Environment.SetEnvironmentVariable(
             "MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY",
             windowsAppRuntimeBaseDirectory);
+
+        if (launchOptions is { Operation: SetupAppShellOperation.RemoveAll, Quiet: true })
+        {
+            RunQuietRemoveAll();
+            return;
+        }
 
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(init =>
@@ -20,9 +28,24 @@ public static class Program
             Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext context = new(
                 Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
             SynchronizationContext.SetSynchronizationContext(context);
-            App app = new();
+            App app = new(launchOptions);
             _ = app;
         });
+    }
+
+    private static void RunQuietRemoveAll()
+    {
+        try
+        {
+            SetupShellController controller = new();
+            SetupShellOperationSummary _ = controller.RemoveAllAsync(AppContext.BaseDirectory, Environment.ProcessId).GetAwaiter().GetResult();
+            Environment.ExitCode = 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            Environment.ExitCode = 1;
+        }
     }
 
     private static string ResolveWindowsAppRuntimeBaseDirectory()

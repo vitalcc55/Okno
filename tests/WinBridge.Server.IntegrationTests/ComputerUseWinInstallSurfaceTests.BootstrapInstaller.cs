@@ -9,7 +9,7 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
-    private const string BootstrapInstallerTestVersion = "0.1.0";
+    private const string BootstrapInstallerTestVersion = "0.2.0";
     private const string RuntimeIdentifier = "win-x64";
     private const string SetupAppExecutableName = "Okno Setup.exe";
     private const string SetupAppWindowTitle = "Okno Setup";
@@ -159,7 +159,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         try
         {
             RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(outputRoot, runtimePackage.DescriptorPath, versionOverride: "0.2.0");
+            string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(outputRoot, runtimePackage.DescriptorPath, versionOverride: "0.3.0");
             string mismatchedResultPath = CreateModifiedRuntimePackagingResult(outputRoot, runtimePackage.ResultPath, descriptorPathOverride: mismatchedDescriptorPath);
 
             ScriptInvocationResult result = InvokePowerShellScript(

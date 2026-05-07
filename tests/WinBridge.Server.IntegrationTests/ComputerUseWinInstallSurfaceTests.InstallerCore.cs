@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using System.Text.Json;
+using WinBridge.Setup.Core;
 
 namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
-    private const string SetupCliReleaseVersion = "0.1.0";
+    private const string SetupCliReleaseVersion = "0.2.0";
     private const string WindowsRuntimeIdentifier = "win-x64";
 
     private static readonly object ReleasePackagingGate = new();
@@ -136,7 +137,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             GetRuntimePackageScriptPath(repoRoot),
             SharedPublishedRuntimeBundle.Value.RuntimeRoot,
             outputRoot,
-            "0.1.1-test");
+            "0.2.1-test");
 
         try
         {
@@ -155,14 +156,14 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             string expectedLauncherPath = GetExpectedSharedRuntimeLauncherScriptPath(test.CodexHome);
             string[] args = server.GetProperty("args").EnumerateArray().Select(static value => value.GetString() ?? string.Empty).ToArray();
             Assert.Contains(expectedLauncherPath, args, StringComparer.Ordinal);
-            Assert.DoesNotContain("0.1.0", updateSnippet, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.1.1-test", updateSnippet, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.2.0", updateSnippet, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.2.1-test", updateSnippet, StringComparison.Ordinal);
             Assert.True(File.Exists(expectedLauncherPath));
 
             string launcherScript = File.ReadAllText(expectedLauncherPath);
             Assert.Contains("current-runtime.json", launcherScript, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.1.0", launcherScript, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.1.1-test", launcherScript, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.2.0", launcherScript, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.2.1-test", launcherScript, StringComparison.Ordinal);
         }
         finally
         {
@@ -189,6 +190,91 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         Assert.Contains("malformed", payload.RootElement.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
         Assert.Equal(malformedMarketplace, File.ReadAllText(marketplacePath));
         Assert.False(Directory.Exists(GetExpectedInstalledPluginRoot(test.CodexHome)));
+    }
+
+    [Fact]
+    public void SetupCliUninstallAllRemovesRuntimeOnlyInstall()
+    {
+        using SetupCliTestHarness test = CreateRuntimeOnlySetupCliTestHarness("uninstall-all-runtime-only");
+
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "runtime-only"), "runtime-only install");
+
+        ComputerUseWinInstallerService installer = new(
+            new ComputerUseWinRuntimeFoundationService(
+                new ComputerUseWinRuntimeStorePaths(test.CodexHome, Path.Combine(test.UserProfile, "AppData", "Local"))),
+            test.UserProfile);
+        ComputerUseWinInstallerResult result = installer.UninstallAll();
+
+        Assert.Equal("remove-all", result.Action);
+        Assert.False(File.Exists(GetExpectedRuntimeOnlyReceiptPath(test.CodexHome)));
+        Assert.False(Directory.Exists(GetExpectedSharedRuntimeStoreRoot(test.CodexHome)));
+    }
+
+    [Fact]
+    public void SetupCliUninstallAllRemovesCodexInstall()
+    {
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("uninstall-all-codex");
+
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex"), "codex install");
+
+        ComputerUseWinInstallerService installer = new(
+            new ComputerUseWinRuntimeFoundationService(
+                new ComputerUseWinRuntimeStorePaths(test.CodexHome, Path.Combine(test.UserProfile, "AppData", "Local"))),
+            test.UserProfile);
+        ComputerUseWinInstallerResult result = installer.UninstallAll();
+
+        Assert.Equal("remove-all", result.Action);
+        Assert.False(File.Exists(GetExpectedCodexReceiptPath(test.CodexHome)));
+        Assert.False(Directory.Exists(GetExpectedInstalledPluginRoot(test.CodexHome)));
+        string marketplacePath = GetExpectedPersonalMarketplacePath(test.UserProfile);
+        if (File.Exists(marketplacePath))
+        {
+            Assert.DoesNotContain("computer-use-win", File.ReadAllText(marketplacePath), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void SetupCliUninstallAllRemovesBothInstallModes()
+    {
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("uninstall-all-both");
+
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "runtime-only"), "runtime-only install");
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex"), "codex install");
+
+        ComputerUseWinInstallerService installer = new(
+            new ComputerUseWinRuntimeFoundationService(
+                new ComputerUseWinRuntimeStorePaths(test.CodexHome, Path.Combine(test.UserProfile, "AppData", "Local"))),
+            test.UserProfile);
+        installer.UninstallAll();
+
+        Assert.False(File.Exists(GetExpectedRuntimeOnlyReceiptPath(test.CodexHome)));
+        Assert.False(File.Exists(GetExpectedCodexReceiptPath(test.CodexHome)));
+        Assert.False(Directory.Exists(GetExpectedInstalledPluginRoot(test.CodexHome)));
+        Assert.False(Directory.Exists(GetExpectedSharedRuntimeStoreRoot(test.CodexHome)));
+    }
+
+    [Fact]
+    public void SetupCliUninstallAllIgnoresMalformedMarketplaceAndStillRemovesOwnedState()
+    {
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("uninstall-all-malformed-marketplace");
+
+        AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex"), "codex install");
+
+        string marketplacePath = GetExpectedPersonalMarketplacePath(test.UserProfile);
+        const string malformedMarketplace = "{ malformed";
+        File.WriteAllText(marketplacePath, malformedMarketplace);
+
+        ComputerUseWinInstallerService installer = new(
+            new ComputerUseWinRuntimeFoundationService(
+                new ComputerUseWinRuntimeStorePaths(test.CodexHome, Path.Combine(test.UserProfile, "AppData", "Local"))),
+            test.UserProfile);
+        ComputerUseWinInstallerResult result = installer.UninstallAll();
+
+        Assert.Equal("remove-all", result.Action);
+        Assert.Equal(malformedMarketplace, File.ReadAllText(marketplacePath));
+        Assert.False(File.Exists(GetExpectedCodexReceiptPath(test.CodexHome)));
+        Assert.False(Directory.Exists(GetExpectedInstalledPluginRoot(test.CodexHome)));
+        Assert.False(Directory.Exists(GetExpectedSharedRuntimeStoreRoot(test.CodexHome)));
     }
 
     private static SetupCliTestHarness CreateRuntimeOnlySetupCliTestHarness(string scenarioName) => CreateSetupCliTestHarness(SharedRuntimeOnlyRelease.Value, scenarioName);

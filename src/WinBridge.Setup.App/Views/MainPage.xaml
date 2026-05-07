@@ -177,6 +177,18 @@
                     </StackPanel>
                 </Grid>
 
+                <CommandBar
+                    x:Name="MaintenanceCommandBar"
+                    DefaultLabelPosition="Right"
+                    OverflowButtonVisibility="Collapsed">
+                    <AppBarButton
+                        x:Name="RepairAppBarButton"
+                        Click="OnRepairClicked" />
+                    <AppBarButton
+                        x:Name="RemoveAppBarButton"
+                        Click="OnRemoveClicked" />
+                </CommandBar>
+
                 <StackPanel x:Name="ResultPanel" Spacing="8" Visibility="Collapsed">
                     <TextBlock x:Name="ResultTitleTextBlock" FontSize="18" FontWeight="SemiBold" />
                     <TextBlock

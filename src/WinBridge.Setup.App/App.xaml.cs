@@ -11,9 +11,11 @@ public partial class App : Application
     private static readonly SizeInt32 StartupWindowSize = new(1060, 780);
     private static readonly SizeInt32 MinimumWindowSize = new(760, 640);
     private Window? mainWindow;
+    private readonly SetupAppLaunchOptions launchOptions;
 
-    public App()
+    public App(SetupAppLaunchOptions launchOptions)
     {
+        this.launchOptions = launchOptions;
         InitializeComponent();
         UnhandledException += OnUnhandledException;
     }
@@ -22,7 +24,7 @@ public partial class App : Application
     {
         try
         {
-            MainPage mainPage = new();
+            MainPage mainPage = new(launchOptions);
 
             mainWindow = new Window
             {

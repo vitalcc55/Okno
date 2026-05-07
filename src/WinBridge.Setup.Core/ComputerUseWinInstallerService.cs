@@ -35,11 +35,16 @@ public sealed class ComputerUseWinInstallerService
     }
 
     public ComputerUseWinInstallerService(ComputerUseWinRuntimeFoundationService runtimeFoundation)
+        : this(runtimeFoundation, ResolveUserProfileRoot())
+    {
+    }
+
+    public ComputerUseWinInstallerService(ComputerUseWinRuntimeFoundationService runtimeFoundation, string userProfileRoot)
     {
         this.runtimeFoundation = runtimeFoundation;
         storePaths = runtimeFoundation.StorePaths;
-        userProfileRoot = ResolveUserProfileRoot();
-        marketplacePath = Path.Combine(userProfileRoot, ".agents", "plugins", "marketplace.json");
+        this.userProfileRoot = Path.GetFullPath(userProfileRoot);
+        marketplacePath = Path.Combine(this.userProfileRoot, ".agents", "plugins", "marketplace.json");
         pluginSourceRoot = Path.Combine(storePaths.CodexHome, "plugins", PluginId);
     }
 
@@ -254,6 +259,51 @@ public sealed class ComputerUseWinInstallerService
             null,
             storePaths.GetReceiptPath(ComputerUseWinInstallMode.Codex),
             receipt.InstalledAtUtc,
+            DateTimeOffset.UtcNow);
+    }
+
+    public ComputerUseWinInstallerResult UninstallAll()
+    {
+        ComputerUseWinInstallReceipt? runtimeOnlyReceipt = TryReadReceipt(ComputerUseWinInstallMode.RuntimeOnly);
+        ComputerUseWinInstallReceipt? codexReceipt = TryReadReceipt(ComputerUseWinInstallMode.Codex);
+        ComputerUseWinInstallReceipt? referenceReceipt = codexReceipt ?? runtimeOnlyReceipt;
+        string runtimeRoot = referenceReceipt?.RuntimeRoot ?? storePaths.RuntimeStoreRoot;
+
+        if (codexReceipt is not null)
+        {
+            if (File.Exists(marketplacePath))
+            {
+                TryRemovePluginEntryFromMarketplace(codexReceipt.MarketplaceName);
+            }
+
+            DeleteDirectoryIfExists(codexReceipt.PluginSourceRoot ?? pluginSourceRoot);
+            DeleteReceipt(ComputerUseWinInstallMode.Codex);
+        }
+
+        if (runtimeOnlyReceipt is not null)
+        {
+            DeleteReceipt(ComputerUseWinInstallMode.RuntimeOnly);
+        }
+
+        DeleteDirectoryIfExists(storePaths.RuntimeStoreRoot);
+
+        return new ComputerUseWinInstallerResult(
+            StateFormatVersion,
+            "remove-all",
+            "all",
+            storePaths.CodexHome,
+            storePaths.RuntimeStoreRoot,
+            runtimeRoot,
+            referenceReceipt?.RuntimeVersion ?? string.Empty,
+            referenceReceipt?.RuntimeRid ?? string.Empty,
+            null,
+            null,
+            null,
+            null,
+            false,
+            null,
+            Path.Combine(storePaths.RuntimeStoreRoot, "receipts"),
+            referenceReceipt?.InstalledAtUtc ?? DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow);
     }
 
@@ -518,6 +568,19 @@ public sealed class ComputerUseWinInstallerService
 
         File.Move(tempPath, marketplacePath);
         return marketplace.Name;
+    }
+
+    private void TryRemovePluginEntryFromMarketplace(string? marketplaceNameOverride)
+    {
+        try
+        {
+            PersonalMarketplace marketplace = PrepareMarketplace(removingPluginEntry: true, marketplaceNameOverride: marketplaceNameOverride, marketplaceSourcePath: null);
+            WriteMarketplace(marketplace);
+        }
+        catch (InvalidOperationException)
+        {
+            // Full removal must not be blocked by unrelated malformed user-owned marketplace state.
+        }
     }
 
     private PersonalMarketplace LoadMarketplace(string? marketplaceNameOverride)

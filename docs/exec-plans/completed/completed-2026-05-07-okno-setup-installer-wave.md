@@ -1,7 +1,7 @@
 # ExecPlan: Okno setup installer wave
 
-Status: `active`  
-Date: `2026-05-04`
+Status: `completed`  
+Date: `2026-05-07`
 
 ## 1. Goal
 
@@ -19,8 +19,8 @@ Date: `2026-05-04`
 - использовать **один shared runtime** для Codex и plain MCP;
 - не дублировать install logic между PowerShell bootstrap, GUI installer и
   runtime/plugin layer;
-- подготовить основу для последующих `signing`, `winget`, `MSI` и
-  enterprise distribution, но не тащить их в первую волну без необходимости.
+- подготовить основу для последующих `winget`, `MSI` и enterprise
+  distribution, не таща их в первую волну без необходимости.
 
 ## 2. Baseline and dependency on the current packaging wave
 
@@ -39,7 +39,7 @@ Date: `2026-05-04`
 - installer wave не пересматривает уже принятый shared runtime release model,
   а строит поверх него более удобную delivery shell.
 
-Текущий прогресс по состоянию на `2026-05-06`:
+Текущий прогресс по состоянию на `2026-05-07`:
 
 - thin plugin bundle release path уже реализован;
 - shared runtime foundation bundle уже реализован:
@@ -53,12 +53,27 @@ Date: `2026-05-04`
 - PowerShell/bootstrap shell уже реализован:
   - packaged setup CLI payload;
   - thin bootstrap shell without repo checkout;
-- WinUI 3 shell уже реализован как unpackaged unsigned RC app:
+- WinUI 3 shell уже реализован как unpackaged setup app:
   - two install modes;
   - progress/result screen;
   - runtime-only snippet copy action;
-- следующая крупная недостающая часть — финальная docs sync, full verify и
-  clean merge-ready closure.
+- lifecycle layer для `Okno Setup.exe` теперь тоже реализован:
+  - state-aware install/reinstall behavior for `Codex` и `runtime-only`;
+  - `Repair` и `Remove Okno` в том же `Okno Setup.exe`;
+  - stable maintenance shell under `%LocalAppData%\Okno\setup-shell\current`;
+  - `HKCU` uninstall registration for Windows `Installed apps`;
+  - `--operation remove-all [--quiet]` shell path for Settings/uninstall entry;
+  - full-remove cleanup, including maintenance shell self-cleanup when uninstall
+    runs from the stable shell itself;
+- root README, localized front doors, install runbook, generated docs surface
+  and full `scripts/codex/verify.ps1` acceptance теперь синхронизированы под
+  этот lifecycle model;
+- wave закрыта как `0.2.0` unsigned release:
+  - install/update/repair/remove logic завершены;
+  - public release version поднята до `0.2.0`;
+  - setup archive, runtime descriptor, plugin manifest, release workflow и
+    README surfaces синхронизированы;
+  - signing явно снят из scope этой release model.
 
 Связанный baseline-документ:
 
@@ -657,8 +672,8 @@ Constraints:
 
 - GUI shell не переписывает install logic;
 - GUI only selects mode, shows progress, renders results and errors;
-- if signing material is unavailable, stage may stop at unsigned RC but must not
-  be declared final.
+- GUI installer остаётся product-facing shell даже при release without code
+  signing.
 
 Actions:
 
@@ -669,11 +684,18 @@ Actions:
   - install destination summary where relevant;
   - progress;
   - completion + next action;
-- подготовить signed build path.
+- подготовить stable maintenance shell and Windows lifecycle entry points.
 
 Expected result:
 
 - появляется `Okno Setup.exe` как единый product-facing installer.
+
+Status update:
+
+- шаг закрыт в final `0.2.0` scope: GUI shell теперь state-aware, не
+  дублирует installer business logic, умеет install/reinstall/repair/remove и
+  поддерживает maintenance shell registration для Windows lifecycle entry
+  points.
 
 DDD/TDD:
 
@@ -682,6 +704,12 @@ DDD/TDD:
 - GUI layout itself verifies through smoke/UX review.
 
 ### Step 12 — Sign the installer and binaries
+
+Status update:
+
+- explicit product decision: signing removed from scope for this release model;
+- `0.2.0` is published as an unsigned Windows release by policy, not as an
+  unfinished RC waiting for a later signing gate.
 
 Purpose:
 
@@ -699,7 +727,8 @@ Dependencies:
 Constraints:
 
 - signing не должен менять runtime/plugin contracts;
-- unsigned build не называется final product-ready path.
+- если signing когда-либо вернётся отдельной волной, это будет distribution
+  follow-up, а не blocker для installer-wave completion.
 
 Actions:
 
@@ -749,6 +778,14 @@ Actions:
 Expected result:
 
 - репозиторий, release assets и installer UX говорят об одном и том же.
+
+Status update:
+
+- docs/proof/acceptance slice закрыт для final `0.2.0` lifecycle model:
+  front doors, install runbook, generated docs surface, lifecycle tests,
+  full `scripts/test.ps1`, `scripts/refresh-generated-docs.ps1` и
+  `scripts/codex/verify.ps1` уже подтверждают install/update/repair/remove
+  story без repo-first main path.
 
 DDD/TDD:
 

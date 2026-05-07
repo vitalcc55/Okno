@@ -1,152 +1,95 @@
 # Task State
 
-goal: Реализовать installer-wave для Okno с единым `Okno Setup.exe`, где `Codex` mode включает shared runtime, а `runtime only` остаётся отдельным advanced path.
-stage: Installer-wave implementation в рабочем состоянии; review-driven hardening поверх unsigned RC дополнительно закрыл enforced runtime descriptor validation, stable runtime-only launch contract и fail-closed staged-artifacts verification path.
+goal: Довести installer-wave до финального `0.2.0` release state с одним `Okno Setup.exe`, где пользователь получает install/reinstall/update/repair/remove для `Codex` и `runtime-only`, плюс Windows `Installed apps` integration.
+stage: Installer-wave закрыта как `0.2.0` unsigned release; signing явно снят из scope этой release model.
 done:
-- Создан и зафиксирован active plan [docs/exec-plans/active/okno-setup-installer-wave.md](docs/exec-plans/active/okno-setup-installer-wave.md) с двумя install modes: `Install for Codex` и `Install runtime only`.
-- Начат и закрыт первый implementation slice installer-wave: thin plugin bundle release path поверх уже существующего runtime release.
-- Добавлен helper [scripts/codex/computer-use-win-plugin-bundle-common.ps1](scripts/codex/computer-use-win-plugin-bundle-common.ps1), который:
-  - materialize-ит plugin bundle без `runtime/`;
-  - пишет `okno-plugin-bundle-manifest.json`;
-  - фиксирует `pluginVersion -> runtimeVersion/rid/tag/assetName`;
-  - проверяет bundle integrity по полному file map.
-- Добавлен packaging script [scripts/codex/package-computer-use-win-plugin-release.ps1](scripts/codex/package-computer-use-win-plugin-release.ps1), который собирает versioned asset `okno-computer-use-win-plugin-<version>.zip` плюс `SHA256SUMS` без мутации repo plugin source.
-- Workflow [.github/workflows/release-computer-use-win-runtime.yml](.github/workflows/release-computer-use-win-runtime.yml) расширен до distribution release: теперь публикует и attests both runtime and plugin bundle assets.
-- Integration coverage для plugin bundle packaging расширен в [tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.ReleasePackaging.cs](tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.ReleasePackaging.cs).
-- Реализован shared runtime foundation bundle:
-  - добавлены [WinBridge.Setup.Core](src/WinBridge.Setup.Core/WinBridge.Setup.Core.csproj) и [WinBridge.Setup.Cli](src/WinBridge.Setup.Cli/WinBridge.Setup.Cli.csproj);
-  - canonical per-user runtime store теперь живёт в Codex home: `okno/computer-use-win/runtimes/<rid>/<version>` + `state/current-runtime.json` + `locks/`;
-  - managed CLI умеет `runtime install`, `runtime status`, `runtime verify`, `runtime repair`;
-  - launcher [plugins/computer-use-win/run-computer-use-win-mcp.ps1](plugins/computer-use-win/run-computer-use-win-mcp.ps1) переведён на новый resolution order:
-    - shared installed runtime first;
-    - plugin-local runtime only as dev fallback;
-    - pinned release rehydrate into shared store, not into plugin-local runtime.
-- Legacy release-backed launcher tests синхронизированы с новым shared-runtime contract.
-- Launcher test harness теперь всегда изолирует `CODEX_HOME` в temp path, чтобы install-surface tests не трогали реальный пользовательский `.codex`.
-- Generated commands inventory, test matrix, changelog и active exec-plan синхронизированы под shared runtime foundation slice.
-- Реализован installer orchestration core поверх shared runtime foundation:
-  - [ComputerUseWinInstallerService.cs](src/WinBridge.Setup.Core/ComputerUseWinInstallerService.cs) закрывает `install/update/repair/uninstall/status` для `codex` и `runtime-only`;
-  - `Setup.Cli` теперь является canonical headless install surface;
-  - integration coverage расширен [ComputerUseWinInstallSurfaceTests.InstallerCore.cs](tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.InstallerCore.cs).
-- Реализован thin PowerShell bootstrap shell и setup CLI payload packaging:
-  - [scripts/codex/package-computer-use-win-setup-cli-payload.ps1](scripts/codex/package-computer-use-win-setup-cli-payload.ps1);
-  - [scripts/codex/install-computer-use-win.ps1](scripts/codex/install-computer-use-win.ps1);
-  - integration coverage расширен [ComputerUseWinInstallSurfaceTests.BootstrapInstaller.cs](tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.BootstrapInstaller.cs).
-- Реализован unpackaged WinUI 3 shell [WinBridge.Setup.App](src/WinBridge.Setup.App/WinBridge.Setup.App.csproj):
-  - two install modes;
-  - progress and completion surface;
-  - runtime-only snippet copy action;
-  - packaged unsigned RC asset script [scripts/codex/package-okno-setup-app-release.ps1](scripts/codex/package-okno-setup-app-release.ps1).
-- Для setup shell добавлен runtime localization slice:
-  - selector языка с `en-US`, `ru-RU`, `zh-CN`;
-  - `.resw` resources в [Strings/en-US/Resources.resw](src/WinBridge.Setup.App/Strings/en-US/Resources.resw), [Strings/ru-RU/Resources.resw](src/WinBridge.Setup.App/Strings/ru-RU/Resources.resw), [Strings/zh-CN/Resources.resw](src/WinBridge.Setup.App/Strings/zh-CN/Resources.resw);
-  - runtime lookup service [SetupLocalizationService](src/WinBridge.Setup.App/Services/SetupLocalizationService.cs);
-  - localized window title, status/result texts, install-mode copy и accessibility names для ключевых controls.
-- Canonical shared runtime store больше не живёт в `.codex`:
-  - runtime foundation и launcher теперь materialize-ят и читают shared runtime из `%LocalAppData%\\Okno\\computer-use-win`;
-  - `.codex` остаётся только для Codex plugin path;
-  - `runtime-only` mode product-wise больше не выглядит как Codex-owned install surface.
-- Unpackaged bootstrap [Program.cs](src/WinBridge.Setup.App/Program.cs) дополнительно harden-ит rename/launch path:
-  - alias-ит `.pri` и manifest под текущее имя процесса;
-  - normalizes runtime base directory probing;
-  - ручная launch matrix подтверждает запуск original и renamed `Okno Setup.exe` как из своей папки, так и из внешнего `WorkingDirectory`.
-- Release workflow расширен под installer-wave RC assets: runtime zip, plugin bundle zip, setup CLI payload zip, WinUI setup app zip и bootstrap shell upload.
-- Review closure по новой ветке findings закрыл четыре подтверждённых класса:
-  - canonical runtime descriptor теперь materialize-ится runtime packager'ом и передаётся в plugin/setup packager'ы через явный `-RuntimeDescriptorPath`;
-  - bootstrap local payload archive теперь проверяется по checksum перед `Expand-Archive`, а `-PayloadRoot` переведён в explicit unsafe dev-only override;
-  - plugin deployment staging/backup перенесены на volume назначения рядом с `<codex-home>/plugins/computer-use-win`;
-  - malformed personal marketplace больше не переписывается repair-path'ом и теперь fail-close'но валидируется до plugin deployment.
-- Второй review pass закрыл ещё два boundary класса:
-  - setup payload/setup app packager'ы теперь не только принимают canonical descriptor, но и семантически валидируют его против своих `-Version`/`-Rid` и expected runtime contract fields;
-  - runtime-only snippet больше не ссылается на versioned `runtimes/<rid>/<version>/Okno.Server.exe`, а использует stable launcher script под `%LocalAppData%\\Okno\\computer-use-win`, который резолвит `current-runtime.json` на каждый запуск.
-- Дополнительный follow-up review pass закрыл симметричную дыру на plugin packaging boundary:
-  - canonical plugin bundle publish path теперь тоже обязан пройти через shared runtime descriptor validator до plugin-specific metadata extraction;
-  - negative coverage добавлен на invalid launch metadata в plugin release path.
-- Следующий review pass усилил сам `RuntimePackagingResult` contract:
-  - downstream packager'ы теперь принимают `-RuntimePackagingResultPath`, а не raw descriptor path;
-  - runtime packaging result валидируется как artifact proof against archive/checksum/descriptor, а не как self-consistent JSON;
-  - plugin packaging policy теперь явно фиксирует supported RID текущей волны (`win-x64`), а не читает RID обратно из descriptor.
-- Canonical verification path больше не может тихо скатиться на stale `tests/bin`: `scripts/common.ps1` теперь fail-close'ится, если staged artifacts root задан, а staged integration assembly там отсутствует.
-- Гипотеза review про `plugin-local runtime` как продовый fallback не подтверждена как product bug: installed plugin bundle по-прежнему не несёт `runtime/`, а существующий fallback остаётся осознанным source/dev path и покрыт integration test'ом.
+- `SetupShellController` переведён из install-only presenter в state-aware lifecycle controller:
+  - различает `None`, `RuntimeOnly`, `Codex`, `CodexAndRuntimeOnly`;
+  - primary action сам выбирает `Install` или `Reinstall` для выбранного mode;
+  - отдельные operation paths добавлены для `Repair` и full `RemoveAll`.
+- В `ComputerUseWinInstallerService` добавлен canonical aggregate remove path `UninstallAll()`:
+  - удаляет Codex integration;
+  - удаляет runtime-only receipt;
+  - удаляет shared runtime store;
+  - не блокирует full remove из-за malformed personal marketplace и не переписывает такой файл.
+- Добавлен `OknoSetupShellRegistrationService`:
+  - stable maintenance shell under `%LocalAppData%\Okno\setup-shell\current`;
+  - Start Menu shortcut `Okno Setup`;
+  - `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Okno`;
+  - deferred self-cleanup when remove-all runs from the stable shell itself.
+- `Okno Setup.exe` получил shell CLI surface:
+  - `--operation remove-all`
+  - `--quiet`
+  - Windows Settings uninstall path теперь сводится к тому же maintenance shell, а не к отдельному uninstall executable.
+- WinUI shell обновлён до native lifecycle UX:
+  - single-page window;
+  - mode selector всегда видим;
+  - primary button = install/reinstall depending on state;
+  - grouped maintenance actions через `CommandBar`;
+  - destructive full remove через `ContentDialog`;
+  - runtime-only snippet copy path preserved.
+- Root front doors и install runbook синхронизированы под final lifecycle model:
+  - `README.md`
+  - `README.ru.md`
+  - `README.zh-CN.md`
+  - `docs/runbooks/computer-use-win-install.md`
+  - `docs/exec-plans/completed/completed-2026-05-07-okno-setup-installer-wave.md`
+  - `docs/CHANGELOG.md`
+- Public release version поднята до `0.2.0`:
+  - `Directory.Build.props`
+  - `plugins/computer-use-win/.codex-plugin/plugin.json`
+  - `plugins/computer-use-win/runtime-release.json`
+  - current smoke/proof/test surfaces and release packaging expectations.
+- Setup app release surface больше не использует perpetual pre-release wording:
+  - setup archive renamed to `okno-setup-<version>-win-x64.zip`;
+  - root README и runbook больше не ведут через bootstrap shell как user-facing install path;
+  - release workflow теперь публикует runtime zip, plugin zip и setup app zip как public release assets.
+- Тесты расширены под lifecycle slice:
+  - state mapping / reinstall / repair / remove-all;
+  - stable shell registration + uninstall registry entry;
+  - immediate vs deferred maintenance shell cleanup;
+  - remove-all with malformed marketplace;
+  - release packaging runbook contract updated for lifecycle section.
 next:
-- Проверить итоговый git diff после review-hardening и решить, коммитить ли этот closure отдельным changeset.
-- При необходимости прогнать более широкий branch-level contour (`scripts/test.ps1` / `scripts/codex/verify.ps1`) уже как финальный acceptance, а не как точечную review triage.
+- При user approval подготовить release commit, tag `v0.2.0` и release publication actions.
+- Если понадобится follow-up после этого релиза, следующим отдельным слоем будет уже не signing blocker, а optional distribution polish (`winget`, `MSI`, richer Windows uninstall/distribution story).
 edited_files:
-- .github/workflows/release-computer-use-win-runtime.yml
-- WinBridge.sln
-- docs/CHANGELOG.md
-- docs/exec-plans/active/okno-setup-installer-wave.md
-- docs/generated/commands.md
-- docs/generated/test-matrix.md
-- plugins/computer-use-win/run-computer-use-win-mcp.ps1
-- scripts/codex/computer-use-win-plugin-bundle-common.ps1
-- scripts/codex/install-computer-use-win.ps1
-- scripts/codex/package-computer-use-win-plugin-release.ps1
-- scripts/codex/package-computer-use-win-setup-cli-payload.ps1
-- scripts/codex/package-okno-setup-app-release.ps1
-- scripts/refresh-generated-docs.ps1
-- src/WinBridge.Setup.App/App.xaml
-- src/WinBridge.Setup.App/App.xaml.cs
-- src/WinBridge.Setup.App/Imports.cs
+- src/WinBridge.Setup.Core/ComputerUseWinRuntimeContracts.cs
+- src/WinBridge.Setup.Core/ComputerUseWinInstallerService.cs
+- src/WinBridge.Setup.Core/SetupShellController.cs
+- src/WinBridge.Setup.Core/OknoSetupShellRegistrationService.cs
+- src/WinBridge.Setup.App/SetupAppLaunchOptions.cs
 - src/WinBridge.Setup.App/Program.cs
-- src/WinBridge.Setup.App/Services/SetupLocalizationService.cs
+- src/WinBridge.Setup.App/App.xaml.cs
+- src/WinBridge.Setup.App/Views/MainPage.xaml
+- src/WinBridge.Setup.App/Views/MainPage.xaml.cs
 - src/WinBridge.Setup.App/Strings/en-US/Resources.resw
 - src/WinBridge.Setup.App/Strings/ru-RU/Resources.resw
 - src/WinBridge.Setup.App/Strings/zh-CN/Resources.resw
-- src/WinBridge.Setup.App/Views/MainPage.xaml
-- src/WinBridge.Setup.App/Views/MainPage.xaml.cs
-- src/WinBridge.Setup.App/WinBridge.Setup.App.csproj
-- src/WinBridge.Setup.Core/ComputerUseWinInstallerService.cs
-- src/WinBridge.Setup.Core/ComputerUseWinRuntimeStorePaths.cs
-- src/WinBridge.Setup.Core/ComputerUseWinRuntimeFoundationService.cs
-- src/WinBridge.Setup.Core/SetupShellController.cs
-- src/WinBridge.Setup.Core/WinBridge.Setup.Core.csproj
-- src/WinBridge.Setup.Core/ComputerUseWinRuntimeContracts.cs
-- src/WinBridge.Setup.Cli/WinBridge.Setup.Cli.csproj
-- src/WinBridge.Setup.Cli/Program.cs
+- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.SetupShellController.cs
+- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.InstallerCore.cs
+- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.ReleasePackaging.cs
 - README.md
 - README.ru.md
 - README.zh-CN.md
 - docs/runbooks/computer-use-win-install.md
-- plugins/computer-use-win/README.md
-- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.ReleasePackaging.cs
-- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.BootstrapInstaller.cs
-- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.InstallerCore.cs
-- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.Localization.cs
-- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.SetupShellController.cs
-- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.SharedRuntimeFoundation.cs
-- tests/WinBridge.Server.IntegrationTests/ComputerUseWinInstallSurfaceTests.cs
-- tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj
+- docs/exec-plans/completed/completed-2026-05-07-okno-setup-installer-wave.md
+- Directory.Build.props
+- plugins/computer-use-win/.codex-plugin/plugin.json
+- plugins/computer-use-win/runtime-release.json
+- .github/workflows/release-computer-use-win-runtime.yml
+- scripts/codex/package-okno-setup-app-release.ps1
+- scripts/codex/prove-computer-use-win-cache-install.ps1
+- scripts/smoke.ps1
+- docs/generated/commands.md
+- docs/CHANGELOG.md
 verify_status:
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "PackageComputerUseWinPluginRelease"` passes.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "PackageComputerUseWin"` passes.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~SetupCliRuntime"` passes.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~SetupCliRuntime|FullyQualifiedName~ComputerUseWinLauncherUsesSharedInstalledRuntime|FullyQualifiedName~ComputerUseWinLauncherFallsBackToPluginLocalRuntime|FullyQualifiedName~ComputerUseWinLauncherRehydratesSharedRuntimeStore|FullyQualifiedName~ComputerUseWinLauncherBootstrapsRuntimeFromPinnedReleaseDescriptorWhenRuntimeBundleIsMissing|FullyQualifiedName~ComputerUseWinLauncherRehydratesFromPinnedReleaseWhenRuntimeDependencyFileIsMissing|FullyQualifiedName~ComputerUseWinLauncherFailsClosedWhenPinnedReleaseChecksumDoesNotMatch"` passes.
-- `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` passes.
-- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` passes.
-- `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` passes.
-- `dotnet test ... --filter "FullyQualifiedName~SetupCliInstallRuntimeOnlyDoesNotTouchMarketplace|...|FullyQualifiedName~SetupCliRepairCodexRestoresMissingPluginSourceAndMarketplaceEntry"` passes.
-- `dotnet test ... --filter "FullyQualifiedName~PackageComputerUseWinSetupCliPayloadProducesVersionedArchive"` passes.
-- `dotnet test ... --filter "FullyQualifiedName~BootstrapInstallerInstallsRuntimeOnlyFromLocalPayloadArchive|FullyQualifiedName~BootstrapInstallerInstallsCodexFromLocalPayloadArchive"` passes.
-- `dotnet build src/WinBridge.Setup.App/WinBridge.Setup.App.csproj` passes.
-- `dotnet test ... --filter "FullyQualifiedName~SetupShellController"` passes.
-- local launch verification of `src/WinBridge.Setup.App/bin/Debug/net8.0-windows10.0.19041.0/WinBridge.Setup.App.exe` succeeded with title `Okno Setup`.
-- `dotnet test ... --filter "FullyQualifiedName~PackageOknoSetupAppReleaseProducesArchiveWithOknoSetupExecutable"` passes.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~Localization|FullyQualifiedName~PackageOknoSetupAppReleaseProducesArchiveWithOknoSetupExecutable|FullyQualifiedName~PackagedOknoSetupAppLaunchesFromOwnAndExternalWorkingDirectories|FullyQualifiedName~SetupShellController"` passes.
-- manual launch matrix passes for original and renamed `Okno Setup.exe` from both own directory and external `WorkingDirectory`.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~InstallerCore|FullyQualifiedName~SetupShellController|FullyQualifiedName~Localization"` passes.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~BootstrapInstaller|FullyQualifiedName~ReleasePackaging|FullyQualifiedName~PackagedOknoSetupAppLaunchesFromOwnAndExternalWorkingDirectories"` passes.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinLauncherUsesSharedInstalledRuntime"` passes on the `%LocalAppData%` store model.
-- `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` -> green after harness/perf hardening: runtime `669/669`, integration `458/458`, wall clock about `11m19s`.
-- `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` -> green after harness/perf hardening with CI timing breakdown: bootstrap `~3.9s`, build `~24.1s`, test `~10m44s`, smoke `~51.4s`, refresh-generated-docs `~7.1s`, total `~12m11s`.
-- `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` passes after review hardening.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "<15-scenario review closure set>"` passes (`15/15`).
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinInstallSurfaceTests"` passes (`75/75`).
-- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` passes after command-surface sync for the new runtime descriptor contract.
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "<descriptor validator + stable snippet + verification-context guard>"` passes (`4/4`).
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "FullyQualifiedName~ComputerUseWinInstallSurfaceTests|FullyQualifiedName~RuntimeBundleResolverTests"` passes (`90/90`).
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "<plugin descriptor gate spot checks>"` passes (`2/2`).
-- `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --filter "<proof-carrying runtime packaging result + stable snippet set>"` passes (`8/8`).
-- `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` passes after staged-artifacts guard hardening, stable runtime-only launcher contract and proof-carrying runtime packaging result: runtime `669/669`, integration `470/470`.
+- `scripts/build.ps1`: green
+- lifecycle targeted contour: green (`11/11`)
+- `scripts/test.ps1`: green (`WinBridge.Runtime.Tests 669/669`, `WinBridge.Server.IntegrationTests 484/484`)
+- `scripts/refresh-generated-docs.ps1`: green
+- `scripts/codex/verify.ps1`: green
+- manual WinUI launch proof: staged app opened a real top-level window with title `Okno Setup`
 open_questions:
-- Нужно решить только branch hygiene: оформлять ли review-hardening отдельным commit'ом до итогового merge/readiness pass или включить его в следующий closure commit по всей installer-wave.
+- Делать ли в этом же цикле tag/push/GitHub release publication для `v0.2.0`, или сначала отдельный human sanity pass по release text?
+- Нужен ли после `0.2.0` отдельный follow-up only for richer distribution channels (`winget`/`MSI`)?

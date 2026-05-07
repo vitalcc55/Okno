@@ -23,8 +23,8 @@ $runtimeDescriptorPath = Resolve-ComputerUseWinRuntimePackagingDescriptorPath `
     -ExpectedVersion $Version `
     -ExpectedRid $Rid
 $projectPath = Join-Path $repoRoot 'src\WinBridge.Setup.App\WinBridge.Setup.App.csproj'
-$assetName = "okno-setup-unsigned-$Version-$Rid.zip"
-$checksumFileName = "okno-setup-unsigned-$Version-SHA256SUMS.txt"
+$assetName = "okno-setup-$Version-$Rid.zip"
+$checksumFileName = "okno-setup-$Version-SHA256SUMS.txt"
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repoRoot ".tmp\.codex\release-packaging\setup-app\$Version\$Rid"

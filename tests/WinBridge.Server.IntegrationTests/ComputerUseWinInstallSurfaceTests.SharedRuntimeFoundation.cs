@@ -9,7 +9,7 @@ namespace WinBridge.Server.IntegrationTests;
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
     private const string SharedRuntimeFoundationRid = "win-x64";
-    private const string SharedRuntimeFoundationVersion = "0.1.0";
+    private const string SharedRuntimeFoundationVersion = "0.2.0";
     private const string SharedRuntimeFoundationMcpProtocolVersion = "2025-11-25";
     private const string SharedRuntimeFoundationTestClientName = "ComputerUseWin.SharedRuntimeFoundationTests";
 
@@ -113,7 +113,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     [Fact]
     public async Task ComputerUseWinLauncherFallsBackToPluginLocalRuntimeWhenSharedRuntimeStateIsIncompatible()
     {
-        const string mismatchedVersion = "0.1.0-test";
+        const string mismatchedVersion = "0.2.0-test";
 
         using SharedRuntimeScenario scenario = CreateSharedRuntimeScenario("launcher-plugin-local-fallback");
         SharedRuntimeRelease mismatchedRelease = CreateRuntimeRelease(scenario, mismatchedVersion);

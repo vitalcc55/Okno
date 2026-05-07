@@ -70,16 +70,6 @@ jobs:
           "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "asset_name=$($json.assetName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Package setup CLI payload asset
-        id: package_setup_payload
-        shell: pwsh
-        run: |
-          $payload = powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/codex/package-computer-use-win-setup-cli-payload.ps1 -Version "${{ steps.version.outputs.version }}" -Rid "win-x64" -RuntimePackagingResultPath "${{ steps.package_runtime.outputs.result_path }}"
-          $json = $payload | ConvertFrom-Json
-          "archive_path=$($json.archivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "checksum_path=$($json.checksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "asset_name=$($json.assetName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
       - name: Package WinUI setup app asset
         id: package_setup_app
         shell: pwsh
@@ -106,7 +96,7 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
-          gh release upload $tag "${{ steps.package_runtime.outputs.archive_path }}" "${{ steps.package_runtime.outputs.checksum_path }}" "${{ steps.package_plugin.outputs.archive_path }}" "${{ steps.package_plugin.outputs.checksum_path }}" "${{ steps.package_setup_payload.outputs.archive_path }}" "${{ steps.package_setup_payload.outputs.checksum_path }}" "${{ steps.package_setup_app.outputs.archive_path }}" "${{ steps.package_setup_app.outputs.checksum_path }}" "scripts/codex/install-computer-use-win.ps1" --clobber
+          gh release upload $tag "${{ steps.package_runtime.outputs.archive_path }}" "${{ steps.package_runtime.outputs.checksum_path }}" "${{ steps.package_plugin.outputs.archive_path }}" "${{ steps.package_plugin.outputs.checksum_path }}" "${{ steps.package_setup_app.outputs.archive_path }}" "${{ steps.package_setup_app.outputs.checksum_path }}" --clobber
 
       - name: Attest runtime archive
         uses: actions/attest-build-provenance@v2
@@ -117,11 +107,6 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: ${{ steps.package_plugin.outputs.archive_path }}
-
-      - name: Attest setup CLI payload archive
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: ${{ steps.package_setup_payload.outputs.archive_path }}
 
       - name: Attest setup app archive
         uses: actions/attest-build-provenance@v2

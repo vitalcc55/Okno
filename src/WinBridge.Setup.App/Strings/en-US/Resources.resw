@@ -25,6 +25,8 @@
   <data name="StatusRuntimeReadyDetail" xml:space="preserve"><value>You can keep the runtime-only path or add the Codex plugin on top of the existing runtime.</value></data>
   <data name="StatusCodexInstalledTitle" xml:space="preserve"><value>Codex plugin already detected</value></data>
   <data name="StatusCodexInstalledDetail" xml:space="preserve"><value>You can reinstall or repair the local plugin and runtime from this installer.</value></data>
+  <data name="StatusBothInstalledTitle" xml:space="preserve"><value>Codex and runtime-only installs are already present</value></data>
+  <data name="StatusBothInstalledDetail" xml:space="preserve"><value>You can reinstall the selected mode, repair it, or remove Okno completely from this window.</value></data>
   <data name="InstallModeSectionTitle" xml:space="preserve"><value>Installation mode</value></data>
   <data name="InstallModeSectionDescription" xml:space="preserve"><value>Choose one option. Codex mode already includes the shared Okno runtime.</value></data>
   <data name="CodexModeTitle" xml:space="preserve"><value>Install for Codex</value></data>
@@ -45,11 +47,25 @@
   <data name="FooterRuntimeHint" xml:space="preserve"><value>After installation, copy the generated snippet into your MCP client configuration.</value></data>
   <data name="InstallCodexButton" xml:space="preserve"><value>Install for Codex</value></data>
   <data name="InstallRuntimeOnlyButton" xml:space="preserve"><value>Install runtime only</value></data>
+  <data name="ReinstallCodexButton" xml:space="preserve"><value>Reinstall for Codex</value></data>
+  <data name="ReinstallRuntimeOnlyButton" xml:space="preserve"><value>Reinstall runtime only</value></data>
+  <data name="RepairCommandLabel" xml:space="preserve"><value>Repair</value></data>
+  <data name="RemoveCommandLabel" xml:space="preserve"><value>Remove Okno</value></data>
   <data name="ResultCodexTitle" xml:space="preserve"><value>Install for Codex completed</value></data>
   <data name="ResultCodexMessage" xml:space="preserve"><value>Restart Codex to load the installed plugin from your personal marketplace.</value></data>
   <data name="ResultRuntimeTitle" xml:space="preserve"><value>Runtime-only install completed</value></data>
   <data name="ResultRuntimeMessage" xml:space="preserve"><value>Use the generated MCP snippet in your client configuration.</value></data>
+  <data name="ResultReinstallCodexTitle" xml:space="preserve"><value>Reinstall for Codex completed</value></data>
+  <data name="ResultReinstallRuntimeTitle" xml:space="preserve"><value>Runtime-only reinstall completed</value></data>
+  <data name="ResultRepairCodexTitle" xml:space="preserve"><value>Repair for Codex completed</value></data>
+  <data name="ResultRepairRuntimeTitle" xml:space="preserve"><value>Runtime-only repair completed</value></data>
+  <data name="ResultRemoveTitle" xml:space="preserve"><value>Okno removed</value></data>
+  <data name="ResultRemoveMessage" xml:space="preserve"><value>Okno was removed from this Windows profile.</value></data>
   <data name="ResultFailureTitle" xml:space="preserve"><value>Installation failed</value></data>
+  <data name="RemoveDialogTitle" xml:space="preserve"><value>Remove Okno</value></data>
+  <data name="RemoveDialogMessage" xml:space="preserve"><value>This removes the Codex plugin integration, the runtime-only install, the shared runtime, the Windows integration entry, and the maintenance shell copy. It does not remove content outside Okno.</value></data>
+  <data name="RemoveDialogConfirmButton" xml:space="preserve"><value>Remove</value></data>
+  <data name="RemoveDialogCancelButton" xml:space="preserve"><value>Cancel</value></data>
   <data name="SnippetTitle" xml:space="preserve"><value>Ready MCP snippet</value></data>
   <data name="CopySnippetButton" xml:space="preserve"><value>Copy snippet</value></data>
   <data name="SnippetCopiedMessage" xml:space="preserve"><value>Snippet copied to clipboard.</value></data>

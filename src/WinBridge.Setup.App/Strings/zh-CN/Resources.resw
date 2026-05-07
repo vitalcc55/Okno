@@ -25,6 +25,8 @@
   <data name="StatusRuntimeReadyDetail" xml:space="preserve"><value>你可以继续使用仅运行时模式，也可以在现有运行时之上再安装 Codex 插件。</value></data>
   <data name="StatusCodexInstalledTitle" xml:space="preserve"><value>已检测到 Codex 插件</value></data>
   <data name="StatusCodexInstalledDetail" xml:space="preserve"><value>你可以直接通过这个安装程序重新安装或修复本地插件和运行时。</value></data>
+  <data name="StatusBothInstalledTitle" xml:space="preserve"><value>已同时安装 Codex 和 runtime-only</value></data>
+  <data name="StatusBothInstalledDetail" xml:space="preserve"><value>你可以重新安装当前选中的方式、执行修复，或从这个窗口完整删除 Okno。</value></data>
   <data name="InstallModeSectionTitle" xml:space="preserve"><value>安装方式</value></data>
   <data name="InstallModeSectionDescription" xml:space="preserve"><value>请选择一种方式。Codex 模式已经包含共享的 Okno 运行时。</value></data>
   <data name="CodexModeTitle" xml:space="preserve"><value>安装到 Codex</value></data>
@@ -45,11 +47,25 @@
   <data name="FooterRuntimeHint" xml:space="preserve"><value>安装完成后，请将生成的配置片段复制到你的 MCP 客户端配置中。</value></data>
   <data name="InstallCodexButton" xml:space="preserve"><value>安装到 Codex</value></data>
   <data name="InstallRuntimeOnlyButton" xml:space="preserve"><value>仅安装运行时</value></data>
+  <data name="ReinstallCodexButton" xml:space="preserve"><value>重新安装到 Codex</value></data>
+  <data name="ReinstallRuntimeOnlyButton" xml:space="preserve"><value>重新安装仅运行时</value></data>
+  <data name="RepairCommandLabel" xml:space="preserve"><value>修复</value></data>
+  <data name="RemoveCommandLabel" xml:space="preserve"><value>删除 Okno</value></data>
   <data name="ResultCodexTitle" xml:space="preserve"><value>已完成 Codex 安装</value></data>
   <data name="ResultCodexMessage" xml:space="preserve"><value>请重启 Codex，使其从你的个人 marketplace 加载已安装的插件。</value></data>
   <data name="ResultRuntimeTitle" xml:space="preserve"><value>已完成运行时安装</value></data>
   <data name="ResultRuntimeMessage" xml:space="preserve"><value>请在客户端配置中使用生成的 MCP 配置片段。</value></data>
+  <data name="ResultReinstallCodexTitle" xml:space="preserve"><value>已完成 Codex 重新安装</value></data>
+  <data name="ResultReinstallRuntimeTitle" xml:space="preserve"><value>已完成仅运行时重新安装</value></data>
+  <data name="ResultRepairCodexTitle" xml:space="preserve"><value>已完成 Codex 修复</value></data>
+  <data name="ResultRepairRuntimeTitle" xml:space="preserve"><value>已完成仅运行时修复</value></data>
+  <data name="ResultRemoveTitle" xml:space="preserve"><value>Okno 已删除</value></data>
+  <data name="ResultRemoveMessage" xml:space="preserve"><value>Okno 已从这个 Windows 用户配置中删除。</value></data>
   <data name="ResultFailureTitle" xml:space="preserve"><value>安装失败</value></data>
+  <data name="RemoveDialogTitle" xml:space="preserve"><value>删除 Okno</value></data>
+  <data name="RemoveDialogMessage" xml:space="preserve"><value>这会删除 Codex 集成、runtime-only 安装、共享运行时、Windows 中的注册项以及 maintenance shell copy。Okno 之外的用户内容不会被删除。</value></data>
+  <data name="RemoveDialogConfirmButton" xml:space="preserve"><value>删除</value></data>
+  <data name="RemoveDialogCancelButton" xml:space="preserve"><value>取消</value></data>
   <data name="SnippetTitle" xml:space="preserve"><value>可直接使用的 MCP 配置片段</value></data>
   <data name="CopySnippetButton" xml:space="preserve"><value>复制片段</value></data>
   <data name="SnippetCopiedMessage" xml:space="preserve"><value>片段已复制到剪贴板。</value></data>

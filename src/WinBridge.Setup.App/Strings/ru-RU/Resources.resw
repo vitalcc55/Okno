@@ -25,6 +25,8 @@
   <data name="StatusRuntimeReadyDetail" xml:space="preserve"><value>Можно оставить вариант только с runtime или добавить поверх него плагин для Codex.</value></data>
   <data name="StatusCodexInstalledTitle" xml:space="preserve"><value>Плагин Codex уже установлен</value></data>
   <data name="StatusCodexInstalledDetail" xml:space="preserve"><value>Можно переустановить или восстановить локальный плагин и runtime прямо из этого установщика.</value></data>
+  <data name="StatusBothInstalledTitle" xml:space="preserve"><value>Установлены и Codex, и runtime-only</value></data>
+  <data name="StatusBothInstalledDetail" xml:space="preserve"><value>Можно переустановить выбранный вариант, выполнить починку или полностью удалить Okno из этого окна.</value></data>
   <data name="InstallModeSectionTitle" xml:space="preserve"><value>Вариант установки</value></data>
   <data name="InstallModeSectionDescription" xml:space="preserve"><value>Выберите один вариант. Режим Codex уже включает общий runtime Okno.</value></data>
   <data name="CodexModeTitle" xml:space="preserve"><value>Установить для Codex</value></data>
@@ -45,11 +47,25 @@
   <data name="FooterRuntimeHint" xml:space="preserve"><value>После установки скопируйте сгенерированный сниппет в конфигурацию вашего MCP-клиента.</value></data>
   <data name="InstallCodexButton" xml:space="preserve"><value>Установить для Codex</value></data>
   <data name="InstallRuntimeOnlyButton" xml:space="preserve"><value>Установить только runtime</value></data>
+  <data name="ReinstallCodexButton" xml:space="preserve"><value>Переустановить для Codex</value></data>
+  <data name="ReinstallRuntimeOnlyButton" xml:space="preserve"><value>Переустановить только runtime</value></data>
+  <data name="RepairCommandLabel" xml:space="preserve"><value>Починить</value></data>
+  <data name="RemoveCommandLabel" xml:space="preserve"><value>Удалить Okno</value></data>
   <data name="ResultCodexTitle" xml:space="preserve"><value>Установка для Codex завершена</value></data>
   <data name="ResultCodexMessage" xml:space="preserve"><value>Перезапустите Codex, чтобы он подхватил установленный плагин из вашего персонального marketplace.</value></data>
   <data name="ResultRuntimeTitle" xml:space="preserve"><value>Установка runtime завершена</value></data>
   <data name="ResultRuntimeMessage" xml:space="preserve"><value>Используйте сгенерированный MCP-сниппет в конфигурации клиента.</value></data>
+  <data name="ResultReinstallCodexTitle" xml:space="preserve"><value>Переустановка для Codex завершена</value></data>
+  <data name="ResultReinstallRuntimeTitle" xml:space="preserve"><value>Переустановка только runtime завершена</value></data>
+  <data name="ResultRepairCodexTitle" xml:space="preserve"><value>Починка для Codex завершена</value></data>
+  <data name="ResultRepairRuntimeTitle" xml:space="preserve"><value>Починка только runtime завершена</value></data>
+  <data name="ResultRemoveTitle" xml:space="preserve"><value>Okno удалён</value></data>
+  <data name="ResultRemoveMessage" xml:space="preserve"><value>Okno удалён из этого профиля Windows.</value></data>
   <data name="ResultFailureTitle" xml:space="preserve"><value>Не удалось выполнить установку</value></data>
+  <data name="RemoveDialogTitle" xml:space="preserve"><value>Удалить Okno</value></data>
+  <data name="RemoveDialogMessage" xml:space="preserve"><value>Будут удалены интеграция Codex, вариант runtime-only, общий runtime, запись в Windows и maintenance shell copy. Пользовательские данные вне Okno не удаляются.</value></data>
+  <data name="RemoveDialogConfirmButton" xml:space="preserve"><value>Удалить</value></data>
+  <data name="RemoveDialogCancelButton" xml:space="preserve"><value>Отмена</value></data>
   <data name="SnippetTitle" xml:space="preserve"><value>Готовый MCP-сниппет</value></data>
   <data name="CopySnippetButton" xml:space="preserve"><value>Скопировать сниппет</value></data>
   <data name="SnippetCopiedMessage" xml:space="preserve"><value>Сниппет скопирован в буфер обмена.</value></data>

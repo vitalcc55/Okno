@@ -1,4 +1,4 @@
-# Okno
+# Windows Computer Use MCP Runtime for AI Agents — One-Click Setup by Okno
 
 [**English**](README.md) | [Русский](README.ru.md) | [简体中文](README.zh-CN.md)
 
@@ -98,42 +98,30 @@ Okno is not the primary tool to reach for if you need:
 
 ## Quick Start
 
-The shortest supported path on this branch is the new **installer-first RC
-surface** for Windows.
+The recommended installation path on Windows is now **Okno Setup**.
 
 ### Prerequisites
 
 - Windows 11
 - Codex on Windows for the recommended `Codex` mode
-- PowerShell only if you choose the bootstrap shell instead of the GUI installer
 - network access if the installer needs to materialize runtime or plugin assets
 
-### 1. Get the installer RC assets
+### 1. Get the installer files
 
-Choose one entry point:
+Download the GUI installer package:
 
-- GUI installer: `okno-setup-unsigned-<version>-win-x64.zip`
-- bootstrap shell: `install-computer-use-win.ps1` +
-  `okno-setup-cli-payload-<version>-win-x64.zip`
+- `okno-setup-<version>-win-x64.zip`
 
-These RC artifacts are produced by the installer-wave release workflow on this
-branch together with the existing runtime and plugin bundle assets.
+These installation files are published together with the runtime and plugin
+bundle files.
 
 ### 2. Install for Codex or runtime-only
 
 GUI path:
 
-1. Extract `okno-setup-unsigned-<version>-win-x64.zip`.
+1. Extract `okno-setup-<version>-win-x64.zip`.
 2. Run `Okno Setup.exe`.
 3. Choose `Install for Codex (Recommended)` or `Install runtime only (Advanced)`.
-
-Bootstrap path:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode codex -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
-```
-
-Use `-Mode runtime-only` for the advanced plain MCP path.
 
 ### 3. Restart Codex or use the runtime-only snippet
 
@@ -148,6 +136,9 @@ Use `-Mode runtime-only` for the advanced plain MCP path.
 `runtime-only` mode installs the same shared runtime and returns a ready-to-paste
 MCP `command + args` snippet.
 
+After the first successful install, `Okno Setup.exe` also creates a stable
+per-user maintenance shell and registers `Okno` in Windows `Installed apps`.
+
 ### 4. Run the first loop
 
 1. call `list_apps`;
@@ -157,11 +148,30 @@ MCP `command + args` snippet.
 5. verify with `observeAfter=true` or a new `get_app_state`.
 
 For generic MCP `STDIO` clients, the installer-first runtime-only path, and the
-maintainer source workflow, see
+source-based development workflow, see
 [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md).
-Maintainers can still clone the repository and materialize a plugin-local bundle
+Developers can still clone the repository and materialize a plugin-local bundle
 explicitly with
 `scripts/codex/publish-computer-use-win-plugin.ps1`.
+
+### Update, repair, and remove
+
+For now, updates are installed by running a newer `Okno Setup.exe` package
+again:
+
+1. download a newer `Okno Setup.exe` package;
+2. run the newer `Okno Setup.exe`;
+3. choose the same mode again to refresh that surface.
+
+The same `Okno Setup.exe` also handles:
+
+- reinstall/update when the selected mode is already present;
+- `Repair` for the selected mode;
+- `Remove Okno` for the whole local Okno install.
+
+Windows Settings uses the same maintenance shell as the uninstall entry, so
+`Installed apps -> Okno -> Uninstall` routes back into the same remove-all
+lifecycle.
 
 ## Public Tool Surface
 
@@ -197,23 +207,6 @@ Important runtime-facing fields:
 - Low-confidence actions should be treated as `dispatch + verify`, not as blind
   success.
 
-## Documentation Map
-
-If you want more than the front page:
-
-- product docs: [docs/product/index.md](docs/product/index.md)
-- product spec: [docs/product/okno-spec.md](docs/product/okno-spec.md)
-- roadmap: [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md)
-- product vision: [docs/product/okno-vision.md](docs/product/okno-vision.md)
-- architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
-- public capability docs:
-  [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
-- install paths:
-  [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)
-- generated interfaces:
-  [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
-- commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
-
 ## Status
 
 Okno is already usable today as a local Windows plugin/runtime for Codex and
@@ -221,18 +214,18 @@ as a local MCP surface over `STDIO`.
 
 What is already strong:
 
-- the public capability is shipped and installable through installer-first RC assets;
-- the release-backed runtime contract for generic MCP clients is now defined;
-- the shared runtime store, installer core, bootstrap shell, and WinUI setup shell already exist;
+- the public capability is installable through the current Windows installer files;
+- the runtime contract for generic MCP clients is defined;
+- the shared runtime store, installer core, and WinUI setup shell already exist;
 - the public contract, smoke path, and verification loop are real;
 - the runtime is past the research-prototype stage.
 
 What is still intentionally honest:
 
-- the installer-first path on this branch is still an unsigned RC, not a signed public release;
-- repo-first/source installation remains the maintainer fallback, not the main story;
-- signed consumer distribution, `winget`, and `MSI` are still future waves;
-- publishing the RC assets and signing them is separate from the branch-local implementation state.
+- the current Windows installer files are distributed without code signing;
+- source-based installation remains the developer fallback, not the main user story;
+- signed consumer distribution, `winget`, and `MSI` are still future distribution work;
+- publishing signed installer files is a separate step from the implementation work in this repository.
 
 ## License
 

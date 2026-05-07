@@ -1,4 +1,4 @@
-# Okno
+# Computer Use для Windows через MCP для AI-агентов — Okno
 
 [English](README.md) | [**Русский**](README.ru.md) | [简体中文](README.zh-CN.md)
 
@@ -103,44 +103,31 @@ Okno не является главным выбором, если тебе ну
 
 ## Быстрый старт
 
-Самый короткий поддержанный путь на этой ветке — новый
-**installer-first RC path** для Windows.
+Рекомендуемый способ установки на Windows — использовать **Okno Setup**.
 
 ### Что нужно заранее
 
 - Windows 11
 - Codex на Windows для рекомендованного режима `Codex`
-- PowerShell только если вместо GUI installer используется bootstrap shell
 - доступ к сети, если во время установки нужно подтянуть runtime или plugin
   assets
 
-### 1. Получить installer RC assets
+### 1. Получить файлы установки
 
-Выбери один из вариантов:
+Скачай GUI installer package:
 
-- GUI installer: `okno-setup-unsigned-<version>-win-x64.zip`
-- bootstrap shell: `install-computer-use-win.ps1` +
-  `okno-setup-cli-payload-<version>-win-x64.zip`
+- `okno-setup-<version>-win-x64.zip`
 
-Эти RC artifacts собираются installer-wave workflow на этой ветке вместе с
-runtime и plugin bundle assets.
+Эти файлы установки публикуются вместе с файлами runtime и plugin bundle.
 
 ### 2. Установить для Codex или только runtime
 
 GUI path:
 
-1. Распакуй `okno-setup-unsigned-<version>-win-x64.zip`.
+1. Распакуй `okno-setup-<version>-win-x64.zip`.
 2. Запусти `Okno Setup.exe`.
 3. Выбери `Install for Codex (Recommended)` или
    `Install runtime only (Advanced)`.
-
-Bootstrap path:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode codex -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
-```
-
-Для plain MCP path используй `-Mode runtime-only`.
 
 ### 3. Перезапустить Codex или использовать runtime-only snippet
 
@@ -154,6 +141,10 @@ powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode code
 Режим `runtime-only` ставит тот же shared runtime и возвращает готовый MCP
 snippet `command + args`.
 
+После первой успешной установки `Okno Setup.exe` также создаёт стабильную
+per-user maintenance shell copy и регистрирует `Okno` в Windows
+`Установленные приложения`.
+
 ### 4. Пройти первый рабочий цикл
 
 1. вызвать `list_apps`;
@@ -163,11 +154,30 @@ snippet `command + args`.
 5. подтвердить результат через `observeAfter=true` или новый `get_app_state`.
 
 Для обычных MCP-клиентов по `STDIO`, installer-first runtime-only path и
-maintainer-сценария из исходников см.
+source-based сценария разработки см.
 [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md).
-Мейнтейнеры по-прежнему могут клонировать репозиторий и явно собрать
+Разработчики по-прежнему могут клонировать репозиторий и явно собрать
 plugin-local bundle командой
 `scripts/codex/publish-computer-use-win-plugin.ps1`.
+
+### Обновление, починка и удаление
+
+Пока обновление делается через повторный запуск более новой сборки
+`Okno Setup.exe`:
+
+1. скачать более новую сборку `Okno Setup.exe`;
+2. запустить этот новый `Okno Setup.exe`;
+3. снова выбрать тот же режим, который нужно обновить.
+
+Тот же `Okno Setup.exe` также обслуживает:
+
+- переустановку или обновление, если выбранный режим уже установлен;
+- `Repair` для выбранного режима;
+- `Remove Okno` для полного удаления локальной установки Okno.
+
+Запись в Windows `Установленные приложения` ведёт в тот же maintenance shell,
+поэтому `Параметры -> Установленные приложения -> Okno -> Удалить` запускает
+тот же remove-all lifecycle.
 
 ## Публичный набор инструментов
 
@@ -203,23 +213,6 @@ plugin-local bundle командой
 - Слабодоказанные действия надо воспринимать как `dispatch + verify`, а не как
   слепой успех.
 
-## Карта документации
-
-Если нужен не только front page:
-
-- product docs: [docs/product/index.md](docs/product/index.md)
-- product spec: [docs/product/okno-spec.md](docs/product/okno-spec.md)
-- roadmap: [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md)
-- product vision: [docs/product/okno-vision.md](docs/product/okno-vision.md)
-- architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
-- public capability docs:
-  [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
-- пути установки:
-  [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)
-- generated interfaces:
-  [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
-- commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
-
 ## Статус
 
 Okno уже можно использовать сегодня как локальный Windows plugin/runtime для
@@ -227,18 +220,18 @@ Codex и как локальную MCP surface поверх `STDIO`.
 
 Что уже выглядит сильно:
 
-- публичная возможность уже shipped и ставится через installer-first RC assets;
-- для обычных MCP-клиентов уже определён release-backed runtime contract;
-- shared runtime store, installer core, bootstrap shell и WinUI setup shell уже существуют;
+- публичная возможность уже ставится через текущие Windows-файлы установки;
+- для обычных MCP-клиентов уже определён runtime contract;
+- shared runtime store, installer core и WinUI setup shell уже существуют;
 - public contract, smoke path и verification loop реальны;
 - проект уже давно вышел из research-prototype стадии.
 
 Что пока честно остаётся правдой:
 
-- installer-first path на этой ветке пока остаётся unsigned RC, а не signed public release;
-- repo-first/source installation остаётся maintainer fallback, а не main story;
-- signed consumer distribution, `winget` и `MSI` — это следующие волны;
-- публикация RC assets и их подпись — отдельный шаг относительно branch-local implementation state.
+- текущие Windows-файлы установки распространяются без code signing;
+- source-based installation остаётся developer fallback, а не main user story;
+- signed consumer distribution, `winget` и `MSI` — это следующие distribution-этапы;
+- публикация подписанных installer-файлов — отдельный шаг относительно текущей реализации в репозитории.
 
 ## Лицензия
 

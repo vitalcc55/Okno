@@ -12,8 +12,8 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
-    private const string ReleasePackagingPluginVersion = "0.1.0";
-    private const string ReleasePackagingRuntimeVersion = "0.1.0-test";
+    private const string ReleasePackagingPluginVersion = "0.2.0";
+    private const string ReleasePackagingRuntimeVersion = "0.2.0-test";
     private const string ReleasePackagingRuntimeRid = "win-x64";
     private const string ReleasePackagingRuntimeServerExeName = "Okno.Server.exe";
     private const string ReleasePackagingRuntimeBundleManifestName = "okno-runtime-bundle-manifest.json";
@@ -279,11 +279,11 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         JsonElement root = descriptor.RootElement;
 
         Assert.Equal(1, root.GetProperty("formatVersion").GetInt32());
-        AssertReleasePackagingJsonString(root, "version", "0.1.0");
+        AssertReleasePackagingJsonString(root, "version", "0.2.0");
         AssertReleasePackagingJsonString(root, "rid", ReleasePackagingRuntimeRid);
-        AssertReleasePackagingJsonString(root, "tag", "v0.1.0");
-        AssertReleasePackagingJsonString(root, "assetName", "okno-computer-use-win-runtime-0.1.0-win-x64.zip");
-        Assert.Contains("/releases/download/v0.1.0/", GetRequiredReleasePackagingJsonString(root, "downloadUrl"), StringComparison.Ordinal);
+        AssertReleasePackagingJsonString(root, "tag", "v0.2.0");
+        AssertReleasePackagingJsonString(root, "assetName", "okno-computer-use-win-runtime-0.2.0-win-x64.zip");
+        Assert.Contains("/releases/download/v0.2.0/", GetRequiredReleasePackagingJsonString(root, "downloadUrl"), StringComparison.Ordinal);
         Assert.Matches("^[0-9a-f]{64}$", GetRequiredReleasePackagingJsonString(root, "sha256"));
         AssertReleasePackagingJsonString(root, "serverExeRelativePath", ReleasePackagingRuntimeServerExeName);
         AssertReleasePackagingJsonString(root, "bundleManifestName", ReleasePackagingRuntimeBundleManifestName);
@@ -298,10 +298,10 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             runbook,
             "## 1. Installer-first Codex install",
             "## 2. Installer-first runtime-only install",
-            "## 3. Generic MCP STDIO runtime zip",
-            "## 4. Developer from source",
+            "## 3. Updating and maintenance through the same installer",
+            "## 4. Generic MCP STDIO runtime zip",
+            "## 5. Developer from source",
             "Okno Setup.exe",
-            "install-computer-use-win.ps1",
             ReleasePackagingRuntimeServerExeName,
             "publish-computer-use-win-plugin.ps1");
     }
@@ -444,7 +444,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 clientInfo = new
                 {
                     name = "ComputerUseWin.ReleasePackagingTests",
-                    version = "0.1.0",
+                    version = "0.2.0",
                 },
             },
             "initialize");

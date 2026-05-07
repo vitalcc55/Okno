@@ -11,12 +11,16 @@ public partial class MainPage : Page
 {
     private readonly SetupShellController controller = new();
     private readonly SetupLocalizationService localization = new();
-    private Window? window;
-    private SetupShellInstallSummary? lastInstallSummary;
-    private bool showingFailureResult;
+    private readonly SetupAppLaunchOptions launchOptions;
 
-    public MainPage()
+    private Window? window;
+    private SetupShellOperationSummary? lastOperationSummary;
+    private bool showingFailureResult;
+    private bool pendingRemovePromptShown;
+
+    public MainPage(SetupAppLaunchOptions launchOptions)
     {
+        this.launchOptions = launchOptions;
         try
         {
             InitializeComponent();
@@ -44,9 +48,14 @@ public partial class MainPage : Page
         ApplyWindowTheme();
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyWindowTheme();
+        if (!pendingRemovePromptShown && launchOptions.Operation == SetupAppShellOperation.RemoveAll && !launchOptions.Quiet)
+        {
+            pendingRemovePromptShown = true;
+            await PromptAndRemoveAsync();
+        }
     }
 
     private void InitializeLanguageSelector()
@@ -64,12 +73,52 @@ public partial class MainPage : Page
 
     private async void OnInstallClicked(object sender, RoutedEventArgs e)
     {
+        await ExecuteLifecycleOperationAsync(() => controller.ExecutePrimaryActionAsync(GetSelectedMode()));
+    }
+
+    private async void OnRepairClicked(object sender, RoutedEventArgs e)
+    {
+        await ExecuteLifecycleOperationAsync(() => controller.RepairAsync(GetSelectedMode()));
+    }
+
+    private async void OnRemoveClicked(object sender, RoutedEventArgs e)
+    {
+        await PromptAndRemoveAsync();
+    }
+
+    private async Task PromptAndRemoveAsync()
+    {
+        if (XamlRoot is null)
+        {
+            await ExecuteLifecycleOperationAsync(() => controller.RemoveAllAsync(AppContext.BaseDirectory, Environment.ProcessId));
+            return;
+        }
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = L("RemoveDialogTitle"),
+            Content = L("RemoveDialogMessage"),
+            PrimaryButtonText = L("RemoveDialogConfirmButton"),
+            CloseButtonText = L("RemoveDialogCancelButton"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            await ExecuteLifecycleOperationAsync(() => controller.RemoveAllAsync(AppContext.BaseDirectory, Environment.ProcessId));
+        }
+    }
+
+    private async Task ExecuteLifecycleOperationAsync(Func<Task<SetupShellOperationSummary>> operation)
+    {
         SetBusy(true);
         ClearResult();
         try
         {
-            SetupShellInstallSummary summary = await controller.InstallAsync(GetSelectedMode());
-            lastInstallSummary = summary;
+            SetupShellOperationSummary summary = await operation();
+            lastOperationSummary = summary;
             showingFailureResult = false;
             ApplyResult(summary);
             ApplyStatusSnapshot(controller.GetStatusSnapshot());
@@ -78,11 +127,12 @@ public partial class MainPage : Page
         catch (Exception ex)
         {
             ResultPanel.Visibility = Visibility.Visible;
-            lastInstallSummary = null;
+            lastOperationSummary = null;
             showingFailureResult = true;
             ResultTitleTextBlock.Text = L("ResultFailureTitle");
             ResultMessageTextBlock.Text = ex.Message;
             RuntimePathTextBlock.Text = string.Empty;
+            RuntimePathTextBlock.Visibility = Visibility.Collapsed;
             PluginPathTextBlock.Text = string.Empty;
             MarketplacePathTextBlock.Text = string.Empty;
             PluginPathTextBlock.Visibility = Visibility.Collapsed;
@@ -92,6 +142,7 @@ public partial class MainPage : Page
         finally
         {
             SetBusy(false);
+            UpdateModePresentation();
         }
     }
 
@@ -125,9 +176,9 @@ public partial class MainPage : Page
         ApplyStatusSnapshot(controller.GetStatusSnapshot());
         UpdateModePresentation();
 
-        if (lastInstallSummary is not null)
+        if (lastOperationSummary is not null)
         {
-            ApplyResult(lastInstallSummary);
+            ApplyResult(lastOperationSummary);
         }
         else if (showingFailureResult)
         {
@@ -149,30 +200,45 @@ public partial class MainPage : Page
         PluginRootTextBlock.Text = snapshot.PluginSourceRoot;
         MarketplaceTextBlock.Text = snapshot.MarketplacePath;
 
-        if (snapshot.CodexInstalled)
+        switch (snapshot.InstalledState)
         {
-            StatusTitleTextBlock.Text = L("StatusCodexInstalledTitle");
-            StatusDetailTextBlock.Text = L("StatusCodexInstalledDetail");
-        }
-        else if (snapshot.RuntimeReady)
-        {
-            StatusTitleTextBlock.Text = L("StatusRuntimeReadyTitle");
-            StatusDetailTextBlock.Text = L("StatusRuntimeReadyDetail");
-        }
-        else
-        {
-            StatusTitleTextBlock.Text = L("StatusRecommendedTitle");
-            StatusDetailTextBlock.Text = L("StatusRecommendedDetail");
+            case SetupShellInstalledState.CodexAndRuntimeOnly:
+                StatusTitleTextBlock.Text = L("StatusBothInstalledTitle");
+                StatusDetailTextBlock.Text = L("StatusBothInstalledDetail");
+                break;
+            case SetupShellInstalledState.Codex:
+                StatusTitleTextBlock.Text = L("StatusCodexInstalledTitle");
+                StatusDetailTextBlock.Text = L("StatusCodexInstalledDetail");
+                break;
+            case SetupShellInstalledState.RuntimeOnly:
+                StatusTitleTextBlock.Text = L("StatusRuntimeReadyTitle");
+                StatusDetailTextBlock.Text = L("StatusRuntimeReadyDetail");
+                break;
+            default:
+                StatusTitleTextBlock.Text = L("StatusRecommendedTitle");
+                StatusDetailTextBlock.Text = snapshot.RuntimeReady
+                    ? L("StatusRuntimeReadyDetail")
+                    : L("StatusRecommendedDetail");
+                break;
         }
     }
 
-    private void ApplyResult(SetupShellInstallSummary summary)
+    private void ApplyResult(SetupShellOperationSummary summary)
     {
         ResultPanel.Visibility = Visibility.Visible;
-        bool isRuntimeOnly = !string.IsNullOrWhiteSpace(summary.Snippet);
-        ResultTitleTextBlock.Text = isRuntimeOnly ? L("ResultRuntimeTitle") : L("ResultCodexTitle");
-        ResultMessageTextBlock.Text = isRuntimeOnly ? L("ResultRuntimeMessage") : L("ResultCodexMessage");
-        RuntimePathTextBlock.Text = $"{L("RuntimeRootLabel")}: {summary.RuntimeRoot}";
+        ResultTitleTextBlock.Text = GetLocalizedResultTitle(summary);
+        ResultMessageTextBlock.Text = GetLocalizedResultMessage(summary);
+
+        if (string.IsNullOrWhiteSpace(summary.RuntimeRoot))
+        {
+            RuntimePathTextBlock.Text = string.Empty;
+            RuntimePathTextBlock.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            RuntimePathTextBlock.Text = $"{L("RuntimeRootLabel")}: {summary.RuntimeRoot}";
+            RuntimePathTextBlock.Visibility = Visibility.Visible;
+        }
 
         if (string.IsNullOrWhiteSpace(summary.PluginSourceRoot))
         {
@@ -212,6 +278,7 @@ public partial class MainPage : Page
         ResultTitleTextBlock.Text = string.Empty;
         ResultMessageTextBlock.Text = string.Empty;
         RuntimePathTextBlock.Text = string.Empty;
+        RuntimePathTextBlock.Visibility = Visibility.Collapsed;
         PluginPathTextBlock.Text = string.Empty;
         MarketplacePathTextBlock.Text = string.Empty;
         SnippetTextBox.Text = string.Empty;
@@ -223,16 +290,17 @@ public partial class MainPage : Page
 
     private void UpdateModePresentation()
     {
-        bool isCodexMode = GetSelectedMode() == ComputerUseWinInstallMode.Codex;
+        ComputerUseWinInstallMode selectedMode = GetSelectedMode();
+        SetupShellModePresentation presentation = controller.GetModePresentation(GetSelectedMode());
 
-        ModeSummaryTitleTextBlock.Text = isCodexMode
+        ModeSummaryTitleTextBlock.Text = selectedMode == ComputerUseWinInstallMode.Codex
             ? L("ModeSummaryCodexTitle")
             : L("ModeSummaryRuntimeTitle");
-        ModeSummaryDetailTextBlock.Text = isCodexMode
+        ModeSummaryDetailTextBlock.Text = selectedMode == ComputerUseWinInstallMode.Codex
             ? L("ModeSummaryCodexDetail")
             : L("ModeSummaryRuntimeDetail");
 
-        Visibility codexOnlyVisibility = isCodexMode ? Visibility.Visible : Visibility.Collapsed;
+        Visibility codexOnlyVisibility = presentation.ShowCodexPaths ? Visibility.Visible : Visibility.Collapsed;
         CodexHomeLabelTextBlock.Visibility = codexOnlyVisibility;
         CodexHomeTextBlock.Visibility = codexOnlyVisibility;
         PluginRootLabelTextBlock.Visibility = codexOnlyVisibility;
@@ -240,10 +308,12 @@ public partial class MainPage : Page
         MarketplaceLabelTextBlock.Visibility = codexOnlyVisibility;
         MarketplaceTextBlock.Visibility = codexOnlyVisibility;
 
-        FooterHintTextBlock.Text = isCodexMode
+        FooterHintTextBlock.Text = selectedMode == ComputerUseWinInstallMode.Codex
             ? L("FooterCodexHint")
             : L("FooterRuntimeHint");
-        InstallButton.Content = isCodexMode ? L("InstallCodexButton") : L("InstallRuntimeOnlyButton");
+        InstallButton.Content = GetLocalizedPrimaryActionLabel(selectedMode, presentation.PrimaryActionKind);
+        RepairAppBarButton.IsEnabled = presentation.CanRepair;
+        RemoveAppBarButton.IsEnabled = presentation.CanRemove;
     }
 
     private void SetBusy(bool isBusy)
@@ -251,6 +321,9 @@ public partial class MainPage : Page
         InstallButton.IsEnabled = !isBusy;
         CodexModeRadioButton.IsEnabled = !isBusy;
         RuntimeOnlyModeRadioButton.IsEnabled = !isBusy;
+        RepairAppBarButton.IsEnabled = !isBusy;
+        RemoveAppBarButton.IsEnabled = !isBusy;
+        LanguageComboBox.IsEnabled = !isBusy;
         InstallProgressRing.IsActive = isBusy;
         InstallProgressRing.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -319,6 +392,8 @@ public partial class MainPage : Page
         MarketplaceLabelTextBlock.Text = L("MarketplaceFileLabel");
         SnippetTitleTextBlock.Text = L("SnippetTitle");
         CopySnippetButton.Content = L("CopySnippetButton");
+        RepairAppBarButton.Label = L("RepairCommandLabel");
+        RemoveAppBarButton.Label = L("RemoveCommandLabel");
 
         LanguageComboBox.Header = null;
         LanguageComboBox.PlaceholderText = L("LanguageSelectorPlaceholder");
@@ -327,9 +402,46 @@ public partial class MainPage : Page
         CodexModeRadioButton.SetValue(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty, L("CodexModeTitle"));
         RuntimeOnlyModeRadioButton.SetValue(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty, L("RuntimeOnlyModeTitle"));
         CopySnippetButton.SetValue(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty, L("CopySnippetButton"));
+        RepairAppBarButton.SetValue(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty, L("RepairCommandLabel"));
+        RemoveAppBarButton.SetValue(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty, L("RemoveCommandLabel"));
     }
 
     private string L(string resourceKey) => localization.GetString(resourceKey);
+
+    private string GetLocalizedPrimaryActionLabel(ComputerUseWinInstallMode mode, SetupShellOperationKind operationKind)
+    {
+        return (mode, operationKind) switch
+        {
+            (ComputerUseWinInstallMode.Codex, SetupShellOperationKind.Reinstall) => L("ReinstallCodexButton"),
+            (ComputerUseWinInstallMode.RuntimeOnly, SetupShellOperationKind.Reinstall) => L("ReinstallRuntimeOnlyButton"),
+            (ComputerUseWinInstallMode.Codex, _) => L("InstallCodexButton"),
+            _ => L("InstallRuntimeOnlyButton"),
+        };
+    }
+
+    private string GetLocalizedResultTitle(SetupShellOperationSummary summary)
+    {
+        return summary.OperationKind switch
+        {
+            SetupShellOperationKind.RemoveAll => L("ResultRemoveTitle"),
+            SetupShellOperationKind.Repair when summary.Snippet is null => L("ResultRepairCodexTitle"),
+            SetupShellOperationKind.Repair => L("ResultRepairRuntimeTitle"),
+            SetupShellOperationKind.Reinstall when summary.Snippet is null => L("ResultReinstallCodexTitle"),
+            SetupShellOperationKind.Reinstall => L("ResultReinstallRuntimeTitle"),
+            _ when summary.Snippet is null => L("ResultCodexTitle"),
+            _ => L("ResultRuntimeTitle"),
+        };
+    }
+
+    private string GetLocalizedResultMessage(SetupShellOperationSummary summary)
+    {
+        return summary.OperationKind switch
+        {
+            SetupShellOperationKind.RemoveAll => L("ResultRemoveMessage"),
+            _ when summary.Snippet is null => L("ResultCodexMessage"),
+            _ => L("ResultRuntimeMessage"),
+        };
+    }
 
     private static Color ResolveColor(string resourceKey, Color fallback)
     {

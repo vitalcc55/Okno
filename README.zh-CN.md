@@ -1,4 +1,4 @@
-# Okno
+# 通过 MCP 为 AI 智能体提供 Windows Computer Use — Okno
 
 [English](README.md) | [Русский](README.ru.md) | [**简体中文**](README.zh-CN.md)
 
@@ -92,43 +92,30 @@ Okno 的设计围绕四条产品规则展开。
 
 ## 快速开始
 
-当前最短、最受支持的路径是：**Windows 上的 Codex** 加上本仓库提供的
-installer-first RC 路径。
+Windows 上推荐的安装方式现在是直接使用 **Okno Setup**。
 
 ### 前置条件
 
 - Windows 11
 - 推荐的 `Codex` 模式需要 Windows 上的 Codex
-- 只有在使用 bootstrap shell 而不是 GUI installer 时才需要 PowerShell
 - 如果安装过程中需要解析 runtime 或 plugin assets，则需要网络访问
 
-### 1. 获取 installer RC assets
+### 1. 获取安装文件
 
-可选入口：
+下载 GUI installer package：
 
-- GUI installer: `okno-setup-unsigned-<version>-win-x64.zip`
-- bootstrap shell: `install-computer-use-win.ps1` +
-  `okno-setup-cli-payload-<version>-win-x64.zip`
+- `okno-setup-<version>-win-x64.zip`
 
-这些 RC artifacts 由此分支上的 installer-wave workflow 生成，并与
-runtime / plugin bundle assets 一起发布。
+这些安装文件会与 runtime 和 plugin bundle 文件一起发布。
 
 ### 2. 安装到 Codex，或只安装 runtime
 
 GUI path:
 
-1. 解压 `okno-setup-unsigned-<version>-win-x64.zip`。
+1. 解压 `okno-setup-<version>-win-x64.zip`。
 2. 运行 `Okno Setup.exe`。
 3. 选择 `Install for Codex (Recommended)` 或
    `Install runtime only (Advanced)`。
-
-Bootstrap path:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode codex -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
-```
-
-如果要走 plain MCP path，请使用 `-Mode runtime-only`。
 
 ### 3. 重启 Codex，或使用 runtime-only snippet
 
@@ -142,6 +129,9 @@ powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode code
 `runtime-only` 模式会安装同一个 shared runtime，并返回可以直接粘贴的
 MCP `command + args` snippet。
 
+第一次成功安装后，`Okno Setup.exe` 还会创建稳定的 per-user
+maintenance shell copy，并把 `Okno` 注册到 Windows `Installed apps`。
+
 ### 4. 跑通第一次操作循环
 
 1. 调用 `list_apps`；
@@ -151,12 +141,30 @@ MCP `command + args` snippet。
 5. 通过 `observeAfter=true` 或新的 `get_app_state` 验证结果。
 
 如果你要给通用 MCP `STDIO` 客户端使用、走 installer-first runtime-only
-path，或者要走维护者的源码工作流，请
+path，或者要走 source-based 开发工作流，请
 参见
 [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)。
-维护者仍可克隆仓库，并通过
+开发者仍可克隆仓库，并通过
 `scripts/codex/publish-computer-use-win-plugin.ps1` 显式生成 plugin-local
 bundle。
+
+### 更新、修复和删除
+
+目前更新仍然是手动重新运行较新版本的 `Okno Setup.exe`：
+
+1. 下载更新版本的 `Okno Setup.exe`；
+2. 运行新的 `Okno Setup.exe`；
+3. 再次选择你要刷新的同一安装模式。
+
+同一个 `Okno Setup.exe` 也负责：
+
+- 当所选模式已经存在时执行重新安装或更新；
+- 对所选模式执行 `Repair`；
+- 通过 `Remove Okno` 完整删除本地 Okno 安装。
+
+Windows `Installed apps` 中的卸载入口也会回到同一个 maintenance shell，
+因此 `Settings -> Installed apps -> Okno -> Uninstall` 走的是同一个
+remove-all lifecycle。
 
 ## 公开工具 surface
 
@@ -188,23 +196,6 @@ bundle。
 - blocked 或 sensitive targets 仍然需要明确的策略约束。
 - 对低置信动作，正确理解应该是 `dispatch + verify`，而不是盲目当成成功。
 
-## 文档地图
-
-如果你需要的不只是 front page：
-
-- product docs: [docs/product/index.md](docs/product/index.md)
-- product spec: [docs/product/okno-spec.md](docs/product/okno-spec.md)
-- roadmap: [docs/product/okno-roadmap.md](docs/product/okno-roadmap.md)
-- product vision: [docs/product/okno-vision.md](docs/product/okno-vision.md)
-- architecture docs: [docs/architecture/index.md](docs/architecture/index.md)
-- public capability docs:
-  [plugins/computer-use-win/README.md](plugins/computer-use-win/README.md)
-- 安装路径说明：
-  [docs/runbooks/computer-use-win-install.md](docs/runbooks/computer-use-win-install.md)
-- generated interfaces:
-  [docs/generated/computer-use-win-interfaces.md](docs/generated/computer-use-win-interfaces.md)
-- commands inventory: [docs/generated/commands.md](docs/generated/commands.md)
-
 ## 当前状态
 
 今天的 Okno 已经可以作为 Codex 的本地 Windows plugin/runtime 使用，也可
@@ -212,18 +203,18 @@ bundle。
 
 已经比较成熟的部分：
 
-- 公开 capability 已经 shipped，并且可以通过 installer-first RC assets 安装；
-- 面向通用 MCP 客户端的 release-backed runtime contract 已经定义完成；
-- shared runtime store、installer core、bootstrap shell 和 WinUI setup shell 已经存在；
+- 公开 capability 已经可以通过当前 Windows 安装文件安装；
+- 面向通用 MCP 客户端的 runtime contract 已经定义完成；
+- shared runtime store、installer core 和 WinUI setup shell 已经存在；
 - public contract、smoke path 和 verification loop 都是真实可运行的；
 - 项目早已不是 research prototype。
 
 仍需诚实说明的部分：
 
-- 这条 installer-first path 在当前分支上仍然只是 unsigned RC，而不是 signed public release；
-- repo-first/source installation 仍然是 maintainer fallback，而不是 main story；
-- signed consumer distribution、`winget` 和 `MSI` 仍属于后续 wave；
-- 发布 RC assets 并为其签名，和 branch-local implementation state 是分开的步骤。
+- 当前 Windows 安装文件以不带 code signing 的形式发布；
+- source-based installation 仍然是 developer fallback，而不是 main user story；
+- signed consumer distribution、`winget` 和 `MSI` 仍属于后续 distribution 工作；
+- 发布已签名的 installer 文件，是和当前仓库实现分开的单独步骤。
 
 ## 许可证
 

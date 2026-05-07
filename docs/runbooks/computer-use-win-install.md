@@ -5,26 +5,18 @@ This runbook documents the supported installation stories for the current
 
 ## 1. Installer-first Codex install
 
-This is the recommended OpenAI/Codex-native path on the installer-wave branch.
+This is the recommended OpenAI/Codex-native path.
 
 Requirements:
 
 - Windows 11
 - Codex on Windows
-- either the GUI installer archive `okno-setup-unsigned-<version>-win-x64.zip`
-  or the bootstrap pair `install-computer-use-win.ps1` +
-  `okno-setup-cli-payload-<version>-win-x64.zip`
+- the GUI installer archive `okno-setup-<version>-win-x64.zip`
 - network access if the install needs to resolve runtime or plugin assets
 
 Steps:
 
-1. Extract `okno-setup-unsigned-<version>-win-x64.zip` and run `Okno Setup.exe`,
-   or run:
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode codex -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
-   ```
-
+1. Extract `okno-setup-<version>-win-x64.zip` and run `Okno Setup.exe`.
 2. Choose `Install for Codex (Recommended)`.
 3. Restart Codex or open a new thread.
 4. Start with `list_apps`.
@@ -34,11 +26,23 @@ Behavior:
 - the installer lays out the shared runtime under `%LocalAppData%\Okno\computer-use-win`;
 - the installer lays out the thin plugin under `<codex-home>/plugins/computer-use-win`;
 - the installer creates or updates `%USERPROFILE%\.agents\plugins\marketplace.json`;
+- after the first successful install, the installer also registers `Okno` in
+  Windows `Installed apps` and creates a stable Start Menu shortcut
+  `Okno Setup`;
 - the launcher first prefers the shared installed runtime;
 - plugin-local runtime remains only a developer fallback;
 - if the shared runtime is missing or invalid, the launcher resolves the pinned
   runtime release described by `runtime-release.json` and rehydrates the shared
   runtime store before starting `Okno.Server.exe`.
+
+Lifecycle:
+
+- rerunning the same or a newer `Okno Setup.exe` against `Codex` mode acts as
+  reinstall/update, not as a conflicting second install;
+- `Repair` is available from the same `Okno Setup.exe`;
+- `Remove Okno` from the same `Okno Setup.exe`, or uninstall from Windows
+  Settings, removes the Codex integration, runtime-only receipts, shared
+  runtime store, Windows registration, and the stable maintenance shell copy.
 
 ## 2. Installer-first runtime-only install
 
@@ -48,27 +52,46 @@ installing the Codex plugin.
 Requirements:
 
 - Windows 11
-- either the GUI installer archive `okno-setup-unsigned-<version>-win-x64.zip`
-  or the bootstrap pair `install-computer-use-win.ps1` +
-  `okno-setup-cli-payload-<version>-win-x64.zip`
+- the GUI installer archive `okno-setup-<version>-win-x64.zip`
 
 Steps:
 
-1. Run `Okno Setup.exe` and choose `Install runtime only (Advanced)`, or run:
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File install-computer-use-win.ps1 -Mode runtime-only -PayloadArchivePath .\okno-setup-cli-payload-<version>-win-x64.zip
-   ```
-
+1. Run `Okno Setup.exe` and choose `Install runtime only (Advanced)`.
 2. Copy the emitted MCP snippet into your client configuration.
 
 Behavior:
 
 - this mode installs the same shared runtime store used by Codex mode under `%LocalAppData%\Okno\computer-use-win`;
 - it does not touch the personal Codex marketplace;
-- it returns a ready-to-paste local `STDIO` snippet.
+- it returns a ready-to-paste local `STDIO` snippet;
+- rerunning the same or a newer `Okno Setup.exe` against `runtime-only` acts as
+  reinstall/update and keeps the launcher command stable;
+- `Remove Okno` from the same installer removes the runtime-only receipt and
+  shared runtime store together with the Windows maintenance registration.
 
-## 3. Generic MCP STDIO runtime zip
+## 3. Updating and maintenance through the same installer
+
+For the current installer wave, update remains a manual rerun story.
+
+Use this model:
+
+1. download a newer `Okno Setup.exe` release package;
+2. run the newer `Okno Setup.exe`;
+3. choose the same mode again if you want to refresh that surface;
+4. use `Repair` when you want to restore the selected mode on the current
+   version;
+5. use `Remove Okno` when you want to delete the whole local Okno install.
+
+Important notes:
+
+- `RuntimeOnly -> Codex` is a normal follow-up install path: rerun the same
+  installer and choose `Install for Codex`;
+- `Codex -> runtime-only` is also a normal follow-up path: rerun the installer
+  and choose `Install runtime only`;
+- if both surfaces are already present, the selected mode is refreshed while
+  the shared runtime remains one canonical install.
+
+## 4. Generic MCP STDIO runtime zip
 
 This remains the manual non-Codex path when you want only the standalone
 runtime release zip without the installer shells.
@@ -103,7 +126,7 @@ Notes:
 - clients must treat this as a local `STDIO` MCP server, not as a remote HTTP
   endpoint.
 
-## 4. Developer from source
+## 5. Developer from source
 
 This path remains available for maintainers and local runtime work.
 
