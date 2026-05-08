@@ -20,7 +20,7 @@
     ],
     "defaultPrompt": [
       "Use Computer Use for Windows to inspect the target Windows app.",
-      "Start with list_apps and get_app_state, then use click, press_key, set_value, type_text, scroll, perform_secondary_action, or drag only after fresh state proof."
+      "Start with list_apps and get_app_state; use action tools only after fresh state proof."
     ]
   }
 }

@@ -1,8 +1,26 @@
 # Task State
 
-goal: Довести installer-wave до финального `0.2.0` release state с одним `Okno Setup.exe`, где пользователь получает install/reinstall/update/repair/remove для `Codex` и `runtime-only`, плюс Windows `Installed apps` integration.
-stage: Installer-wave закрыта как `0.2.0` unsigned release; signing явно снят из scope этой release model.
+goal: Разобрать post-release incident по `computer-use-win` после внешнего тестирования `v0.2.0`: MCP tools не появились в Codex, runtime вручную падал на assembly load, uninstall оставлял config.toml entries.
+stage: Repo-side дефекты подтверждены и локально исправлены; релизный closeout ещё не сделан. Корректный public путь дальше — patch release `0.2.1`, а не тихая подмена `v0.2.0` asset под тем же тегом.
 done:
+- Подтверждено на опубликованном GitHub release asset `v0.2.0`: runtime zip содержит `System.Diagnostics.DiagnosticSource.dll` `8.0.26`, а `Okno.Server.deps.json` требует `System.Diagnostics.DiagnosticSource/10.0.3`. Это объясняет падение `Okno.Server.exe` до MCP handshake и отсутствие callable tools в Codex.
+- Локально исправлен runtime packager:
+  - `computer-use-win-runtime-bundle-common.ps1` теперь после `dotnet publish` ремонтирует package runtime assets из NuGet cache, если publish output оставил stale runtime-pack DLL;
+  - каждый runtime bundle теперь валидируется по `Okno.Server.deps.json` до manifest/checksum/archive publication.
+- Укорочен `interface.defaultPrompt[1]` в `plugins/computer-use-win/.codex-plugin/plugin.json`, чтобы убрать Codex manifest warning `prompt must be at most 128 characters`.
+- `ComputerUseWinInstallerService` теперь при Codex uninstall / full remove чистит Okno-owned секции `%CODEX_HOME%\config.toml`:
+  - `[plugins."computer-use-win@okno-local-installed"]`;
+  - известные aliases `[mcp_servers.computer_use_win]` / `[mcp_servers."computer-use-win"]`;
+  - unrelated sections сохраняются.
+- Добавлены regression tests:
+  - runtime package asset fileVersion must match `Okno.Server.deps.json`;
+  - invalid source bundle with deps version drift is rejected;
+  - plugin `defaultPrompt` entries stay <= 128 chars;
+  - uninstall removes Okno-owned Codex config sections and preserves unrelated sections.
+- Таргетная проверка green:
+  - `dotnet test tests\WinBridge.Server.IntegrationTests\WinBridge.Server.IntegrationTests.csproj --filter "<incident set>"` => `6/6` green.
+
+previous_release_context:
 - `SetupShellController` переведён из install-only presenter в state-aware lifecycle controller:
   - различает `None`, `RuntimeOnly`, `Codex`, `CodexAndRuntimeOnly`;
   - primary action сам выбирает `Install` или `Reinstall` для выбранного mode;
@@ -51,8 +69,8 @@ done:
   - remove-all with malformed marketplace;
   - release packaging runbook contract updated for lifecycle section.
 next:
-- При user approval подготовить release commit, tag `v0.2.0` и release publication actions.
-- Если понадобится follow-up после этого релиза, следующим отдельным слоем будет уже не signing blocker, а optional distribution polish (`winget`, `MSI`, richer Windows uninstall/distribution story).
+- Дальше нужен release decision: делать patch release `0.2.1` с исправленным runtime asset/plugin/setup, либо остановиться на локальном commit и отдельно согласовать публикацию.
+- Перед patch release поднять версии с `0.2.0` до `0.2.1`, пересобрать descriptor/checksums, прогнать canonical `build/test/docs-refresh/verify`.
 edited_files:
 - src/WinBridge.Setup.Core/ComputerUseWinRuntimeContracts.cs
 - src/WinBridge.Setup.Core/ComputerUseWinInstallerService.cs
@@ -84,12 +102,11 @@ edited_files:
 - docs/generated/commands.md
 - docs/CHANGELOG.md
 verify_status:
+- incident targeted contour: green (`6/6`)
+- fixed local runtime packager proof: generated runtime zip carries `System.Diagnostics.DiagnosticSource.dll` `10.0.326.7603`.
 - `scripts/build.ps1`: green
-- lifecycle targeted contour: green (`11/11`)
-- `scripts/test.ps1`: green (`WinBridge.Runtime.Tests 669/669`, `WinBridge.Server.IntegrationTests 484/484`)
+- `scripts/test.ps1`: green (`WinBridge.Runtime.Tests 669/669`, `WinBridge.Server.IntegrationTests 486/486`)
 - `scripts/refresh-generated-docs.ps1`: green
-- `scripts/codex/verify.ps1`: green
-- manual WinUI launch proof: staged app opened a real top-level window with title `Okno Setup`
+- `scripts/codex/verify.ps1`: green, total `00:17:32.0737631`
 open_questions:
-- Делать ли в этом же цикле tag/push/GitHub release publication для `v0.2.0`, или сначала отдельный human sanity pass по release text?
-- Нужен ли после `0.2.0` отдельный follow-up only for richer distribution channels (`winget`/`MSI`)?
+- Нужен ли немедленный `0.2.1` patch release после full verification.

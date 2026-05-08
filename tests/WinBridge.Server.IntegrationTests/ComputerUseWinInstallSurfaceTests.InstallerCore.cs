@@ -89,6 +89,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "runtime-only"), "runtime-only install");
         AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex"), "codex install");
+        WriteCodexConfigWithComputerUseWinEntries(test.CodexHome);
 
         ScriptInvocationResult uninstallResult = test.RunSetupCliJson("uninstall", "codex");
 
@@ -99,6 +100,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         string marketplaceText = File.ReadAllText(GetExpectedPersonalMarketplacePath(test.UserProfile));
         Assert.DoesNotContain("\"name\": \"computer-use-win\"", marketplaceText, StringComparison.Ordinal);
+        Assert.DoesNotContain("computer-use-win@okno-local-installed", File.ReadAllText(GetExpectedCodexConfigPath(test.CodexHome)), StringComparison.Ordinal);
+        Assert.DoesNotContain("[mcp_servers.computer_use_win]", File.ReadAllText(GetExpectedCodexConfigPath(test.CodexHome)), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -240,6 +243,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "runtime-only"), "runtime-only install");
         AssertSetupCliSucceeded(test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex"), "codex install");
+        WriteCodexConfigWithComputerUseWinEntries(test.CodexHome);
 
         ComputerUseWinInstallerService installer = new(
             new ComputerUseWinRuntimeFoundationService(
@@ -251,6 +255,10 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         Assert.False(File.Exists(GetExpectedCodexReceiptPath(test.CodexHome)));
         Assert.False(Directory.Exists(GetExpectedInstalledPluginRoot(test.CodexHome)));
         Assert.False(Directory.Exists(GetExpectedSharedRuntimeStoreRoot(test.CodexHome)));
+        string configText = File.ReadAllText(GetExpectedCodexConfigPath(test.CodexHome));
+        Assert.DoesNotContain("computer-use-win@okno-local-installed", configText, StringComparison.Ordinal);
+        Assert.DoesNotContain("[mcp_servers.computer_use_win]", configText, StringComparison.Ordinal);
+        Assert.Contains("[plugins.\"other-plugin@local\"]", configText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -280,6 +288,30 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     private static SetupCliTestHarness CreateRuntimeOnlySetupCliTestHarness(string scenarioName) => CreateSetupCliTestHarness(SharedRuntimeOnlyRelease.Value, scenarioName);
 
     private static SetupCliTestHarness CreateCodexSetupCliTestHarness(string scenarioName) => CreateSetupCliTestHarness(SharedCodexRelease.Value, scenarioName);
+
+    private static string GetExpectedCodexConfigPath(string codexHome) => Path.Combine(codexHome, "config.toml");
+
+    private static void WriteCodexConfigWithComputerUseWinEntries(string codexHome)
+    {
+        Directory.CreateDirectory(codexHome);
+        File.WriteAllText(
+            GetExpectedCodexConfigPath(codexHome),
+            """
+            [plugins."other-plugin@local"]
+            enabled = true
+
+            [plugins."computer-use-win@okno-local-installed"]
+            enabled = true
+
+            [mcp_servers.computer_use_win]
+            command = 'powershell'
+            args = ['-File', 'C:\Users\test\.codex\plugins\computer-use-win\run-computer-use-win-mcp.ps1']
+            enabled = true
+
+            [mcp_servers.other]
+            command = 'other'
+            """);
+    }
 
     private static SetupCliTestHarness CreateSetupCliTestHarness(SetupCliReleaseArtifacts release, string scenarioName)
     {

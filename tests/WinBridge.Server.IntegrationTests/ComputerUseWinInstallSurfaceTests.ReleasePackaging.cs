@@ -198,6 +198,47 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     }
 
     [Fact]
+    public void PackageComputerUseWinRuntimeReleaseCarriesDepsConsistentPackageAssets()
+    {
+        using ZipArchive archive = ZipFile.OpenRead(SharedReleasePackagingRuntimePackage.Value.ArchivePath);
+        using JsonDocument deps = ReadReleasePackagingJsonArchiveEntry(archive, "Okno.Server.deps.json");
+
+        string expectedFileVersion = GetDepsRuntimePackageFileVersion(
+            deps,
+            "System.Diagnostics.DiagnosticSource",
+            "System.Diagnostics.DiagnosticSource.dll");
+        string actualFileVersion = ExtractArchiveEntryAndReadFileVersion(archive, "System.Diagnostics.DiagnosticSource.dll");
+
+        Assert.Equal(expectedFileVersion, actualFileVersion);
+    }
+
+    [Fact]
+    public void PackageComputerUseWinRuntimeReleaseRejectsSourceBundleWithDepsVersionDrift()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string sourceRoot = CreateReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-runtime-release-deps-drift-source");
+        string outputRoot = CreateReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-runtime-release-deps-drift-output");
+
+        try
+        {
+            CreateRuntimeBundleWithDepsVersionDrift(sourceRoot);
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+                repoRoot,
+                startInfo => AddReleasePackagingRuntimePackageArguments(startInfo, ReleasePackagingRuntimeVersion, sourceRoot, outputRoot));
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("fileVersion", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(sourceRoot);
+            DeleteDirectoryIfExists(outputRoot);
+        }
+    }
+
+    [Fact]
     public async Task ComputerUseWinLauncherBootstrapsRuntimeFromPinnedReleaseDescriptorWhenRuntimeBundleIsMissing()
     {
         string repoRoot = GetRepositoryRoot();
@@ -401,6 +442,99 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         startInfo.ArgumentList.Add(runtimeRoot);
         startInfo.ArgumentList.Add("-OutputRoot");
         startInfo.ArgumentList.Add(outputRoot);
+    }
+
+    private static void CreateRuntimeBundleWithDepsVersionDrift(string sourceRoot)
+    {
+        Directory.CreateDirectory(sourceRoot);
+        string depsPath = Path.Combine(sourceRoot, "Okno.Server.deps.json");
+        string diagnosticSourcePath = Path.Combine(sourceRoot, "System.Diagnostics.DiagnosticSource.dll");
+        string serverPath = Path.Combine(sourceRoot, ReleasePackagingRuntimeServerExeName);
+        File.WriteAllText(
+            depsPath,
+            """
+            {
+              "targets": {
+                ".NETCoreApp,Version=v8.0/win-x64": {
+                  "System.Diagnostics.DiagnosticSource/10.0.3": {
+                    "runtime": {
+                      "lib/net8.0/System.Diagnostics.DiagnosticSource.dll": {
+                        "assemblyVersion": "10.0.0.0",
+                        "fileVersion": "10.0.326.7603"
+                      }
+                    }
+                  }
+                }
+              },
+              "libraries": {
+                "System.Diagnostics.DiagnosticSource/10.0.3": {
+                  "type": "package",
+                  "serviceable": true,
+                  "sha512": "",
+                  "path": "system.diagnostics.diagnosticsource/10.0.3",
+                  "hashPath": "system.diagnostics.diagnosticsource.10.0.3.nupkg.sha512"
+                }
+              }
+            }
+            """);
+        File.WriteAllText(diagnosticSourcePath, "wrong runtime-pack assembly");
+        File.WriteAllText(serverPath, "server placeholder");
+
+        var manifest = new
+        {
+            formatVersion = 1,
+            files = new[]
+            {
+                new { path = "Okno.Server.deps.json", size = new FileInfo(depsPath).Length },
+                new { path = "System.Diagnostics.DiagnosticSource.dll", size = new FileInfo(diagnosticSourcePath).Length },
+                new { path = ReleasePackagingRuntimeServerExeName, size = new FileInfo(serverPath).Length },
+            },
+        };
+        File.WriteAllText(
+            Path.Combine(sourceRoot, ReleasePackagingRuntimeBundleManifestName),
+            JsonSerializer.Serialize(manifest));
+    }
+
+    private static string GetDepsRuntimePackageFileVersion(JsonDocument deps, string packageName, string fileName)
+    {
+        foreach (JsonProperty target in deps.RootElement.GetProperty("targets").EnumerateObject())
+        {
+            foreach (JsonProperty library in target.Value.EnumerateObject())
+            {
+                if (!library.Name.StartsWith(packageName + "/", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                foreach (JsonProperty runtimeAsset in library.Value.GetProperty("runtime").EnumerateObject())
+                {
+                    if (string.Equals(Path.GetFileName(runtimeAsset.Name), fileName, StringComparison.Ordinal))
+                    {
+                        return runtimeAsset.Value.GetProperty("fileVersion").GetString()
+                            ?? throw new InvalidOperationException($"deps fileVersion missing for {fileName}.");
+                    }
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"deps runtime asset '{fileName}' from '{packageName}' was not found.");
+    }
+
+    private static string ExtractArchiveEntryAndReadFileVersion(ZipArchive archive, string entryPath)
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), "winbridge-tests", "release-packaging-file-version", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        string tempPath = Path.Combine(tempRoot, Path.GetFileName(entryPath));
+
+        try
+        {
+            GetRequiredReleasePackagingArchiveEntry(archive, entryPath).ExtractToFile(tempPath);
+            return FileVersionInfo.GetVersionInfo(tempPath).FileVersion ?? string.Empty;
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(tempRoot);
+        }
     }
 
     private static string CreateRuntimeReleaseDescriptor(

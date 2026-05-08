@@ -496,6 +496,16 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         {
             Assert.Contains(toolName, longDescription, StringComparison.Ordinal);
         }
+
+        JsonElement defaultPrompt = manifest.RootElement
+            .GetProperty("interface")
+            .GetProperty("defaultPrompt");
+        foreach (JsonElement prompt in defaultPrompt.EnumerateArray())
+        {
+            Assert.True(
+                prompt.GetString()?.Length <= 128,
+                $"Plugin defaultPrompt entry exceeds Codex 128-character limit: '{prompt.GetString()}'.");
+        }
     }
 
     [Theory]

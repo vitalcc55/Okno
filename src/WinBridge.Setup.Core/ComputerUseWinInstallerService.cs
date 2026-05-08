@@ -16,6 +16,14 @@ public sealed class ComputerUseWinInstallerService
     private const string DefaultMarketplaceDisplayName = "Okno: Installed plugins";
     private const string PluginBundleManifestName = "okno-plugin-bundle-manifest.json";
     private const string RuntimeOnlyLauncherCommand = "powershell.exe";
+    private static readonly string[] OwnedCodexConfigSectionHeaders =
+    [
+        "[plugins.\"computer-use-win@okno-local-installed\"]",
+        "[mcp_servers.computer_use_win]",
+        "[mcp_servers.\"computer_use_win\"]",
+        "[mcp_servers.computer-use-win]",
+        "[mcp_servers.\"computer-use-win\"]",
+    ];
     private static readonly HttpClient HttpClient = new();
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -235,6 +243,7 @@ public sealed class ComputerUseWinInstallerService
         PersonalMarketplace marketplace = PrepareMarketplace(removingPluginEntry: true, marketplaceNameOverride: receipt.MarketplaceName, marketplaceSourcePath: null);
         WriteMarketplace(marketplace);
         DeleteDirectoryIfExists(receipt.PluginSourceRoot ?? pluginSourceRoot);
+        RemoveOwnedCodexConfigSections();
         DeleteReceipt(ComputerUseWinInstallMode.Codex);
 
         if (TryReadReceipt(ComputerUseWinInstallMode.RuntimeOnly) is null)
@@ -279,6 +288,8 @@ public sealed class ComputerUseWinInstallerService
             DeleteDirectoryIfExists(codexReceipt.PluginSourceRoot ?? pluginSourceRoot);
             DeleteReceipt(ComputerUseWinInstallMode.Codex);
         }
+
+        RemoveOwnedCodexConfigSections();
 
         if (runtimeOnlyReceipt is not null)
         {
@@ -692,6 +703,47 @@ public sealed class ComputerUseWinInstallerService
             File.Delete(receiptPath);
         }
     }
+
+    private void RemoveOwnedCodexConfigSections()
+    {
+        string configPath = Path.Combine(storePaths.CodexHome, "config.toml");
+        if (!File.Exists(configPath))
+        {
+            return;
+        }
+
+        string[] lines = File.ReadAllLines(configPath);
+        List<string> keptLines = [];
+        bool removingOwnedSection = false;
+        bool changed = false;
+
+        foreach (string line in lines)
+        {
+            string trimmed = line.Trim();
+            if (IsTomlTableHeader(trimmed))
+            {
+                removingOwnedSection = OwnedCodexConfigSectionHeaders.Contains(trimmed, StringComparer.Ordinal);
+            }
+
+            if (removingOwnedSection)
+            {
+                changed = true;
+                continue;
+            }
+
+            keptLines.Add(line);
+        }
+
+        if (changed)
+        {
+            File.WriteAllLines(configPath, keptLines);
+        }
+    }
+
+    private static bool IsTomlTableHeader(string trimmedLine) =>
+        trimmedLine.Length >= 2
+        && trimmedLine[0] == '['
+        && trimmedLine[^1] == ']';
 
     private string BuildRuntimeOnlySnippet()
     {

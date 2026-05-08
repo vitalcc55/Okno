@@ -213,6 +213,134 @@ function Get-ComputerUseWinSupportedPackagingRid {
     return $script:ComputerUseWinFirstWaveRuntimeRid
 }
 
+function Get-ComputerUseWinNuGetPackageRoot {
+    if (-not [string]::IsNullOrWhiteSpace($env:NUGET_PACKAGES)) {
+        return [System.IO.Path]::GetFullPath($env:NUGET_PACKAGES)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        throw 'Unable to resolve NuGet package cache because neither NUGET_PACKAGES nor USERPROFILE is set.'
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $env:USERPROFILE '.nuget\packages'))
+}
+
+function Get-ComputerUseWinDepsRuntimePackageEntries {
+    param(
+        [Parameter(Mandatory)]
+        [string] $DepsJsonPath
+    )
+
+    $deps = Get-Content -Path $DepsJsonPath -Raw | ConvertFrom-Json
+    if ($null -eq $deps) {
+        throw "deps.json '$DepsJsonPath' is empty."
+    }
+
+    $target = $deps.targets.PSObject.Properties |
+        Where-Object { @($_.Value.PSObject.Properties).Count -gt 0 } |
+        Select-Object -First 1
+    if ($null -eq $target) {
+        throw "deps.json '$DepsJsonPath' does not define any targets."
+    }
+
+    $entries = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($library in $target.Value.PSObject.Properties) {
+        $libraryMetadata = $deps.libraries.PSObject.Properties |
+            Where-Object { [string]::Equals([string]$_.Name, [string]$library.Name, [System.StringComparison]::Ordinal) } |
+            Select-Object -First 1
+        if ($null -eq $libraryMetadata -or [string]$libraryMetadata.Value.type -ne 'package') {
+            continue
+        }
+
+        if ($null -eq $library.Value.runtime) {
+            continue
+        }
+
+        $packagePath = [string]$libraryMetadata.Value.path
+        if ([string]::IsNullOrWhiteSpace($packagePath)) {
+            continue
+        }
+
+        foreach ($asset in $library.Value.runtime.PSObject.Properties) {
+            $assetPath = [string]$asset.Name
+            if (-not $assetPath.EndsWith('.dll', [System.StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+
+            $fileVersion = [string]$asset.Value.fileVersion
+            if ([string]::IsNullOrWhiteSpace($fileVersion)) {
+                continue
+            }
+
+            $entries.Add([pscustomobject]@{
+                libraryName = [string]$library.Name
+                packagePath = $packagePath
+                assetPath = $assetPath
+                fileName = [System.IO.Path]::GetFileName($assetPath)
+                fileVersion = $fileVersion
+            }) | Out-Null
+        }
+    }
+
+    return $entries.ToArray()
+}
+
+function Repair-ComputerUseWinRuntimeBundlePackageAssets {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RootPath,
+        [Parameter(Mandatory)]
+        [string] $DepsJsonPath
+    )
+
+    $nugetRoot = Get-ComputerUseWinNuGetPackageRoot
+    foreach ($entry in Get-ComputerUseWinDepsRuntimePackageEntries -DepsJsonPath $DepsJsonPath) {
+        $destinationPath = Join-Path $RootPath $entry.fileName
+        $needsPackageAsset = -not (Test-Path $destinationPath -PathType Leaf)
+        if (-not $needsPackageAsset) {
+            $actualVersion = [string](Get-Item -LiteralPath $destinationPath).VersionInfo.FileVersion
+            $needsPackageAsset = $actualVersion -ne [string]$entry.fileVersion
+        }
+
+        if (-not $needsPackageAsset) {
+            continue
+        }
+
+        $sourcePath = Join-Path (Join-Path $nugetRoot $entry.packagePath) $entry.assetPath
+        if (-not (Test-Path $sourcePath -PathType Leaf)) {
+            throw "Runtime bundle '$RootPath' requires package asset '$($entry.assetPath)' from '$($entry.libraryName)', but '$sourcePath' is missing."
+        }
+
+        Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+    }
+}
+
+function Assert-ComputerUseWinRuntimeBundleMatchesDepsJson {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RootPath,
+        [Parameter(Mandatory)]
+        [string] $Description
+    )
+
+    $depsJsonPath = Join-Path $RootPath 'Okno.Server.deps.json'
+    if (-not (Test-Path $depsJsonPath -PathType Leaf)) {
+        throw "$Description is missing 'Okno.Server.deps.json'."
+    }
+
+    foreach ($entry in Get-ComputerUseWinDepsRuntimePackageEntries -DepsJsonPath $depsJsonPath) {
+        $destinationPath = Join-Path $RootPath $entry.fileName
+        if (-not (Test-Path $destinationPath -PathType Leaf)) {
+            throw "$Description is missing package runtime asset '$($entry.fileName)' required by '$($entry.libraryName)'."
+        }
+
+        $actualVersion = [string](Get-Item -LiteralPath $destinationPath).VersionInfo.FileVersion
+        if ($actualVersion -ne [string]$entry.fileVersion) {
+            throw "$Description contains '$($entry.fileName)' fileVersion '$actualVersion', but 'Okno.Server.deps.json' requires '$($entry.fileVersion)' from '$($entry.libraryName)'."
+        }
+    }
+}
+
 function Assert-ComputerUseWinRuntimeDescriptorMatchesPackagingArguments {
     param(
         [Parameter(Mandatory)]
@@ -490,6 +618,8 @@ function Assert-ComputerUseWinRuntimeBundleMatchesManifest {
     if ($expectedMap.Count -gt 0) {
         throw "$Description is incomplete. Missing: $($expectedMap.Keys -join ', ')."
     }
+
+    Assert-ComputerUseWinRuntimeBundleMatchesDepsJson -RootPath $RootPath -Description $Description
 }
 
 function Assert-ComputerUseWinRuntimeBundleHasExistingManifest {
@@ -542,6 +672,7 @@ function Publish-ComputerUseWinRuntimeBundleToDirectory {
             --output $DestinationRoot
     }
 
+    Repair-ComputerUseWinRuntimeBundlePackageAssets -RootPath $DestinationRoot -DepsJsonPath (Join-Path $DestinationRoot 'Okno.Server.deps.json')
     Write-ComputerUseWinRuntimeBundleManifest -RootPath $DestinationRoot
     Assert-ComputerUseWinRuntimeBundleMatchesManifest -RootPath $DestinationRoot -Description "Published computer-use-win runtime bundle '$DestinationRoot'"
 }
