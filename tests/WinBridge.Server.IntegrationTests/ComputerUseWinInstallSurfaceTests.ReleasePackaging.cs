@@ -203,18 +203,16 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         using ZipArchive archive = ZipFile.OpenRead(SharedReleasePackagingRuntimePackage.Value.ArchivePath);
         using JsonDocument deps = ReadReleasePackagingJsonArchiveEntry(archive, "Okno.Server.deps.json");
 
-        string expectedManagedFileVersion = GetDepsPackageAssetFileVersion(
+        string expectedManagedFileVersion = GetDepsAssetFileVersion(
             deps,
-            "System.Diagnostics.DiagnosticSource",
             "runtime",
             "System.Diagnostics.DiagnosticSource.dll");
         string actualManagedFileVersion = ExtractArchiveEntryAndReadFileVersion(archive, "System.Diagnostics.DiagnosticSource.dll");
 
         Assert.Equal(NormalizeFileVersion(expectedManagedFileVersion), NormalizeFileVersion(actualManagedFileVersion));
 
-        string expectedNativeFileVersion = GetDepsPackageAssetFileVersion(
+        string expectedNativeFileVersion = GetDepsAssetFileVersion(
             deps,
-            "runtimepack.Microsoft.NETCore.App.Runtime.win-x64",
             "native",
             "Microsoft.DiaSymReader.Native.amd64.dll");
         string actualNativeFileVersion = ExtractArchiveEntryAndReadFileVersion(archive, "Microsoft.DiaSymReader.Native.amd64.dll");
@@ -231,15 +229,15 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            CreateRuntimeBundleWithDepsVersionDrift(sourceRoot, assetKind: "runtime");
+            CreateRuntimeBundleWithDepsVersionDrift(repoRoot, sourceRoot, assetKind: "runtime", fileName: "System.Diagnostics.DiagnosticSource.dll");
 
-            ScriptInvocationResult result = InvokePowerShellScript(
-                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
-                repoRoot,
-                startInfo => AddReleasePackagingRuntimePackageArguments(startInfo, ReleasePackagingRuntimeVersion, sourceRoot, outputRoot));
+        ScriptInvocationResult result = InvokePowerShellScript(
+            GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+            repoRoot,
+            startInfo => AddReleasePackagingRuntimePackageArguments(startInfo, ReleasePackagingRuntimeVersion, sourceRoot, outputRoot));
 
-            Assert.NotEqual(0, result.ExitCode);
-            Assert.Contains("Test publish source runtime bundle", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("does not match expected package runtime asset proof", result.Stderr, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -257,7 +255,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            CreateRuntimeBundleWithDepsVersionDrift(sourceRoot, assetKind: "native");
+            CreateRuntimeBundleWithDepsVersionDrift(repoRoot, sourceRoot, assetKind: "native", fileName: "Microsoft.DiaSymReader.Native.amd64.dll");
 
             ScriptInvocationResult result = InvokePowerShellScript(
                 GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
@@ -265,7 +263,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 startInfo => AddReleasePackagingRuntimePackageArguments(startInfo, ReleasePackagingRuntimeVersion, sourceRoot, outputRoot));
 
             Assert.NotEqual(0, result.ExitCode);
-            Assert.Contains("Test publish source runtime bundle", result.Stderr, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("does not match expected runtimepack native asset proof", result.Stderr, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -480,7 +478,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         startInfo.ArgumentList.Add(outputRoot);
     }
 
-    private static void CreateRuntimeBundleWithDepsVersionDrift(string sourceRoot, string assetKind)
+    private static void CreateRuntimeBundleWithDepsVersionDrift(string repoRoot, string sourceRoot, string assetKind, string fileName)
     {
         Directory.CreateDirectory(sourceRoot);
         string depsPath = Path.Combine(sourceRoot, "Okno.Server.deps.json");
@@ -491,76 +489,10 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             new { path = "Okno.Server.deps.json", size = 0L },
             new { path = ReleasePackagingRuntimeServerExeName, size = new FileInfo(serverPath).Length },
         ];
-
-        if (string.Equals(assetKind, "runtime", StringComparison.Ordinal))
-        {
-            string diagnosticSourcePath = Path.Combine(sourceRoot, "System.Diagnostics.DiagnosticSource.dll");
-            File.WriteAllText(
-                depsPath,
-                """
-                {
-                  "targets": {
-                    ".NETCoreApp,Version=v8.0/win-x64": {
-                      "System.Diagnostics.DiagnosticSource/10.0.3": {
-                        "runtime": {
-                          "lib/net8.0/System.Diagnostics.DiagnosticSource.dll": {
-                            "assemblyVersion": "10.0.0.0",
-                            "fileVersion": "10.0.326.7603"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "libraries": {
-                    "System.Diagnostics.DiagnosticSource/10.0.3": {
-                      "type": "package",
-                      "serviceable": true,
-                      "sha512": "",
-                      "path": "system.diagnostics.diagnosticsource/10.0.3",
-                      "hashPath": "system.diagnostics.diagnosticsource.10.0.3.nupkg.sha512"
-                    }
-                  }
-                }
-                """);
-            File.WriteAllText(diagnosticSourcePath, "wrong runtime-pack assembly");
-            files.Add(new { path = "System.Diagnostics.DiagnosticSource.dll", size = new FileInfo(diagnosticSourcePath).Length });
-        }
-        else if (string.Equals(assetKind, "native", StringComparison.Ordinal))
-        {
-            string nativeAssetPath = Path.Combine(sourceRoot, "Microsoft.DiaSymReader.Native.amd64.dll");
-            File.WriteAllText(
-                depsPath,
-                """
-                {
-                  "targets": {
-                    ".NETCoreApp,Version=v8.0/win-x64": {
-                      "Microsoft.DiaSymReader.Native/1.7.0": {
-                        "native": {
-                          "runtimes/win-x64/native/Microsoft.DiaSymReader.Native.amd64.dll": {
-                            "fileVersion": "14.40.33810.0"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "libraries": {
-                    "Microsoft.DiaSymReader.Native/1.7.0": {
-                      "type": "package",
-                      "serviceable": true,
-                      "sha512": "",
-                      "path": "microsoft.diasymreader.native/1.7.0",
-                      "hashPath": "microsoft.diasymreader.native.1.7.0.nupkg.sha512"
-                    }
-                  }
-                }
-                """);
-            File.WriteAllText(nativeAssetPath, "wrong native asset");
-            files.Add(new { path = "Microsoft.DiaSymReader.Native.amd64.dll", size = new FileInfo(nativeAssetPath).Length });
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unsupported deps drift asset kind '{assetKind}'.");
-        }
+        WriteDepsFixtureFromRealAssetShape(repoRoot, depsPath, assetKind, fileName);
+        string driftAssetPath = Path.Combine(sourceRoot, fileName);
+        File.WriteAllText(driftAssetPath, "wrong deps asset");
+        files.Add(new { path = fileName, size = new FileInfo(driftAssetPath).Length });
         files[0] = new { path = "Okno.Server.deps.json", size = new FileInfo(depsPath).Length };
 
         var manifest = new
@@ -573,17 +505,68 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             JsonSerializer.Serialize(manifest));
     }
 
-    private static string GetDepsPackageAssetFileVersion(JsonDocument deps, string packageName, string assetKind, string fileName)
+    private static string GetDepsAssetFileVersion(JsonDocument deps, string assetKind, string fileName)
+    {
+        GetRealDepsAssetFixture(deps, assetKind, fileName, out _, out _, out _, out JsonElement assetDefinition, out _);
+        return assetDefinition.GetProperty("fileVersion").GetString()
+            ?? throw new InvalidOperationException($"deps fileVersion missing for {fileName}.");
+    }
+
+    private static void WriteDepsFixtureFromRealAssetShape(string repoRoot, string depsPath, string assetKind, string fileName)
+    {
+        using JsonDocument realDeps = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(GetReleasePackagingRuntimeRoot(repoRoot), "Okno.Server.deps.json")));
+        GetRealDepsAssetFixture(
+            realDeps,
+            assetKind,
+            fileName,
+            out string targetName,
+            out string libraryName,
+            out string assetPath,
+            out JsonElement assetDefinition,
+            out JsonElement libraryMetadata);
+
+        using FileStream stream = File.Create(depsPath);
+        using Utf8JsonWriter writer = new(stream, new JsonWriterOptions { Indented = true });
+
+        writer.WriteStartObject();
+        writer.WritePropertyName("targets");
+        writer.WriteStartObject();
+        writer.WritePropertyName(targetName);
+        writer.WriteStartObject();
+        writer.WritePropertyName(libraryName);
+        writer.WriteStartObject();
+        writer.WritePropertyName(assetKind);
+        writer.WriteStartObject();
+        writer.WritePropertyName(assetPath);
+        assetDefinition.WriteTo(writer);
+        writer.WriteEndObject();
+        writer.WriteEndObject();
+        writer.WriteEndObject();
+        writer.WriteEndObject();
+        writer.WritePropertyName("libraries");
+        writer.WriteStartObject();
+        writer.WritePropertyName(libraryName);
+        libraryMetadata.WriteTo(writer);
+        writer.WriteEndObject();
+        writer.WriteEndObject();
+        writer.Flush();
+    }
+
+    private static void GetRealDepsAssetFixture(
+        JsonDocument deps,
+        string assetKind,
+        string fileName,
+        out string targetName,
+        out string libraryName,
+        out string assetPath,
+        out JsonElement assetDefinition,
+        out JsonElement libraryMetadata)
     {
         foreach (JsonProperty target in deps.RootElement.GetProperty("targets").EnumerateObject())
         {
             foreach (JsonProperty library in target.Value.EnumerateObject())
             {
-                if (!library.Name.StartsWith(packageName + "/", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
                 if (!library.Value.TryGetProperty(assetKind, out JsonElement assetGroup))
                 {
                     continue;
@@ -593,14 +576,19 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 {
                     if (string.Equals(Path.GetFileName(asset.Name), fileName, StringComparison.Ordinal))
                     {
-                        return asset.Value.GetProperty("fileVersion").GetString()
-                            ?? throw new InvalidOperationException($"deps fileVersion missing for {fileName}.");
+                        targetName = target.Name;
+                        libraryName = library.Name;
+                        assetPath = asset.Name;
+                        assetDefinition = asset.Value.Clone();
+                        libraryMetadata = deps.RootElement.GetProperty("libraries").GetProperty(library.Name).Clone();
+                        return;
                     }
                 }
             }
         }
 
-        throw new InvalidOperationException($"deps {assetKind} asset '{fileName}' from '{packageName}' was not found.");
+        assetPath = string.Empty;
+        throw new InvalidOperationException($"deps {assetKind} asset '{fileName}' was not found in the real runtime bundle shape.");
     }
 
     private static string ExtractArchiveEntryAndReadFileVersion(ZipArchive archive, string entryPath)
