@@ -8,7 +8,7 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
-    private const string SetupCliReleaseVersion = "0.2.1";
+    private const string SetupCliReleaseVersion = "0.2.2";
     private const string WindowsRuntimeIdentifier = "win-x64";
 
     private static readonly object ReleasePackagingGate = new();
@@ -61,6 +61,57 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string marketplaceText = File.ReadAllText(expectedMarketplacePath);
         Assert.Contains("computer-use-win", marketplaceText, StringComparison.Ordinal);
         Assert.Contains("./.codex/plugins/computer-use-win", marketplaceText, StringComparison.Ordinal);
+        string configText = File.ReadAllText(GetExpectedCodexConfigPath(test.CodexHome));
+        Assert.Contains("[plugins.\"computer-use-win@okno-local-installed\"]", configText, StringComparison.Ordinal);
+        Assert.Contains("enabled = true", configText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetupCliInstallCodexCreatesEnabledPluginConfigWhenConfigWasMissing()
+    {
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("install-codex-config-created");
+
+        string configPath = GetExpectedCodexConfigPath(test.CodexHome);
+        Assert.False(File.Exists(configPath));
+
+        ScriptInvocationResult result = test.RunSetupCliJsonWithRuntimeDescriptor("install", "codex");
+
+        AssertSetupCliSucceeded(result, "codex install");
+        string configText = File.ReadAllText(configPath);
+        Assert.Contains("[plugins.\"computer-use-win@okno-local-installed\"]", configText, StringComparison.Ordinal);
+        Assert.Contains("enabled = true", configText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetupCliRepairCodexReenablesOwnedPluginConfigWithoutDuplicatingSection()
+    {
+        using SetupCliTestHarness test = CreateCodexSetupCliTestHarness("repair-codex-config-upsert");
+
+        string configPath = GetExpectedCodexConfigPath(test.CodexHome);
+        Directory.CreateDirectory(test.CodexHome);
+        File.WriteAllText(
+            configPath,
+            """
+            [plugins."other-plugin@local"]
+            enabled = true
+
+            [plugins."computer-use-win@okno-local-installed"]
+            enabled = false
+            """);
+
+        ScriptInvocationResult result = test.RunSetupCliJsonWithRuntimeDescriptor("repair", "codex");
+
+        AssertSetupCliSucceeded(result, "codex repair");
+        string configText = File.ReadAllText(configPath);
+        Assert.Contains("[plugins.\"other-plugin@local\"]", configText, StringComparison.Ordinal);
+        Assert.Contains("[plugins.\"computer-use-win@okno-local-installed\"]", configText, StringComparison.Ordinal);
+        Assert.Contains("enabled = true", configText, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            CountOccurrences(
+                configText,
+                "[plugins.\"computer-use-win@okno-local-installed\"]",
+                StringComparison.Ordinal));
     }
 
     [Fact]
@@ -142,7 +193,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             GetRuntimePackageScriptPath(repoRoot),
             SharedPublishedRuntimeBundle.Value.RuntimeRoot,
             outputRoot,
-            "0.2.1-test");
+            "0.2.2-test");
 
         try
         {
@@ -161,14 +212,14 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             string expectedLauncherPath = GetExpectedSharedRuntimeLauncherScriptPath(test.CodexHome);
             string[] args = server.GetProperty("args").EnumerateArray().Select(static value => value.GetString() ?? string.Empty).ToArray();
             Assert.Contains(expectedLauncherPath, args, StringComparer.Ordinal);
-            Assert.DoesNotContain("0.2.1", updateSnippet, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.2.1-test", updateSnippet, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.2.2", updateSnippet, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.2.2-test", updateSnippet, StringComparison.Ordinal);
             Assert.True(File.Exists(expectedLauncherPath));
 
             string launcherScript = File.ReadAllText(expectedLauncherPath);
             Assert.Contains("current-runtime.json", launcherScript, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.2.1", launcherScript, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.2.1-test", launcherScript, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.2.2", launcherScript, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.2.2-test", launcherScript, StringComparison.Ordinal);
         }
         finally
         {
@@ -298,6 +349,23 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     private static SetupCliTestHarness CreateCodexSetupCliTestHarness(string scenarioName) => CreateSetupCliTestHarness(SharedCodexRelease.Value, scenarioName);
 
     private static string GetExpectedCodexConfigPath(string codexHome) => Path.Combine(codexHome, "config.toml");
+
+    private static int CountOccurrences(string text, string value, StringComparison comparison)
+    {
+        int count = 0;
+        int start = 0;
+        while (true)
+        {
+            int index = text.IndexOf(value, start, comparison);
+            if (index < 0)
+            {
+                return count;
+            }
+
+            count++;
+            start = index + value.Length;
+        }
+    }
 
     private static void WriteCodexConfigWithComputerUseWinEntries(string codexHome)
     {

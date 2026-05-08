@@ -1,7 +1,7 @@
 # Task State
 
-goal: Закрыть второй review pass по post-release incident `computer-use-win`: проверить native deps proof, ownership/TOML-aware cleanup и учесть актуальную plugin model `0.129.0` без смешения с ODR lane.
-stage: Все три review-гипотезы перепроверены; две подтверждены как defects, третья подтверждена как симптом того же cleanup класса. Runtime/native proof и Codex cleanup model локально исправлены, полный `verify` зелёный. Публичный release closeout по-прежнему должен идти отдельным patch release, а не тихой подменой `v0.2.0`.
+goal: Довести installer-installed `computer-use-win` до fully-active Codex path без ручного UI-клика `Add to Codex`, при этом не притворяясь, что отдельный skill toggle уже имеет наблюдаемый install-time contract.
+stage: Install-time activation gap подтверждён на реальном пользовательском пути. Старый `computer-use-win-local` source удалён из локального профиля, release-installed `okno-local-installed` доказан как рабочий, а installer core локально доработан так, чтобы сам upsert-ить `[plugins."computer-use-win@okno-local-installed"] enabled = true` в `%CODEX_HOME%\\config.toml`. По skill toggle отдельного файлового/persistent contract пока не найдено, поэтому текущий фикс сознательно закрывает plugin activation, а не недокументированное внутреннее UI-state.
 done:
 - Перепроверена current plugin model по primary sources (`Codex 0.129.0` release notes + official plugin/app-server docs):
   - plugin install surface действительно marketplace/cache/enabled-state oriented;
@@ -90,11 +90,12 @@ previous_release_context:
   - remove-all with malformed marketplace;
   - release packaging runbook contract updated for lifecycle section.
 next:
-- Дальше нужен release decision: делать patch release `0.2.1` с исправленным runtime asset/plugin/setup, либо остановиться на локальном commit и отдельно согласовать публикацию.
-- Перед patch release поднять версии с `0.2.0` до `0.2.1`, пересобрать descriptor/checksums, прогнать canonical `build/test/docs-refresh/verify`.
+- Если пользователь подтвердит, следующий шаг — отдельный commit под installer activation fix.
+- Если потом захотим закрывать ещё и skill toggle, сначала нужно найти поддержанный и наблюдаемый Codex persistence contract; ad-hoc правка внутренних sqlite/global-state файлов не допускается.
 edited_files:
 - src/WinBridge.Setup.Core/ComputerUseWinRuntimeContracts.cs
 - src/WinBridge.Setup.Core/ComputerUseWinInstallerService.cs
+- src/WinBridge.Setup.Core/CodexConfigTomlSectionRewriter.cs
 - src/WinBridge.Setup.Core/SetupShellController.cs
 - src/WinBridge.Setup.Core/OknoSetupShellRegistrationService.cs
 - src/WinBridge.Setup.App/SetupAppLaunchOptions.cs

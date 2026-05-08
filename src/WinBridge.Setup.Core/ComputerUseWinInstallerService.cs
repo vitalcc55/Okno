@@ -12,15 +12,23 @@ public sealed class ComputerUseWinInstallerService
     private const string CodexReceiptMode = "codex";
     private const string RuntimeOnlyReceiptMode = "runtime_only";
     private const string PluginId = "computer-use-win";
+    private const string OwnedCodexPluginConfigEntryId = "computer-use-win@okno-local-installed";
     private const string DefaultMarketplaceName = "okno-local-installed";
     private const string DefaultMarketplaceDisplayName = "Okno: Installed plugins";
     private const string PluginBundleManifestName = "okno-plugin-bundle-manifest.json";
     private const string RuntimeOnlyLauncherCommand = "powershell.exe";
     private static readonly string[][] OwnedCodexConfigSectionPaths =
     [
-        ["plugins", "computer-use-win@okno-local-installed"],
+        ["plugins", OwnedCodexPluginConfigEntryId],
         ["mcp_servers", "computer_use_win"],
         ["mcp_servers", "computer-use-win"],
+    ];
+    private static readonly CodexConfigTomlSectionRewriter.Section[] OwnedCodexInstallSections =
+    [
+        new(
+            ["plugins", OwnedCodexPluginConfigEntryId],
+            $"[plugins.\"{OwnedCodexPluginConfigEntryId}\"] # Okno plugin",
+            ["enabled = true"]),
     ];
     private static readonly HttpClient HttpClient = new();
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -327,6 +335,7 @@ public sealed class ComputerUseWinInstallerService
         PersonalMarketplace marketplace = PrepareMarketplace(removingPluginEntry: false, marketplaceNameOverride: null, marketplaceSourcePath: marketplaceSourcePath);
         string installedPluginRoot = InstallPluginBundle(pluginRelease);
         string marketplaceName = WriteMarketplace(marketplace);
+        EnsureOwnedCodexConfigSections();
         ComputerUseWinInstallReceipt? existingReceipt = TryReadReceipt(ComputerUseWinInstallMode.Codex);
         DateTimeOffset now = DateTimeOffset.UtcNow;
         ComputerUseWinInstallReceipt receipt = WriteReceipt(
@@ -713,6 +722,23 @@ public sealed class ComputerUseWinInstallerService
         if (CodexConfigTomlSectionRewriter.TryRemoveOwnedSections(
             configText,
             OwnedCodexConfigSectionPaths,
+            out string rewrittenText))
+        {
+            File.WriteAllText(configPath, rewrittenText);
+        }
+    }
+
+    private void EnsureOwnedCodexConfigSections()
+    {
+        Directory.CreateDirectory(storePaths.CodexHome);
+        string configPath = Path.Combine(storePaths.CodexHome, "config.toml");
+        string configText = File.Exists(configPath)
+            ? File.ReadAllText(configPath)
+            : string.Empty;
+
+        if (CodexConfigTomlSectionRewriter.TryUpsertSections(
+            configText,
+            OwnedCodexInstallSections,
             out string rewrittenText))
         {
             File.WriteAllText(configPath, rewrittenText);

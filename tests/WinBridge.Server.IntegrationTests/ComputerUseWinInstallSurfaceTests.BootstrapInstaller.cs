@@ -9,7 +9,7 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
-    private const string BootstrapInstallerTestVersion = "0.2.1";
+    private const string BootstrapInstallerTestVersion = "0.2.2";
     private const string RuntimeIdentifier = "win-x64";
     private const string SetupAppExecutableName = "Okno Setup.exe";
     private const string SetupAppWindowTitle = "Okno Setup";

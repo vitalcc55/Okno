@@ -17,7 +17,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     private const string InstallSurfaceRuntimeReleaseDescriptorFileName = "runtime-release.json";
     private const string InstallSurfaceServerExecutableFileName = "Okno.Server.exe";
     private const string InstallSurfaceHostFxrFileName = "hostfxr.dll";
-    private const string InstallSurfaceTestRuntimeReleaseVersion = "0.2.1-test";
+    private const string InstallSurfaceTestRuntimeReleaseVersion = "0.2.2-test";
     private const string InstallSurfaceEmptyRuntimeManifestJson = """{"formatVersion":1,"files":[]}""";
 
     private static readonly Lazy<string> InstallSurfaceCachedRepositoryRoot = new(FindInstallSurfaceRepositoryRoot);
@@ -635,7 +635,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 clientInfo = new
                 {
                     name = "ComputerUseWin.InstallSurfaceTests",
-                    version = "0.2.1",
+                    version = "0.2.2",
                 },
             },
             "initialize"))

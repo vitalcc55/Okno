@@ -5,6 +5,8 @@ namespace WinBridge.Setup.Core;
 
 internal static class CodexConfigTomlSectionRewriter
 {
+    internal sealed record Section(string[] TablePath, string HeaderLine, string[] BodyLines);
+
     public static bool TryRemoveOwnedSections(
         string configText,
         IReadOnlyCollection<string[]> ownedSectionPaths,
@@ -32,6 +34,62 @@ internal static class CodexConfigTomlSectionRewriter
 
         rewrittenText = changed ? string.Concat(keptLines) : configText;
         return changed;
+    }
+
+    public static bool TryUpsertSections(
+        string configText,
+        IReadOnlyCollection<Section> sections,
+        out string rewrittenText)
+    {
+        List<string> keptLines = [];
+        bool removingOwnedSection = false;
+        bool removedExistingSection = false;
+
+        foreach (string line in EnumerateLines(configText))
+        {
+            if (TryParseTableHeaderPath(line, out string[]? tablePath) && tablePath is not null)
+            {
+                removingOwnedSection = sections.Any(candidate => TablePathsEqual(candidate.TablePath, tablePath));
+            }
+
+            if (removingOwnedSection)
+            {
+                removedExistingSection = true;
+                continue;
+            }
+
+            keptLines.Add(line);
+        }
+
+        string baseText = string.Concat(keptLines);
+        string normalizedBaseText = TrimTrailingBlankLines(baseText);
+        System.Text.StringBuilder builder = new();
+        if (!string.IsNullOrEmpty(normalizedBaseText))
+        {
+            builder.Append(normalizedBaseText);
+            builder.AppendLine();
+            builder.AppendLine();
+        }
+
+        bool firstSection = true;
+        foreach (Section section in sections)
+        {
+            if (!firstSection)
+            {
+                builder.AppendLine();
+            }
+
+            builder.AppendLine(section.HeaderLine);
+            foreach (string bodyLine in section.BodyLines)
+            {
+                builder.AppendLine(bodyLine);
+            }
+
+            firstSection = false;
+        }
+
+        rewrittenText = builder.ToString();
+        return removedExistingSection || !string.Equals(rewrittenText, configText, StringComparison.Ordinal);
     }
 
     private static IEnumerable<string> EnumerateLines(string text)
@@ -137,6 +195,29 @@ internal static class CodexConfigTomlSectionRewriter
         }
 
         return line;
+    }
+
+    private static string TrimTrailingBlankLines(string text)
+    {
+        int end = text.Length;
+        while (end > 0)
+        {
+            int lastLineStart = end - 1;
+            while (lastLineStart > 0 && text[lastLineStart - 1] != '\n')
+            {
+                lastLineStart--;
+            }
+
+            string line = text[lastLineStart..end];
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                break;
+            }
+
+            end = lastLineStart;
+        }
+
+        return text[..end].TrimEnd('\r', '\n');
     }
 
     private static string[] ParseDottedKeyPath(string inner)
