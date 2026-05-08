@@ -5,7 +5,7 @@
     "tag":  "v0.2.1",
     "assetName":  "okno-computer-use-win-runtime-0.2.1-win-x64.zip",
     "downloadUrl":  "https://github.com/vitalcc55/Okno/releases/download/v0.2.1/okno-computer-use-win-runtime-0.2.1-win-x64.zip",
-    "sha256":  "7f0d128686173836ea385552817d8d046892e633fd85bb09b760f507803e786d",
+    "sha256":  "41da04c82a4738e7b22702dfe069c4c68bb1b2072bf43562936b1fa4f208ad21",
     "serverExeRelativePath":  "Okno.Server.exe",
     "bundleManifestName":  "okno-runtime-bundle-manifest.json"
 }
