@@ -1,8 +1,29 @@
 # Task State
 
-goal: Разобрать post-release incident по `computer-use-win` после внешнего тестирования `v0.2.0`: MCP tools не появились в Codex, runtime вручную падал на assembly load, uninstall оставлял config.toml entries.
-stage: Repo-side дефекты подтверждены и локально исправлены; релизный closeout ещё не сделан. Корректный public путь дальше — patch release `0.2.1`, а не тихая подмена `v0.2.0` asset под тем же тегом.
+goal: Закрыть второй review pass по post-release incident `computer-use-win`: проверить native deps proof, ownership/TOML-aware cleanup и учесть актуальную plugin model `0.129.0` без смешения с ODR lane.
+stage: Все три review-гипотезы перепроверены; две подтверждены как defects, третья подтверждена как симптом того же cleanup класса. Runtime/native proof и Codex cleanup model локально исправлены, полный `verify` зелёный. Публичный release closeout по-прежнему должен идти отдельным patch release, а не тихой подменой `v0.2.0`.
 done:
+- Перепроверена current plugin model по primary sources (`Codex 0.129.0` release notes + official plugin/app-server docs):
+  - plugin install surface действительно marketplace/cache/enabled-state oriented;
+  - cache-installed copy и fresh-thread acceptance остаются правильным target model для `computer-use-win`;
+  - ODR / Windows containment подтверждённо не нужен для этого release incident и не включён в текущий scope.
+- Подтверждено, что первый review finding был не частным симптомом, а реальной дырой в proof boundary:
+  - initial fix покрывал `deps.json -> runtime` managed assets, но не `native`;
+  - helper расширен до `runtime + native` и до source resolution из NuGet cache, `.NET` shared runtime, `host\fxr` и `runtimepack.*.Ref`;
+  - assert/repair переведены с brittle `FileVersionInfo` equality на hash-based asset proof against source-of-truth bytes.
+- Подтверждено, что `UninstallAll()` не должен чистить `%CODEX_HOME%\config.toml` без Codex receipt:
+  - cleanup теперь gated on `codexReceipt is not null`;
+  - `runtime-only` remove больше не трогает Codex config.
+- Подтверждено, что old cleanup matcher был неполным и ломался на valid TOML headers с inline comments / quoted aliases:
+  - добавлен `CodexConfigTomlSectionRewriter`;
+  - section detection теперь TOML-aware enough for this ownership boundary and preserves unrelated sections verbatim.
+- Добавлены regression checks:
+  - native deps drift rejection;
+  - runtime-only uninstall preserves Codex config;
+  - Codex uninstall/remove-all remove owned sections even with inline comments and quoted aliases.
+- Full canonical contour green after the pass:
+  - targeted incident set `7/7`;
+  - `scripts/codex/verify.ps1` green with runtime `669/669`, integration `487/487`, smoke green, total `00:17:51.7855606`.
 - Подтверждено на опубликованном GitHub release asset `v0.2.0`: runtime zip содержит `System.Diagnostics.DiagnosticSource.dll` `8.0.26`, а `Okno.Server.deps.json` требует `System.Diagnostics.DiagnosticSource/10.0.3`. Это объясняет падение `Okno.Server.exe` до MCP handshake и отсутствие callable tools в Codex.
 - Локально исправлен runtime packager:
   - `computer-use-win-runtime-bundle-common.ps1` теперь после `dotnet publish` ремонтирует package runtime assets из NuGet cache, если publish output оставил stale runtime-pack DLL;

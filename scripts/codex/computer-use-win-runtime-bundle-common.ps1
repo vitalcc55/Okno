@@ -225,7 +225,34 @@ function Get-ComputerUseWinNuGetPackageRoot {
     return [System.IO.Path]::GetFullPath((Join-Path $env:USERPROFILE '.nuget\packages'))
 }
 
-function Get-ComputerUseWinDepsRuntimePackageEntries {
+function Get-ComputerUseWinDotNetRoot {
+    if (-not [string]::IsNullOrWhiteSpace($env:DOTNET_ROOT)) {
+        return [System.IO.Path]::GetFullPath($env:DOTNET_ROOT)
+    }
+
+    $dotnetCommand = Get-Command dotnet -ErrorAction Stop
+    return [System.IO.Path]::GetFullPath((Split-Path -Parent $dotnetCommand.Source))
+}
+
+function Normalize-ComputerUseWinFileVersion {
+    param(
+        [AllowEmptyString()]
+        [string] $FileVersion
+    )
+
+    if ([string]::IsNullOrWhiteSpace($FileVersion)) {
+        return ''
+    }
+
+    $match = [System.Text.RegularExpressions.Regex]::Match($FileVersion, '\d+(?:[.,]\d+){1,3}')
+    if (-not $match.Success) {
+        return $FileVersion.Trim()
+    }
+
+    return ($match.Value -replace ',', '.').Trim()
+}
+
+function Get-ComputerUseWinDepsPackageAssetEntries {
     param(
         [Parameter(Mandatory)]
         [string] $DepsJsonPath
@@ -248,44 +275,106 @@ function Get-ComputerUseWinDepsRuntimePackageEntries {
         $libraryMetadata = $deps.libraries.PSObject.Properties |
             Where-Object { [string]::Equals([string]$_.Name, [string]$library.Name, [System.StringComparison]::Ordinal) } |
             Select-Object -First 1
-        if ($null -eq $libraryMetadata -or [string]$libraryMetadata.Value.type -ne 'package') {
-            continue
-        }
-
-        if ($null -eq $library.Value.runtime) {
+        $libraryType = [string]$libraryMetadata.Value.type
+        if ($libraryType -ne 'package' -and $libraryType -ne 'runtimepack') {
             continue
         }
 
         $packagePath = [string]$libraryMetadata.Value.path
-        if ([string]::IsNullOrWhiteSpace($packagePath)) {
+        if ($libraryType -eq 'package' -and [string]::IsNullOrWhiteSpace($packagePath)) {
             continue
         }
 
-        foreach ($asset in $library.Value.runtime.PSObject.Properties) {
-            $assetPath = [string]$asset.Name
-            if (-not $assetPath.EndsWith('.dll', [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($assetGroupName in @('runtime', 'native')) {
+            $assetGroup = $library.Value.$assetGroupName
+            if ($null -eq $assetGroup) {
                 continue
             }
 
-            $fileVersion = [string]$asset.Value.fileVersion
-            if ([string]::IsNullOrWhiteSpace($fileVersion)) {
-                continue
-            }
+            foreach ($asset in $assetGroup.PSObject.Properties) {
+                $assetPath = [string]$asset.Name
+                $fileVersion = [string]$asset.Value.fileVersion
 
-            $entries.Add([pscustomobject]@{
-                libraryName = [string]$library.Name
-                packagePath = $packagePath
-                assetPath = $assetPath
-                fileName = [System.IO.Path]::GetFileName($assetPath)
-                fileVersion = $fileVersion
-            }) | Out-Null
+                $entries.Add([pscustomobject]@{
+                    libraryName = [string]$library.Name
+                    libraryType = $libraryType
+                    packagePath = $packagePath
+                    assetKind = $assetGroupName
+                    assetPath = $assetPath
+                    fileName = [System.IO.Path]::GetFileName($assetPath)
+                    fileVersion = $fileVersion
+                }) | Out-Null
+            }
         }
     }
 
     return $entries.ToArray()
 }
 
-function Repair-ComputerUseWinRuntimeBundlePackageAssets {
+function Resolve-ComputerUseWinDepsAssetSourcePath {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Entry
+    )
+
+    if ([string]$Entry.libraryType -eq 'package') {
+        $nugetRoot = Get-ComputerUseWinNuGetPackageRoot
+        return Join-Path (Join-Path $nugetRoot $Entry.packagePath) $Entry.assetPath
+    }
+
+    if ([string]$Entry.libraryType -eq 'runtimepack') {
+        $runtimeRuntimepackMatch = [System.Text.RegularExpressions.Regex]::Match(
+            [string]$Entry.libraryName,
+            '^runtimepack\.(?<framework>.+?)\.Runtime\.(?<rid>[^/]+)/(?<version>[^/]+)$')
+        if ($runtimeRuntimepackMatch.Success) {
+            $dotnetRoot = Get-ComputerUseWinDotNetRoot
+            $frameworkName = $runtimeRuntimepackMatch.Groups['framework'].Value
+            $rid = $runtimeRuntimepackMatch.Groups['rid'].Value
+            $frameworkVersion = $runtimeRuntimepackMatch.Groups['version'].Value
+            $candidates = @(
+                (Join-Path (Join-Path (Join-Path $dotnetRoot 'shared') $frameworkName) (Join-Path $frameworkVersion $Entry.fileName)),
+                (Join-Path (Join-Path (Join-Path $dotnetRoot 'host\fxr') $frameworkVersion) $Entry.fileName),
+                (Join-Path (Join-Path (Join-Path (Join-Path $dotnetRoot 'packs') "$frameworkName.Host.$rid") $frameworkVersion) (Join-Path "runtimes\$rid\native" $Entry.fileName))
+            )
+
+            foreach ($candidate in $candidates) {
+                if (Test-Path $candidate -PathType Leaf) {
+                    return $candidate
+                }
+            }
+
+            return $candidates[0]
+        }
+
+        $refRuntimepackMatch = [System.Text.RegularExpressions.Regex]::Match(
+            [string]$Entry.libraryName,
+            '^runtimepack\.(?<package>.+?\.Ref)/(?<version>[^/]+)$')
+        if ($refRuntimepackMatch.Success) {
+            $nugetRoot = Get-ComputerUseWinNuGetPackageRoot
+            $packageName = $refRuntimepackMatch.Groups['package'].Value.ToLowerInvariant()
+            $packageVersion = $refRuntimepackMatch.Groups['version'].Value
+            $packageRoot = Join-Path (Join-Path $nugetRoot $packageName) $packageVersion
+            if (-not (Test-Path $packageRoot -PathType Container)) {
+                return Join-Path $packageRoot $Entry.fileName
+            }
+
+            $match = Get-ChildItem -LiteralPath $packageRoot -Recurse -File |
+                Where-Object { [string]::Equals($_.Name, [string]$Entry.fileName, [System.StringComparison]::OrdinalIgnoreCase) } |
+                Select-Object -First 1
+            if ($null -ne $match) {
+                return $match.FullName
+            }
+
+            return Join-Path $packageRoot $Entry.fileName
+        }
+
+        throw "Runtime bundle asset '$($Entry.fileName)' comes from unsupported runtimepack identity '$($Entry.libraryName)'."
+    }
+
+    throw "Runtime bundle asset '$($Entry.fileName)' uses unsupported library type '$($Entry.libraryType)'."
+}
+
+function Repair-ComputerUseWinRuntimeBundleDepsAssets {
     param(
         [Parameter(Mandatory)]
         [string] $RootPath,
@@ -293,22 +382,22 @@ function Repair-ComputerUseWinRuntimeBundlePackageAssets {
         [string] $DepsJsonPath
     )
 
-    $nugetRoot = Get-ComputerUseWinNuGetPackageRoot
-    foreach ($entry in Get-ComputerUseWinDepsRuntimePackageEntries -DepsJsonPath $DepsJsonPath) {
+    foreach ($entry in Get-ComputerUseWinDepsPackageAssetEntries -DepsJsonPath $DepsJsonPath) {
         $destinationPath = Join-Path $RootPath $entry.fileName
         $needsPackageAsset = -not (Test-Path $destinationPath -PathType Leaf)
+        $sourcePath = Resolve-ComputerUseWinDepsAssetSourcePath -Entry $entry
+        if (-not (Test-Path $sourcePath -PathType Leaf)) {
+            throw "Runtime bundle '$RootPath' requires $($entry.libraryType) $($entry.assetKind) asset '$($entry.assetPath)' from '$($entry.libraryName)', but '$sourcePath' is missing."
+        }
+
         if (-not $needsPackageAsset) {
-            $actualVersion = [string](Get-Item -LiteralPath $destinationPath).VersionInfo.FileVersion
-            $needsPackageAsset = $actualVersion -ne [string]$entry.fileVersion
+            $actualSha256 = Get-ComputerUseWinRuntimeAssetSha256 -Path $destinationPath
+            $expectedSha256 = Get-ComputerUseWinRuntimeAssetSha256 -Path $sourcePath
+            $needsPackageAsset = $actualSha256 -ne $expectedSha256
         }
 
         if (-not $needsPackageAsset) {
             continue
-        }
-
-        $sourcePath = Join-Path (Join-Path $nugetRoot $entry.packagePath) $entry.assetPath
-        if (-not (Test-Path $sourcePath -PathType Leaf)) {
-            throw "Runtime bundle '$RootPath' requires package asset '$($entry.assetPath)' from '$($entry.libraryName)', but '$sourcePath' is missing."
         }
 
         Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
@@ -328,15 +417,21 @@ function Assert-ComputerUseWinRuntimeBundleMatchesDepsJson {
         throw "$Description is missing 'Okno.Server.deps.json'."
     }
 
-    foreach ($entry in Get-ComputerUseWinDepsRuntimePackageEntries -DepsJsonPath $depsJsonPath) {
+    foreach ($entry in Get-ComputerUseWinDepsPackageAssetEntries -DepsJsonPath $depsJsonPath) {
         $destinationPath = Join-Path $RootPath $entry.fileName
         if (-not (Test-Path $destinationPath -PathType Leaf)) {
-            throw "$Description is missing package runtime asset '$($entry.fileName)' required by '$($entry.libraryName)'."
+            throw "$Description is missing package $($entry.assetKind) asset '$($entry.fileName)' required by '$($entry.libraryName)'."
         }
 
-        $actualVersion = [string](Get-Item -LiteralPath $destinationPath).VersionInfo.FileVersion
-        if ($actualVersion -ne [string]$entry.fileVersion) {
-            throw "$Description contains '$($entry.fileName)' fileVersion '$actualVersion', but 'Okno.Server.deps.json' requires '$($entry.fileVersion)' from '$($entry.libraryName)'."
+        $sourcePath = Resolve-ComputerUseWinDepsAssetSourcePath -Entry $entry
+        if (-not (Test-Path $sourcePath -PathType Leaf)) {
+            throw "$Description cannot prove '$($entry.fileName)' because source asset '$sourcePath' is missing for '$($entry.libraryName)'."
+        }
+
+        $actualSha256 = Get-ComputerUseWinRuntimeAssetSha256 -Path $destinationPath
+        $expectedSha256 = Get-ComputerUseWinRuntimeAssetSha256 -Path $sourcePath
+        if ($actualSha256 -ne $expectedSha256) {
+            throw "$Description contains '$($entry.fileName)' that does not match expected $($entry.libraryType) $($entry.assetKind) asset proof from '$($entry.libraryName)'."
         }
     }
 }
@@ -672,7 +767,7 @@ function Publish-ComputerUseWinRuntimeBundleToDirectory {
             --output $DestinationRoot
     }
 
-    Repair-ComputerUseWinRuntimeBundlePackageAssets -RootPath $DestinationRoot -DepsJsonPath (Join-Path $DestinationRoot 'Okno.Server.deps.json')
+    Repair-ComputerUseWinRuntimeBundleDepsAssets -RootPath $DestinationRoot -DepsJsonPath (Join-Path $DestinationRoot 'Okno.Server.deps.json')
     Write-ComputerUseWinRuntimeBundleManifest -RootPath $DestinationRoot
     Assert-ComputerUseWinRuntimeBundleMatchesManifest -RootPath $DestinationRoot -Description "Published computer-use-win runtime bundle '$DestinationRoot'"
 }

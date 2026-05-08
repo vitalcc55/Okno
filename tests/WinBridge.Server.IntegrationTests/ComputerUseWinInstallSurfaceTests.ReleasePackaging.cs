@@ -203,13 +203,23 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         using ZipArchive archive = ZipFile.OpenRead(SharedReleasePackagingRuntimePackage.Value.ArchivePath);
         using JsonDocument deps = ReadReleasePackagingJsonArchiveEntry(archive, "Okno.Server.deps.json");
 
-        string expectedFileVersion = GetDepsRuntimePackageFileVersion(
+        string expectedManagedFileVersion = GetDepsPackageAssetFileVersion(
             deps,
             "System.Diagnostics.DiagnosticSource",
+            "runtime",
             "System.Diagnostics.DiagnosticSource.dll");
-        string actualFileVersion = ExtractArchiveEntryAndReadFileVersion(archive, "System.Diagnostics.DiagnosticSource.dll");
+        string actualManagedFileVersion = ExtractArchiveEntryAndReadFileVersion(archive, "System.Diagnostics.DiagnosticSource.dll");
 
-        Assert.Equal(expectedFileVersion, actualFileVersion);
+        Assert.Equal(NormalizeFileVersion(expectedManagedFileVersion), NormalizeFileVersion(actualManagedFileVersion));
+
+        string expectedNativeFileVersion = GetDepsPackageAssetFileVersion(
+            deps,
+            "runtimepack.Microsoft.NETCore.App.Runtime.win-x64",
+            "native",
+            "Microsoft.DiaSymReader.Native.amd64.dll");
+        string actualNativeFileVersion = ExtractArchiveEntryAndReadFileVersion(archive, "Microsoft.DiaSymReader.Native.amd64.dll");
+
+        Assert.Equal(NormalizeFileVersion(expectedNativeFileVersion), NormalizeFileVersion(actualNativeFileVersion));
     }
 
     [Fact]
@@ -221,7 +231,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            CreateRuntimeBundleWithDepsVersionDrift(sourceRoot);
+            CreateRuntimeBundleWithDepsVersionDrift(sourceRoot, assetKind: "runtime");
 
             ScriptInvocationResult result = InvokePowerShellScript(
                 GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
@@ -229,7 +239,33 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 startInfo => AddReleasePackagingRuntimePackageArguments(startInfo, ReleasePackagingRuntimeVersion, sourceRoot, outputRoot));
 
             Assert.NotEqual(0, result.ExitCode);
-            Assert.Contains("fileVersion", result.Stderr, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Test publish source runtime bundle", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(sourceRoot);
+            DeleteDirectoryIfExists(outputRoot);
+        }
+    }
+
+    [Fact]
+    public void PackageComputerUseWinRuntimeReleaseRejectsSourceBundleWithNativeDepsVersionDrift()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string sourceRoot = CreateReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-runtime-release-native-deps-drift-source");
+        string outputRoot = CreateReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-runtime-release-native-deps-drift-output");
+
+        try
+        {
+            CreateRuntimeBundleWithDepsVersionDrift(sourceRoot, assetKind: "native");
+
+            ScriptInvocationResult result = InvokePowerShellScript(
+                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+                repoRoot,
+                startInfo => AddReleasePackagingRuntimePackageArguments(startInfo, ReleasePackagingRuntimeVersion, sourceRoot, outputRoot));
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("Test publish source runtime bundle", result.Stderr, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -444,58 +480,100 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         startInfo.ArgumentList.Add(outputRoot);
     }
 
-    private static void CreateRuntimeBundleWithDepsVersionDrift(string sourceRoot)
+    private static void CreateRuntimeBundleWithDepsVersionDrift(string sourceRoot, string assetKind)
     {
         Directory.CreateDirectory(sourceRoot);
         string depsPath = Path.Combine(sourceRoot, "Okno.Server.deps.json");
-        string diagnosticSourcePath = Path.Combine(sourceRoot, "System.Diagnostics.DiagnosticSource.dll");
         string serverPath = Path.Combine(sourceRoot, ReleasePackagingRuntimeServerExeName);
-        File.WriteAllText(
-            depsPath,
-            """
-            {
-              "targets": {
-                ".NETCoreApp,Version=v8.0/win-x64": {
-                  "System.Diagnostics.DiagnosticSource/10.0.3": {
-                    "runtime": {
-                      "lib/net8.0/System.Diagnostics.DiagnosticSource.dll": {
-                        "assemblyVersion": "10.0.0.0",
-                        "fileVersion": "10.0.326.7603"
+        File.WriteAllText(serverPath, "server placeholder");
+        List<object> files =
+        [
+            new { path = "Okno.Server.deps.json", size = 0L },
+            new { path = ReleasePackagingRuntimeServerExeName, size = new FileInfo(serverPath).Length },
+        ];
+
+        if (string.Equals(assetKind, "runtime", StringComparison.Ordinal))
+        {
+            string diagnosticSourcePath = Path.Combine(sourceRoot, "System.Diagnostics.DiagnosticSource.dll");
+            File.WriteAllText(
+                depsPath,
+                """
+                {
+                  "targets": {
+                    ".NETCoreApp,Version=v8.0/win-x64": {
+                      "System.Diagnostics.DiagnosticSource/10.0.3": {
+                        "runtime": {
+                          "lib/net8.0/System.Diagnostics.DiagnosticSource.dll": {
+                            "assemblyVersion": "10.0.0.0",
+                            "fileVersion": "10.0.326.7603"
+                          }
+                        }
                       }
+                    }
+                  },
+                  "libraries": {
+                    "System.Diagnostics.DiagnosticSource/10.0.3": {
+                      "type": "package",
+                      "serviceable": true,
+                      "sha512": "",
+                      "path": "system.diagnostics.diagnosticsource/10.0.3",
+                      "hashPath": "system.diagnostics.diagnosticsource.10.0.3.nupkg.sha512"
                     }
                   }
                 }
-              },
-              "libraries": {
-                "System.Diagnostics.DiagnosticSource/10.0.3": {
-                  "type": "package",
-                  "serviceable": true,
-                  "sha512": "",
-                  "path": "system.diagnostics.diagnosticsource/10.0.3",
-                  "hashPath": "system.diagnostics.diagnosticsource.10.0.3.nupkg.sha512"
+                """);
+            File.WriteAllText(diagnosticSourcePath, "wrong runtime-pack assembly");
+            files.Add(new { path = "System.Diagnostics.DiagnosticSource.dll", size = new FileInfo(diagnosticSourcePath).Length });
+        }
+        else if (string.Equals(assetKind, "native", StringComparison.Ordinal))
+        {
+            string nativeAssetPath = Path.Combine(sourceRoot, "Microsoft.DiaSymReader.Native.amd64.dll");
+            File.WriteAllText(
+                depsPath,
+                """
+                {
+                  "targets": {
+                    ".NETCoreApp,Version=v8.0/win-x64": {
+                      "Microsoft.DiaSymReader.Native/1.7.0": {
+                        "native": {
+                          "runtimes/win-x64/native/Microsoft.DiaSymReader.Native.amd64.dll": {
+                            "fileVersion": "14.40.33810.0"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "libraries": {
+                    "Microsoft.DiaSymReader.Native/1.7.0": {
+                      "type": "package",
+                      "serviceable": true,
+                      "sha512": "",
+                      "path": "microsoft.diasymreader.native/1.7.0",
+                      "hashPath": "microsoft.diasymreader.native.1.7.0.nupkg.sha512"
+                    }
+                  }
                 }
-              }
-            }
-            """);
-        File.WriteAllText(diagnosticSourcePath, "wrong runtime-pack assembly");
-        File.WriteAllText(serverPath, "server placeholder");
+                """);
+            File.WriteAllText(nativeAssetPath, "wrong native asset");
+            files.Add(new { path = "Microsoft.DiaSymReader.Native.amd64.dll", size = new FileInfo(nativeAssetPath).Length });
+        }
+        else
+        {
+            throw new InvalidOperationException($"Unsupported deps drift asset kind '{assetKind}'.");
+        }
+        files[0] = new { path = "Okno.Server.deps.json", size = new FileInfo(depsPath).Length };
 
         var manifest = new
         {
             formatVersion = 1,
-            files = new[]
-            {
-                new { path = "Okno.Server.deps.json", size = new FileInfo(depsPath).Length },
-                new { path = "System.Diagnostics.DiagnosticSource.dll", size = new FileInfo(diagnosticSourcePath).Length },
-                new { path = ReleasePackagingRuntimeServerExeName, size = new FileInfo(serverPath).Length },
-            },
+            files = files.ToArray(),
         };
         File.WriteAllText(
             Path.Combine(sourceRoot, ReleasePackagingRuntimeBundleManifestName),
             JsonSerializer.Serialize(manifest));
     }
 
-    private static string GetDepsRuntimePackageFileVersion(JsonDocument deps, string packageName, string fileName)
+    private static string GetDepsPackageAssetFileVersion(JsonDocument deps, string packageName, string assetKind, string fileName)
     {
         foreach (JsonProperty target in deps.RootElement.GetProperty("targets").EnumerateObject())
         {
@@ -506,18 +584,23 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                     continue;
                 }
 
-                foreach (JsonProperty runtimeAsset in library.Value.GetProperty("runtime").EnumerateObject())
+                if (!library.Value.TryGetProperty(assetKind, out JsonElement assetGroup))
                 {
-                    if (string.Equals(Path.GetFileName(runtimeAsset.Name), fileName, StringComparison.Ordinal))
+                    continue;
+                }
+
+                foreach (JsonProperty asset in assetGroup.EnumerateObject())
+                {
+                    if (string.Equals(Path.GetFileName(asset.Name), fileName, StringComparison.Ordinal))
                     {
-                        return runtimeAsset.Value.GetProperty("fileVersion").GetString()
+                        return asset.Value.GetProperty("fileVersion").GetString()
                             ?? throw new InvalidOperationException($"deps fileVersion missing for {fileName}.");
                     }
                 }
             }
         }
 
-        throw new InvalidOperationException($"deps runtime asset '{fileName}' from '{packageName}' was not found.");
+        throw new InvalidOperationException($"deps {assetKind} asset '{fileName}' from '{packageName}' was not found.");
     }
 
     private static string ExtractArchiveEntryAndReadFileVersion(ZipArchive archive, string entryPath)
@@ -535,6 +618,12 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         {
             DeleteDirectoryIfExists(tempRoot);
         }
+    }
+
+    private static string NormalizeFileVersion(string fileVersion)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(fileVersion, @"\d+(?:[.,]\d+){1,3}");
+        return match.Success ? match.Value.Replace(',', '.') : fileVersion.Trim();
     }
 
     private static string CreateRuntimeReleaseDescriptor(
