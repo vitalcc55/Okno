@@ -1,7 +1,7 @@
 # Task State
 
-goal: Довести installer-installed `computer-use-win` до fully-active Codex path без ручного UI-клика `Add to Codex`, при этом не притворяясь, что отдельный skill toggle уже имеет наблюдаемый install-time contract.
-stage: Install-time activation gap подтверждён на реальном пользовательском пути. Старый `computer-use-win-local` source удалён из локального профиля, release-installed `okno-local-installed` доказан как рабочий, а installer core локально доработан так, чтобы сам upsert-ить `[plugins."computer-use-win@okno-local-installed"] enabled = true` в `%CODEX_HOME%\\config.toml`. По skill toggle отдельного файлового/persistent contract пока не найдено, поэтому текущий фикс сознательно закрывает plugin activation, а не недокументированное внутреннее UI-state.
+goal: Выпустить `0.2.2` как patch release после post-release incident и install-time activation fix для installer-installed `computer-use-win`.
+stage: Release `v0.2.2` уже опубликован, а `main` синхронизирован на актуальную installer-activation модель и post-release checksum drift path. Confirmed fix scope: installer теперь сам upsert-ит `[plugins."computer-use-win@okno-local-installed"] enabled = true` в `%CODEX_HOME%\\config.toml`; release workflow снова собрал runtime zip с checksum, отличающимся от локального pre-release package, поэтому repo descriptor после публикации нужно синхронизировать на фактически опубликованный asset hash.
 done:
 - Перепроверена current plugin model по primary sources (`Codex 0.129.0` release notes + official plugin/app-server docs):
   - plugin install surface действительно marketplace/cache/enabled-state oriented;
@@ -90,8 +90,8 @@ previous_release_context:
   - remove-all with malformed marketplace;
   - release packaging runbook contract updated for lifecycle section.
 next:
-- Если пользователь подтвердит, следующий шаг — отдельный commit под installer activation fix.
-- Если потом захотим закрывать ещё и skill toggle, сначала нужно найти поддержанный и наблюдаемый Codex persistence contract; ad-hoc правка внутренних sqlite/global-state файлов не допускается.
+- После post-release sync commit остаётся только финальный push `main`.
+- Если позже захотим закрывать ещё и skill toggle, сначала нужно найти поддержанный и наблюдаемый Codex persistence contract; ad-hoc правка внутренних sqlite/global-state файлов не допускается.
 edited_files:
 - src/WinBridge.Setup.Core/ComputerUseWinRuntimeContracts.cs
 - src/WinBridge.Setup.Core/ComputerUseWinInstallerService.cs
