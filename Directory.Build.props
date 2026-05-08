@@ -10,9 +10,9 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' != ''">true</ContinuousIntegrationBuild>
     <IsPackable>false</IsPackable>
-    <Version>0.2.0</Version>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
+    <Version>0.2.1</Version>
+    <AssemblyVersion>0.2.1.0</AssemblyVersion>
+    <FileVersion>0.2.1.0</FileVersion>
     <Product>Okno</Product>
     <GenerateDocumentationFile Condition="'$(IsTestProject)' != 'true'">true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>

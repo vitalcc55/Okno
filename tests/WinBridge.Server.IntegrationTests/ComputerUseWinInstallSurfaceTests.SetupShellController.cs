@@ -12,7 +12,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     private const string SetupShellRoot = @"C:\Users\user\AppData\Local\Okno\setup-shell\current";
     private const string SetupStartMenuShortcutPath = @"C:\Users\user\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Okno Setup.lnk";
     private const string SetupUninstallRegistryKeyPath = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Okno";
-    private const string SetupRuntimeVersion = "0.2.0";
+    private const string SetupRuntimeVersion = "0.2.1";
     private const string SetupRuntimeRid = "win-x64";
     private const string SetupRuntimeRoot = $@"{SetupAppRoot}\runtimes\{SetupRuntimeRid}\{SetupRuntimeVersion}";
     private const string SetupStatePath = $@"{SetupAppRoot}\state\current-runtime.json";
@@ -213,7 +213,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         service.RegisterShell(
             sourceRoot: scenario.SourceRoot,
-            displayVersion: "0.2.0",
+            displayVersion: "0.2.1",
             currentExecutablePathOverride: Path.Combine(scenario.SourceRoot, "Okno Setup.exe"));
 
         Assert.True(File.Exists(Path.Combine(scenario.CurrentShellRoot, "Okno Setup.exe")));
@@ -234,11 +234,11 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         service.RegisterShell(
             sourceRoot: scenario.SourceRoot,
-            displayVersion: "0.2.0",
+            displayVersion: "0.2.1",
             currentExecutablePathOverride: Path.Combine(scenario.SourceRoot, "Okno Setup.exe"));
 
         Assert.Equal("v2", File.ReadAllText(Path.Combine(scenario.CurrentShellRoot, "marker.txt")));
-        Assert.Equal("0.2.0", scenario.ReadRegistryValue("DisplayVersion"));
+        Assert.Equal("0.2.1", scenario.ReadRegistryValue("DisplayVersion"));
     }
 
     [Fact]
@@ -286,7 +286,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         OknoSetupShellRegistrationService service = scenario.CreateService();
         service.RegisterShell(
             sourceRoot: scenario.SourceRoot,
-            displayVersion: "0.2.0",
+            displayVersion: "0.2.1",
             currentExecutablePathOverride: Path.Combine(scenario.SourceRoot, "Okno Setup.exe"));
 
         service.UnregisterShell();
@@ -302,7 +302,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         OknoSetupShellRegistrationService service = scenario.CreateService();
         service.RegisterShell(
             sourceRoot: scenario.SourceRoot,
-            displayVersion: "0.2.0",
+            displayVersion: "0.2.1",
             currentExecutablePathOverride: Path.Combine(scenario.SourceRoot, "Okno Setup.exe"));
 
         bool cleanupScheduled = service.RemoveShellArtifacts(Path.Combine(scenario.Root, "external-installer"), currentProcessId: 4242);
@@ -338,7 +338,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             1,
             modeName,
             "computer-use-win",
-            pluginSourceRoot is null ? null : "0.2.0",
+            pluginSourceRoot is null ? null : "0.2.1",
             SetupRuntimeVersion,
             SetupRuntimeRid,
             SetupRuntimeRoot,

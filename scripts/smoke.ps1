@@ -2036,7 +2036,7 @@ try {
         capabilities = @{}
         clientInfo = @{
             name = 'Okno.Smoke'
-            version = '0.2.0'
+            version = '0.2.1'
         }
     } -RequestName 'initialize'
     $rawInitializeRequest = $initializeCall.RawRequest
@@ -2600,7 +2600,7 @@ try {
             capabilities = @{}
             clientInfo = @{
                 name = 'Okno.Smoke.FreshHost'
-                version = '0.2.0'
+                version = '0.2.1'
             }
         } -RequestName 'fresh initialize'
         [void](Send-Json -Process $freshProcess -Payload @{

@@ -12,8 +12,8 @@ namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
-    private const string ReleasePackagingPluginVersion = "0.2.0";
-    private const string ReleasePackagingRuntimeVersion = "0.2.0-test";
+    private const string ReleasePackagingPluginVersion = "0.2.1";
+    private const string ReleasePackagingRuntimeVersion = "0.2.1-test";
     private const string ReleasePackagingRuntimeRid = "win-x64";
     private const string ReleasePackagingRuntimeServerExeName = "Okno.Server.exe";
     private const string ReleasePackagingRuntimeBundleManifestName = "okno-runtime-bundle-manifest.json";
@@ -354,11 +354,11 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         JsonElement root = descriptor.RootElement;
 
         Assert.Equal(1, root.GetProperty("formatVersion").GetInt32());
-        AssertReleasePackagingJsonString(root, "version", "0.2.0");
+        AssertReleasePackagingJsonString(root, "version", "0.2.1");
         AssertReleasePackagingJsonString(root, "rid", ReleasePackagingRuntimeRid);
-        AssertReleasePackagingJsonString(root, "tag", "v0.2.0");
-        AssertReleasePackagingJsonString(root, "assetName", "okno-computer-use-win-runtime-0.2.0-win-x64.zip");
-        Assert.Contains("/releases/download/v0.2.0/", GetRequiredReleasePackagingJsonString(root, "downloadUrl"), StringComparison.Ordinal);
+        AssertReleasePackagingJsonString(root, "tag", "v0.2.1");
+        AssertReleasePackagingJsonString(root, "assetName", "okno-computer-use-win-runtime-0.2.1-win-x64.zip");
+        Assert.Contains("/releases/download/v0.2.1/", GetRequiredReleasePackagingJsonString(root, "downloadUrl"), StringComparison.Ordinal);
         Assert.Matches("^[0-9a-f]{64}$", GetRequiredReleasePackagingJsonString(root, "sha256"));
         AssertReleasePackagingJsonString(root, "serverExeRelativePath", ReleasePackagingRuntimeServerExeName);
         AssertReleasePackagingJsonString(root, "bundleManifestName", ReleasePackagingRuntimeBundleManifestName);
@@ -655,7 +655,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
                 clientInfo = new
                 {
                     name = "ComputerUseWin.ReleasePackagingTests",
-                    version = "0.2.0",
+                    version = "0.2.1",
                 },
             },
             "initialize");
