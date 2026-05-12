@@ -79,8 +79,8 @@ internal sealed class InputBatchExecutionState
     public void RecordCommittedSideEffect(InputIrreversiblePhase phase)
     {
         InputActionExecutionState current = EnsureCurrentAction();
-        if (current.ResolvedScreenPoint is not InputPoint resolvedScreenPoint
-            && ActionRequiresResolvedPoint(current.Action))
+        if (current.ResolvedScreenPoint is not InputPoint
+            && InputActionSemantics.RequiresResolvedPoint(current.Action))
         {
             throw new InvalidOperationException("Committed side effect требует authoritative resolved screen point.");
         }
@@ -98,8 +98,8 @@ internal sealed class InputBatchExecutionState
     public void CompleteCurrentActionSuccess()
     {
         InputActionExecutionState current = EnsureCurrentAction();
-        if (current.ResolvedScreenPoint is not InputPoint resolvedScreenPoint
-            && ActionRequiresResolvedPoint(current.Action))
+        if (current.ResolvedScreenPoint is not InputPoint
+            && InputActionSemantics.RequiresResolvedPoint(current.Action))
         {
             throw new InvalidOperationException("Successful action result требует authoritative resolved screen point.");
         }
@@ -162,6 +162,30 @@ internal sealed class InputBatchExecutionState
         if (TryMaterializeCancellationBetweenActions(cancellationToken, out cancellationResult))
         {
             return false;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        cancellationResult = null;
+        return true;
+    }
+
+    public bool TryEnterDispatchBoundary(
+        CancellationToken cancellationToken,
+        [NotNullWhen(false)] out InputResult? cancellationResult)
+    {
+        if (HasCommittedSideEffectForCurrentAction)
+        {
+            if (TryMaterializeCancellationAfterCommittedSideEffect(cancellationToken, out cancellationResult))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (TryMaterializeCancellationBetweenActions(cancellationToken, out cancellationResult))
+            {
+                return false;
+            }
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -351,7 +375,7 @@ internal sealed class InputBatchExecutionState
             RequestedPoint: action.Point,
             ResolvedScreenPoint: resolvedScreenPoint,
             Button: button,
-            Keys: ResolveActionKeys(action));
+            Keys: InputActionSemantics.ResolveActionKeys(action));
 
     private static InputActionResult CreateFailedActionResult(
         InputAction action,
@@ -368,26 +392,5 @@ internal sealed class InputBatchExecutionState
             RequestedPoint: action.Point,
             ResolvedScreenPoint: resolvedScreenPoint,
             Button: button ?? action.Button,
-            Keys: ResolveActionKeys(action));
-
-    private static IReadOnlyList<string>? ResolveActionKeys(InputAction action)
-    {
-        if (action.Keys is { Count: > 0 })
-        {
-            return action.Keys;
-        }
-
-        return string.IsNullOrWhiteSpace(action.Key)
-            ? null
-            : [action.Key];
-    }
-
-    private static bool ActionRequiresResolvedPoint(InputAction action) =>
-        action.Point is not null
-        || action.Path is not null
-        || string.Equals(action.Type, InputActionTypeValues.Move, StringComparison.Ordinal)
-        || string.Equals(action.Type, InputActionTypeValues.Click, StringComparison.Ordinal)
-        || string.Equals(action.Type, InputActionTypeValues.DoubleClick, StringComparison.Ordinal)
-        || string.Equals(action.Type, InputActionTypeValues.Scroll, StringComparison.Ordinal)
-        || string.Equals(action.Type, InputActionTypeValues.Drag, StringComparison.Ordinal);
+            Keys: InputActionSemantics.ResolveActionKeys(action));
 }

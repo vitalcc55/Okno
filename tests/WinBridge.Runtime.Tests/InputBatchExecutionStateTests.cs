@@ -167,6 +167,91 @@ public sealed class InputBatchExecutionStateTests
         Assert.DoesNotContain("pointer", failure.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void DispatchBoundaryCancellationUsesBetweenActionsSemanticsWhenCurrentActionDidNotStartSideEffects()
+    {
+        InputBatchExecutionState batch = CreateBatch();
+        batch.BeginAction(0, CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)), effectiveButton: InputButtonValues.Left);
+        batch.UpdateResolvedPoint(new InputPoint(140, 260));
+        batch.UpdateTargetHwnd(101);
+        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterClickTap);
+        batch.CompleteCurrentActionSuccess();
+        batch.BeginAction(1, CreateKeyboardAction(InputActionTypeValues.Type, text: "typed text"), effectiveButton: null);
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        bool entered = batch.TryEnterDispatchBoundary(cancellation.Token, out InputResult? result);
+
+        Assert.False(entered);
+        InputResult failure = Assert.IsType<InputResult>(result);
+        Assert.Null(failure.FailedActionIndex);
+        Assert.Equal(1, failure.CompletedActionCount);
+        Assert.Contains("next action was not started", failure.Reason, StringComparison.OrdinalIgnoreCase);
+        InputActionResult committedAction = Assert.Single(failure.Actions!);
+        Assert.Equal(InputActionTypeValues.Click, committedAction.Type);
+    }
+
+    [Fact]
+    public void DispatchBoundaryCancellationUsesInFlightSemanticsWhenCurrentActionOwnsCommittedSideEffect()
+    {
+        InputBatchExecutionState batch = CreateBatch();
+        batch.BeginAction(0, CreateAction(InputActionTypeValues.DoubleClick, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)), effectiveButton: InputButtonValues.Left);
+        batch.UpdateResolvedPoint(new InputPoint(140, 260));
+        batch.UpdateTargetHwnd(101);
+        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterDoubleClickFirstTap);
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        bool entered = batch.TryEnterDispatchBoundary(cancellation.Token, out InputResult? result);
+
+        Assert.False(entered);
+        InputResult failure = Assert.IsType<InputResult>(result);
+        Assert.Equal(0, failure.FailedActionIndex);
+        Assert.Contains("first double_click tap", failure.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CancellationAfterScrollDispatchUsesScrollSpecificReason()
+    {
+        InputBatchExecutionState batch = CreateBatch();
+        batch.BeginAction(0, CreateAction(InputActionTypeValues.Scroll, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)), effectiveButton: null);
+        batch.UpdateResolvedPoint(new InputPoint(140, 260));
+        batch.UpdateTargetHwnd(101);
+        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterScrollDispatch);
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        bool materialized = batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellation.Token, out InputResult? result);
+
+        Assert.True(materialized);
+        InputResult failure = Assert.IsType<InputResult>(result);
+        Assert.Contains("scroll dispatch", failure.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pointer side effects had already started", failure.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CancellationAfterDragDispatchUsesDragSpecificReason()
+    {
+        InputBatchExecutionState batch = CreateBatch();
+        batch.BeginAction(0, CreateAction(InputActionTypeValues.Drag, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)), effectiveButton: InputButtonValues.Left);
+        batch.UpdateResolvedPoint(new InputPoint(220, 320));
+        batch.UpdateTargetHwnd(101);
+        batch.RecordCommittedSideEffect(InputIrreversiblePhase.AfterDragDispatch);
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        bool materialized = batch.TryMaterializeCancellationAfterCommittedSideEffect(cancellation.Token, out InputResult? result);
+
+        Assert.True(materialized);
+        InputResult failure = Assert.IsType<InputResult>(result);
+        Assert.Contains("drag dispatch", failure.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pointer side effects had already started", failure.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static InputBatchExecutionState CreateBatch() =>
         new(
             CreateWindow(),

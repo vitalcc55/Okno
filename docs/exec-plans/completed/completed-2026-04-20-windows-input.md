@@ -161,16 +161,16 @@ Decision for planning:
 
 | Reference | Что взять | Что не копировать |
 | --- | --- | --- |
-| `Windows-MCP` | action family already split into `Click / Type / Scroll / Move / Shortcut / Wait`; coordinates-or-label ergonomics; breadth-first proof that agents like direct action vocabulary | separate noisy tool zoo, string-only results, no shared gate/readiness/evidence/redaction, no honest verify model |
-| `Windows-MCP.Net` | breadth map of what users eventually ask from desktop runtimes | слишком широкий surface: app/browser/filesystem/OCR/system control рядом с click tools; для `Okno` это noise before core action contract is proven |
-| `Peekaboo` | quiet interaction vocabulary; explicit split between coordinate target and element/snapshot target; concrete `verifyFocusForCoordinateClick()` fail-closed pattern вместо silent wrong-window click | отдельные CLI commands вместо single MCP tool; platform-specific focus helpers and snapshot model cannot be transplanted 1:1 |
-| `pywinauto-mcp` | idea that compact surface can help models stay focused | portmanteau tools смешивают state, action, OCR и operator workflow; convenience wins over contract strictness and would blur `Okno` boundaries |
+| broad Windows action reference | action family already split into `Click / Type / Scroll / Move / Shortcut / Wait`; coordinates-or-label ergonomics; breadth-first proof that agents like direct action vocabulary | separate noisy tool zoo, string-only results, no shared gate/readiness/evidence/redaction, no honest verify model |
+| .NET-style desktop reference | breadth map of what users eventually ask from desktop runtimes | слишком широкий surface: app/browser/filesystem/OCR/system control рядом с click tools; для `Okno` это noise before core action contract is proven |
+| snapshot-first agent reference | quiet interaction vocabulary; explicit split between coordinate target and element/snapshot target; concrete `verifyFocusForCoordinateClick()` fail-closed pattern вместо silent wrong-window click | отдельные CLI commands вместо single MCP tool; platform-specific focus helpers and snapshot model cannot be transplanted 1:1 |
+| compact mixed-surface reference | idea that compact surface can help models stay focused | portmanteau tools смешивают state, action, OCR и operator workflow; convenience wins over contract strictness and would blur `Okno` boundaries |
 
 Net takeaways:
 
 - для `Okno` правильная форма не breadth-first zoo, но и не giant “do everything” tool;
 - лучший compromise = один quiet `windows.input` c typed `actions[]`, explicit target model, existing gate/evidence, and no hidden semantic click path;
-- из references strongest concrete pattern для V1 = Peekaboo-style focus verification for coordinate click plus Windows-MCP-style action vocabulary breadth, но поверх `Okno`-native result/evidence model.
+- из references strongest concrete pattern для V1 = snapshot-first focus verification for coordinate click plus broad action-vocabulary breadth, но поверх `Okno`-native result/evidence model.
 
 ## 5. Public contract proposal
 

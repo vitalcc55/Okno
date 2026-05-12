@@ -8,12 +8,10 @@ namespace WinBridge.Runtime.Windows.Input;
 internal static class InputTargetPreflightPolicy
 {
     public static InputTargetPreflightResult Evaluate(
-        string targetSource,
         WindowDescriptor liveWindow,
         InputProcessSecurityContext currentProcess,
         InputTargetSecurityInfo targetSecurity)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetSource);
         ArgumentNullException.ThrowIfNull(liveWindow);
         ArgumentNullException.ThrowIfNull(currentProcess);
         ArgumentNullException.ThrowIfNull(targetSecurity);
@@ -69,23 +67,21 @@ internal static class InputTargetPreflightPolicy
                 "Окно-цель имеет более высокий integrity profile; без uiAccess runtime не может честно обещать такой input path.");
         }
 
-        return new(IsAllowed: true);
+        return InputTargetPreflightResult.Allowed();
     }
 
     private static InputTargetPreflightResult? ClassifyUsability(WindowDescriptor liveWindow)
     {
         if (string.Equals(liveWindow.WindowState, WindowStateValues.Minimized, StringComparison.Ordinal))
         {
-            return new(
-                IsAllowed: false,
+            return InputTargetPreflightResult.Failure(
                 InputFailureCodeValues.TargetMinimized,
                 "Окно-цель остаётся свернутым; runtime отклоняет dispatch без hidden restore.");
         }
 
         if (!liveWindow.IsForeground)
         {
-            return new(
-                IsAllowed: false,
+            return InputTargetPreflightResult.Failure(
                 InputFailureCodeValues.TargetNotForeground,
                 "Окно-цель больше не находится в foreground; windows.input не делает hidden focus recovery.");
         }
@@ -100,5 +96,5 @@ internal static class InputTargetPreflightPolicy
         left.CompareTo(right);
 
     private static InputTargetPreflightResult Fail(string failureCode, string reason) =>
-        new(IsAllowed: false, failureCode, reason);
+        InputTargetPreflightResult.Failure(failureCode, reason);
 }

@@ -337,7 +337,6 @@ public sealed class InputRuntimePolicyTests
         InputTargetSecurityInfo targetSecurity = CreateTargetSecurity();
 
         InputTargetPreflightResult result = InputTargetPreflightPolicy.Evaluate(
-            InputTargetSourceValues.Explicit,
             liveWindow,
             currentProcess,
             targetSecurity);
@@ -354,7 +353,6 @@ public sealed class InputRuntimePolicyTests
         InputTargetSecurityInfo targetSecurity = CreateTargetSecurity();
 
         InputTargetPreflightResult result = InputTargetPreflightPolicy.Evaluate(
-            InputTargetSourceValues.Attached,
             liveWindow,
             currentProcess,
             targetSecurity);
@@ -371,7 +369,6 @@ public sealed class InputRuntimePolicyTests
         InputTargetSecurityInfo targetSecurity = CreateTargetSecurity();
 
         InputTargetPreflightResult result = InputTargetPreflightPolicy.Evaluate(
-            InputTargetSourceValues.Attached,
             liveWindow,
             currentProcess,
             targetSecurity);
@@ -388,7 +385,6 @@ public sealed class InputRuntimePolicyTests
         InputTargetSecurityInfo targetSecurity = CreateTargetSecurity(sessionId: 2);
 
         InputTargetPreflightResult result = InputTargetPreflightPolicy.Evaluate(
-            InputTargetSourceValues.Explicit,
             liveWindow,
             currentProcess,
             targetSecurity);
@@ -408,7 +404,6 @@ public sealed class InputRuntimePolicyTests
         InputTargetSecurityInfo targetSecurity = CreateTargetSecurity(integrityLevel: InputIntegrityLevel.High);
 
         InputTargetPreflightResult result = InputTargetPreflightPolicy.Evaluate(
-            InputTargetSourceValues.Explicit,
             liveWindow,
             currentProcess,
             targetSecurity);
@@ -432,7 +427,6 @@ public sealed class InputRuntimePolicyTests
             Reason: "Token probe failed.");
 
         InputTargetPreflightResult result = InputTargetPreflightPolicy.Evaluate(
-            InputTargetSourceValues.Explicit,
             liveWindow,
             currentProcess,
             targetSecurity);
@@ -536,7 +530,9 @@ public sealed class InputRuntimePolicyTests
             compensationExpectedEvents: 0);
 
         Assert.False(result.Success);
+        Assert.False(result.CommittedSideEffects);
         Assert.Equal(InputClickDispatchOutcomeKind.CleanFailure, result.OutcomeKind);
+        Assert.Equal(InputFailureStageValues.ClickDispatchCleanFailure, result.FailureStageHint);
         Assert.Contains("не был подтвержд", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -551,7 +547,9 @@ public sealed class InputRuntimePolicyTests
             compensationExpectedEvents: 1);
 
         Assert.False(result.Success);
+        Assert.True(result.CommittedSideEffects);
         Assert.Equal(InputClickDispatchOutcomeKind.PartialDispatchCompensated, result.OutcomeKind);
+        Assert.Equal(InputFailureStageValues.ClickDispatchPartialCompensated, result.FailureStageHint);
         Assert.Contains("частично", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 

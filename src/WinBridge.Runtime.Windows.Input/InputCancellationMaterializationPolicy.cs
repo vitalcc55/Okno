@@ -50,6 +50,10 @@ internal static class InputCancellationMaterializationPolicy
                 => "Input execution was cancelled after text dispatch had already been executed; retrying without verification may duplicate or corrupt the field contents.",
             InputIrreversiblePhase.AfterKeypressDispatch
                 => "Input execution was cancelled after keypress dispatch had already been executed; retrying without verification may repeat the shortcut or key effect.",
+            InputIrreversiblePhase.AfterScrollDispatch
+                => "Input execution was cancelled after scroll dispatch had already been executed; retrying without verification may repeat the scroll effect.",
+            InputIrreversiblePhase.AfterDragDispatch
+                => "Input execution was cancelled after drag dispatch had already been executed; retrying without verification may duplicate or compound pointer side effects.",
             _ => "Input execution was cancelled after pointer side effects had already started for the current action.",
         };
 }

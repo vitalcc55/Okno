@@ -26,7 +26,8 @@ internal sealed class InputArtifactWriter(AuditLogOptions auditLogOptions)
         InputExecutionContext context,
         InputResult result,
         DateTimeOffset capturedAtUtc,
-        InputFailureDiagnostics? failureDiagnostics = null)
+        InputFailureDiagnostics? failureDiagnostics = null,
+        string committedSideEffectEvidence = "no_committed_side_effect_observed")
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(context);
@@ -47,15 +48,14 @@ internal sealed class InputArtifactWriter(AuditLogOptions auditLogOptions)
                 : result;
             InputSanitizedResult sanitizedResult = InputSanitizedResult.FromResult(
                 artifactResult with { ArtifactPath = path },
-                InputResultMaterializer.ResolveCommittedSideEffectEvidence(result, failureDiagnostics?.FailureStage));
+                committedSideEffectEvidence);
             InputArtifactPayload payload = new(
                 RequestSummary: InputRequestSummary.FromRequest(request, context, result),
                 TargetSummary: InputTargetSummary.FromContext(context, result),
                 Result: sanitizedResult,
                 CapturedAtUtc: capturedAtUtc,
                 FailureDiagnostics: failureDiagnostics);
-            string document = JsonSerializer.Serialize(payload, JsonOptions);
-            File.WriteAllText(tempPath, document, FileEncoding);
+            WriteJsonPayload(tempPath, payload);
             File.Move(tempPath, path);
             return path;
         }
@@ -64,6 +64,18 @@ internal sealed class InputArtifactWriter(AuditLogOptions auditLogOptions)
             TryDeleteTempArtifactFile(tempPath);
             throw new InputArtifactException("Runtime не смог записать input artifact на диск.", exception);
         }
+    }
+
+    private static void WriteJsonPayload(string tempPath, InputArtifactPayload payload)
+    {
+        using FileStream stream = new(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        byte[] preamble = FileEncoding.GetPreamble();
+        if (preamble.Length > 0)
+        {
+            stream.Write(preamble);
+        }
+
+        JsonSerializer.Serialize(stream, payload, JsonOptions);
     }
 
     private static bool IsArtifactWriteFailure(Exception exception) =>

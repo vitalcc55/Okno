@@ -18,31 +18,25 @@ internal static class InputClickDispatchOutcomePolicy
 
         if (insertedEvents == expectedEvents)
         {
-            return new(Success: true);
+            return InputClickDispatchResult.Succeeded();
         }
 
         if (insertedEvents == 0)
         {
-            return new(
-                Success: false,
-                OutcomeKind: InputClickDispatchOutcomeKind.CleanFailure,
-                FailureCode: InputFailureCodeValues.InputDispatchFailed,
-                Reason: $"Button dispatch для '{logicalButton}' не был подтверждён платформой.");
+            return InputClickDispatchResult.CleanFailure(
+                InputFailureCodeValues.InputDispatchFailed,
+                $"Button dispatch для '{logicalButton}' не был подтверждён платформой.");
         }
 
         if (compensationExpectedEvents > 0 && compensationInsertedEvents == compensationExpectedEvents)
         {
-            return new(
-                Success: false,
-                OutcomeKind: InputClickDispatchOutcomeKind.PartialDispatchCompensated,
-                FailureCode: InputFailureCodeValues.InputDispatchFailed,
-                Reason: $"Button dispatch для '{logicalButton}' был выполнен только частично; runtime зафиксировал partial side effect и подтвердил best-effort button-up compensation.");
+            return InputClickDispatchResult.PartialDispatchCompensated(
+                InputFailureCodeValues.InputDispatchFailed,
+                $"Button dispatch для '{logicalButton}' был выполнен только частично; runtime зафиксировал partial side effect и подтвердил best-effort button-up compensation.");
         }
 
-        return new(
-            Success: false,
-            OutcomeKind: InputClickDispatchOutcomeKind.PartialDispatchUncompensated,
-            FailureCode: InputFailureCodeValues.InputDispatchFailed,
-            Reason: $"Button dispatch для '{logicalButton}' был выполнен только частично, а компенсация button-up не подтверждена; input side effects уже могли выйти в систему.");
+        return InputClickDispatchResult.PartialDispatchUncompensated(
+            InputFailureCodeValues.InputDispatchFailed,
+            $"Button dispatch для '{logicalButton}' был выполнен только частично, а компенсация button-up не подтверждена; input side effects уже могли выйти в систему.");
     }
 }

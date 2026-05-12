@@ -201,10 +201,7 @@ Shipped wave / generated truth:
 
 Local cache present:
 
-- `references/repos/Windows-MCP`
-- `references/repos/Windows-MCP.Net`
-- `references/repos/pywinauto-mcp`
-- `references/repos/Peekaboo`
+- `references/repos/*` with several local Windows automation references
 
 OpenAI sample repos were **not** present in local `references/repos` during this planning pass, so use them as secondary GitHub references rather than local source of truth:
 
@@ -249,9 +246,9 @@ OpenAI sample repos were **not** present in local `references/repos` during this
 
 ### Reference-repo takeaways
 
-- `Windows-MCP` explicitly splits fast screenshot-first capture from heavier full-state capture and documents coordinate remap after downscale. This supports `get_app_state` / successor-state as separate observe semantics, not raw coordinate optimism.
-- `pywinauto-mcp` shows the opposite extreme: portmanteau tools, clipboard, OCR and broad surface breadth. Useful as an anti-pattern for this workstream because it mixes too many adjacent concerns.
-- `Peekaboo` keeps verification and region-focused capture in an enhancement layer rather than collapsing them into the base type/click tools. This supports keeping preview/verification UX adjacent to core runtime truth.
+- One broad Windows capture/action reference explicitly splits fast screenshot-first capture from heavier full-state capture and documents coordinate remap after downscale. This supports `get_app_state` / successor-state as separate observe semantics, not raw coordinate optimism.
+- Another compact mixed-surface reference shows the opposite extreme: portmanteau tools, clipboard, OCR and broad surface breadth. Useful as an anti-pattern for this workstream because it mixes too many adjacent concerns.
+- A snapshot-first agent runtime keeps verification and region-focused capture in an enhancement layer rather than collapsing them into the base type/click tools. This supports keeping preview/verification UX adjacent to core runtime truth.
 
 ## 8. Design forks to close
 

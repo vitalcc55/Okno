@@ -4,12 +4,13 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace WinBridge.Server.IntegrationTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
-    private const string BootstrapInstallerTestVersion = "0.2.2";
+    private const string BootstrapInstallerTestVersion = "0.2.3";
     private const string RuntimeIdentifier = "win-x64";
     private const string SetupAppExecutableName = "Okno Setup.exe";
     private const string SetupAppWindowTitle = "Okno Setup";
@@ -81,6 +82,22 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             AssertSetupAppLaunches(executablePath, repoRoot, "external working directory");
         }
         finally { DeleteDirectoryIfExists(outputRoot); }
+    }
+
+    [Fact]
+    public void SetupAppSourceManifestPinsAsInvokerExecutionLevel()
+    {
+        string manifestPath = Path.Combine(GetRepositoryRoot(), "src", "WinBridge.Setup.App", "app.manifest");
+        Assert.True(File.Exists(manifestPath), $"Setup app manifest is missing: {manifestPath}");
+
+        XDocument manifest = XDocument.Load(manifestPath);
+        XNamespace asmV3 = "urn:schemas-microsoft-com:asm.v3";
+        XElement requestedExecutionLevel = Assert.Single(
+            manifest
+                .Descendants(asmV3 + "requestedExecutionLevel"));
+
+        Assert.Equal("asInvoker", requestedExecutionLevel.Attribute("level")?.Value);
+        Assert.Equal("false", requestedExecutionLevel.Attribute("uiAccess")?.Value);
     }
 
     [Fact]
@@ -481,3 +498,4 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         }
     }
 }
+

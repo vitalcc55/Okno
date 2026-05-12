@@ -351,20 +351,17 @@ Policy source: `docs/architecture/reference-research-policy.md`.
 
 Local reference repos checked:
 
-- `references/Windows-MCP`
-- `references/Windows-MCP.Net`
-- `references/Peekaboo`
-- `references/pywinauto-mcp`
+- `references/*` with several local Windows automation references
 
 Takeaways:
 
-- `Windows-MCP` confirms broad action vocabulary (`Click`, `Type`, `Scroll`,
+- One broad Windows action reference confirms broad action vocabulary (`Click`, `Type`, `Scroll`,
   `Shortcut`, etc.) but also shows why Okno should avoid a noisy tool zoo and
   hidden focus assumptions.
-- `pywinauto-mcp` confirms real demand for keyboard, text, element set,
+- One compact mixed-surface reference confirms real demand for keyboard, text, element set,
   right-click-like and mouse actions, but its portmanteau tools and fallback
   typing style are too broad for `computer-use-win`.
-- `Peekaboo` is the most useful reference for snapshot-first actions:
+- One snapshot-first agent reference is the most useful reference for snapshot-first actions:
   element-id targeting, exact one-target validation, scroll/drag through
   snapshot elements, and JSON outcome reporting.
 - OpenAI sample apps are useful not as direct desktop-runtime templates, but as
@@ -853,10 +850,7 @@ behavior.
   - `https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput`
   - `https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-mouseinput`
 - Reference repos checked:
-  - `references\Windows-MCP`
-  - `references\Windows-MCP.Net`
-  - `references\Peekaboo`
-  - `references\pywinauto-mcp`
+  - `references\*` with several local Windows automation references
 - Подтверждённые замечания:
   - point-target shape для `scroll` действительно не fail-close-ился до activation/runtime path
   - `scroll.pages` действительно не имел верхней границы и не был защищён от overflow/huge-loop inputs на product contract уровне

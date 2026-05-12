@@ -3,41 +3,41 @@
 
 namespace WinBridge.Runtime.Windows.Input;
 
-internal sealed record InputPointerSideEffectBoundaryResult
+internal sealed record InputDispatchEnvironmentResult
 {
-    private InputPointerSideEffectBoundaryResult(
+    private InputDispatchEnvironmentResult(
         bool success,
-        bool mouseButtonsSwapped,
         string? failureCode,
-        string? reason)
+        string? reason,
+        bool mouseButtonsSwapped)
     {
         Success = success;
-        MouseButtonsSwapped = mouseButtonsSwapped;
         FailureCode = failureCode;
         Reason = reason;
+        MouseButtonsSwapped = mouseButtonsSwapped;
     }
 
     public bool Success { get; }
-
-    public bool MouseButtonsSwapped { get; }
 
     public string? FailureCode { get; }
 
     public string? Reason { get; }
 
-    public static InputPointerSideEffectBoundaryResult Succeeded(bool mouseButtonsSwapped = false) =>
+    public bool MouseButtonsSwapped { get; }
+
+    public static InputDispatchEnvironmentResult Succeeded(bool mouseButtonsSwapped) =>
         new(
             success: true,
-            mouseButtonsSwapped: mouseButtonsSwapped,
             failureCode: null,
-            reason: null);
+            reason: null,
+            mouseButtonsSwapped: mouseButtonsSwapped);
 
-    public static InputPointerSideEffectBoundaryResult Failure(string failureCode, string reason) =>
+    public static InputDispatchEnvironmentResult Failure(string failureCode, string reason) =>
         new(
             success: false,
-            mouseButtonsSwapped: false,
             failureCode: ValidateFailureCode(failureCode),
-            reason: ValidateReason(reason));
+            reason: ValidateReason(reason),
+            mouseButtonsSwapped: false);
 
     private static string ValidateFailureCode(string failureCode)
     {

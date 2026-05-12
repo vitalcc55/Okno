@@ -13,7 +13,7 @@ _План целевой архитектуры моего собственно�
 - переключение вкладок, окон и диалогов;
 - доведение сценария до результата без лишних уточнений внутри уже поставленной задачи.
 
-Цель не в “быстром кликере”, а в более правильной архитектуре уровня по духу близкой к `Peekaboo`, но под Windows 11 и под меня как агента.
+Цель не в “быстром кликере”, а в более правильной архитектуре уровня сильных snapshot-first агентных runtime, но под Windows 11 и под меня как агента.
 
 ---
 
@@ -29,9 +29,9 @@ Okno должен быть не “мешком разрозненных тул�
 - явные шаги ожидания и проверки;
 - стабильный API / MCP-контракт.
 
-### 1.2. Что взять по духу от Peekaboo
+### 1.2. Что взять по духу от сильных agent-oriented runtime
 
-Полезные ориентиры из идеи Peekaboo:
+Полезные ориентиры из этого класса решений:
 - screenshot-first мышление;
 - очень короткий цикл `see → act → verify`;
 - понятные команды верхнего уровня (`see`, `click`, `type`, `press`, `window`, `dialog`, `app`, `scroll`, `drag`);
@@ -105,7 +105,7 @@ Runtime должен брать на себя техническую грязь:
 ### Потенциальные open-source ориентиры
 
 - `locomorange/uiautomation-mcp` — важный ориентир для semantic-first части;
-- частично `Windows-MCP.Net` как reference по UI element tools.
+- частично .NET-ориентированные desktop reference-проекты как ориентир по UI element tools.
 
 ### Вывод
 
@@ -311,8 +311,8 @@ Input — это fallback и исполнительный слой, но не о
 ### Где reuse-ить
 
 - смотреть на `uiautomation-mcp` для UIA-части;
-- смотреть на `Windows-MCP` и `Windows-MCP.Net` для набора практичных инструментов;
-- ориентироваться на Peekaboo по UX/ритму команд и итераций.
+- смотреть на широкий класс practical Windows MCP references для набора практичных инструментов;
+- ориентироваться на agent-oriented snapshot-first references по UX/ритму команд и итераций.
 
 ### Что текущий продукт уже должен позволять мне делать
 
@@ -360,7 +360,7 @@ Input — это fallback и исполнительный слой, но не о
 
 ### Цель
 
-Сделать Okno не просто MCP-сервером, а полноценным агентным runtime уровня “Windows Peekaboo for me”.
+Сделать Okno не просто MCP-сервером, а полноценным агентным runtime уровня “сильный Windows agent runtime for me”.
 
 ### Что должно появиться
 
@@ -419,22 +419,22 @@ Input — это fallback и исполнительный слой, но не о
 
 ## 7.1. Основные ориентиры
 
-- `Peekaboo` — образец UX и agent-oriented design
-- `CursorTouch/Windows-MCP` — широкий practical Windows MCP
+- agent-oriented snapshot-first runtime — образец UX и agent-oriented design
+- широкий Windows MCP reference — practical desktop coverage
 - `locomorange/uiautomation-mcp` — semantic UIA-first ориентир
-- `shuyu-labs/Windows-MCP.Net` — .NET-style desktop automation reference
+- .NET-style desktop automation reference — ориентир по структуре runtime
 
 ## 7.2. Как на них смотреть
 
 Не копировать один в один, а смотреть по ролям:
 
-### От Peekaboo взять
+### От agent-oriented snapshot-first runtime взять
 - стиль команд;
 - цикл see/act/verify;
 - подход к runtime + server + CLI;
 - скорость и агентный UX.
 
-### От Windows-MCP взять
+### От широкого Windows MCP reference взять
 - ширину охвата задач;
 - практичные десктопные тулзы;
 - transport ideas;
@@ -444,7 +444,7 @@ Input — это fallback и исполнительный слой, но не о
 - семантический контроль через UIA;
 - то, как строить устойчивый semantic layer.
 
-### От Windows-MCP.Net взять
+### От .NET-style desktop reference взять
 - общую структуру desktop runtime;
 - набор инструментов состояния, OCR, screenshot, wait;
 - идеи по декомпозиции на сервисы/инструменты.

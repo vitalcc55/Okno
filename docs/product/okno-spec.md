@@ -721,7 +721,7 @@ Invariant:
 
 ## 8. Что взять из open source как ориентиры
 
-## 8.1. Из `Peekaboo`
+## 8.1. Из agent-oriented snapshot-first reference
 Взять:
 - UX коротких GUI-команд;
 - ритм `see → act → verify`;
@@ -732,13 +732,13 @@ Invariant:
 - semantic-first подход;
 - UIA-ориентированный способ работы с элементами.
 
-## 8.3. Из `Windows-MCP`
+## 8.3. Из широкого Windows MCP reference
 Взять:
 - practical tool coverage;
 - snapshot / app / input идеи;
 - понимание, как такой bridge используется в реальных agent workflows.
 
-## 8.4. Из `Windows-MCP.Net`
+## 8.4. Из .NET-style desktop reference
 Взять:
 - структуру сервисов;
 - разбиение на инструменты и домены;

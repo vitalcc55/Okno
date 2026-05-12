@@ -1813,7 +1813,7 @@ public sealed class McpProtocolSmokeTests
                 clientInfo = new
                 {
                     name = "Okno.IntegrationTests",
-                    version = "0.2.2",
+                    version = "0.2.3",
                 },
             },
             "initialize");
@@ -2651,3 +2651,4 @@ public sealed class McpProtocolSmokeTests
         string ServerDll,
         string HelperExe);
 }
+

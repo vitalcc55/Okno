@@ -53,33 +53,39 @@ internal static class InputAmbientInputPolicy
                 Reason: context.UnknownReason ?? "Runtime не смог доказать neutral ambient input state перед click dispatch.");
         }
 
-        List<string> activeInputs = [];
+        List<string>? activeInputs = null;
+        void AddActiveInput(string activeInput)
+        {
+            activeInputs ??= [];
+            activeInputs.Add(activeInput);
+        }
+
         if (IsAnyPressed(getAsyncKeyState, VkControl, VkLControl, VkRControl))
         {
-            activeInputs.Add(InputModifierKeyValues.Ctrl);
+            AddActiveInput(InputModifierKeyValues.Ctrl);
         }
 
         if (IsAnyPressed(getAsyncKeyState, VkShift, VkLShift, VkRShift))
         {
-            activeInputs.Add(InputModifierKeyValues.Shift);
+            AddActiveInput(InputModifierKeyValues.Shift);
         }
 
         if (IsAnyPressed(getAsyncKeyState, VkMenu, VkLMenu, VkRMenu))
         {
-            activeInputs.Add(InputModifierKeyValues.Alt);
+            AddActiveInput(InputModifierKeyValues.Alt);
         }
 
         if (IsAnyPressed(getAsyncKeyState, VkLWin, VkRWin))
         {
-            activeInputs.Add(InputModifierKeyValues.Win);
+            AddActiveInput(InputModifierKeyValues.Win);
         }
 
         foreach (string activeButton in InputMouseButtonSemantics.GetActiveLogicalButtons(getAsyncKeyState, context.MouseButtonsSwapped))
         {
-            activeInputs.Add(activeButton);
+            AddActiveInput(activeButton);
         }
 
-        if (activeInputs.Count > 0)
+        if (activeInputs is { Count: > 0 })
         {
             return new(
                 InputAmbientInputProofStatus.NonNeutral,

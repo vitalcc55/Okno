@@ -85,7 +85,7 @@ MCP spec фиксирует:
 
 ## 4. Competitor packaging patterns
 
-### 4.1 `CursorTouch/Windows-MCP`
+### 4.1 Широкий Windows MCP reference
 
 Current public install model:
 
@@ -122,7 +122,7 @@ Current public install model:
 
 Это сейчас самый близкий packaging pattern к тому, что нужно `Okno`.
 
-### 4.3 `FlaUI-MCP`
+### 4.3 GUI automation packaging reference
 
 Current public install model:
 

@@ -326,6 +326,130 @@ public sealed class InputResultMaterializerTests
     }
 
     [Fact]
+    public void MaterializePreservesPhaseSpecificCommittedEvidenceWhenArtifactWriteFails()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-input-artifact-failure-phase-evidence");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        string blockedRunDirectory = Path.Combine(root, "blocked-parent", "artifact.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(blockedRunDirectory)!);
+        File.WriteAllText(blockedRunDirectory, "not-a-directory");
+        InputArtifactWriter writer = new(new AuditLogOptions(
+            options.ContentRootPath,
+            options.EnvironmentName,
+            options.RunId,
+            options.DiagnosticsRoot,
+            blockedRunDirectory,
+            options.EventsPath,
+            options.SummaryPath));
+        InputResultMaterializer materializer = new(writer, auditLog, TimeProvider.System);
+
+        InputResult result = materializer.Materialize(
+            CreateRequest(),
+            new InputExecutionContext(CreateWindow(hwnd: 4242)),
+            new InputResult(
+                Status: InputStatusValues.Failed,
+                Decision: InputStatusValues.Failed,
+                FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                Reason: "second tap dispatch failed cleanly",
+                TargetHwnd: 4242,
+                TargetSource: InputTargetSourceValues.Attached,
+                CompletedActionCount: 0,
+                FailedActionIndex: 0,
+                Actions:
+                [
+                    new InputActionResult(
+                        Type: InputActionTypeValues.DoubleClick,
+                        Status: InputStatusValues.Failed,
+                        ResolvedScreenPoint: new InputPoint(140, 260),
+                        Button: InputButtonValues.Left),
+                ]),
+            failureStage: InputFailureStageValues.ClickDispatchCleanFailure,
+            failureException: null,
+            committedContext: new InputCommittedSideEffectContext(
+                ActionIndex: 0,
+                Action: new InputAction
+                {
+                    Type = InputActionTypeValues.DoubleClick,
+                    CoordinateSpace = InputCoordinateSpaceValues.Screen,
+                    Point = new InputPoint(140, 260),
+                },
+                Phase: InputIrreversiblePhase.AfterDoubleClickFirstTap,
+                ResolvedScreenPoint: new InputPoint(140, 260),
+                Button: InputButtonValues.Left,
+                TargetHwnd: 4242));
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Null(result.ArtifactPath);
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"failure_stage\":\"artifact_write\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"committed_side_effect_evidence\":\"double_click_first_tap_committed_before_failure\"", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaterializePreservesDoubleClickPartialPhaseEvidenceWhenArtifactWriteFails()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateOptions(root, "run-input-artifact-failure-partial-phase-evidence");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        string blockedRunDirectory = Path.Combine(root, "blocked-parent", "artifact.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(blockedRunDirectory)!);
+        File.WriteAllText(blockedRunDirectory, "not-a-directory");
+        InputArtifactWriter writer = new(new AuditLogOptions(
+            options.ContentRootPath,
+            options.EnvironmentName,
+            options.RunId,
+            options.DiagnosticsRoot,
+            blockedRunDirectory,
+            options.EventsPath,
+            options.SummaryPath));
+        InputResultMaterializer materializer = new(writer, auditLog, TimeProvider.System);
+
+        InputResult result = materializer.Materialize(
+            CreateRequest(),
+            new InputExecutionContext(CreateWindow(hwnd: 4242)),
+            new InputResult(
+                Status: InputStatusValues.Failed,
+                Decision: InputStatusValues.Failed,
+                FailureCode: InputFailureCodeValues.InputDispatchFailed,
+                Reason: "second tap dispatch partially failed",
+                TargetHwnd: 4242,
+                TargetSource: InputTargetSourceValues.Attached,
+                CompletedActionCount: 0,
+                FailedActionIndex: 0,
+                Actions:
+                [
+                    new InputActionResult(
+                        Type: InputActionTypeValues.DoubleClick,
+                        Status: InputStatusValues.Failed,
+                        ResolvedScreenPoint: new InputPoint(140, 260),
+                        Button: InputButtonValues.Left),
+                ]),
+            failureStage: InputFailureStageValues.ClickDispatchPartialUncompensated,
+            failureException: null,
+            committedContext: new InputCommittedSideEffectContext(
+                ActionIndex: 0,
+                Action: new InputAction
+                {
+                    Type = InputActionTypeValues.DoubleClick,
+                    CoordinateSpace = InputCoordinateSpaceValues.Screen,
+                    Point = new InputPoint(140, 260),
+                },
+                Phase: InputIrreversiblePhase.AfterDoubleClickSecondTap,
+                ResolvedScreenPoint: new InputPoint(140, 260),
+                Button: InputButtonValues.Left,
+                TargetHwnd: 4242));
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Null(result.ArtifactPath);
+
+        string eventLine = Assert.Single(File.ReadAllLines(options.EventsPath));
+        Assert.Contains("\"failure_stage\":\"artifact_write\"", eventLine, StringComparison.Ordinal);
+        Assert.Contains("\"committed_side_effect_evidence\":\"double_click_second_tap_partial_uncompensated\"", eventLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MaterializePreservesFactualResultWhenRuntimeEventWriteFails()
     {
         string root = CreateTempDirectory();

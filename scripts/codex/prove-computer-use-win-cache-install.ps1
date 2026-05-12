@@ -1,5 +1,5 @@
-param(
-    [string] $CachePluginRoot = (Join-Path $env:USERPROFILE '.codex\plugins\cache\computer-use-win-local\computer-use-win\0.2.2'),
+﻿param(
+    [string] $CachePluginRoot = (Join-Path $env:USERPROFILE '.codex\plugins\cache\computer-use-win-local\computer-use-win\0.2.3'),
     [string] $OutputPath,
     [int] $TimeoutMs = 10000
 )
@@ -494,7 +494,7 @@ try {
         capabilities = @{}
         clientInfo = @{
             name = 'Okno.CacheInstallProof'
-            version = '0.2.2'
+            version = '0.2.3'
         }
     }
     Send-McpNotification -Process $process -Method 'notifications/initialized' -Params @{}
@@ -628,3 +628,4 @@ finally {
         $process.Dispose()
     }
 }
+

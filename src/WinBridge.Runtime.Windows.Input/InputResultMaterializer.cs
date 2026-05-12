@@ -39,7 +39,8 @@ internal sealed class InputResultMaterializer
         InputExecutionContext context,
         InputResult result,
         string? failureStage = null,
-        Exception? failureException = null)
+        Exception? failureException = null,
+        InputCommittedSideEffectContext? committedContext = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(context);
@@ -47,12 +48,19 @@ internal sealed class InputResultMaterializer
 
         DateTimeOffset capturedAtUtc = _timeProvider.GetUtcNow();
         InputFailureDiagnostics? failureDiagnostics = CreateFailureDiagnostics(failureStage, failureException);
+        string committedSideEffectEvidence = ResolveCommittedSideEffectEvidence(result, failureStage, committedContext);
 
         try
         {
-            string artifactPath = _artifactWriter.Write(request, context, result, capturedAtUtc, failureDiagnostics);
+            string artifactPath = _artifactWriter.Write(
+                request,
+                context,
+                result,
+                capturedAtUtc,
+                failureDiagnostics,
+                committedSideEffectEvidence);
             InputResult materialized = result with { ArtifactPath = artifactPath };
-            TryRecordRuntimeEvent(request, materialized, failureDiagnostics);
+            TryRecordRuntimeEvent(request, materialized, failureDiagnostics, committedSideEffectEvidence);
             return materialized;
         }
         catch (InputArtifactException exception)
@@ -60,96 +68,22 @@ internal sealed class InputResultMaterializer
             InputFailureDiagnostics artifactFailureDiagnostics =
                 CreateFailureDiagnostics(InputFailureStageValues.ArtifactWrite, exception.InnerException ?? exception)!;
             InputResult materialized = result with { ArtifactPath = null };
-            TryRecordRuntimeEvent(request, materialized, artifactFailureDiagnostics);
+            TryRecordRuntimeEvent(request, materialized, artifactFailureDiagnostics, committedSideEffectEvidence);
             return materialized;
         }
     }
 
-    internal static string ResolveCommittedSideEffectEvidence(InputResult result, string? failureStage)
-    {
-        if (string.Equals(failureStage, InputFailureStageValues.ClickDispatchPartialCompensated, StringComparison.Ordinal))
-        {
-            return "partial_dispatch_compensated";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.ClickDispatchPartialUncompensated, StringComparison.Ordinal))
-        {
-            return "partial_dispatch_uncompensated";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.ClickDispatchCleanFailure, StringComparison.Ordinal))
-        {
-            return "cursor_move_committed_click_dispatch_clean_failure";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.TextDispatchCommittedFailure, StringComparison.Ordinal))
-        {
-            return "text_dispatch_committed_before_failure";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.KeypressDispatchPartialCompensated, StringComparison.Ordinal))
-        {
-            return "keyboard_dispatch_partial_compensated";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.KeypressDispatchPartialUncompensated, StringComparison.Ordinal))
-        {
-            return "keyboard_dispatch_partial_uncompensated";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.KeypressDispatchCommittedFailure, StringComparison.Ordinal))
-        {
-            return "keyboard_dispatch_committed_before_failure";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.DragDispatchNotStartedAfterMove, StringComparison.Ordinal))
-        {
-            return "cursor_move_committed_drag_dispatch_not_started";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.DragDispatchPartialCompensated, StringComparison.Ordinal))
-        {
-            return "drag_dispatch_partial_compensated";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.DragDispatchPartialUncompensated, StringComparison.Ordinal))
-        {
-            return "drag_dispatch_partial_uncompensated";
-        }
-
-        if (string.Equals(failureStage, InputFailureStageValues.DragDispatchCommittedFailure, StringComparison.Ordinal))
-        {
-            return "drag_dispatch_committed_before_failure";
-        }
-
-        if (string.Equals(result.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal)
-            && result.CompletedActionCount > 0)
-        {
-            return "completed_actions_committed";
-        }
-
-        if (result.CompletedActionCount > 0 && result.FailedActionIndex is null)
-        {
-            return "previous_actions_committed";
-        }
-
-        if (TryGetFailedAction(result, out InputActionResult? failedAction)
-            && failedAction.ResolvedScreenPoint is not null)
-        {
-            return string.Equals(failureStage, InputFailureStageValues.CursorMove, StringComparison.Ordinal)
-                ? "cursor_move_committed_before_failure"
-                : "action_side_effect_committed_before_failure";
-        }
-
-        return result.CompletedActionCount > 0
-            ? "completed_actions_committed"
-            : "no_committed_side_effect_observed";
-    }
+    internal static string ResolveCommittedSideEffectEvidence(
+        InputResult result,
+        string? failureStage,
+        InputCommittedSideEffectContext? committedContext) =>
+        InputCommittedSideEffectEvidencePolicy.Resolve(result, failureStage, committedContext);
 
     private void TryRecordRuntimeEvent(
         InputRequest request,
         InputResult result,
-        InputFailureDiagnostics? failureDiagnostics)
+        InputFailureDiagnostics? failureDiagnostics,
+        string committedSideEffectEvidence)
     {
         bool isSuccessfulDispatchStatus = result.Status is InputStatusValues.Done or InputStatusValues.VerifyNeeded;
         string severity = isSuccessfulDispatchStatus && failureDiagnostics is null
@@ -166,7 +100,6 @@ internal sealed class InputResultMaterializer
 
         IReadOnlyList<InputActionResult> resultActions = result.Actions ?? Array.Empty<InputActionResult>();
         IReadOnlyList<InputAction> requestActions = request.Actions ?? Array.Empty<InputAction>();
-        string committedSideEffectEvidence = ResolveCommittedSideEffectEvidence(result, failureDiagnostics?.FailureStage);
         bool suppressRuntimeArtifactPath = InputObservabilityPolicy.RequiresSensitiveDragRedaction(request, result);
         Dictionary<string, string?> eventData = new()
         {
@@ -214,23 +147,6 @@ internal sealed class InputResultMaterializer
             FailureStage: failureStage,
             ExceptionType: exception?.GetType().FullName,
             ExceptionMessageSuppressed: exception is not null);
-    }
-
-    private static bool TryGetFailedAction(InputResult result, out InputActionResult failedAction)
-    {
-        failedAction = null!;
-        if (result.FailedActionIndex is not int failedIndex || result.Actions is null)
-        {
-            return false;
-        }
-
-        if (failedIndex < 0 || failedIndex >= result.Actions.Count)
-        {
-            return false;
-        }
-
-        failedAction = result.Actions[failedIndex];
-        return true;
     }
 
     private static string? JoinDistinct(IEnumerable<string?> values)

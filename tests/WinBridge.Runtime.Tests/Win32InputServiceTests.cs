@@ -685,11 +685,9 @@ public sealed class Win32InputServiceTests
             TargetSecurity = CreateTargetSecurity(),
             ClickDispatchResults =
             [
-                new InputClickDispatchResult(
-                    Success: false,
-                    OutcomeKind: InputClickDispatchOutcomeKind.PartialDispatchUncompensated,
-                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
-                    Reason: "Partial dispatch with already committed events."),
+                InputClickDispatchResult.PartialDispatchUncompensated(
+                    InputFailureCodeValues.InputDispatchFailed,
+                    "Partial dispatch with already committed events."),
             ],
         };
         Win32InputService service = new(resolver, platform, TimeProvider.System, materializer);
@@ -767,6 +765,112 @@ public sealed class Win32InputServiceTests
             artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
         Assert.Equal(
             "text_dispatch_committed_before_failure",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesFirstDoubleClickTapEvidenceWhenSecondTapCleanFails()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-double-click-clean-second-tap-failure");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow, targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            ClickDispatchResults =
+            [
+                InputClickDispatchResult.Succeeded(),
+                InputClickDispatchResult.CleanFailure(
+                    InputFailureCodeValues.InputDispatchFailed,
+                    "second tap dispatch failed cleanly"),
+            ],
+        };
+        Win32InputService service = new(
+            resolver,
+            platform,
+            TimeProvider.System,
+            materializer,
+            new InputExecutionOptions(TimeSpan.Zero));
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.DoubleClick, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                ],
+            },
+            new InputExecutionContext(),
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.ClickDispatchCleanFailure,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "double_click_first_tap_committed_before_failure",
+            artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncPreservesSecondDoubleClickTapPartialEvidenceWhenTapFailsPartially()
+    {
+        string root = CreateTempDirectory();
+        AuditLogOptions options = CreateAuditLogOptions(root, "run-input-service-double-click-partial-second-tap-failure");
+        AuditLog auditLog = new(options, TimeProvider.System);
+        InputResultMaterializer materializer = new(auditLog, options, TimeProvider.System);
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow, targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            ClickDispatchResults =
+            [
+                InputClickDispatchResult.Succeeded(),
+                InputClickDispatchResult.PartialDispatchUncompensated(
+                    InputFailureCodeValues.InputDispatchFailed,
+                    "second tap dispatch partially failed"),
+            ],
+        };
+        Win32InputService service = new(
+            resolver,
+            platform,
+            TimeProvider.System,
+            materializer,
+            new InputExecutionOptions(TimeSpan.Zero));
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.DoubleClick, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                ],
+            },
+            new InputExecutionContext(),
+            CancellationToken.None);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.NotNull(result.ArtifactPath);
+        using JsonDocument artifact = JsonDocument.Parse(await File.ReadAllTextAsync(result.ArtifactPath));
+        Assert.Equal(
+            InputFailureStageValues.ClickDispatchPartialUncompensated,
+            artifact.RootElement.GetProperty("failure_diagnostics").GetProperty("failure_stage").GetString());
+        Assert.Equal(
+            "double_click_second_tap_partial_uncompensated",
             artifact.RootElement.GetProperty("result").GetProperty("committed_side_effect_evidence").GetString());
     }
 
@@ -1047,6 +1151,52 @@ public sealed class Win32InputServiceTests
 
         Assert.Equal(InputStatusValues.VerifyNeeded, result.Status);
         Assert.Equal([new InputPoint(140, 260)], platform.MovedPoints);
+        Assert.Equal([InputButtonValues.Left, InputButtonValues.Left], platform.ClickButtons);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncUsesInjectedDoubleClickDelay()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow, targetWindow, targetWindow]);
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+        };
+        ManualTimeProvider timeProvider = new(DateTimeOffset.UtcNow);
+        Win32InputService service = new(
+            resolver,
+            platform,
+            timeProvider,
+            executionOptions: new InputExecutionOptions(TimeSpan.FromMilliseconds(250)));
+
+        Task<InputResult> executionTask = service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.DoubleClick, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                ],
+            },
+            new InputExecutionContext(),
+            CancellationToken.None);
+
+        Assert.False(executionTask.IsCompleted);
+        Assert.Equal([InputButtonValues.Left], platform.ClickButtons);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(249));
+
+        Assert.False(executionTask.IsCompleted);
+        Assert.Equal([InputButtonValues.Left], platform.ClickButtons);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(1));
+        InputResult result = await executionTask;
+
+        Assert.Equal(InputStatusValues.VerifyNeeded, result.Status);
         Assert.Equal([InputButtonValues.Left, InputButtonValues.Left], platform.ClickButtons);
     }
 
@@ -1744,18 +1894,18 @@ public sealed class Win32InputServiceTests
         WindowDescriptor targetWindow = CreateWindow();
         FakeWindowTargetResolver resolver = new(
             new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
-            [targetWindow, targetWindow]);
+            [targetWindow, targetWindow],
+            onResolveLiveWindow: resolveAttempt =>
+            {
+                if (resolveAttempt == 2)
+                {
+                    throw new InvalidOperationException("unexpected setup exception");
+                }
+            });
         FakeInputPlatform platform = new()
         {
             CurrentProcessSecurity = CreateCurrentProcessSecurity(),
             TargetSecurity = CreateTargetSecurity(),
-            OnTargetSecurityProbe = probeCount =>
-            {
-                if (probeCount == 2)
-                {
-                    throw new InvalidOperationException("unexpected setup exception");
-                }
-            },
         };
         Win32InputService service = new(resolver, platform, TimeProvider.System);
 
@@ -1993,6 +2143,142 @@ public sealed class Win32InputServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsyncDoesNotDispatchClickWhenCancelledDuringFinalBoundaryRevalidation()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        using CancellationTokenSource cancellation = new();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow],
+            onResolveLiveWindow: resolveAttempt =>
+            {
+                if (resolveAttempt == 2)
+                {
+                    cancellation.Cancel();
+                }
+            });
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                ],
+            },
+            new InputExecutionContext(),
+            cancellation.Token);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        InputActionResult actionResult = Assert.Single(result.Actions!);
+        Assert.Equal(InputButtonValues.Left, actionResult.Button);
+        Assert.Empty(platform.ClickButtons);
+        Assert.Equal([new InputPoint(140, 260)], platform.MovedPoints);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncDoesNotDispatchTextWhenCancelledDuringBetweenActionsRevalidation()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        using CancellationTokenSource cancellation = new();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow, targetWindow],
+            onResolveLiveWindow: resolveAttempt =>
+            {
+                if (resolveAttempt == 3)
+                {
+                    cancellation.Cancel();
+                }
+            });
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                    CreateTypeAction("typed text"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            cancellation.Token);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Equal(1, result.CompletedActionCount);
+        Assert.Null(result.FailedActionIndex);
+        Assert.Contains("next action was not started", result.Reason, StringComparison.OrdinalIgnoreCase);
+        InputActionResult firstAction = Assert.Single(result.Actions!);
+        Assert.Equal(InputActionTypeValues.Click, firstAction.Type);
+        Assert.Equal([InputButtonValues.Left], platform.ClickButtons);
+        Assert.Empty(platform.TextContexts);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncDoesNotDispatchKeypressWhenCancelledDuringBetweenActionsRevalidation()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        using CancellationTokenSource cancellation = new();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow, targetWindow],
+            onResolveLiveWindow: resolveAttempt =>
+            {
+                if (resolveAttempt == 3)
+                {
+                    cancellation.Cancel();
+                }
+            });
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.Click, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                    CreateKeypressAction("ctrl+s"),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            cancellation.Token);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Equal(1, result.CompletedActionCount);
+        Assert.Null(result.FailedActionIndex);
+        Assert.Contains("next action was not started", result.Reason, StringComparison.OrdinalIgnoreCase);
+        InputActionResult firstAction = Assert.Single(result.Actions!);
+        Assert.Equal(InputActionTypeValues.Click, firstAction.Type);
+        Assert.Equal([InputButtonValues.Left], platform.ClickButtons);
+        Assert.Empty(platform.KeypressContexts);
+    }
+
+    [Fact]
     public async Task ExecuteAsyncMaterializesLeftButtonWhenDoubleClickIsCancelledAfterInitialMoveSideEffect()
     {
         WindowDescriptor targetWindow = CreateWindow();
@@ -2035,6 +2321,50 @@ public sealed class Win32InputServiceTests
         Assert.Equal(InputButtonValues.Left, actionResult.Button);
         Assert.Equal([new InputPoint(140, 260)], platform.MovedPoints);
         Assert.Empty(platform.ClickButtons);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncDoesNotDispatchSecondDoubleClickTapWhenCancelledDuringFinalBoundaryRevalidation()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        using CancellationTokenSource cancellation = new();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow, targetWindow],
+            onResolveLiveWindow: resolveAttempt =>
+            {
+                if (resolveAttempt == 4)
+                {
+                    cancellation.Cancel();
+                }
+            });
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+        };
+        Win32InputService service = new(
+            resolver,
+            platform,
+            TimeProvider.System,
+            executionOptions: new InputExecutionOptions(TimeSpan.Zero));
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateAction(InputActionTypeValues.DoubleClick, InputCoordinateSpaceValues.Screen, new InputPoint(140, 260)),
+                ],
+            },
+            new InputExecutionContext(),
+            cancellation.Token);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Equal([InputButtonValues.Left], platform.ClickButtons);
+        Assert.Equal([new InputPoint(140, 260)], platform.DispatchPoints);
     }
 
     [Fact]
@@ -2083,21 +2413,21 @@ public sealed class Win32InputServiceTests
     public async Task ExecuteAsyncDoesNotStartNextActionMoveWhenCancelledDuringBetweenActionsSetup()
     {
         WindowDescriptor targetWindow = CreateWindow();
+        using CancellationTokenSource cancellation = new();
         FakeWindowTargetResolver resolver = new(
             new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
-            [targetWindow, targetWindow]);
-        using CancellationTokenSource cancellation = new();
+            [targetWindow, targetWindow],
+            onResolveLiveWindow: resolveAttempt =>
+            {
+                if (resolveAttempt == 2)
+                {
+                    cancellation.Cancel();
+                }
+            });
         FakeInputPlatform platform = new()
         {
             CurrentProcessSecurity = CreateCurrentProcessSecurity(),
             TargetSecurity = CreateTargetSecurity(),
-            OnTargetSecurityProbe = probeCount =>
-            {
-                if (probeCount == 2)
-                {
-                    cancellation.Cancel();
-                }
-            },
         };
         Win32InputService service = new(resolver, platform, TimeProvider.System);
 
@@ -2176,6 +2506,51 @@ public sealed class Win32InputServiceTests
         Assert.Equal(InputButtonValues.Left, actionResult.Button);
         Assert.Empty(platform.ClickButtons);
         Assert.Equal([new InputPoint(100, 200), new InputPoint(101, 201)], platform.MovedPoints);
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncDoesNotDispatchDragWhenCancelledDuringPostMoveRevalidation()
+    {
+        WindowDescriptor targetWindow = CreateWindow();
+        using CancellationTokenSource cancellation = new();
+        FakeWindowTargetResolver resolver = new(
+            new InputTargetResolution(targetWindow, InputTargetSourceValues.Explicit),
+            [targetWindow, targetWindow],
+            onResolveLiveWindow: resolveAttempt =>
+            {
+                if (resolveAttempt == 2)
+                {
+                    cancellation.Cancel();
+                }
+            });
+        FakeInputPlatform platform = new()
+        {
+            CurrentProcessSecurity = CreateCurrentProcessSecurity(),
+            TargetSecurity = CreateTargetSecurity(),
+            DragDispatchResults =
+            [
+                new InputDispatchResult(Success: true, CommittedSideEffects: true),
+            ],
+        };
+        Win32InputService service = new(resolver, platform, TimeProvider.System);
+
+        InputResult result = await service.ExecuteAsync(
+            new InputRequest
+            {
+                Hwnd = targetWindow.Hwnd,
+                Actions =
+                [
+                    CreateDragAction(new InputPoint(140, 260), new InputPoint(220, 320)),
+                ],
+            },
+            new InputExecutionContext(),
+            InputExecutionProfileValues.ComputerUseCore,
+            cancellation.Token);
+
+        Assert.Equal(InputStatusValues.Failed, result.Status);
+        Assert.Equal(InputFailureCodeValues.InputDispatchFailed, result.FailureCode);
+        Assert.Equal([new InputPoint(140, 260)], platform.MovedPoints);
+        Assert.Empty(platform.DragContexts);
     }
 
     [Fact]
@@ -2611,7 +2986,8 @@ public sealed class Win32InputServiceTests
 
     private sealed class FakeWindowTargetResolver(
         InputTargetResolution resolution,
-        IReadOnlyList<WindowDescriptor?> liveWindows) : IWindowTargetResolver
+        IReadOnlyList<WindowDescriptor?> liveWindows,
+        Action<int>? onResolveLiveWindow = null) : IWindowTargetResolver
     {
         private int _revalidationIndex;
 
@@ -2620,6 +2996,9 @@ public sealed class Win32InputServiceTests
 
         public LiveWindowIdentityResolution ResolveLiveWindowByIdentity(WindowDescriptor expectedWindow)
         {
+            int resolveAttempt = _revalidationIndex + 1;
+            onResolveLiveWindow?.Invoke(resolveAttempt);
+
             if (_revalidationIndex >= liveWindows.Count)
             {
                 WindowDescriptor? fallbackWindow = liveWindows.Count == 0 ? null : liveWindows[^1];
@@ -2630,15 +3009,27 @@ public sealed class Win32InputServiceTests
             return CreateLiveResolution(expectedWindow, resolvedWindow);
         }
 
-        private static LiveWindowIdentityResolution CreateLiveResolution(WindowDescriptor expectedWindow, WindowDescriptor? resolvedWindow) =>
-            resolvedWindow is null
-                ? LiveWindowIdentityResolution.MissingTarget("Fake resolver did not resolve a live target.")
-                : LiveWindowIdentityResolution.Resolved(resolvedWindow with
-                {
-                    ProcessId = expectedWindow.ProcessId,
-                    ThreadId = expectedWindow.ThreadId,
-                    ClassName = expectedWindow.ClassName,
-                });
+        private static LiveWindowIdentityResolution CreateLiveResolution(WindowDescriptor expectedWindow, WindowDescriptor? resolvedWindow)
+        {
+            if (!WindowIdentityValidator.TryValidateStableIdentity(expectedWindow, out string? expectedIdentityReason))
+            {
+                return LiveWindowIdentityResolution.IdentityProofUnavailable(expectedIdentityReason!);
+            }
+
+            if (resolvedWindow is null)
+            {
+                return LiveWindowIdentityResolution.MissingTarget("Fake resolver did not resolve a live target.");
+            }
+
+            if (!WindowIdentityValidator.TryValidateStableIdentity(resolvedWindow, out string? liveIdentityReason))
+            {
+                return LiveWindowIdentityResolution.IdentityProofUnavailable(liveIdentityReason!);
+            }
+
+            return WindowIdentityValidator.MatchesStableIdentity(resolvedWindow, expectedWindow)
+                ? LiveWindowIdentityResolution.Resolved(resolvedWindow)
+                : LiveWindowIdentityResolution.IdentityChanged("Fake resolver returned a live HWND with a different stable identity.");
+        }
 
         public UiaSnapshotTargetResolution ResolveUiaSnapshotTarget(long? explicitHwnd, WindowDescriptor? attachedWindow) =>
             throw new NotSupportedException();
@@ -2831,10 +3222,9 @@ public sealed class Win32InputServiceTests
                     out string? foregroundFailureCode,
                     out string? foregroundReason))
             {
-                return new(
-                    Success: false,
-                    FailureCode: foregroundFailureCode,
-                    Reason: foregroundReason);
+                return InputPointerSideEffectBoundaryResult.Failure(
+                    foregroundFailureCode ?? InputFailureCodeValues.InputDispatchFailed,
+                    foregroundReason ?? "Foreground boundary validation failed before pointer side effect.");
             }
 
             IReadOnlyList<string> activeInputs =
@@ -2843,13 +3233,12 @@ public sealed class Win32InputServiceTests
                     : Array.Empty<string>();
             if (activeInputs.Count > 0)
             {
-                return new(
-                    Success: false,
-                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
-                    Reason: $"Held inputs detected before pointer side effect: {string.Join(", ", activeInputs)}.");
+                return InputPointerSideEffectBoundaryResult.Failure(
+                    InputFailureCodeValues.InputDispatchFailed,
+                    $"Held inputs detected before pointer side effect: {string.Join(", ", activeInputs)}.");
             }
 
-            return new(Success: true);
+            return InputPointerSideEffectBoundaryResult.Succeeded();
         }
 
         public bool TrySetCursorPosition(InputPoint screenPoint)
@@ -2894,18 +3283,16 @@ public sealed class Win32InputServiceTests
 
             if (CurrentCursorPosition is null)
             {
-                return new(
-                    Success: false,
-                    FailureCode: InputFailureCodeValues.CursorMoveFailed,
-                    Reason: "Cursor position is unavailable before dispatch.");
+                return InputClickDispatchResult.PreDispatchFailure(
+                    InputFailureCodeValues.CursorMoveFailed,
+                    "Cursor position is unavailable before dispatch.");
             }
 
             if (!Equals(CurrentCursorPosition, context.ExpectedScreenPoint))
             {
-                return new(
-                    Success: false,
-                    FailureCode: InputFailureCodeValues.CursorMoveFailed,
-                    Reason: "Cursor position drifted before dispatch.");
+                return InputClickDispatchResult.PreDispatchFailure(
+                    InputFailureCodeValues.CursorMoveFailed,
+                    "Cursor position drifted before dispatch.");
             }
 
             long? foregroundHwnd =
@@ -2936,10 +3323,9 @@ public sealed class Win32InputServiceTests
                     out string? foregroundFailureCode,
                     out string? foregroundReason))
             {
-                return new(
-                    Success: false,
-                    FailureCode: foregroundFailureCode,
-                    Reason: foregroundReason);
+                return InputClickDispatchResult.PreDispatchFailure(
+                    foregroundFailureCode ?? InputFailureCodeValues.InputDispatchFailed,
+                    foregroundReason ?? "Foreground boundary validation failed before click dispatch.");
             }
 
             IReadOnlyList<string> activeModifiers =
@@ -2948,10 +3334,9 @@ public sealed class Win32InputServiceTests
                     : Array.Empty<string>();
             if (activeModifiers.Count > 0)
             {
-                return new(
-                    Success: false,
-                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
-                    Reason: $"Held modifiers detected before dispatch: {string.Join(", ", activeModifiers)}.");
+                return InputClickDispatchResult.PreDispatchFailure(
+                    InputFailureCodeValues.InputDispatchFailed,
+                    $"Held modifiers detected before dispatch: {string.Join(", ", activeModifiers)}.");
             }
 
             ClickButtons.Add(context.LogicalButton);
@@ -2974,11 +3359,10 @@ public sealed class Win32InputServiceTests
 
             bool success = _clickResults.Count == 0 || _clickResults.Dequeue();
             return success
-                ? new(Success: true)
-                : new(
-                    Success: false,
-                    FailureCode: InputFailureCodeValues.InputDispatchFailed,
-                    Reason: "Dispatch failed.");
+                ? InputClickDispatchResult.Succeeded()
+                : InputClickDispatchResult.CleanFailure(
+                    InputFailureCodeValues.InputDispatchFailed,
+                    "Dispatch failed.");
         }
 
         public InputDispatchResult DispatchText(InputTextDispatchContext context)
@@ -3063,5 +3447,116 @@ public sealed class Win32InputServiceTests
 
         private InputPoint? CurrentCursorPosition { get; set; }
         private int TargetSecurityProbeCount { get; set; }
+    }
+
+    private sealed class ManualTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider
+    {
+        private readonly object sync = new();
+        private readonly List<ManualTimer> timers = [];
+        private DateTimeOffset utcNow = initialUtcNow;
+
+        public override DateTimeOffset GetUtcNow() => utcNow;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            lock (sync)
+            {
+                ManualTimer timer = new(this, callback, state, dueTime, period);
+                timers.Add(timer);
+                return timer;
+            }
+        }
+
+        public void Advance(TimeSpan delta)
+        {
+            List<(TimerCallback Callback, object? State)> callbacks = [];
+
+            lock (sync)
+            {
+                utcNow = utcNow.Add(delta);
+
+                foreach (ManualTimer timer in timers.ToArray())
+                {
+                    timer.CollectDueCallbacks(utcNow, callbacks);
+                }
+
+                timers.RemoveAll(static timer => timer.IsDisposed);
+            }
+
+            foreach ((TimerCallback callback, object? state) in callbacks)
+            {
+                callback(state);
+            }
+        }
+
+        private sealed class ManualTimer : ITimer
+        {
+            private readonly ManualTimeProvider owner;
+            private readonly TimerCallback callback;
+            private readonly object? state;
+            private TimeSpan period;
+            private DateTimeOffset? nextDueUtc;
+
+            public ManualTimer(
+                ManualTimeProvider owner,
+                TimerCallback callback,
+                object? state,
+                TimeSpan dueTime,
+                TimeSpan period)
+            {
+                this.owner = owner;
+                this.callback = callback;
+                this.state = state;
+                Change(dueTime, period);
+            }
+
+            public bool IsDisposed { get; private set; }
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                if (IsDisposed)
+                {
+                    return false;
+                }
+
+                this.period = period;
+                nextDueUtc = dueTime == Timeout.InfiniteTimeSpan
+                    ? null
+                    : owner.utcNow.Add(dueTime);
+                return true;
+            }
+
+            public void CollectDueCallbacks(DateTimeOffset now, List<(TimerCallback Callback, object? State)> callbacks)
+            {
+                if (IsDisposed || nextDueUtc is null)
+                {
+                    return;
+                }
+
+                while (!IsDisposed && nextDueUtc is not null && now >= nextDueUtc.Value)
+                {
+                    callbacks.Add((callback, state));
+                    if (period == Timeout.InfiniteTimeSpan)
+                    {
+                        nextDueUtc = null;
+                        break;
+                    }
+
+                    nextDueUtc = nextDueUtc.Value.Add(period);
+                }
+            }
+
+            public void Dispose()
+            {
+                IsDisposed = true;
+                nextDueUtc = null;
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 }

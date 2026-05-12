@@ -11,14 +11,15 @@ internal sealed class Win32InputService(
     IWindowTargetResolver windowTargetResolver,
     IInputPlatform platform,
     TimeProvider timeProvider,
-    InputResultMaterializer? resultMaterializer = null) : IInputService
+    InputResultMaterializer? resultMaterializer = null,
+    InputExecutionOptions? executionOptions = null) : IInputService
 {
     private static readonly string[] ClickFirstSupportedActionTypes =
     [.. InputClickFirstSubsetContract.SupportedActionTypes];
     private static readonly string[] ComputerUseCoreSupportedActionTypes =
     [.. InputActionTypeValues.StructuralFreeze];
 
-    private static readonly TimeSpan DoubleClickDelay = TimeSpan.FromMilliseconds(50);
+    private readonly InputExecutionOptions effectiveExecutionOptions = executionOptions ?? InputExecutionOptions.Default;
 
     public async Task<InputResult> ExecuteAsync(
         InputRequest request,
@@ -35,19 +36,30 @@ internal sealed class Win32InputService(
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(context);
 
+        InputBatchExecutionState? batch = null;
+
         InputResult Materialize(InputResult result, string? failureStage = null, Exception? failureException = null) =>
             resultMaterializer is null
                 ? result
-                : resultMaterializer.Materialize(request, context, result, failureStage, failureException);
+                : resultMaterializer.Materialize(
+                    request,
+                    context,
+                    result,
+                    failureStage,
+                    failureException,
+                    batch?.CommittedSideEffectContext);
 
         InputResult MaterializeFactual(InputResult result, string? failureStage = null, Exception? failureException = null) =>
-            Materialize(result, failureStage ?? ResolveFailureStage(result.FailureCode), failureException);
+            Materialize(result, failureStage ?? InputFailureStagePolicy.ResolveFailureStage(result.FailureCode), failureException);
 
-        string[] supportedActionTypes = string.Equals(executionProfile, InputExecutionProfileValues.ComputerUseCore, StringComparison.Ordinal)
-            ? ComputerUseCoreSupportedActionTypes
-            : ClickFirstSupportedActionTypes;
+        if (!TryResolveSupportedActionTypes(executionProfile, out string[] supportedActionTypes, out string? failureCode, out string? reason))
+        {
+            return MaterializeFactual(CreateFailureResult(
+                failureCode ?? InputFailureCodeValues.InvalidRequest,
+                reason ?? "Input execution profile не поддерживается runtime."));
+        }
 
-        if (!InputRequestValidator.TryValidateSupportedSubset(request, supportedActionTypes, out string? failureCode, out string? reason))
+        if (!InputRequestValidator.TryValidateSupportedSubset(request, supportedActionTypes, out failureCode, out reason))
         {
             return MaterializeFactual(CreateFailureResult(
                 failureCode ?? InputFailureCodeValues.InvalidRequest,
@@ -69,14 +81,15 @@ internal sealed class Win32InputService(
         {
             return MaterializeFactual(CreateFailureResult(
                 targetResolution.FailureCode ?? InputFailureCodeValues.MissingTarget,
-                CreateTargetFailureReason(targetResolution.FailureCode),
+                InputTargetFailurePolicy.CreateTargetFailureReason(targetResolution.FailureCode),
                 targetSource: targetResolution.Source));
         }
 
-        InputBatchExecutionState batch = new(
+        batch = new(
             targetWindow,
             targetResolution.Source,
             platform.ProbeCurrentProcessSecurity());
+        InputTargetSecurityProbeCache targetSecurityProbeCache = new(platform);
 
         try
         {
@@ -93,12 +106,13 @@ internal sealed class Win32InputService(
                 cancellationToken.ThrowIfCancellationRequested();
 
                 InputAction action = request.Actions[index];
-                batch.BeginAction(index, action, ResolveEffectiveButtonForAction(action));
+                batch.BeginAction(index, action, InputActionSemantics.ResolveEffectiveButtonForAction(action));
 
-                if (string.Equals(action.Type, InputActionTypeValues.Type, StringComparison.Ordinal))
+                if (InputActionSemantics.IsType(action))
                 {
                     if (!TryResolveAdmissibleTarget(
                             batch,
+                            targetSecurityProbeCache,
                             dispatchPlan: null,
                             out WindowDescriptor? keyboardTargetWindow,
                             out _,
@@ -112,6 +126,11 @@ internal sealed class Win32InputService(
                     }
 
                     batch.UpdateTargetHwnd(keyboardTargetWindow!.Hwnd);
+                    if (!batch.TryEnterDispatchBoundary(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult!, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
                     InputDispatchResult dispatchResult = platform.DispatchText(
                         new InputTextDispatchContext(
                             action.Text!,
@@ -148,10 +167,11 @@ internal sealed class Win32InputService(
                     continue;
                 }
 
-                if (string.Equals(action.Type, InputActionTypeValues.Keypress, StringComparison.Ordinal))
+                if (InputActionSemantics.IsKeypress(action))
                 {
                     if (!TryResolveAdmissibleTarget(
                             batch,
+                            targetSecurityProbeCache,
                             dispatchPlan: null,
                             out WindowDescriptor? keyboardTargetWindow,
                             out _,
@@ -165,6 +185,11 @@ internal sealed class Win32InputService(
                     }
 
                     batch.UpdateTargetHwnd(keyboardTargetWindow!.Hwnd);
+                    if (!batch.TryEnterDispatchBoundary(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult!, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
                     InputDispatchResult dispatchResult = platform.DispatchKeypress(
                         new InputKeypressDispatchContext(
                             action.Key!,
@@ -203,10 +228,11 @@ internal sealed class Win32InputService(
                     continue;
                 }
 
-                if (string.Equals(action.Type, InputActionTypeValues.Drag, StringComparison.Ordinal))
+                if (InputActionSemantics.IsDrag(action))
                 {
                     if (!TryResolveAdmissibleTarget(
                             batch,
+                            targetSecurityProbeCache,
                             dispatchPlan: null,
                             out WindowDescriptor? dragTargetWindow,
                             out _,
@@ -259,6 +285,7 @@ internal sealed class Win32InputService(
 
                     if (!TryResolveAdmissibleTarget(
                             batch,
+                            targetSecurityProbeCache,
                             dispatchPlan: null,
                             out dragTargetWindow,
                             out _,
@@ -270,7 +297,7 @@ internal sealed class Win32InputService(
                                 failureCode!,
                                 reason!,
                                 targetWindow.Hwnd),
-                            ResolveFailureStage(failureCode));
+                            InputFailureStagePolicy.ResolveFailureStage(failureCode));
                     }
 
                     batch.UpdateTargetHwnd(dragTargetWindow!.Hwnd);
@@ -285,10 +312,15 @@ internal sealed class Win32InputService(
                     {
                         return MaterializeFactual(
                             batch.MaterializeCurrentActionFailure(
-                                failureCode!,
-                                reason!,
-                                dragTargetWindow.Hwnd),
+                            failureCode!,
+                            reason!,
+                            dragTargetWindow.Hwnd),
                             InputFailureStageValues.CoordinateMapping);
+                    }
+
+                    if (!batch.TryEnterDispatchBoundary(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult!, InputFailureStageValues.CancellationAfterCommittedSideEffect);
                     }
 
                     InputDispatchResult dragDispatchResult = platform.DispatchDrag(
@@ -316,7 +348,7 @@ internal sealed class Win32InputService(
                                 dragDispatchResult.FailureCode ?? InputFailureCodeValues.InputDispatchFailed,
                                 dragDispatchResult.Reason ?? "Runtime не смог подтвердить drag dispatch.",
                                 dragTargetWindow.Hwnd),
-                            ResolveDragFailureStage(dragDispatchResult));
+                            InputFailureStagePolicy.ResolveDragFailureStage(dragDispatchResult));
                     }
 
                     if (dragDispatchResult.CommittedSideEffects)
@@ -336,6 +368,7 @@ internal sealed class Win32InputService(
 
                 if (!TryResolveAdmissibleTarget(
                         batch,
+                        targetSecurityProbeCache,
                         dispatchPlan: null,
                         out WindowDescriptor? liveTargetWindow,
                         out _,
@@ -359,10 +392,11 @@ internal sealed class Win32InputService(
                         liveTargetWindow.Hwnd));
                 }
 
-                if (string.Equals(action.Type, InputActionTypeValues.DoubleClick, StringComparison.Ordinal))
+                if (InputActionSemantics.IsDoubleClick(action))
                 {
                     if (!TryPrepareDispatchPlan(
                             batch,
+                            targetSecurityProbeCache,
                             dispatchPlan,
                             InputDispatchPlanRefreshPolicy.AllowRefreshedPoint,
                             cancellationToken,
@@ -411,15 +445,20 @@ internal sealed class Win32InputService(
                     return MaterializeFactual(cancellationResult, InputFailureStageValues.CancellationAfterCommittedSideEffect);
                 }
 
-                if (string.Equals(action.Type, InputActionTypeValues.Move, StringComparison.Ordinal))
+                if (InputActionSemantics.IsMove(action))
                 {
                     batch.UpdateExpectedTarget(liveTargetWindow);
                     batch.CompleteCurrentActionSuccess();
                     continue;
                 }
 
-                if (string.Equals(action.Type, InputActionTypeValues.Scroll, StringComparison.Ordinal))
+                if (InputActionSemantics.IsScroll(action))
                 {
+                    if (!batch.TryEnterDispatchBoundary(cancellationToken, out cancellationResult))
+                    {
+                        return MaterializeFactual(cancellationResult!, InputFailureStageValues.CancellationAfterCommittedSideEffect);
+                    }
+
                     InputDispatchResult dispatchResult = platform.DispatchScroll(
                         new InputScrollDispatchContext(
                             dispatchPlan!.ResolvedScreenPoint,
@@ -456,14 +495,16 @@ internal sealed class Win32InputService(
                     continue;
                 }
 
-                string button = ResolveEffectiveButton(action);
-                if (string.Equals(action.Type, InputActionTypeValues.DoubleClick, StringComparison.Ordinal))
+                string button = InputActionSemantics.ResolveEffectiveButton(action);
+                if (InputActionSemantics.IsDoubleClick(action))
                 {
                     if (!TryDispatchClickWithinBoundary(
                             batch,
+                            targetSecurityProbeCache,
                             dispatchPlan!,
                             InputDispatchPlanRefreshPolicy.RequireStablePoint,
                             InputButtonValues.Left,
+                            InputIrreversiblePhase.AfterDoubleClickFirstTap,
                             cancellationToken,
                             out shortCircuitResult,
                             out liveTargetWindow,
@@ -489,13 +530,15 @@ internal sealed class Win32InputService(
                     }
 
                     batch.UpdateExpectedTarget(liveTargetWindow);
-                    await Task.Delay(DoubleClickDelay, timeProvider, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(effectiveExecutionOptions.DoubleClickDelay, timeProvider, cancellationToken).ConfigureAwait(false);
 
                     if (!TryDispatchClickWithinBoundary(
                             batch,
+                            targetSecurityProbeCache,
                             dispatchPlan,
                             InputDispatchPlanRefreshPolicy.RequireStablePoint,
                             InputButtonValues.Left,
+                            InputIrreversiblePhase.AfterDoubleClickSecondTap,
                             cancellationToken,
                             out shortCircuitResult,
                             out liveTargetWindow,
@@ -527,9 +570,11 @@ internal sealed class Win32InputService(
 
                 if (!TryDispatchClickWithinBoundary(
                         batch,
+                        targetSecurityProbeCache,
                         dispatchPlan!,
                         InputDispatchPlanRefreshPolicy.AllowRefreshedPoint,
                         button,
+                        InputIrreversiblePhase.AfterClickTap,
                         cancellationToken,
                         out shortCircuitResult,
                         out liveTargetWindow,
@@ -650,9 +695,11 @@ internal sealed class Win32InputService(
 
     private bool TryDispatchClickWithinBoundary(
         InputBatchExecutionState batch,
+        InputTargetSecurityProbeCache targetSecurityProbeCache,
         InputPointerDispatchPlan dispatchPlan,
         InputDispatchPlanRefreshPolicy refreshPolicy,
         string button,
+        InputIrreversiblePhase partialDispatchCommittedPhase,
         CancellationToken cancellationToken,
         out InputResult? shortCircuitResult,
         [NotNullWhen(true)] out WindowDescriptor? liveTargetWindow,
@@ -666,13 +713,14 @@ internal sealed class Win32InputService(
 
         if (!TryResolveAdmissibleTarget(
                 batch,
+                targetSecurityProbeCache,
                 dispatchPlan,
                 out liveTargetWindow,
                 out validatedDispatchPlan,
                 out failureCode,
                 out reason))
         {
-            failureStage = ResolveFailureStage(failureCode);
+            failureStage = InputFailureStagePolicy.ResolveFailureStage(failureCode);
             return false;
         }
 
@@ -700,6 +748,14 @@ internal sealed class Win32InputService(
         liveTargetWindow = acceptance.LiveTargetWindow!;
         validatedDispatchPlan = acceptance.DispatchPlan;
 
+        if (!batch.TryEnterDispatchBoundary(cancellationToken, out shortCircuitResult))
+        {
+            failureCode = shortCircuitResult!.FailureCode;
+            reason = shortCircuitResult.Reason;
+            failureStage = InputFailureStageValues.CancellationAfterCommittedSideEffect;
+            return false;
+        }
+
         InputClickDispatchResult dispatchResult = platform.DispatchClick(
             new InputClickDispatchContext(
                 validatedDispatchPlan!.ResolvedScreenPoint,
@@ -707,9 +763,17 @@ internal sealed class Win32InputService(
                 liveTargetWindow));
         if (!dispatchResult.Success)
         {
+            if (dispatchResult.CommittedSideEffects)
+            {
+                batch.UpdateResolvedPoint(validatedDispatchPlan.ResolvedScreenPoint);
+                batch.RecordCommittedSideEffect(partialDispatchCommittedPhase);
+            }
+
             failureCode = dispatchResult.FailureCode ?? InputFailureCodeValues.InputDispatchFailed;
             reason = dispatchResult.Reason ?? $"Button dispatch для '{button}' не был подтверждён платформой.";
-            failureStage = MapClickDispatchFailureStage(dispatchResult.OutcomeKind);
+            failureStage = dispatchResult.FailureStageHint
+                ?? InputFailureStagePolicy.MapClickDispatchFailureStage(dispatchResult.OutcomeKind)
+                ?? InputFailureStagePolicy.ResolveFailureStage(failureCode);
             return false;
         }
 
@@ -721,6 +785,7 @@ internal sealed class Win32InputService(
 
     private bool TryPrepareDispatchPlan(
         InputBatchExecutionState batch,
+        InputTargetSecurityProbeCache targetSecurityProbeCache,
         InputPointerDispatchPlan dispatchPlan,
         InputDispatchPlanRefreshPolicy refreshPolicy,
         CancellationToken cancellationToken,
@@ -736,6 +801,7 @@ internal sealed class Win32InputService(
 
         if (!TryResolveAdmissibleTarget(
                 batch,
+                targetSecurityProbeCache,
                 dispatchPlan,
                 out liveTargetWindow,
                 out InputPointerDispatchPlan? validatedDispatchPlan,
@@ -743,7 +809,7 @@ internal sealed class Win32InputService(
                 out reason))
         {
             preparedDispatchPlan = null;
-            failureStage = ResolveFailureStage(failureCode);
+            failureStage = InputFailureStagePolicy.ResolveFailureStage(failureCode);
             return false;
         }
 
@@ -784,7 +850,7 @@ internal sealed class Win32InputService(
         bool moveCursorWhenRefreshed,
         CancellationToken cancellationToken)
     {
-        if (!SamePoint(originalDispatchPlan.ResolvedScreenPoint, refreshedDispatchPlan.ResolvedScreenPoint))
+        if (!InputActionSemantics.SamePoint(originalDispatchPlan.ResolvedScreenPoint, refreshedDispatchPlan.ResolvedScreenPoint))
         {
             if (refreshPolicy == InputDispatchPlanRefreshPolicy.RequireStablePoint)
             {
@@ -853,6 +919,7 @@ internal sealed class Win32InputService(
 
     private bool TryResolveAdmissibleTarget(
         InputBatchExecutionState batch,
+        InputTargetSecurityProbeCache targetSecurityProbeCache,
         InputPointerDispatchPlan? dispatchPlan,
         [NotNullWhen(true)] out WindowDescriptor? liveTargetWindow,
         out InputPointerDispatchPlan? validatedDispatchPlan,
@@ -864,8 +931,8 @@ internal sealed class Win32InputService(
         validatedDispatchPlan = dispatchPlan;
         if (!targetResolution.IsResolved)
         {
-            failureCode = MapStaleTargetFailureCode(batch.TargetSource);
-            reason = CreateTargetFailureReason(failureCode);
+            failureCode = InputTargetFailurePolicy.MapStaleTargetFailureCode(batch.TargetSource);
+            reason = InputTargetFailurePolicy.CreateTargetFailureReason(failureCode);
             validatedDispatchPlan = null;
             return false;
         }
@@ -877,9 +944,8 @@ internal sealed class Win32InputService(
             return false;
         }
 
-        InputTargetSecurityInfo targetSecurity = platform.ProbeTargetSecurity(liveTargetWindow.Hwnd, liveTargetWindow.ProcessId);
+        InputTargetSecurityInfo targetSecurity = targetSecurityProbeCache.Probe(liveTargetWindow);
         InputTargetPreflightResult preflight = InputTargetPreflightPolicy.Evaluate(
-            batch.TargetSource,
             liveTargetWindow,
             batch.CurrentProcessSecurity,
             targetSecurity);
@@ -896,20 +962,35 @@ internal sealed class Win32InputService(
         return true;
     }
 
-    private static bool SamePoint(InputPoint left, InputPoint right) =>
-        left.X == right.X && left.Y == right.Y;
-
-    private static string ResolveEffectiveButton(InputAction action) =>
-        string.IsNullOrWhiteSpace(action.Button) ? InputButtonValues.Left : action.Button!;
-
-    private static string? ResolveEffectiveButtonForAction(InputAction action) =>
-        action.Type switch
+    private static bool TryResolveSupportedActionTypes(
+        string? executionProfile,
+        out string[] supportedActionTypes,
+        out string? failureCode,
+        out string? reason)
+    {
+        if (string.Equals(executionProfile, InputExecutionProfileValues.ClickFirstPublic, StringComparison.Ordinal))
         {
-            InputActionTypeValues.Move => null,
-            InputActionTypeValues.DoubleClick => InputButtonValues.Left,
-            InputActionTypeValues.Click => ResolveEffectiveButton(action),
-            _ => action.Button,
-        };
+            supportedActionTypes = ClickFirstSupportedActionTypes;
+            failureCode = null;
+            reason = null;
+            return true;
+        }
+
+        if (string.Equals(executionProfile, InputExecutionProfileValues.ComputerUseCore, StringComparison.Ordinal))
+        {
+            supportedActionTypes = ComputerUseCoreSupportedActionTypes;
+            failureCode = null;
+            reason = null;
+            return true;
+        }
+
+        supportedActionTypes = Array.Empty<string>();
+        failureCode = InputFailureCodeValues.InvalidRequest;
+        reason = string.IsNullOrWhiteSpace(executionProfile)
+            ? "Input execution profile не указан."
+            : $"Runtime не поддерживает input execution profile '{executionProfile}'.";
+        return false;
+    }
 
     private static void ApplyMoveOutcomeToBatch(
         InputBatchExecutionState batch,
@@ -968,63 +1049,6 @@ internal sealed class Win32InputService(
                 Reason: reason,
                 FailureStage: failureStage);
     }
-
-    private static string MapStaleTargetFailureCode(string? targetSource) =>
-        string.Equals(targetSource, InputTargetSourceValues.Attached, StringComparison.Ordinal)
-            ? InputFailureCodeValues.StaleAttachedTarget
-            : InputFailureCodeValues.StaleExplicitTarget;
-
-    private static string? MapClickDispatchFailureStage(InputClickDispatchOutcomeKind outcomeKind) =>
-        outcomeKind switch
-        {
-            InputClickDispatchOutcomeKind.CleanFailure => InputFailureStageValues.ClickDispatchCleanFailure,
-            InputClickDispatchOutcomeKind.PartialDispatchCompensated => InputFailureStageValues.ClickDispatchPartialCompensated,
-            InputClickDispatchOutcomeKind.PartialDispatchUncompensated => InputFailureStageValues.ClickDispatchPartialUncompensated,
-            _ => InputFailureStageValues.InputDispatch,
-        };
-
-    private static string ResolveDragFailureStage(InputDispatchResult dragDispatchResult)
-    {
-        if (!string.IsNullOrWhiteSpace(dragDispatchResult.FailureStageHint))
-        {
-            return dragDispatchResult.FailureStageHint;
-        }
-
-        return dragDispatchResult.CommittedSideEffects
-            ? InputFailureStageValues.DragDispatchPartialUncompensated
-            : InputFailureStageValues.DragDispatchNotStartedAfterMove;
-    }
-
-    private static string? ResolveFailureStage(string? failureCode) =>
-        failureCode switch
-        {
-            InputFailureCodeValues.InvalidRequest
-                or InputFailureCodeValues.UnsupportedActionType
-                or InputFailureCodeValues.UnsupportedCoordinateSpace
-                or InputFailureCodeValues.UnsupportedKey => InputFailureStageValues.RequestValidation,
-            InputFailureCodeValues.MissingTarget
-                or InputFailureCodeValues.StaleExplicitTarget
-                or InputFailureCodeValues.StaleAttachedTarget => InputFailureStageValues.TargetResolution,
-            InputFailureCodeValues.TargetNotForeground
-                or InputFailureCodeValues.TargetMinimized
-                or InputFailureCodeValues.TargetIntegrityBlocked => InputFailureStageValues.TargetPreflight,
-            InputFailureCodeValues.CaptureReferenceRequired
-                or InputFailureCodeValues.CaptureReferenceStale
-                or InputFailureCodeValues.PointOutOfBounds => InputFailureStageValues.CoordinateMapping,
-            InputFailureCodeValues.CursorMoveFailed => InputFailureStageValues.CursorMove,
-            InputFailureCodeValues.UnsupportedKeyboardLayout => InputFailureStageValues.InputDispatch,
-            InputFailureCodeValues.InputDispatchFailed => InputFailureStageValues.InputDispatch,
-            _ => null,
-        };
-
-    private static string CreateTargetFailureReason(string? failureCode) =>
-        failureCode switch
-        {
-            InputFailureCodeValues.StaleExplicitTarget => "Explicit target больше не совпадает с live window identity.",
-            InputFailureCodeValues.StaleAttachedTarget => "Attached target больше не совпадает с live window identity.",
-            InputFailureCodeValues.MissingTarget => "windows.input Package B требует explicit или attached target без active fallback.",
-            _ => "Runtime не смог разрешить target для windows.input.",
-        };
 
     private static InputResult CreateFailureResult(
         string failureCode,

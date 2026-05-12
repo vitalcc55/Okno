@@ -347,12 +347,6 @@ internal static class InputCoordinateMapper
         && point.Y >= bounds.Top
         && point.Y < bounds.Bottom;
 
-    private static bool TryGetExtent(int startEdge, int endEdge, out long extent)
-    {
-        extent = (long)endEdge - startEdge;
-        return extent > 0;
-    }
-
     private static bool TryAddCoordinate(int origin, int offset, out int coordinate)
     {
         long value = (long)origin + offset;
@@ -365,5 +359,4 @@ internal static class InputCoordinateMapper
         coordinate = (int)value;
         return true;
     }
-
 }
