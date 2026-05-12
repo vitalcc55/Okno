@@ -35,6 +35,7 @@ public static class ToolContractExporter
             Scripts:
             [
                 "scripts/bootstrap.ps1",
+                "scripts/lint-powershell.ps1",
                 "scripts/build.ps1",
                 "scripts/test.ps1",
                 "scripts/smoke.ps1",

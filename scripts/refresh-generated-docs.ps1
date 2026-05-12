@@ -13,6 +13,37 @@ $testMatrixMarkdownPath = Join-Path $repoRoot 'docs\generated\test-matrix.md'
 $stackInventoryMarkdownPath = Join-Path $repoRoot 'docs\generated\stack-inventory.md'
 $bootstrapStatusJsonPath = Join-Path $repoRoot 'docs\bootstrap\bootstrap-status.json'
 
+$script:ValidationEntryPoints = @(
+    [PSCustomObject]@{
+        Key     = 'build'
+        Command = 'dotnet build WinBridge.sln --no-restore'
+    },
+    [PSCustomObject]@{
+        Key     = 'lint_powershell'
+        Command = 'pwsh -ExecutionPolicy Bypass -File scripts/lint-powershell.ps1'
+    },
+    [PSCustomObject]@{
+        Key     = 'test'
+        Command = 'dotnet test WinBridge.sln --configuration Debug'
+    },
+    [PSCustomObject]@{
+        Key     = 'smoke'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1'
+    },
+    [PSCustomObject]@{
+        Key     = 'refresh_generated_docs'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1'
+    },
+    [PSCustomObject]@{
+        Key     = 'ci'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/ci.ps1'
+    },
+    [PSCustomObject]@{
+        Key     = 'codex_verify'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1'
+    }
+)
+
 Invoke-WinBridgeSolutionBuild -Description 'dotnet build before generated docs refresh'
 
 $bundle = Use-OknoTestBundle -RepoRoot $repoRoot
@@ -70,6 +101,25 @@ function Write-Utf8DeterministicFile {
     [System.IO.File]::WriteAllText($Path, $normalizedContent, $encoding)
 }
 
+function Get-ValidationEntryPointMarkdownLines {
+    return @(
+        foreach ($entryPoint in $script:ValidationEntryPoints) {
+            '- `' + $entryPoint.Command + '`'
+        }
+    )
+}
+
+function Get-ValidationEntryPointJsonLines {
+    $lines = @()
+    for ($index = 0; $index -lt $script:ValidationEntryPoints.Count; $index++) {
+        $entryPoint = $script:ValidationEntryPoints[$index]
+        $suffix = if ($index -lt ($script:ValidationEntryPoints.Count - 1)) { ',' } else { '' }
+        $lines += '    ' + (Convert-ToJsonStringLiteral $entryPoint.Key) + ': ' + (Convert-ToJsonStringLiteral $entryPoint.Command) + $suffix
+    }
+
+    return $lines
+}
+
 function New-CommandsMarkdown {
     $smokeCommandLiteral = Get-SmokeCommandLiteral
     $smokeCommandPurpose = Get-SmokeCommandPurpose
@@ -84,6 +134,7 @@ function New-CommandsMarkdown {
         '| Command | Purpose |',
         '| --- | --- |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` | `dotnet restore` |',
+        '| `pwsh -ExecutionPolicy Bypass -File scripts/lint-powershell.ps1` | PowerShell static analysis for non-ignored repo-owned scripts and plugin launchers through PSScriptAnalyzer 1.25.0+ on pwsh 7.2.11+ |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers into .NET artifacts root |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests with staged server/helper bundle |',
         "| $smokeCommandLiteral | $smokeCommandPurpose |",
@@ -120,13 +171,12 @@ function New-CommandsMarkdown {
         '## Validation Entry Points',
         '',
         '> Этот раздел перечисляет канонические validation commands и не зависит от конкретного run id. Для evidence конкретного запуска смотри `artifacts/smoke/<run_id>/` или используй `scripts/investigate.ps1`.',
-        '',
-        '- `dotnet build WinBridge.sln --no-restore`',
-        '- `dotnet test WinBridge.sln --configuration Debug`',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1`',
-        '- `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`',
+        ''
+    )
+
+    $lines += Get-ValidationEntryPointMarkdownLines
+
+    $lines += @(
         '',
         '## Artifact Layout',
         '',
@@ -159,12 +209,13 @@ function New-TestMatrixMarkdown {
         '',
         '| Layer | Command | Coverage now |',
         '| --- | --- | --- |',
-        '| Static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |',
+        '| PowerShell static analysis | `pwsh -ExecutionPolicy Bypass -File scripts/lint-powershell.ps1` | PSScriptAnalyzer 1.25.0+ strict correctness/security/compatibility gate for non-ignored `scripts/**/*.ps1` and `plugins/**/*.ps1` worktree source files on pwsh 7.2.11+ |',
+        '| .NET static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |',
         '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, launch exporter drift, launch runtime/status/evidence policy, input contract/runtime/materializer policy, display identity pipeline, monitor id formatting, activation decision logic, wait runtime/status/evidence policy, UIA runtime packaging/evidence, session dedupe, session mutation |',
         '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol through staged server/helper bundle with run-aware resolver semantics, public `windows.launch_process`, `windows.open_target` and click-first `windows.input` schema/result mapping, public `computer-use-win` action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) including focused and coordinate-confirmed `type_text` fallback, selected-action `observeAfter` / `successorState`, strict `windowId` continuity reuse/fail-close, helper-backed drag proof, attach/focus/activate contract semantics, temp plugin install-copy schema proof, shared-runtime foundation CLI (`runtime install/status/verify/repair`), installer orchestration core (`install/update/repair/uninstall` for `codex` and `runtime-only`), bootstrap installer shell, setup CLI payload packaging, WinUI setup app packaging, setup-shell controller mapping for both install modes, launcher preference for shared installed runtime vs plugin-local fallback, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
         '| Install/publication proof | `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | cache-installed `computer-use-win` plugin hash matches repo plugin files, launches from user cache path, exposes exact nine-tool tools/list surface, includes `type_text.allowFocusedFallback`, `type_text.observeAfter`, `type_text.point`, `type_text.coordinateSpace` with capture_pixels-only enum, selected-action `observeAfter`, no semantic-only `observeAfter`, and `list_apps.status=ok`; proof metadata records `repoHead`, working-tree cleanliness, runtime-affecting dirty paths, runtime bundle manifest freshness against publication inputs, acceptance eligibility and plugin digest |',
         "| Smoke | $smokeCommandLiteral | $smokeCoverageNarrative |",
-        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + build + test + smoke |',
+        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + PowerShell static analysis + build + test + smoke |',
         '',
         '## Чего пока не хватает',
         '',
@@ -414,12 +465,12 @@ function New-BootstrapStatusJson {
 
     $lines += @(
         '  ],',
-        '  "validation_entry_points": {',
-        '    "build": "dotnet build WinBridge.sln --no-restore",',
-        '    "test": "dotnet test WinBridge.sln --configuration Debug",',
-        '    "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",',
-        '    "refresh_generated_docs": "powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1",',
-        '    "ci": "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1"',
+        '  "validation_entry_points": {'
+    )
+
+    $lines += Get-ValidationEntryPointJsonLines
+
+    $lines += @(
         '  },',
         '  "artifact_layout": {',
         '    "diagnostics_events": "artifacts/diagnostics/<run_id>/events.jsonl",',

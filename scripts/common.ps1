@@ -205,17 +205,17 @@ function Try-Resolve-WinBridgeArtifactsContextFromAssemblyBaseDirectory {
     }
 
     $current = [System.IO.DirectoryInfo]::new($resolvedBaseDirectory)
-    while ($current -ne $null -and -not [string]::Equals($current.Name, 'bin', [System.StringComparison]::OrdinalIgnoreCase)) {
+    while ($null -ne $current -and -not [string]::Equals($current.Name, 'bin', [System.StringComparison]::OrdinalIgnoreCase)) {
         $current = $current.Parent
     }
 
-    if ($current -eq $null -or $current.Parent -eq $null) {
+    if ($null -eq $current -or $null -eq $current.Parent) {
         return $null
     }
 
     $segments = New-Object System.Collections.Generic.List[string]
     $segmentCursor = [System.IO.DirectoryInfo]::new($resolvedBaseDirectory)
-    while ($segmentCursor -ne $null -and -not [string]::Equals($segmentCursor.FullName, $current.FullName, [System.StringComparison]::OrdinalIgnoreCase)) {
+    while ($null -ne $segmentCursor -and -not [string]::Equals($segmentCursor.FullName, $current.FullName, [System.StringComparison]::OrdinalIgnoreCase)) {
         $segments.Add($segmentCursor.Name)
         $segmentCursor = $segmentCursor.Parent
     }
@@ -1456,11 +1456,14 @@ function Invoke-ScriptProcessStep {
         [Parameter(Mandatory)]
         [string] $Description,
         [Parameter(Mandatory)]
-        [string] $ScriptPath
+        [string] $ScriptPath,
+        [string] $PowerShellExecutable = 'powershell'
     )
 
+    $scriptPathArgument = $ScriptPath
+    $powerShellExecutableArgument = $PowerShellExecutable
     Invoke-NativeCommand -Description $Description -Command {
-        powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $ScriptPath
+        & $powerShellExecutableArgument -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPathArgument
     }
 }
 
@@ -1544,6 +1547,7 @@ function Remove-StaleSmokeUnownedProbeRoots {
             Remove-Item -LiteralPath $directory.FullName -Force -Recurse -ErrorAction Stop
         }
         catch {
+            Write-Verbose -Message "Ignoring stale smoke probe cleanup failure for '$($directory.FullName)': $($_.Exception.Message)"
         }
     }
 }

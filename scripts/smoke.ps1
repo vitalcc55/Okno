@@ -488,20 +488,20 @@ function Find-UiaNodes {
         return @()
     }
 
-    $matches = @()
+    $matchedNodes = @()
     $nodeControlType = if ($null -ne $Node.controlType) { [string]$Node.controlType } else { $null }
     $nodeName = if ($null -ne $Node.name) { [string]$Node.name } else { $null }
 
     if (([string]::IsNullOrWhiteSpace($ControlType) -or $nodeControlType -eq $ControlType) -and
         ([string]::IsNullOrWhiteSpace($Name) -or $nodeName -eq $Name)) {
-        $matches += $Node
+        $matchedNodes += $Node
     }
 
     foreach ($child in @($Node.children)) {
-        $matches += @(Find-UiaNodes -Node $child -ControlType $ControlType -Name $Name)
+        $matchedNodes += @(Find-UiaNodes -Node $child -ControlType $ControlType -Name $Name)
     }
 
-    return $matches
+    return $matchedNodes
 }
 
 function Test-UiaSemanticSubtreeReady {
@@ -551,6 +551,7 @@ function Wait-ForMainWindowHandle {
         [void]$Process.WaitForInputIdle($TimeoutMilliseconds)
     }
     catch [System.InvalidOperationException] {
+        Write-Verbose -Message "Ignoring WaitForInputIdle failure while waiting for the smoke helper window: $($_.Exception.Message)"
     }
 
     $found = Wait-Until -TimeoutMilliseconds $TimeoutMilliseconds -Predicate {
@@ -581,6 +582,7 @@ function Get-ProcessByIdWithRetry {
             }
         }
         catch [System.ArgumentException] {
+            Write-Verbose -Message "Ignoring disappeared smoke helper process '$ProcessId' during retry: $($_.Exception.Message)"
         }
 
         Start-Sleep -Milliseconds $PollMilliseconds
@@ -835,6 +837,7 @@ function Stop-SmokeHelperLeaks {
             }
         }
         catch [System.ArgumentException] {
+            Write-Verbose -Message "Ignoring disappeared smoke helper leak candidate '$processId': $($_.Exception.Message)"
         }
     }
 }
@@ -1327,12 +1330,13 @@ function Close-SmokeOwnedWindow {
         [int] $PollMilliseconds = 150
     )
 
+    $targetProcess = $Process
     $wmClose = 0x0010
     $posted = [WinBridgeSmoke.User32]::PostMessage([IntPtr]::new($Hwnd), $wmClose, [IntPtr]::Zero, [IntPtr]::Zero)
     Assert-Condition -Condition $posted -Message "Smoke could not post WM_CLOSE to owned open_target window hwnd '$Hwnd'."
 
     $closed = Wait-Until -TimeoutMilliseconds $TimeoutMilliseconds -PollMilliseconds $PollMilliseconds -Predicate {
-        $inventory = Get-VisibleWindowsInventory -Process $Process -RequestName 'windows.list_windows(open_target close verification)'
+        $inventory = Get-VisibleWindowsInventory -Process $targetProcess -RequestName 'windows.list_windows(open_target close verification)'
         -not (@($inventory.Payload.windows | ForEach-Object { [int64]$_.hwnd }) -contains $Hwnd)
     }
 
@@ -1753,7 +1757,6 @@ function Invoke-ActivateWindowUntilForeground {
     $deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
     $attempts = @()
     $wasMinimizedObserved = $false
-    $lastCall = $null
     $lastPayload = $null
 
     do {
@@ -1780,7 +1783,6 @@ function Invoke-ActivateWindowUntilForeground {
             wasMinimized = [bool]$payload.wasMinimized
             reason = [string]$payload.reason
         }
-        $lastCall = $toolCall
         $lastPayload = $payload
 
         if ($status -eq 'done' -and [bool]$payload.isForeground) {
@@ -1979,6 +1981,7 @@ function Stop-StagedMcpHost {
             $Process.StandardInput.Close()
         }
         catch [System.InvalidOperationException] {
+            Write-Verbose -Message "Ignoring closed staged MCP stdin during shutdown: $($_.Exception.Message)"
         }
     }
 
@@ -2011,6 +2014,7 @@ function Stop-SmokeOwnedHelperProcess {
             }
         }
         catch [System.ArgumentException] {
+            Write-Verbose -Message "Ignoring disappeared owned helper fallback process '$ProcessId': $($_.Exception.Message)"
         }
     }
 }
@@ -2351,7 +2355,6 @@ try {
         Raw = $activateCall.RawResponse
         Json = $activateCall.Json
     }
-    $activateResult = $activateCall.Json.result
     $activatePayload = $activateProof.Payload
     $activateAttempts = $activateProof.Attempts
     $activateStatus = [string]$activatePayload.status
@@ -2782,6 +2785,7 @@ try {
             session_state = $rawSessionRequest
             uia_snapshot = $rawUiaSnapshotRequest
             capture = $rawCaptureRequest
+            minimized_capture = $rawMinimizedCaptureRequest
             activate_window = $rawActivateRequest
             helper_window_capture = $rawHelperCaptureRequest
             wait_active_window_matches = $rawActiveWaitRequest
@@ -2810,6 +2814,7 @@ try {
             session_state = $sessionResponse.Raw
             uia_snapshot = $uiaSnapshotResponse.Raw
             capture = $captureResponse.Raw
+            minimized_capture = $minimizedCaptureResponse.Raw
             activate_window = $activateResponse.Raw
             helper_window_capture = $helperCaptureResponse.Raw
             wait_active_window_matches = $activeWaitResponse.Raw
@@ -2913,6 +2918,7 @@ finally {
             }
         }
         catch [System.ArgumentException] {
+            Write-Verbose -Message "Ignoring disappeared helper fallback process '$helperProcessId': $($_.Exception.Message)"
         }
     }
 
@@ -2944,6 +2950,7 @@ finally {
             $process.StandardInput.Close()
         }
         catch {
+            Write-Verbose -Message "Ignoring staged MCP stdin close failure during final cleanup: $($_.Exception.Message)"
         }
 
         if (-not $process.WaitForExit(5000)) {

@@ -14,16 +14,18 @@ function Invoke-CiTimedStep {
         [Parameter(Mandatory)]
         [string] $Description,
         [Parameter(Mandatory)]
-        [string] $ScriptPath
+        [string] $ScriptPath,
+        [string] $PowerShellExecutable = 'powershell'
     )
 
     $stepStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    Invoke-ScriptProcessStep -Description $Description -ScriptPath $ScriptPath
+    Invoke-ScriptProcessStep -Description $Description -ScriptPath $ScriptPath -PowerShellExecutable $PowerShellExecutable
     $stepStopwatch.Stop()
     $stepDurations[$Key] = $stepStopwatch.Elapsed
 }
 
 Invoke-CiTimedStep -Key 'bootstrap' -Description 'bootstrap step' -ScriptPath (Join-Path $PSScriptRoot 'bootstrap.ps1')
+Invoke-CiTimedStep -Key 'lint_powershell' -Description 'PowerShell static analysis step' -ScriptPath (Join-Path $PSScriptRoot 'lint-powershell.ps1') -PowerShellExecutable 'pwsh'
 Invoke-CiTimedStep -Key 'build' -Description 'build step' -ScriptPath (Join-Path $PSScriptRoot 'build.ps1')
 Invoke-CiTimedStep -Key 'test' -Description 'test step' -ScriptPath (Join-Path $PSScriptRoot 'test.ps1')
 Invoke-CiTimedStep -Key 'smoke' -Description 'smoke step' -ScriptPath (Join-Path $PSScriptRoot 'smoke.ps1')

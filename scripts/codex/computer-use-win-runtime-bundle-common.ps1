@@ -743,6 +743,7 @@ function Publish-ComputerUseWinRuntimeBundleToDirectory {
         [string] $PublishSourceRoot = ''
     )
 
+    $runtimeIdentifier = $Rid
     $serverProjectPath = Join-Path $RepoRoot 'src\WinBridge.Server\WinBridge.Server.csproj'
     Remove-DirectoryIfExists -Path $DestinationRoot
     New-Item -ItemType Directory -Path $DestinationRoot -Force | Out-Null
@@ -757,7 +758,7 @@ function Publish-ComputerUseWinRuntimeBundleToDirectory {
     Invoke-NativeCommandToStderr -FailureMessage "dotnet publish failed for computer-use-win runtime bundle." -Command {
         & dotnet publish $serverProjectPath `
             --configuration Release `
-            --runtime $Rid `
+            --runtime $runtimeIdentifier `
             --disable-build-servers `
             --self-contained true `
             -p:UseAppHost=true `

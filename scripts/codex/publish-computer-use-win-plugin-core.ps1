@@ -16,7 +16,6 @@ if (Get-Variable -Name PSStyle -ErrorAction Ignore) {
 . (Join-Path $PSScriptRoot 'computer-use-win-runtime-bundle-common.ps1')
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$serverProjectPath = Join-Path $repoRoot 'src\WinBridge.Server\WinBridge.Server.csproj'
 $runtimeParent = Join-Path $repoRoot 'plugins\computer-use-win\runtime'
 $runtimeRoot = Join-Path $runtimeParent 'win-x64'
 $publishRoot = Join-Path $repoRoot '.tmp\.codex\publish\computer-use-win\win-x64'
@@ -25,6 +24,13 @@ $swapRoot = Join-Path $runtimeParent ('win-x64.publish-' + [Guid]::NewGuid().ToS
 $backupRoot = Join-Path $runtimeParent ('win-x64.backup-' + [Guid]::NewGuid().ToString('N'))
 $repairRoot = Join-Path $runtimeParent ('win-x64.repair-' + [Guid]::NewGuid().ToString('N'))
 $repairFallbackRoot = Join-Path $runtimeParent ('win-x64.repair-fallback-' + [Guid]::NewGuid().ToString('N'))
+$publishSourceRootArgument = $PublishSourceRoot
+$failAfterBackupRequested = [bool]$FailAfterBackup
+$failRestoreRequested = [bool]$FailRestore
+$failRepairCopyAfterServerRequested = [bool]$FailRepairCopyAfterServer
+$failRepairHandoffRequested = [bool]$FailRepairHandoff
+$failRepairFallbackHandoffRequested = [bool]$FailRepairFallbackHandoff
+$failBackupCleanupRequested = [bool]$FailBackupCleanup
 
 function Remove-DirectoryBestEffort {
     param(
@@ -35,7 +41,7 @@ function Remove-DirectoryBestEffort {
     )
 
     try {
-        if ($FailBackupCleanup -and [System.IO.Path]::GetFullPath($Path) -eq [System.IO.Path]::GetFullPath($backupRoot)) {
+        if ($failBackupCleanupRequested -and [System.IO.Path]::GetFullPath($Path) -eq [System.IO.Path]::GetFullPath($backupRoot)) {
             throw "Synthetic backup cleanup failure."
         }
 
@@ -60,7 +66,7 @@ function Stage-RuntimeBundleFromBackup {
 }
 
 function Publish-RuntimeBundleToStaging {
-    Publish-ComputerUseWinRuntimeBundleToDirectory -RepoRoot $repoRoot -DestinationRoot $stagingRoot -Rid 'win-x64' -PublishSourceRoot $PublishSourceRoot
+    Publish-ComputerUseWinRuntimeBundleToDirectory -RepoRoot $repoRoot -DestinationRoot $stagingRoot -Rid 'win-x64' -PublishSourceRoot $publishSourceRootArgument
 }
 
 function Promote-ValidatedRuntimeBundle {
@@ -79,12 +85,12 @@ function Promote-ValidatedRuntimeBundle {
         Remove-DirectoryIfExists -Path $DestinationRoot
     }
 
-    if ($FailRepairHandoff `
+    if ($failRepairHandoffRequested `
         -and [System.IO.Path]::GetFullPath($SourceRoot) -eq [System.IO.Path]::GetFullPath($repairRoot)) {
         throw "Synthetic repair handoff failure."
     }
 
-    if ($FailRepairFallbackHandoff `
+    if ($failRepairFallbackHandoffRequested `
         -and [System.IO.Path]::GetFullPath($SourceRoot) -eq [System.IO.Path]::GetFullPath($repairFallbackRoot)) {
         throw "Synthetic repair fallback handoff failure."
     }
@@ -101,6 +107,10 @@ function Restore-CanonicalRuntimeFromBackup {
 
     try {
         Stage-RuntimeBundleFromBackup -DestinationRoot $repairRoot -Description "Staged runtime repair directory '$repairRoot'"
+        if ($failRepairCopyAfterServerRequested) {
+            throw "Synthetic repair copy failure after server materialization."
+        }
+
         Promote-ValidatedRuntimeBundle -SourceRoot $repairRoot -DestinationRoot $runtimeRoot -Description $Description
     }
     catch {
@@ -144,7 +154,7 @@ try {
             Move-Item -LiteralPath $runtimeRoot -Destination $backupRoot
         }
 
-        if ($FailAfterBackup) {
+        if ($failAfterBackupRequested) {
             throw "Synthetic publish promote failure after backup handoff."
         }
 
@@ -156,7 +166,7 @@ try {
         if (-not (Test-Path $runtimeRoot -PathType Container) -and (Test-Path $backupRoot -PathType Container)) {
             $restoreStarted = $false
             try {
-                if ($FailRestore) {
+                if ($failRestoreRequested) {
                     throw "Synthetic publish restore failure after promote error."
                 }
 

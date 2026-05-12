@@ -11,8 +11,6 @@ $runtimeRid = 'win-x64'
 $serverExeRelativePath = 'Okno.Server.exe'
 $bundleManifestName = 'okno-runtime-bundle-manifest.json'
 $pluginLocalRuntimeRoot = Join-Path $PSScriptRoot "runtime\$runtimeRid"
-$pluginLocalServerExePath = Join-Path $pluginLocalRuntimeRoot $serverExeRelativePath
-$pluginLocalRuntimeManifestPath = Join-Path $pluginLocalRuntimeRoot $bundleManifestName
 $descriptorOverridePath = $env:COMPUTER_USE_WIN_RUNTIME_RELEASE_DESCRIPTOR_OVERRIDE
 $runtimeDescriptorPath = if ([string]::IsNullOrWhiteSpace($descriptorOverridePath)) {
     Join-Path $PSScriptRoot 'runtime-release.json'

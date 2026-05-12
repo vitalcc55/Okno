@@ -116,6 +116,14 @@ public sealed class ToolContractExporterTests
     }
 
     [Fact]
+    public void ExportJsonIncludesPowerShellLintScriptInterface()
+    {
+        ToolContractExportDocument document = ToolContractExporter.CreateDocument();
+
+        Assert.Contains("scripts/lint-powershell.ps1", document.Scripts);
+    }
+
+    [Fact]
     public void ExportJsonUsesCanonicalSnakeCaseContractLiterals()
     {
         string root = CreateTempDirectory();

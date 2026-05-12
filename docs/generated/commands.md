@@ -7,6 +7,7 @@
 | Command | Purpose |
 | --- | --- |
 | `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` | `dotnet restore` |
+| `pwsh -ExecutionPolicy Bypass -File scripts/lint-powershell.ps1` | PowerShell static analysis for non-ignored repo-owned scripts and plugin launchers through PSScriptAnalyzer 1.25.0+ on pwsh 7.2.11+ |
 | `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers into .NET artifacts root |
 | `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests with staged server/helper bundle |
 | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke with staged run bundle, owned helper scenario, click-first `windows.input` proof, fresh-host acceptance, terminal `windows.open_target` folder proof and artifact report |
@@ -45,11 +46,12 @@
 > Этот раздел перечисляет канонические validation commands и не зависит от конкретного run id. Для evidence конкретного запуска смотри `artifacts/smoke/<run_id>/` или используй `scripts/investigate.ps1`.
 
 - `dotnet build WinBridge.sln --no-restore`
+- `pwsh -ExecutionPolicy Bypass -File scripts/lint-powershell.ps1`
 - `dotnet test WinBridge.sln --configuration Debug`
 - `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`
-- `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1`
 
 ## Artifact Layout
 

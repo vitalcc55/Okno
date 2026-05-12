@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
 $scriptPath = Join-Path $PSScriptRoot "sync-csharp-license-headers.ps1"

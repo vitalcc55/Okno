@@ -4,11 +4,12 @@ param(
     [string[]]$Root = @("src", "tests")
 )
 
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$targetRoots = foreach ($entry in $Root) {
+$requestedRoots = @($Root)
+$targetRoots = foreach ($entry in $requestedRoots) {
     if ([System.IO.Path]::IsPathRooted($entry)) {
         $entry
     }
@@ -23,10 +24,12 @@ foreach ($targetRoot in $targetRoots) {
     }
 }
 
-$copyrightLine = "// SPDX-FileCopyrightText: 2025–2026 Власов Виталий Андреевич <vital.cc55@gmail.com>"
-$spdxLine = "// SPDX-License-Identifier: AGPL-3.0-or-later"
-$expectedHeader = "$copyrightLine`r`n$spdxLine"
-$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+function New-ExpectedLicenseHeader {
+    return [string]::Join("`r`n", @(
+        "// SPDX-FileCopyrightText: 2025–2026 Власов Виталий Андреевич <vital.cc55@gmail.com>"
+        "// SPDX-License-Identifier: AGPL-3.0-or-later"
+    ))
+}
 
 function Get-NormalizedContent {
     param(
@@ -67,7 +70,7 @@ foreach ($file in $files) {
     }
 
     $normalized = Get-NormalizedContent -Content $content
-    $expectedContent = "$expectedHeader`r`n`r`n$normalized"
+    $expectedContent = [string]::Concat((New-ExpectedLicenseHeader), "`r`n`r`n", $normalized)
 
     $alreadyCorrect = (Convert-ToCanonicalNewlines -Content $content) -eq (Convert-ToCanonicalNewlines -Content $expectedContent)
 
@@ -75,8 +78,8 @@ foreach ($file in $files) {
         continue
     }
 
-    if ($Apply) {
-        [System.IO.File]::WriteAllText($file.FullName, $expectedContent, $utf8NoBom)
+    if ($Apply.IsPresent) {
+        [System.IO.File]::WriteAllText($file.FullName, $expectedContent, ([System.Text.UTF8Encoding]::new($false)))
         $updated.Add($file.FullName)
     }
     else {
@@ -84,7 +87,7 @@ foreach ($file in $files) {
     }
 }
 
-if ($Apply) {
+if ($Apply.IsPresent) {
     Write-Output "UPDATED=$($updated.Count)"
     foreach ($path in $updated) {
         Write-Output $path
