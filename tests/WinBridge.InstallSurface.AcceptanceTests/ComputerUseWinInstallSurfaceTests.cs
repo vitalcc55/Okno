@@ -8,7 +8,7 @@ using System.Xml.Linq;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
 
-namespace WinBridge.Server.IntegrationTests;
+namespace WinBridge.InstallSurface.AcceptanceTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
@@ -1433,6 +1433,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     {
         using JsonDocument original = JsonDocument.Parse(File.ReadAllText(originalResultPath));
         JsonElement root = original.RootElement;
+        Directory.CreateDirectory(outputRoot);
         string modifiedResultPath = Path.Combine(outputRoot, Guid.NewGuid().ToString("N") + ".runtime-packaging-result.json");
         File.WriteAllText(
             modifiedResultPath,

@@ -30,11 +30,14 @@
   "validation_entry_points": {
     "build": "dotnet build WinBridge.sln --no-restore",
     "lint_powershell": "pwsh -ExecutionPolicy Bypass -File scripts/lint-powershell.ps1",
-    "test": "dotnet test WinBridge.sln --configuration Debug",
+    "test": "powershell -ExecutionPolicy Bypass -File scripts/test.ps1",
+    "test_install_surface_acceptance": "powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1",
     "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",
     "refresh_generated_docs": "powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1",
     "ci": "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1",
-    "codex_verify": "powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1"
+    "release_verify": "powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1",
+    "codex_verify": "powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1",
+    "codex_release_verify": "powershell -ExecutionPolicy Bypass -File scripts/codex/release-verify.ps1"
   },
   "artifact_layout": {
     "diagnostics_events": "artifacts/diagnostics/<run_id>/events.jsonl",

@@ -4,7 +4,7 @@
 using System.Text.Json;
 using WinBridge.Runtime.Tooling;
 
-namespace WinBridge.Server.IntegrationTests;
+namespace WinBridge.InstallSurface.AcceptanceTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {

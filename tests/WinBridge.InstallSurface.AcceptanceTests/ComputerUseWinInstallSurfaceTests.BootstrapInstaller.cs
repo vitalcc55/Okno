@@ -6,7 +6,7 @@ using System.IO.Compression;
 using System.Text.Json;
 using System.Xml.Linq;
 
-namespace WinBridge.Server.IntegrationTests;
+namespace WinBridge.InstallSurface.AcceptanceTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
@@ -16,50 +16,35 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     private const string SetupAppWindowTitle = "Okno Setup";
     private static readonly TimeSpan SetupAppLaunchTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan SetupAppLaunchPollInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly Lazy<BootstrapInstallerArtifacts> SharedBootstrapInstallerArtifacts = new(CreateBootstrapInstallerArtifacts);
 
     [Fact]
     public void PackageComputerUseWinSetupCliPayloadProducesVersionedArchive()
     {
-        string repoRoot = GetRepositoryRoot();
-        string outputRoot = CreateBootstrapTestOutputRoot(repoRoot, "setup-cli-payload");
+        BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
+        string checksumPath = Path.Combine(artifacts.Root, $"okno-setup-cli-payload-{BootstrapInstallerTestVersion}-SHA256SUMS.txt");
+        Assert.True(File.Exists(artifacts.SetupCliPayloadArchivePath));
+        Assert.True(File.Exists(checksumPath));
 
-        try
-        {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            string archivePath = PackageSetupCliPayload(repoRoot, outputRoot, runtimePackage);
-            string checksumPath = Path.Combine(outputRoot, $"okno-setup-cli-payload-{BootstrapInstallerTestVersion}-SHA256SUMS.txt");
-            Assert.True(File.Exists(archivePath));
-            Assert.True(File.Exists(checksumPath));
-
-            HashSet<string> entries = ReadBootstrapArchiveEntryPaths(archivePath);
-            Assert.Contains("WinBridge.Setup.Cli.exe", entries, StringComparer.Ordinal);
-            Assert.Contains("WinBridge.Setup.Cli.dll", entries, StringComparer.Ordinal);
-            Assert.Contains("runtime-release.json", entries, StringComparer.Ordinal);
-            AssertBootstrapArchiveRuntimeDescriptorMatches(archivePath, runtimePackage.DescriptorPath);
-        }
-        finally { DeleteDirectoryIfExists(outputRoot); }
+        HashSet<string> entries = ReadBootstrapArchiveEntryPaths(artifacts.SetupCliPayloadArchivePath);
+        Assert.Contains("WinBridge.Setup.Cli.exe", entries, StringComparer.Ordinal);
+        Assert.Contains("WinBridge.Setup.Cli.dll", entries, StringComparer.Ordinal);
+        Assert.Contains("runtime-release.json", entries, StringComparer.Ordinal);
+        AssertBootstrapArchiveRuntimeDescriptorMatches(artifacts.SetupCliPayloadArchivePath, artifacts.RuntimePackage.DescriptorPath);
     }
 
     [Fact]
     public void PackageOknoSetupAppReleaseProducesArchiveWithOknoSetupExecutable()
     {
-        string repoRoot = GetRepositoryRoot();
-        string outputRoot = CreateBootstrapTestOutputRoot(repoRoot, "setup-app-release");
+        BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
+        Assert.True(File.Exists(artifacts.SetupAppReleaseArchivePath));
 
-        try
-        {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            string archivePath = PackageSetupAppRelease(repoRoot, outputRoot, runtimePackage);
-            Assert.True(File.Exists(archivePath));
-
-            HashSet<string> entries = ReadBootstrapArchiveEntryPaths(archivePath);
-            Assert.Contains(SetupAppExecutableName, entries, StringComparer.Ordinal);
-            Assert.Contains("WinBridge.Setup.App.dll", entries, StringComparer.Ordinal);
-            Assert.Contains("runtime-release.json", entries, StringComparer.Ordinal);
-            Assert.DoesNotContain("WinBridge.Setup.App.exe", entries, StringComparer.Ordinal);
-            AssertBootstrapArchiveRuntimeDescriptorMatches(archivePath, runtimePackage.DescriptorPath);
-        }
-        finally { DeleteDirectoryIfExists(outputRoot); }
+        HashSet<string> entries = ReadBootstrapArchiveEntryPaths(artifacts.SetupAppReleaseArchivePath);
+        Assert.Contains(SetupAppExecutableName, entries, StringComparer.Ordinal);
+        Assert.Contains("WinBridge.Setup.App.dll", entries, StringComparer.Ordinal);
+        Assert.Contains("runtime-release.json", entries, StringComparer.Ordinal);
+        Assert.DoesNotContain("WinBridge.Setup.App.exe", entries, StringComparer.Ordinal);
+        AssertBootstrapArchiveRuntimeDescriptorMatches(artifacts.SetupAppReleaseArchivePath, artifacts.RuntimePackage.DescriptorPath);
     }
 
     [Fact]
@@ -71,9 +56,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            string archivePath = PackageSetupAppRelease(repoRoot, outputRoot, runtimePackage);
-            ZipFile.ExtractToDirectory(archivePath, extractRoot);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
+            ZipFile.ExtractToDirectory(artifacts.SetupAppReleaseArchivePath, extractRoot);
 
             string executablePath = Path.Combine(extractRoot, SetupAppExecutableName);
             Assert.True(File.Exists(executablePath), "Packaged setup executable is missing.");
@@ -110,9 +94,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            string payloadArchivePath = PackageSetupCliPayload(repoRoot, outputRoot, runtimePackage);
-            ScriptInvocationResult result = InvokeBootstrapInstaller(repoRoot, "runtime-only", payloadArchivePath, runtimePackage.DescriptorPath, userProfile);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
+            ScriptInvocationResult result = InvokeBootstrapInstaller(repoRoot, "runtime-only", artifacts.SetupCliPayloadArchivePath, artifacts.RuntimePackage.DescriptorPath, userProfile);
 
             AssertBootstrapInstallerSucceeded(result, "runtime-only");
             Assert.True(File.Exists(GetExpectedRuntimeOnlyReceiptPath(codexHome)));
@@ -131,10 +114,8 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            PackageLocalPluginRelease(repoRoot, outputRoot, runtimePackage);
-            string payloadArchivePath = PackageSetupCliPayload(repoRoot, outputRoot, runtimePackage);
-            ScriptInvocationResult result = InvokeBootstrapInstaller(repoRoot, "codex", payloadArchivePath, runtimePackage.DescriptorPath, userProfile);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
+            ScriptInvocationResult result = InvokeBootstrapInstaller(repoRoot, "codex", artifacts.SetupCliPayloadArchivePath, artifacts.RuntimePackage.DescriptorPath, userProfile);
 
             AssertBootstrapInstallerSucceeded(result, "codex");
             Assert.True(Directory.Exists(GetExpectedInstalledPluginRoot(codexHome)));
@@ -153,13 +134,15 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            string payloadArchivePath = PackageSetupCliPayload(repoRoot, outputRoot, runtimePackage);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
+            string payloadArchivePath = Path.Combine(outputRoot, Path.GetFileName(artifacts.SetupCliPayloadArchivePath));
+            Directory.CreateDirectory(outputRoot);
+            File.Copy(artifacts.SetupCliPayloadArchivePath, payloadArchivePath, overwrite: true);
             using FileStream stream = new(payloadArchivePath, FileMode.Append, FileAccess.Write, FileShare.None);
             byte[] tamperBytes = [0x13, 0x37, 0x42];
             stream.Write(tamperBytes, 0, tamperBytes.Length);
 
-            ScriptInvocationResult result = InvokeBootstrapInstaller(repoRoot, "runtime-only", payloadArchivePath, runtimePackage.DescriptorPath, userProfile);
+            ScriptInvocationResult result = InvokeBootstrapInstaller(repoRoot, "runtime-only", payloadArchivePath, artifacts.RuntimePackage.DescriptorPath, userProfile);
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("SHA256", result.Stderr, StringComparison.OrdinalIgnoreCase);
@@ -175,9 +158,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(outputRoot, runtimePackage.DescriptorPath, versionOverride: "0.3.0");
-            string mismatchedResultPath = CreateModifiedRuntimePackagingResult(outputRoot, runtimePackage.ResultPath, descriptorPathOverride: mismatchedDescriptorPath);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
+            string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(outputRoot, artifacts.RuntimePackage.DescriptorPath, versionOverride: "0.3.0");
+            string mismatchedResultPath = CreateModifiedRuntimePackagingResult(outputRoot, artifacts.RuntimePackage.ResultPath, descriptorPathOverride: mismatchedDescriptorPath);
 
             ScriptInvocationResult result = InvokePowerShellScript(
                 GetBootstrapCodexScriptPath(repoRoot, "package-computer-use-win-setup-cli-payload.ps1"),
@@ -198,9 +181,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
-            string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(outputRoot, runtimePackage.DescriptorPath, ridOverride: "win-arm64");
-            string mismatchedResultPath = CreateModifiedRuntimePackagingResult(outputRoot, runtimePackage.ResultPath, descriptorPathOverride: mismatchedDescriptorPath);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
+            string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(outputRoot, artifacts.RuntimePackage.DescriptorPath, ridOverride: "win-arm64");
+            string mismatchedResultPath = CreateModifiedRuntimePackagingResult(outputRoot, artifacts.RuntimePackage.ResultPath, descriptorPathOverride: mismatchedDescriptorPath);
 
             ScriptInvocationResult result = InvokePowerShellScript(
                 GetBootstrapCodexScriptPath(repoRoot, "package-okno-setup-app-release.ps1"),
@@ -221,12 +204,12 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
             string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(
                 outputRoot,
-                runtimePackage.DescriptorPath,
+                artifacts.RuntimePackage.DescriptorPath,
                 downloadUrlOverride: "https://example.invalid/other-runtime.zip");
-            string mismatchedResultPath = CreateModifiedRuntimePackagingResult(outputRoot, runtimePackage.ResultPath, descriptorPathOverride: mismatchedDescriptorPath);
+            string mismatchedResultPath = CreateModifiedRuntimePackagingResult(outputRoot, artifacts.RuntimePackage.ResultPath, descriptorPathOverride: mismatchedDescriptorPath);
 
             ScriptInvocationResult result = InvokePowerShellScript(
                 GetBootstrapCodexScriptPath(repoRoot, "package-computer-use-win-setup-cli-payload.ps1"),
@@ -247,15 +230,15 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
             string fakeSha256 = new string('a', 64);
             string tamperedDescriptorPath = CreateModifiedRuntimeDescriptor(
                 outputRoot,
-                runtimePackage.DescriptorPath,
+                artifacts.RuntimePackage.DescriptorPath,
                 sha256Override: fakeSha256);
             string tamperedResultPath = CreateModifiedRuntimePackagingResult(
                 outputRoot,
-                runtimePackage.ResultPath,
+                artifacts.RuntimePackage.ResultPath,
                 descriptorPathOverride: tamperedDescriptorPath,
                 sha256Override: fakeSha256);
 
@@ -283,11 +266,11 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = CreateLocalRuntimeReleasePackage(repoRoot, outputRoot);
+            BootstrapInstallerArtifacts artifacts = SharedBootstrapInstallerArtifacts.Value;
             string missingArchivePath = Path.Combine(outputRoot, "missing-runtime.zip");
             string tamperedResultPath = CreateModifiedRuntimePackagingResult(
                 outputRoot,
-                runtimePackage.ResultPath,
+                artifacts.RuntimePackage.ResultPath,
                 archivePathOverride: missingArchivePath);
 
             ScriptInvocationResult result = InvokePowerShellScript(
@@ -330,8 +313,10 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             ?? throw new InvalidOperationException("archivePath missing.");
     }
 
-    private static RuntimeReleasePackageResult CreateLocalRuntimeReleasePackage(string repoRoot, string outputRoot)
+    private static BootstrapInstallerArtifacts CreateBootstrapInstallerArtifacts()
     {
+        string repoRoot = GetRepositoryRoot();
+        string outputRoot = CreateBootstrapTemporaryRoot(repoRoot, "shared-bootstrap-installer-artifacts");
         string runtimeRoot = Path.Combine(repoRoot, "plugins", "computer-use-win", "runtime", RuntimeIdentifier);
         EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), runtimeRoot);
 
@@ -341,8 +326,12 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             runtimeRoot,
             outputRoot,
             BootstrapInstallerTestVersion);
+        PackageLocalPluginRelease(repoRoot, outputRoot, runtimePackage);
+        string setupCliPayloadArchivePath = PackageSetupCliPayload(repoRoot, outputRoot, runtimePackage);
+        string setupAppReleaseArchivePath = PackageSetupAppRelease(repoRoot, outputRoot, runtimePackage);
+        RegisterProcessExitCleanup(outputRoot);
 
-        return runtimePackage;
+        return new BootstrapInstallerArtifacts(outputRoot, runtimePackage, setupCliPayloadArchivePath, setupAppReleaseArchivePath);
     }
 
     private static void PackageLocalPluginRelease(string repoRoot, string outputRoot, RuntimeReleasePackageResult runtimePackage) =>
@@ -403,6 +392,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string rid = ridOverride ?? root.GetProperty("rid").GetString() ?? throw new InvalidOperationException("rid missing.");
         string assetName = assetNameOverride ?? root.GetProperty("assetName").GetString() ?? throw new InvalidOperationException("assetName missing.");
 
+        Directory.CreateDirectory(outputRoot);
         string descriptorPath = Path.Combine(outputRoot, Guid.NewGuid().ToString("N") + ".runtime-release.json");
         File.WriteAllText(
             descriptorPath,
@@ -497,5 +487,11 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             }
         }
     }
+
+    private sealed record BootstrapInstallerArtifacts(
+        string Root,
+        RuntimeReleasePackageResult RuntimePackage,
+        string SetupCliPayloadArchivePath,
+        string SetupAppReleaseArchivePath);
 }
 

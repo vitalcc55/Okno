@@ -8,7 +8,7 @@ using System.Text;
 using System.Text.Json;
 using WinBridge.Runtime.Tooling;
 
-namespace WinBridge.Server.IntegrationTests;
+namespace WinBridge.InstallSurface.AcceptanceTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
@@ -21,6 +21,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private static readonly Lazy<ReleasePackagingPackage> SharedReleasePackagingPluginPackage = new(CreateReleasePackagingPluginPackage);
     private static readonly Lazy<ReleasePackagingPackage> SharedReleasePackagingRuntimePackage = new(CreateReleasePackagingRuntimePackage);
+    private static readonly Lazy<RuntimeReleasePackageResult> SharedReleasePackagingPluginVersionRuntimePackage = new(CreateSharedReleasePackagingPluginVersionRuntimePackage);
     private static readonly byte[] ReleasePackagingDirectoryDigestSeparator = [0];
 
     [Fact]
@@ -74,12 +75,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(
-                repoRoot,
-                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
-                runtimeRoot,
-                runtimeOutputRoot,
-                ReleasePackagingPluginVersion);
+            RuntimeReleasePackageResult runtimePackage = SharedReleasePackagingPluginVersionRuntimePackage.Value;
             string runtimeDescriptorPath = CreateRuntimeReleaseDescriptor(
                 runtimeOutputRoot,
                 ReleasePackagingPluginVersion,
@@ -123,12 +119,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
         try
         {
-            RuntimeReleasePackageResult runtimePackage = PackageRuntimeRelease(
-                repoRoot,
-                GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
-                runtimeRoot,
-                runtimeOutputRoot,
-                ReleasePackagingPluginVersion);
+            RuntimeReleasePackageResult runtimePackage = SharedReleasePackagingPluginVersionRuntimePackage.Value;
             string mismatchedDescriptorPath = CreateModifiedRuntimeDescriptor(
                 runtimeOutputRoot,
                 runtimePackage.DescriptorPath,
@@ -441,6 +432,21 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             runtimeRoot,
             "Release packaging script",
             startInfo => AddReleasePackagingRuntimePackageArguments(startInfo, ReleasePackagingRuntimeVersion, runtimeRoot, outputRoot));
+    }
+
+    private static RuntimeReleasePackageResult CreateSharedReleasePackagingPluginVersionRuntimePackage()
+    {
+        string repoRoot = GetRepositoryRoot();
+        string runtimeRoot = GetReleasePackagingRuntimeRoot(repoRoot);
+        string outputRoot = CreateSharedReleasePackagingTestOutputRoot(repoRoot, "computer-use-win-runtime-release-plugin-version-cache");
+        EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), runtimeRoot);
+        RegisterProcessExitCleanup(outputRoot);
+        return PackageRuntimeRelease(
+            repoRoot,
+            GetReleasePackagingCodexScriptPath(repoRoot, "package-computer-use-win-runtime-release.ps1"),
+            runtimeRoot,
+            outputRoot,
+            ReleasePackagingPluginVersion);
     }
 
     private static ReleasePackagingPackage InvokeReleasePackagingPackageScript(

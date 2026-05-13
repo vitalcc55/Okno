@@ -24,7 +24,11 @@ $script:ValidationEntryPoints = @(
     },
     [PSCustomObject]@{
         Key     = 'test'
-        Command = 'dotnet test WinBridge.sln --configuration Debug'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/test.ps1'
+    },
+    [PSCustomObject]@{
+        Key     = 'test_install_surface_acceptance'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1'
     },
     [PSCustomObject]@{
         Key     = 'smoke'
@@ -39,8 +43,16 @@ $script:ValidationEntryPoints = @(
         Command = 'powershell -ExecutionPolicy Bypass -File scripts/ci.ps1'
     },
     [PSCustomObject]@{
+        Key     = 'release_verify'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1'
+    },
+    [PSCustomObject]@{
         Key     = 'codex_verify'
         Command = 'powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1'
+    },
+    [PSCustomObject]@{
+        Key     = 'codex_release_verify'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/codex/release-verify.ps1'
     }
 )
 
@@ -136,10 +148,12 @@ function New-CommandsMarkdown {
         '| `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` | `dotnet restore` |',
         '| `pwsh -ExecutionPolicy Bypass -File scripts/lint-powershell.ps1` | PowerShell static analysis for non-ignored repo-owned scripts and plugin launchers through PSScriptAnalyzer 1.25.0+ on pwsh 7.2.11+ |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` | solution build with analyzers into .NET artifacts root |',
-        '| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | unit + integration tests with staged server/helper bundle |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | runtime unit tests + fast integration tests with staged server/helper bundle |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1` | install/release acceptance suite for packaging, installer, shared runtime and public install surface |',
         "| $smokeCommandLiteral | $smokeCommandPurpose |",
         '| `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | full release gate: fast CI + install/release acceptance + cache-install publication proof |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/bootstrap.ps1` | Codex bootstrap handshake |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/prepare-okno-test-bundle.ps1` | stage immutable server/helper run bundle for integration and smoke |',
@@ -163,8 +177,11 @@ function New-CommandsMarkdown {
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/package-okno-setup-app-release.ps1 -Version <semver> -Rid win-x64 -RuntimePackagingResultPath <path>` | package the WinUI 3 `Okno Setup.exe` installer zip plus SHA256SUMS for installer-first distribution, embedding the canonical runtime descriptor proven by the runtime packaging result |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/install-computer-use-win.ps1 -Mode codex|runtime-only -PayloadArchivePath <zip> [-PayloadChecksumPath <path>] [-DescriptorPath <path>]` | thin PowerShell bootstrap installer that runs the packaged setup CLI without repo checkout and verifies local payload archives by checksum unless an explicit unsafe dev-only bypass is used |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1` | publish self-contained `computer-use-win` runtime bundle into `plugins/computer-use-win/runtime/win-x64/` |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/materialize-computer-use-win-cache-copy.ps1` | mirror the repo `computer-use-win` plugin into the local cache-install proof root before cache-surface verification |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema/list_apps surface matches the repo plugin copy, `type_text.coordinateSpace` is capture_pixels-only, runtime bundle is fresh for current publication inputs, and runtime release descriptor metadata is present |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/test-install-surface-acceptance.ps1` | Codex wrapper for the install/release acceptance suite |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/release-verify.ps1` | Codex wrapper for the full release gate |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1` | stamp repo-root hint into internal okno plugin install surface before reinstall or refresh |',
         '| `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |',
         '',
@@ -212,10 +229,12 @@ function New-TestMatrixMarkdown {
         '| PowerShell static analysis | `pwsh -ExecutionPolicy Bypass -File scripts/lint-powershell.ps1` | PSScriptAnalyzer 1.25.0+ strict correctness/security/compatibility gate for non-ignored `scripts/**/*.ps1` and `plugins/**/*.ps1` worktree source files on pwsh 7.2.11+ |',
         '| .NET static/analyzers | `dotnet build WinBridge.sln --no-restore` | compile, nullability, analyzers, warnings-as-errors |',
         '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, launch exporter drift, launch runtime/status/evidence policy, input contract/runtime/materializer policy, display identity pipeline, monitor id formatting, activation decision logic, wait runtime/status/evidence policy, UIA runtime packaging/evidence, session dedupe, session mutation |',
-        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol through staged server/helper bundle with run-aware resolver semantics, public `windows.launch_process`, `windows.open_target` and click-first `windows.input` schema/result mapping, public `computer-use-win` action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) including focused and coordinate-confirmed `type_text` fallback, selected-action `observeAfter` / `successorState`, strict `windowId` continuity reuse/fail-close, helper-backed drag proof, attach/focus/activate contract semantics, temp plugin install-copy schema proof, shared-runtime foundation CLI (`runtime install/status/verify/repair`), installer orchestration core (`install/update/repair/uninstall` for `codex` and `runtime-only`), bootstrap installer shell, setup CLI payload packaging, WinUI setup app packaging, setup-shell controller mapping for both install modes, launcher preference for shared installed runtime vs plugin-local fallback, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape |',
+        '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol through staged server/helper bundle with run-aware resolver semantics, public `windows.launch_process`, `windows.open_target` and click-first `windows.input` schema/result mapping, public `computer-use-win` action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) including focused and coordinate-confirmed `type_text` fallback, selected-action `observeAfter` / `successorState`, strict `windowId` continuity reuse/fail-close, helper-backed drag proof, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape, runtime bundle resolver semantics |',
+        '| Install surface acceptance | `powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1` | shared-runtime foundation CLI (`runtime install/status/verify/repair`), installer orchestration core (`install/update/repair/uninstall` for `codex` and `runtime-only`), bootstrap installer shell, setup CLI payload packaging, WinUI setup app packaging, setup-shell controller mapping, plugin/runtime release packaging, release-backed launcher fallback/rehydration, localization parity, and temp plugin install-copy public surface proof |',
         '| Install/publication proof | `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | cache-installed `computer-use-win` plugin hash matches repo plugin files, launches from user cache path, exposes exact nine-tool tools/list surface, includes `type_text.allowFocusedFallback`, `type_text.observeAfter`, `type_text.point`, `type_text.coordinateSpace` with capture_pixels-only enum, selected-action `observeAfter`, no semantic-only `observeAfter`, and `list_apps.status=ok`; proof metadata records `repoHead`, working-tree cleanliness, runtime-affecting dirty paths, runtime bundle manifest freshness against publication inputs, acceptance eligibility and plugin digest |',
         "| Smoke | $smokeCommandLiteral | $smokeCoverageNarrative |",
-        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + PowerShell static analysis + build + test + smoke |',
+        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + PowerShell static analysis + build + fast tests + smoke |',
+        '| Release verify | `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | fast CI contour + install/release acceptance + cache-installed publication proof |',
         '',
         '## Чего пока не хватает',
         '',

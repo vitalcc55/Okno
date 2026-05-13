@@ -3,7 +3,7 @@
 
 using System.Xml.Linq;
 
-namespace WinBridge.Server.IntegrationTests;
+namespace WinBridge.InstallSurface.AcceptanceTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {

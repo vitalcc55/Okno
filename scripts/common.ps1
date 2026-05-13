@@ -1052,11 +1052,12 @@ function Test-WinBridgeBundleManifestReusableForCurrentSourceContext {
     return $true
 }
 
-function Resolve-WinBridgeVerificationContext {
+function Resolve-WinBridgeTestProjectContext {
     param(
         [Parameter(Mandatory)]
         [string] $RepoRoot,
-        [string] $TestProjectName = 'WinBridge.Server.IntegrationTests'
+        [Parameter(Mandatory)]
+        [string] $TestProjectName
     )
 
     $effectiveContext = Resolve-WinBridgeEffectiveExecutionContext -RepoRoot $RepoRoot -ArtifactsRoot $env:WINBRIDGE_ARTIFACTS_ROOT
@@ -1077,6 +1078,8 @@ function Resolve-WinBridgeVerificationContext {
     }
 
     if ($null -ne $artifactsTestAssembly) {
+        $projectPath = Join-Path (Join-Path $resolvedRepoRoot 'tests') $TestProjectName
+        $projectPath = Join-Path $projectPath "$TestProjectName.csproj"
         return [PSCustomObject]@{
             RunId                     = $runId
             RunRoot                   = $runRoot
@@ -1084,11 +1087,11 @@ function Resolve-WinBridgeVerificationContext {
             EffectiveArtifactsRoot    = $artifactsRoot
             TestAssemblyProvenance    = 'artifacts_root'
             Configuration             = $configuration
-            BundleSourceContextName   = 'artifacts_root'
-            BundleSourceRelativePath  = [string]$artifactsTestAssemblyContext.RelativeSourcePath
-            DotnetTestArguments       = @('test', 'WinBridge.sln', '--no-build', '--configuration', $configuration, '--artifacts-path', $artifactsRoot)
-            IntegrationTestAssembly   = $artifactsTestAssembly.FullName
-            BundleManifestPath        = Get-WinBridgeBundleManifestPathForRunRoot -RunRoot $runRoot
+            TestProjectName           = $TestProjectName
+            TestProjectPath           = $projectPath
+            TestAssemblyRelativeSourcePath = [string]$artifactsTestAssemblyContext.RelativeSourcePath
+            DotnetTestArguments       = @('test', $projectPath, '--no-build', '--configuration', $configuration, '--artifacts-path', $artifactsRoot)
+            TestAssemblyPath          = $artifactsTestAssembly.FullName
         }
     }
 
@@ -1101,6 +1104,8 @@ function Resolve-WinBridgeVerificationContext {
         -Filter "$TestProjectName.dll" `
         -Configuration $configuration
     $defaultTestAssembly = if ($null -ne $defaultTestAssemblyContext) { $defaultTestAssemblyContext.File } else { $null }
+    $projectPath = Join-Path (Join-Path $resolvedRepoRoot 'tests') $TestProjectName
+    $projectPath = Join-Path $projectPath "$TestProjectName.csproj"
     return [PSCustomObject]@{
         RunId                     = $runId
         RunRoot                   = $runRoot
@@ -1108,11 +1113,35 @@ function Resolve-WinBridgeVerificationContext {
         EffectiveArtifactsRoot    = $null
         TestAssemblyProvenance    = 'fallback_build_cache'
         Configuration             = $configuration
-        BundleSourceContextName   = 'fallback_build_cache'
-        BundleSourceRelativePath  = if ($null -ne $defaultTestAssemblyContext) { [string]$defaultTestAssemblyContext.RelativeSourcePath } else { Get-WinBridgeDefaultRelativeSourcePathForContext -SourceContextName 'fallback_build_cache' -Configuration $configuration }
-        DotnetTestArguments       = @('test', 'WinBridge.sln', '--no-build', '--configuration', $configuration)
-        IntegrationTestAssembly   = if ($null -ne $defaultTestAssembly) { $defaultTestAssembly.FullName } else { $null }
-        BundleManifestPath        = Get-WinBridgeBundleManifestPathForRunRoot -RunRoot $runRoot
+        TestProjectName           = $TestProjectName
+        TestProjectPath           = $projectPath
+        TestAssemblyRelativeSourcePath = if ($null -ne $defaultTestAssemblyContext) { [string]$defaultTestAssemblyContext.RelativeSourcePath } else { Get-WinBridgeDefaultRelativeSourcePathForContext -SourceContextName 'fallback_build_cache' -Configuration $configuration }
+        DotnetTestArguments       = @('test', $projectPath, '--no-build', '--configuration', $configuration)
+        TestAssemblyPath          = if ($null -ne $defaultTestAssembly) { $defaultTestAssembly.FullName } else { $null }
+    }
+}
+
+function Resolve-WinBridgeVerificationContext {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot,
+        [string] $TestProjectName = 'WinBridge.Server.IntegrationTests'
+    )
+
+    $projectContext = Resolve-WinBridgeTestProjectContext -RepoRoot $RepoRoot -TestProjectName $TestProjectName
+    return [PSCustomObject]@{
+        RunId                     = $projectContext.RunId
+        RunRoot                   = $projectContext.RunRoot
+        RequestedArtifactsRoot    = $projectContext.RequestedArtifactsRoot
+        EffectiveArtifactsRoot    = $projectContext.EffectiveArtifactsRoot
+        TestAssemblyProvenance    = $projectContext.TestAssemblyProvenance
+        Configuration             = $projectContext.Configuration
+        BundleSourceContextName   = $projectContext.TestAssemblyProvenance
+        BundleSourceRelativePath  = $projectContext.TestAssemblyRelativeSourcePath
+        DotnetTestArguments       = $projectContext.DotnetTestArguments
+        IntegrationTestAssembly   = $projectContext.TestAssemblyPath
+        BundleManifestPath        = Get-WinBridgeBundleManifestPathForRunRoot -RunRoot $projectContext.RunRoot
+        TestProjectPath           = $projectContext.TestProjectPath
     }
 }
 

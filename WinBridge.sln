@@ -53,6 +53,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.Setup.Cli", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.Setup.App", "src\WinBridge.Setup.App\WinBridge.Setup.App.csproj", "{3BD5D3C6-0739-47D2-BC04-4C30C23F610C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinBridge.InstallSurface.AcceptanceTests", "tests\WinBridge.InstallSurface.AcceptanceTests\WinBridge.InstallSurface.AcceptanceTests.csproj", "{2B0CD5C4-5A03-45F6-9E24-1C087852866C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -339,6 +341,18 @@ Global
 		{3BD5D3C6-0739-47D2-BC04-4C30C23F610C}.Release|x64.Build.0 = Release|x64
 		{3BD5D3C6-0739-47D2-BC04-4C30C23F610C}.Release|x86.ActiveCfg = Release|x86
 		{3BD5D3C6-0739-47D2-BC04-4C30C23F610C}.Release|x86.Build.0 = Release|x86
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Debug|x64.Build.0 = Debug|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Debug|x86.Build.0 = Debug|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Release|x64.ActiveCfg = Release|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Release|x64.Build.0 = Release|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Release|x86.ActiveCfg = Release|Any CPU
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -367,5 +381,6 @@ Global
 		{5CB943C8-284E-4426-9E45-C609B56EDFC8} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F0A28D08-37AA-4967-BC92-37535C132F12} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{3BD5D3C6-0739-47D2-BC04-4C30C23F610C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{2B0CD5C4-5A03-45F6-9E24-1C087852866C} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
