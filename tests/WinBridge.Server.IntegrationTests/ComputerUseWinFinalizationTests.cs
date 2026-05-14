@@ -226,12 +226,37 @@ public sealed class ComputerUseWinFinalizationTests
         using TestHarness test = new("computer-use-win-action-evidence-tests");
         using AuditInvocationScope invocation = test.BeginClickInvocation(ClickRequest());
 
-        _ = FinalizeClickResult(invocation, VerifyNeededClickInputResult());
+        _ = ComputerUseWinActionFinalizer.FinalizeResult(
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            targetHwnd: TargetHwnd,
+            elementIndex: ElementIndex,
+            VerifyNeededClickInputResult(),
+            new ComputerUseWinActionObservabilityContext(
+                ActionName: ToolNames.ComputerUseWinClick,
+                RuntimeState: "observed",
+                AppId: "explorer",
+                WindowIdPresent: true,
+                StateTokenPresent: true,
+                TargetMode: "element_index",
+                ElementIndexPresent: true,
+                CoordinateSpace: null,
+                CaptureReferencePresent: false,
+                ConfirmationRequired: false,
+                Confirmed: true,
+                RiskClass: "semantic_target",
+                DispatchPath: "fresh_uia_revalidation_to_input",
+                FallbackUsed: false,
+                ObserveAfterRequested: false,
+                SuccessorStateAvailable: false));
 
         string completedEvent = test.CompletedInvocationEvent();
         Assert.Contains("\"completed_action_count\":\"1\"", completedEvent, StringComparison.Ordinal);
         Assert.Contains("\"artifact_path\":\"C:\\\\temp\\\\click.json\"", completedEvent, StringComparison.Ordinal);
         Assert.Contains("\"result_mode\":\"dispatch_only\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"dispatch_class\":\"expected_physical\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"executor\":\"fresh_uia_revalidation_to_input\"", completedEvent, StringComparison.Ordinal);
+        Assert.Contains("\"target_proof\":\"uia_revalidated\"", completedEvent, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -300,7 +325,7 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
-    public void ActionArtifactCurrentBaselineKeepsPartialTopLevelFactsWithoutExecutionFactsEnvelope()
+    public void ActionArtifactCurrentBaselinePublishesPhaseOneTopLevelFactsWithoutNestedArtifactEnvelope()
     {
         using TestHarness test = new("computer-use-win-partial-observability-characterization-tests");
         using AuditInvocationScope invocation = test.BeginClickInvocation(ConfirmedClickRequest());
@@ -328,6 +353,14 @@ public sealed class ComputerUseWinFinalizationTests
                 FallbackUsed: false));
 
         using JsonDocument artifact = test.ReadSingleActionArtifact();
+        Assert.Equal("expected_physical", artifact.RootElement.GetProperty("dispatch_class").GetString());
+        Assert.Equal("fresh_uia_revalidation_to_input", artifact.RootElement.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", artifact.RootElement.GetProperty("target_proof").GetString());
+        Assert.Equal("accepted", artifact.RootElement.GetProperty("window_continuity").GetString());
+        Assert.Equal("accepted", artifact.RootElement.GetProperty("foreground_integrity").GetString());
+        Assert.True(artifact.RootElement.GetProperty("physical_pointer_used").GetBoolean());
+        Assert.False(artifact.RootElement.GetProperty("physical_keyboard_used").GetBoolean());
+        Assert.True(artifact.RootElement.GetProperty("system_cursor_moved").GetBoolean());
         Assert.Equal("semantic_target", artifact.RootElement.GetProperty("risk_class").GetString());
         Assert.Equal("fresh_uia_revalidation_to_input", artifact.RootElement.GetProperty("dispatch_path").GetString());
         Assert.False(artifact.RootElement.GetProperty("fallback_used").GetBoolean());

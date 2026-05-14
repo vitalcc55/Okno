@@ -1651,7 +1651,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 13:32 UTC
 - owner: Codex
-- commit: pending step-2 commit hash
+- commit: `d5b0cd5`
 - scope:
   - added public `ComputerUseWinExecutionFacts` contract to `WinBridge.Runtime.Contracts`
   - extended `ComputerUseWinActionResult` with additive nested `executionFacts`
@@ -1669,10 +1669,25 @@ slot below.
 - next_unblocked_step: `3`
 
 #### Step 3 — Make lifecycle owners the single materialization path
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: done
+- completed_at: 2026-05-14 13:36 UTC
+- owner: Codex
+- commit: pending step-3 commit hash
+- scope:
+  - action finalization now feeds `payload.ExecutionFacts` into top-level completion audit
+  - `computer_use_win.action.completed` event and action artifact now materialize phase-1 top-level facts from the same public envelope path
+  - action artifact/runtime event tests were updated to pin the new lifecycle parity
+- verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinFinalizationTests"`
+  - passed: `31/31`
+  - `dotnet test WinBridge.sln --no-restore --filter "FullyQualifiedName~AuditLogTests|FullyQualifiedName~AuditPayloadRedactorTests|FullyQualifiedName~ComputerUseWinFinalizationTests|FullyQualifiedName~ComputerUseWinExecutionFactsBuilderTests"`
+  - passed: `WinBridge.Server.IntegrationTests 35/35`, `WinBridge.Runtime.Tests 34/34`
+- decisions:
+  - step `3` keeps event/artifact phase-1 facts flat and top-level instead of introducing a nested artifact envelope, because MCP runtime events already use flat key/value data and the current action artifact schema is top-level safe-field oriented
+  - the public action result is now the canonical source for phase-1 facts, and observability/audit consume it rather than rebuilding a separate truth model
+- residual_risks:
+  - per-action classification is still based on current partial executor vocabulary and will only become product-complete in steps `4-6`
+- next_unblocked_step: `4`
 
 #### Step 4 — Migrate semantic paths first
 - status: pending

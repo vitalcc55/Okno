@@ -5,6 +5,7 @@ using System.Globalization;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Tooling;
 using WinBridge.Runtime.Windows.Input;
+using PublicComputerUseWinExecutionFacts = WinBridge.Runtime.Contracts.ComputerUseWinExecutionFacts;
 
 namespace WinBridge.Server.ComputerUse;
 
@@ -31,7 +32,11 @@ internal static class ComputerUseWinAuditDataBuilder
         return data;
     }
 
-    public static Dictionary<string, string?> CreateActionCompletionData(string toolName, InputResult input, string? failurePhase = null)
+    public static Dictionary<string, string?> CreateActionCompletionData(
+        string toolName,
+        InputResult input,
+        PublicComputerUseWinExecutionFacts? executionFacts = null,
+        string? failurePhase = null)
     {
         ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(input.FailureCode, input.Reason);
         Dictionary<string, string?> data = new(StringComparer.Ordinal)
@@ -46,6 +51,14 @@ internal static class ComputerUseWinAuditDataBuilder
             ["target_source"] = input.TargetSource,
             ["completed_action_count"] = input.CompletedActionCount.ToString(CultureInfo.InvariantCulture),
             ["failed_action_index"] = input.FailedActionIndex?.ToString(CultureInfo.InvariantCulture),
+            ["dispatch_class"] = executionFacts?.DispatchClass,
+            ["executor"] = executionFacts?.Executor,
+            ["target_proof"] = executionFacts?.TargetProof,
+            ["window_continuity"] = executionFacts?.WindowContinuity,
+            ["foreground_integrity"] = executionFacts?.ForegroundIntegrity,
+            ["physical_pointer_used"] = executionFacts?.PhysicalPointerUsed.ToString().ToLowerInvariant(),
+            ["physical_keyboard_used"] = executionFacts?.PhysicalKeyboardUsed.ToString().ToLowerInvariant(),
+            ["system_cursor_moved"] = executionFacts?.SystemCursorMoved.ToString().ToLowerInvariant(),
         };
         if (!string.Equals(toolName, ToolNames.ComputerUseWinDrag, StringComparison.Ordinal))
         {

@@ -33,7 +33,7 @@ internal static class ComputerUseWinActionFinalizer
             auditOutcome,
             payload.Reason ?? $"Computer Use action '{toolName}' завершён.",
             payload.TargetHwnd,
-            ComputerUseWinAuditDataBuilder.CreateActionCompletionData(toolName, input));
+            ComputerUseWinAuditDataBuilder.CreateActionCompletionData(toolName, input, payload.ExecutionFacts));
         ComputerUseWinActionObservability.RecordBestEffort(invocation, toolName, payload, observabilityContext);
         return CreateToolResult(payload, isError: payload.Status == ComputerUseWinStatusValues.Failed, successorObservation?.ImageContent);
     }
@@ -150,7 +150,7 @@ internal static class ComputerUseWinActionFinalizer
             payload.TargetHwnd,
             exception,
             bestEffort: true,
-            data: ComputerUseWinAuditDataBuilder.CreateActionCompletionData(toolName, factualFailure, "post_dispatch_factual"));
+            data: ComputerUseWinAuditDataBuilder.CreateActionCompletionData(toolName, factualFailure, payload.ExecutionFacts, "post_dispatch_factual"));
         ComputerUseWinActionObservability.RecordBestEffort(
             invocation,
             toolName,
