@@ -79,7 +79,7 @@ internal static class ComputerUseWinActionFinalizer
             Reason: status == ComputerUseWinStatusValues.Failed ? failure.Reason : input.Reason,
             TargetHwnd: input.TargetHwnd ?? targetHwnd,
             ElementIndex: elementIndex,
-            ExecutionFacts: CreateExecutionFacts(observabilityContext, status, successorObservation),
+            ExecutionFacts: CreateExecutionFacts(observabilityContext, status, failure.FailureCode, successorObservation),
             SuccessorState: successorState,
             SuccessorStateFailure: successorObservation?.Failure);
     }
@@ -103,7 +103,8 @@ internal static class ComputerUseWinActionFinalizer
                 : "Computer Use for Windows столкнулся с unexpected internal failure до подтверждённого action dispatch; можно повторить запрос после устранения причины, refresh через get_app_state не обязателен.",
             targetHwnd,
             elementIndex,
-            phase);
+            phase,
+            observabilityContext);
 
         ComputerUseWinFailureCompletion.CompleteFailure(
             invocation,
@@ -227,6 +228,7 @@ internal static class ComputerUseWinActionFinalizer
     private static PublicComputerUseWinExecutionFacts? CreateExecutionFacts(
         ComputerUseWinActionObservabilityContext? context,
         string publicStatus,
+        string? publicFailureCode,
         ComputerUseWinActionSuccessorObservation? successorObservation)
     {
         if (context is null || string.IsNullOrWhiteSpace(context.DispatchPath))
@@ -243,8 +245,8 @@ internal static class ComputerUseWinActionFinalizer
                 TargetProof: ResolveTargetProof(context),
                 StateTokenPresent: context.StateTokenPresent,
                 CaptureReferencePresent: context.CaptureReferencePresent,
-                WindowContinuity: ResolveWindowContinuity(context),
-                ForegroundIntegrity: ResolveForegroundIntegrity(publicStatus),
+                WindowContinuity: ResolveWindowContinuity(context, publicFailureCode),
+                ForegroundIntegrity: ResolveForegroundIntegrity(publicStatus, publicFailureCode),
                 ObserveAfterRequested: context.ObserveAfterRequested ?? false,
                 SuccessorStateAvailable: successorObservation?.SuccessorState is not null || context.SuccessorStateAvailable == true));
 
@@ -282,15 +284,35 @@ internal static class ComputerUseWinActionFinalizer
         return ComputerUseWinTargetProofValues.None;
     }
 
-    private static string ResolveWindowContinuity(ComputerUseWinActionObservabilityContext context) =>
-        context.StateTokenPresent
-            ? ComputerUseWinWindowContinuityValues.Accepted
-            : ComputerUseWinWindowContinuityValues.Unknown;
+    private static string ResolveWindowContinuity(
+        ComputerUseWinActionObservabilityContext context,
+        string? publicFailureCode)
+    {
+        if (!context.StateTokenPresent)
+        {
+            return ComputerUseWinWindowContinuityValues.Unknown;
+        }
 
-    private static string ResolveForegroundIntegrity(string publicStatus) =>
-        publicStatus is ComputerUseWinStatusValues.Done or ComputerUseWinStatusValues.VerifyNeeded
+        return publicFailureCode switch
+        {
+            ComputerUseWinFailureCodeValues.StaleState or
+            ComputerUseWinFailureCodeValues.MissingTarget or
+            ComputerUseWinFailureCodeValues.IdentityProofUnavailable => ComputerUseWinWindowContinuityValues.Failed,
+            _ => ComputerUseWinWindowContinuityValues.Accepted,
+        };
+    }
+
+    private static string ResolveForegroundIntegrity(string publicStatus, string? publicFailureCode)
+    {
+        if (string.Equals(publicFailureCode, ComputerUseWinFailureCodeValues.TargetIntegrityBlocked, StringComparison.Ordinal))
+        {
+            return ComputerUseWinForegroundIntegrityValues.Blocked;
+        }
+
+        return publicStatus is ComputerUseWinStatusValues.Done or ComputerUseWinStatusValues.VerifyNeeded
             ? ComputerUseWinForegroundIntegrityValues.Accepted
             : ComputerUseWinForegroundIntegrityValues.Unknown;
+    }
 
     private static bool ShouldRecommendRefresh(
         string? failureCode,
@@ -314,25 +336,37 @@ internal static class ComputerUseWinActionFinalizer
         string reason,
         long? targetHwnd,
         int? elementIndex,
-        ComputerUseWinActionLifecyclePhase phase) =>
+        ComputerUseWinActionLifecyclePhase phase,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null) =>
         new(
             Status: ComputerUseWinStatusValues.Failed,
             RefreshStateRecommended: ShouldRecommendRefresh(failureCode, phase),
             FailureCode: failureCode,
             Reason: reason,
             TargetHwnd: targetHwnd,
-            ElementIndex: elementIndex);
+            ElementIndex: elementIndex,
+            ExecutionFacts: CreateExecutionFacts(
+                observabilityContext,
+                ComputerUseWinStatusValues.Failed,
+                failureCode,
+                successorObservation: null));
 
     internal static ComputerUseWinActionResult CreateStructuredApprovalRequiredPayload(
         string reason,
         long? targetHwnd,
         int? elementIndex,
-        ComputerUseWinActionLifecyclePhase phase) =>
+        ComputerUseWinActionLifecyclePhase phase,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null) =>
         new(
             Status: ComputerUseWinStatusValues.ApprovalRequired,
             RefreshStateRecommended: phase is not ComputerUseWinActionLifecyclePhase.BeforeActivation,
             FailureCode: ComputerUseWinFailureCodeValues.ApprovalRequired,
             Reason: reason,
             TargetHwnd: targetHwnd,
-            ElementIndex: elementIndex);
+            ElementIndex: elementIndex,
+            ExecutionFacts: CreateExecutionFacts(
+                observabilityContext,
+                ComputerUseWinStatusValues.ApprovalRequired,
+                ComputerUseWinFailureCodeValues.ApprovalRequired,
+                successorObservation: null));
 }

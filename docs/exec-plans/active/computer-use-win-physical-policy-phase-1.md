@@ -939,11 +939,11 @@ control surface. Поэтому progress отмечается прямо в эт
 
 - [x] Step `0` — freeze the baseline and failure surface
 - [x] Step `1` — introduce the phase-1 domain seam
-- [ ] Step `2` — add the additive public `executionFacts` envelope
-- [ ] Step `3` — make lifecycle owners the single materialization path
-- [ ] Step `4` — migrate semantic paths first
-- [ ] Step `5` — migrate expected physical paths
-- [ ] Step `6` — migrate fallback physical typing and failure boundaries
+- [x] Step `2` — add the additive public `executionFacts` envelope
+- [x] Step `3` — make lifecycle owners the single materialization path
+- [x] Step `4` — migrate semantic paths first
+- [x] Step `5` — migrate expected physical paths
+- [x] Step `6` — migrate fallback physical typing and failure boundaries
 - [ ] Step `7` — add the companion minimal proof-smoke
 - [ ] Step `8` — sync docs, generated surfaces and installed-copy proof
 - [ ] Step `9` — final sequential closure and acceptance pass
@@ -1711,7 +1711,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 13:45 UTC
 - owner: Codex
-- commit: pending step-5 commit hash
+- commit: `d67ebbe`
 - scope:
   - extended shared physical-execution policy to cover the semantic-proof drag executor path
   - added expected-physical envelope assertions for success-path `click`, `press_key`, semantic-proof `drag` and coordinate `scroll`
@@ -1726,10 +1726,25 @@ slot below.
 - next_unblocked_step: `6`
 
 #### Step 6 — Migrate fallback physical typing and failure boundaries
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: done
+- completed_at: 2026-05-14 14:13 UTC
+- owner: Codex
+- commit: pending step-6 commit hash
+- scope:
+  - corrected and expanded `type_text` phase-1 assertions for normal focused, focused fallback, element-scoped fallback, observe-after fallback and coordinate-confirmed fallback paths
+  - extended structured failure and approval payload materialization so `executionFacts` now publish when lifecycle truth already knows the dispatch path
+  - added fail-close coverage for focused fallback stale-state, missing capture proof, wrong foreground and integrity-boundary rejection
+- verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~TypeTextHandlerDispatchesTextForFocusedEditableElement|FullyQualifiedName~TypeTextHandlerUsesFocusedEditableFallbackWhenElementIndexIsOmitted|FullyQualifiedName~TypeTextHandlerUsesConfirmedFocusedFallbackForWeakFocusedElement|FullyQualifiedName~TypeTextHandlerUsesElementScopedFocusedFallbackForWeakFocusedElement|FullyQualifiedName~TypeTextHandlerEmbedsSuccessorStateWhenFocusedFallbackObserveAfterSucceeds|FullyQualifiedName~TypeTextHandlerUsesCoordinateConfirmedFallbackForTopLevelOnlyClassC|FullyQualifiedName~TypeTextHandlerRejectsCoordinateConfirmedFallbackWithoutCaptureReferenceBeforeDispatch|FullyQualifiedName~TypeTextHandlerFocusedFallbackObservabilityAvoidsRawTextClipboardAndPaste|FullyQualifiedName~TypeTextHandlerCoordinateConfirmedFallbackObservabilityAvoidsRawTextAndPoint|FullyQualifiedName~TypeTextHandlerRejectsFocusedFallbackWhenFreshFocusProofIsMissing|FullyQualifiedName~TypeTextHandlerFocusedFallbackReturnsStructuredFailureWhenRuntimeLosesForeground|FullyQualifiedName~TypeTextHandlerFocusedFallbackPublishesBlockedIntegrityFactWhenWindowsRejectsDispatch"`
+  - passed: `12/12`
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinFinalizationTests|FullyQualifiedName~ComputerUseWinActionAndProjectionTests.TypeTextHandler"`
+  - passed: `62/62`
+- decisions:
+  - phase-1 keeps `targetProof=none` for focused `type_text` paths without explicit element or capture proof, instead of inventing a new proof vocabulary mid-slice
+  - structured failure and approval payloads now reuse the shared execution-facts builder whenever lifecycle context already carries `dispatchPath`, keeping failure truth in the same owner as success truth
+- residual_risks:
+  - companion phase-1 proof-smoke and generated/install-surface sync still remain for steps `7-8`
+- next_unblocked_step: `7`
 
 #### Step 7 — Add the companion minimal proof-smoke
 - status: pending

@@ -1518,14 +1518,16 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
-        JsonElement scrollExecutionFacts = payload.GetProperty("executionFacts");
-        Assert.Equal("expected_physical", scrollExecutionFacts.GetProperty("dispatchClass").GetString());
-        Assert.Equal("win32_sendinput_wheel", scrollExecutionFacts.GetProperty("executor").GetString());
-        Assert.Equal("capture_point", scrollExecutionFacts.GetProperty("targetProof").GetString());
-        Assert.True(scrollExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
-        Assert.False(scrollExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
-        Assert.False(scrollExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
-        Assert.True(scrollExecutionFacts.GetProperty("fallbackUsed").GetBoolean());
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.False(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.False(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
         Assert.NotNull(inputService.LastRequest);
         InputAction action = Assert.Single(inputService.LastRequest!.Actions);
         Assert.Equal(InputActionTypeValues.Type, action.Type);
@@ -1575,6 +1577,16 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", executionFacts.GetProperty("targetProof").GetString());
+        Assert.False(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.False(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
         Assert.NotNull(inputService.LastRequest);
         InputAction action = Assert.Single(inputService.LastRequest!.Actions);
         Assert.Equal(InputActionTypeValues.Type, action.Type);
@@ -1615,6 +1627,16 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
         Assert.NotNull(inputService.LastRequest);
         InputAction action = Assert.Single(inputService.LastRequest!.Actions);
         Assert.Equal(InputActionTypeValues.Type, action.Type);
@@ -1657,6 +1679,16 @@ public sealed class ComputerUseWinActionAndProjectionTests
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
         Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
         Assert.NotNull(inputService.LastRequest);
         InputAction action = Assert.Single(inputService.LastRequest!.Actions);
         Assert.Equal(InputActionTypeValues.Type, action.Type);
@@ -1705,6 +1737,15 @@ public sealed class ComputerUseWinActionAndProjectionTests
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
         Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
         Assert.False(payload.TryGetProperty("successorStateFailure", out _));
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(executionFacts.GetProperty("successorStateAvailable").GetBoolean());
         JsonElement successorState = payload.GetProperty("successorState");
         AssertJsonStatus(successorState, ComputerUseWinStatusValues.Ok);
         string successorToken = successorState.GetProperty("stateToken").GetString()!;
@@ -1789,6 +1830,16 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("capture_pixels_text_input", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("capture_point", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
         AssertNoUiAutomationSnapshotRequested(uiAutomationService);
         Assert.NotNull(inputService.LastRequest);
         Assert.Equal(101, inputService.LastRequest!.Hwnd);
@@ -1875,6 +1926,17 @@ public sealed class ComputerUseWinActionAndProjectionTests
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.Failed);
         AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.CaptureReferenceRequired);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("capture_pixels_text_input", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.True(executionFacts.GetProperty("stateTokenPresent").GetBoolean());
+        Assert.False(executionFacts.GetProperty("captureReferencePresent").GetBoolean());
+        Assert.Equal("accepted", executionFacts.GetProperty("windowContinuity").GetString());
+        Assert.Equal("unknown", executionFacts.GetProperty("foregroundIntegrity").GetString());
         AssertNoUiAutomationSnapshotRequested(uiAutomationService);
         AssertNoInputDispatched(inputService);
     }
@@ -2147,6 +2209,8 @@ public sealed class ComputerUseWinActionAndProjectionTests
             CancellationToken.None);
 
         string actionEvent = ReadSingleCompletedActionEvent(options);
+        Assert.Contains("\"dispatch_class\":\"fallback_physical\"", actionEvent, StringComparison.Ordinal);
+        Assert.Contains("\"executor\":\"win32_sendinput_unicode\"", actionEvent, StringComparison.Ordinal);
         Assert.Contains("\"fallback_used\":\"true\"", actionEvent, StringComparison.Ordinal);
         Assert.Contains("\"confirmation_required\":\"true\"", actionEvent, StringComparison.Ordinal);
         Assert.Contains("\"target_mode\":\"focused_fallback\"", actionEvent, StringComparison.Ordinal);
@@ -2195,6 +2259,8 @@ public sealed class ComputerUseWinActionAndProjectionTests
             CancellationToken.None);
 
         string actionEvent = ReadSingleCompletedActionEvent(options);
+        Assert.Contains("\"dispatch_class\":\"fallback_physical\"", actionEvent, StringComparison.Ordinal);
+        Assert.Contains("\"executor\":\"capture_pixels_text_input\"", actionEvent, StringComparison.Ordinal);
         Assert.Contains("\"fallback_used\":\"true\"", actionEvent, StringComparison.Ordinal);
         Assert.Contains("\"target_mode\":\"coordinate_confirmed_fallback\"", actionEvent, StringComparison.Ordinal);
         Assert.Contains("\"risk_class\":\"coordinate_confirmed_text_fallback\"", actionEvent, StringComparison.Ordinal);
@@ -2206,6 +2272,8 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         string actionArtifactPath = GetSingleActionArtifactPath(options);
         string actionArtifact = File.ReadAllText(actionArtifactPath);
+        Assert.Contains("\"dispatch_class\": \"fallback_physical\"", actionArtifact, StringComparison.Ordinal);
+        Assert.Contains("\"executor\": \"capture_pixels_text_input\"", actionArtifact, StringComparison.Ordinal);
         Assert.Contains("\"target_mode\": \"coordinate_confirmed_fallback\"", actionArtifact, StringComparison.Ordinal);
         Assert.DoesNotContain("secret coordinate text", actionArtifact, StringComparison.Ordinal);
         Assert.DoesNotContain("\"point\"", actionArtifact, StringComparison.OrdinalIgnoreCase);
@@ -2239,7 +2307,105 @@ public sealed class ComputerUseWinActionAndProjectionTests
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.Failed);
         AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.StaleState);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.Equal("failed", executionFacts.GetProperty("windowContinuity").GetString());
+        Assert.Equal("unknown", executionFacts.GetProperty("foregroundIntegrity").GetString());
         AssertNoInputDispatched(inputService);
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerFocusedFallbackReturnsStructuredFailureWhenRuntimeLosesForeground()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedWeakStoredState());
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-type-text-focused-fallback-foreground-failure-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, text = "typed fallback text", allowFocusedFallback = true, confirm = true });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = CreateSuccessfulUiAutomationService(() => CreateFocusedWeakSnapshotRoot(hasKeyboardFocus: true));
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.Failed,
+                    Decision: InputStatusValues.Failed,
+                    FailureCode: InputFailureCodeValues.TargetNotForeground,
+                    Reason: "target not foreground",
+                    TargetHwnd: request.Hwnd)));
+        ComputerUseWinTypeTextHandler handler = CreateTypeTextHandler(stateStore, activationService, uiAutomationService, inputService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Text: "typed fallback text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Failed);
+        AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.TargetNotForeground);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.Equal("accepted", executionFacts.GetProperty("windowContinuity").GetString());
+        Assert.Equal("unknown", executionFacts.GetProperty("foregroundIntegrity").GetString());
+    }
+
+    [Fact]
+    public async Task TypeTextHandlerFocusedFallbackPublishesBlockedIntegrityFactWhenWindowsRejectsDispatch()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateFocusedWeakStoredState());
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-type-text-focused-fallback-integrity-failure-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinTypeText,
+            new { stateToken = token, text = "typed fallback text", allowFocusedFallback = true, confirm = true });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = CreateSuccessfulUiAutomationService(() => CreateFocusedWeakSnapshotRoot(hasKeyboardFocus: true));
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.Failed,
+                    Decision: InputStatusValues.Failed,
+                    FailureCode: InputFailureCodeValues.TargetIntegrityBlocked,
+                    Reason: "integrity blocked",
+                    TargetHwnd: request.Hwnd)));
+        ComputerUseWinTypeTextHandler handler = CreateTypeTextHandler(stateStore, activationService, uiAutomationService, inputService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Text: "typed fallback text",
+                Confirm: true,
+                AllowFocusedFallback: true),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Failed);
+        AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.TargetIntegrityBlocked);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("blocked", executionFacts.GetProperty("foregroundIntegrity").GetString());
+        Assert.Equal("accepted", executionFacts.GetProperty("windowContinuity").GetString());
+        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
     }
 
     [Fact]

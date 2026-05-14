@@ -103,7 +103,8 @@ internal static class ComputerUseWinToolResultFactory
             publicReason,
             targetHwnd,
             elementIndex,
-            phase);
+            phase,
+            observabilityContext);
         ComputerUseWinFailureCompletion.CompleteFailure(
             invocation,
             publicReason,
@@ -149,7 +150,8 @@ internal static class ComputerUseWinToolResultFactory
             reason,
             targetHwnd,
             elementIndex,
-            phase);
+            phase,
+            observabilityContext);
         ComputerUseWinFailureCompletion.CompleteFailure(
             invocation,
             reason,
