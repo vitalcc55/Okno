@@ -1630,7 +1630,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 13:29 UTC
 - owner: Codex
-- commit: pending step-1 commit hash
+- commit: `ccb8687`
 - scope:
   - added the narrow internal execution-facts seam with stable value sets for `dispatchClass`, `targetProof`, `windowContinuity` and `foregroundIntegrity`
   - added shared `ComputerUseWinExecutionFactsBuilder` and `ComputerUseWinPhysicalExecutionPolicy`
@@ -1648,10 +1648,25 @@ slot below.
 - next_unblocked_step: `2`
 
 #### Step 2 — Add the additive public `executionFacts` envelope
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: done
+- completed_at: 2026-05-14 13:32 UTC
+- owner: Codex
+- commit: pending step-2 commit hash
+- scope:
+  - added public `ComputerUseWinExecutionFacts` contract to `WinBridge.Runtime.Contracts`
+  - extended `ComputerUseWinActionResult` with additive nested `executionFacts`
+  - wired success-path finalization so explicit action observability context now materializes the public envelope
+- verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinFinalizationTests"`
+  - passed: `31/31`
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinFinalizationTests|FullyQualifiedName~ComputerUseWinExecutionFactsBuilderTests"`
+  - passed: `35/35`
+- decisions:
+  - step `2` stayed intentionally narrow: public envelope is opened only on the result path, while event/artifact parity stays for step `3`
+  - the new public `executor` currently reuses the current `dispatchPath` vocabulary; later steps can refine per-action values without reopening the envelope shape itself
+- residual_risks:
+  - failure and approval payloads still rely on the pre-phase-1 partial truth path and do not yet materialize the new public envelope consistently
+- next_unblocked_step: `3`
 
 #### Step 3 — Make lifecycle owners the single materialization path
 - status: pending

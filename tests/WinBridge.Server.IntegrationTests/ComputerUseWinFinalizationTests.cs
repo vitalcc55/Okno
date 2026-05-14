@@ -254,12 +254,34 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
-    public void ActionFinalizerCurrentPublicPayloadRemainsFlatWithoutExecutionFactsOrReceipt()
+    public void ActionFinalizerPublishesExecutionFactsEnvelopeWithoutActionReceipt()
     {
-        using TestHarness test = new("computer-use-win-flat-public-payload-characterization-tests");
+        using TestHarness test = new("computer-use-win-public-envelope-tests");
         using AuditInvocationScope invocation = test.BeginClickInvocation(ConfirmedClickRequest());
 
-        CallToolResult result = FinalizeClickResult(invocation, VerifyNeededClickInputResult());
+        CallToolResult result = ComputerUseWinActionFinalizer.FinalizeResult(
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            targetHwnd: TargetHwnd,
+            elementIndex: ElementIndex,
+            VerifyNeededClickInputResult(),
+            new ComputerUseWinActionObservabilityContext(
+                ActionName: ToolNames.ComputerUseWinClick,
+                RuntimeState: "observed",
+                AppId: "explorer",
+                WindowIdPresent: true,
+                StateTokenPresent: true,
+                TargetMode: "element_index",
+                ElementIndexPresent: true,
+                CoordinateSpace: null,
+                CaptureReferencePresent: false,
+                ConfirmationRequired: false,
+                Confirmed: true,
+                RiskClass: "semantic_target",
+                DispatchPath: "fresh_uia_revalidation_to_input",
+                FallbackUsed: false,
+                ObserveAfterRequested: false,
+                SuccessorStateAvailable: false));
 
         JsonElement payload = result.StructuredContent!.Value;
         string[] propertyNames = payload.EnumerateObject()
@@ -268,9 +290,12 @@ public sealed class ComputerUseWinFinalizationTests
             .ToArray();
 
         Assert.Equal(
-            ["elementIndex", "reason", "refreshStateRecommended", "status", "targetHwnd"],
+            ["elementIndex", "executionFacts", "reason", "refreshStateRecommended", "status", "targetHwnd"],
             propertyNames);
-        Assert.False(payload.TryGetProperty("executionFacts", out _));
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("fresh_uia_revalidation_to_input", executionFacts.GetProperty("executor").GetString());
+        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
         Assert.False(payload.TryGetProperty("actionReceipt", out _));
     }
 

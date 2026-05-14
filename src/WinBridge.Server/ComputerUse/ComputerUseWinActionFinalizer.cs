@@ -6,6 +6,7 @@ using ModelContextProtocol.Protocol;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Diagnostics;
 using WinBridge.Runtime.Tooling;
+using PublicComputerUseWinExecutionFacts = WinBridge.Runtime.Contracts.ComputerUseWinExecutionFacts;
 
 namespace WinBridge.Server.ComputerUse;
 
@@ -24,7 +25,7 @@ internal static class ComputerUseWinActionFinalizer
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
         ArgumentNullException.ThrowIfNull(input);
 
-        ComputerUseWinActionResult payload = CreatePayload(targetHwnd, elementIndex, input, successorObservation);
+        ComputerUseWinActionResult payload = CreatePayload(targetHwnd, elementIndex, input, observabilityContext, successorObservation);
         string auditOutcome = payload.Status is ComputerUseWinStatusValues.Done or ComputerUseWinStatusValues.VerifyNeeded
             ? "done"
             : "failed";
@@ -60,6 +61,7 @@ internal static class ComputerUseWinActionFinalizer
         long? targetHwnd,
         int? elementIndex,
         InputResult input,
+        ComputerUseWinActionObservabilityContext? observabilityContext = null,
         ComputerUseWinActionSuccessorObservation? successorObservation = null)
     {
         string status = string.Equals(input.Status, InputStatusValues.VerifyNeeded, StringComparison.Ordinal)
@@ -77,6 +79,7 @@ internal static class ComputerUseWinActionFinalizer
             Reason: status == ComputerUseWinStatusValues.Failed ? failure.Reason : input.Reason,
             TargetHwnd: input.TargetHwnd ?? targetHwnd,
             ElementIndex: elementIndex,
+            ExecutionFacts: CreateExecutionFacts(observabilityContext, status, successorObservation),
             SuccessorState: successorState,
             SuccessorStateFailure: successorObservation?.Failure);
     }
@@ -138,7 +141,7 @@ internal static class ComputerUseWinActionFinalizer
         InputResult factualFailure,
         ComputerUseWinActionObservabilityContext? observabilityContext)
     {
-        ComputerUseWinActionResult payload = CreatePayload(targetHwnd, elementIndex, factualFailure);
+        ComputerUseWinActionResult payload = CreatePayload(targetHwnd, elementIndex, factualFailure, observabilityContext);
 
         ComputerUseWinFailureCompletion.CompleteFailure(
             invocation,
@@ -220,6 +223,74 @@ internal static class ComputerUseWinActionFinalizer
             Content = content,
         };
     }
+
+    private static PublicComputerUseWinExecutionFacts? CreateExecutionFacts(
+        ComputerUseWinActionObservabilityContext? context,
+        string publicStatus,
+        ComputerUseWinActionSuccessorObservation? successorObservation)
+    {
+        if (context is null || string.IsNullOrWhiteSpace(context.DispatchPath))
+        {
+            return null;
+        }
+
+        ComputerUseWinExecutionFacts internalFacts = ComputerUseWinExecutionFactsBuilder.Build(
+            new ComputerUseWinExecutionFactsInputs(
+                Executor: context.DispatchPath,
+                ConfirmationRequired: context.ConfirmationRequired,
+                Confirmed: context.Confirmed,
+                FallbackUsed: context.FallbackUsed ?? false,
+                TargetProof: ResolveTargetProof(context),
+                StateTokenPresent: context.StateTokenPresent,
+                CaptureReferencePresent: context.CaptureReferencePresent,
+                WindowContinuity: ResolveWindowContinuity(context),
+                ForegroundIntegrity: ResolveForegroundIntegrity(publicStatus),
+                ObserveAfterRequested: context.ObserveAfterRequested ?? false,
+                SuccessorStateAvailable: successorObservation?.SuccessorState is not null || context.SuccessorStateAvailable == true));
+
+        return new(
+            DispatchClass: internalFacts.DispatchClass,
+            Executor: internalFacts.Executor,
+            ConfirmationRequired: internalFacts.ConfirmationRequired,
+            ConfirmationSatisfied: internalFacts.ConfirmationSatisfied,
+            FallbackUsed: internalFacts.FallbackUsed,
+            TargetProof: internalFacts.TargetProof,
+            StateTokenPresent: internalFacts.StateTokenPresent,
+            CaptureReferencePresent: internalFacts.CaptureReferencePresent,
+            WindowContinuity: internalFacts.WindowContinuity,
+            ForegroundIntegrity: internalFacts.ForegroundIntegrity,
+            PhysicalPointerUsed: internalFacts.PhysicalPointerUsed,
+            PhysicalKeyboardUsed: internalFacts.PhysicalKeyboardUsed,
+            SystemCursorMoved: internalFacts.SystemCursorMoved,
+            ObserveAfterRequested: internalFacts.ObserveAfterRequested,
+            SuccessorStateAvailable: internalFacts.SuccessorStateAvailable);
+    }
+
+    private static string ResolveTargetProof(ComputerUseWinActionObservabilityContext context)
+    {
+        if (context.CaptureReferencePresent
+            && string.Equals(context.CoordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
+        {
+            return ComputerUseWinTargetProofValues.CapturePoint;
+        }
+
+        if (context.ElementIndexPresent)
+        {
+            return ComputerUseWinTargetProofValues.UiaRevalidated;
+        }
+
+        return ComputerUseWinTargetProofValues.None;
+    }
+
+    private static string ResolveWindowContinuity(ComputerUseWinActionObservabilityContext context) =>
+        context.StateTokenPresent
+            ? ComputerUseWinWindowContinuityValues.Accepted
+            : ComputerUseWinWindowContinuityValues.Unknown;
+
+    private static string ResolveForegroundIntegrity(string publicStatus) =>
+        publicStatus is ComputerUseWinStatusValues.Done or ComputerUseWinStatusValues.VerifyNeeded
+            ? ComputerUseWinForegroundIntegrityValues.Accepted
+            : ComputerUseWinForegroundIntegrityValues.Unknown;
 
     private static bool ShouldRecommendRefresh(
         string? failureCode,

@@ -158,6 +158,23 @@ public sealed record ComputerUseWinActionSuccessorStateFailure(
     string FailureCode,
     string Reason);
 
+public sealed record ComputerUseWinExecutionFacts(
+    string DispatchClass,
+    string Executor,
+    bool ConfirmationRequired,
+    bool ConfirmationSatisfied,
+    bool FallbackUsed,
+    string TargetProof,
+    bool StateTokenPresent,
+    bool CaptureReferencePresent,
+    string WindowContinuity,
+    string ForegroundIntegrity,
+    bool PhysicalPointerUsed,
+    bool PhysicalKeyboardUsed,
+    bool SystemCursorMoved,
+    bool ObserveAfterRequested,
+    bool SuccessorStateAvailable);
+
 public sealed record ComputerUseWinActionResult(
     string Status,
     string? StateToken = null,
@@ -166,5 +183,6 @@ public sealed record ComputerUseWinActionResult(
     string? Reason = null,
     long? TargetHwnd = null,
     int? ElementIndex = null,
+    ComputerUseWinExecutionFacts? ExecutionFacts = null,
     ComputerUseWinGetAppStateResult? SuccessorState = null,
     ComputerUseWinActionSuccessorStateFailure? SuccessorStateFailure = null);
