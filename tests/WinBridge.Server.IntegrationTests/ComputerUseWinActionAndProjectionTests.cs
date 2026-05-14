@@ -1286,6 +1286,13 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal("updated semantic text", setValueService.LastRequest.TextValue);
         Assert.Equal(101, payload.GetProperty("targetHwnd").GetInt64());
         Assert.Equal(1, payload.GetProperty("elementIndex").GetInt32());
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("semantic", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_value_pattern", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.False(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
     }
 
     [Fact]
@@ -2271,6 +2278,13 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal("down", scrollService.LastRequest!.Direction);
         Assert.Equal(1, scrollService.LastRequest.Pages);
         AssertNoInputDispatched(inputService);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("semantic", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_scroll_pattern", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.False(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
     }
 
     [Fact]
@@ -2888,6 +2902,13 @@ public sealed class ComputerUseWinActionAndProjectionTests
         AssertJsonStatus(payload, ComputerUseWinStatusValues.Done);
         Assert.NotNull(secondaryActionService.LastRequest);
         Assert.Equal(UiaSecondaryActionKindValues.Toggle, secondaryActionService.LastRequest!.ActionKind);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("semantic", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_toggle_pattern", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.False(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
     }
 
     [Fact]

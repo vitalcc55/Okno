@@ -1672,7 +1672,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 13:36 UTC
 - owner: Codex
-- commit: pending step-3 commit hash
+- commit: `1f5e267`
 - scope:
   - action finalization now feeds `payload.ExecutionFacts` into top-level completion audit
   - `computer_use_win.action.completed` event and action artifact now materialize phase-1 top-level facts from the same public envelope path
@@ -1690,10 +1690,22 @@ slot below.
 - next_unblocked_step: `4`
 
 #### Step 4 — Migrate semantic paths first
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: done
+- completed_at: 2026-05-14 13:41 UTC
+- owner: Codex
+- commit: pending step-4 commit hash
+- scope:
+  - added semantic-envelope assertions for successful `set_value`, semantic `scroll(elementIndex)` and `perform_secondary_action`
+  - confirmed that the current post-step-3 wiring already classifies these paths as semantic without requiring extra coordinator changes
+- verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~SetValueHandlerAppliesTextValueViaSemanticService|FullyQualifiedName~ScrollHandlerAppliesSemanticScrollForScrollableElement|FullyQualifiedName~PerformSecondaryActionHandlerAppliesToggleViaSemanticService"`
+  - passed: `3/3`
+- decisions:
+  - step `4` stayed deliberately narrow and did not reopen coordinators because the new envelope/materialization path was already sufficient for semantic classification
+  - the drag regression observed during a broader class run was treated as a future expected-physical gap and not mixed into semantic-step closure
+- residual_risks:
+  - broader `ComputerUseWinActionAndProjectionTests` still contains unrelated non-semantic regressions that will be handled in later physical steps
+- next_unblocked_step: `5`
 
 #### Step 5 — Migrate expected physical paths
 - status: pending
