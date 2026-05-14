@@ -944,7 +944,7 @@ control surface. Поэтому progress отмечается прямо в эт
 - [x] Step `4` — migrate semantic paths first
 - [x] Step `5` — migrate expected physical paths
 - [x] Step `6` — migrate fallback physical typing and failure boundaries
-- [ ] Step `7` — add the companion minimal proof-smoke
+- [x] Step `7` — add the companion minimal proof-smoke
 - [ ] Step `8` — sync docs, generated surfaces and installed-copy proof
 - [ ] Step `9` — final sequential closure and acceptance pass
 
@@ -1729,7 +1729,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 14:13 UTC
 - owner: Codex
-- commit: pending step-6 commit hash
+- commit: `d12426e`
 - scope:
   - corrected and expanded `type_text` phase-1 assertions for normal focused, focused fallback, element-scoped fallback, observe-after fallback and coordinate-confirmed fallback paths
   - extended structured failure and approval payload materialization so `executionFacts` now publish when lifecycle truth already knows the dispatch path
@@ -1747,16 +1747,32 @@ slot below.
 - next_unblocked_step: `7`
 
 #### Step 7 — Add the companion minimal proof-smoke
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: done
+- completed_at: 2026-05-14 14:22 UTC
+- owner: Codex
+- commit: pending step-7 commit hash
+- scope:
+  - added the new helper-backed proof entrypoint `scripts/computer-use-win-physical-policy-proof-smoke.ps1`
+  - wired the proof-smoke into `scripts/ci.ps1` after broad smoke and before generated-doc refresh
+  - upgraded real STDIO `McpProtocolSmokeTests` scenarios so they now assert phase-1 `executionFacts` truth for semantic, expected-physical and fallback-physical paths
+- verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinClickUsesStateTokenAndElementIndexAfterApprovedAppState|FullyQualifiedName~ComputerUseWinSetValueUpdatesSemanticMirrorThroughApprovedAppState|FullyQualifiedName~ComputerUseWinTypeTextUpdatesQueryMirrorAfterExplicitFocusProof|FullyQualifiedName~ComputerUseWinTypeTextFocusedFallbackUpdatesPoorUiaMirror|FullyQualifiedName~ComputerUseWinTypeTextCoordinateConfirmedFallbackUpdatesMirror"`
+  - passed: `5/5`
+  - `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1`
+  - passed with artifact root `artifacts/smoke/computer-use-win-physical-policy-phase-1/20260514T172138680`
+- decisions:
+  - phase-1 proof-smoke stays intentionally narrow and reuses existing real STDIO helper scenarios instead of cloning broad `scripts/smoke.ps1`
+  - the new proof entrypoint records its own `report.json`, `summary.md` and TRX artifact so later closure can cite a dedicated policy-proof pack, not just a generic integration run
+- residual_risks:
+  - generated docs and install/publication proof still need explicit sync in step `8`
+- next_unblocked_step: `8`
 
 #### Step 8 — Sync docs, generated surfaces and installed-copy proof
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: in_progress
+- current_focus:
+  - refreshing generated/docs truth for the new proof entrypoint and phase-1 execution-facts surface
+  - extending cache-install/publication proof so a fresh-thread installed plugin path also demonstrates `executionFacts`
+- blocker: none
 
 #### Step 9 — Final sequential closure and acceptance pass
 - status: pending

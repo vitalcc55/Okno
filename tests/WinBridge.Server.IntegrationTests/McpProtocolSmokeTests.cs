@@ -341,6 +341,15 @@ public sealed class McpProtocolSmokeTests
         Assert.False(clickPayload.GetProperty("refreshStateRecommended").GetBoolean());
         Assert.Equal(helperHwnd, clickPayload.GetProperty("targetHwnd").GetInt64());
         Assert.Equal(elementIndex, clickPayload.GetProperty("elementIndex").GetInt32());
+        JsonElement clickExecutionFacts = clickPayload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", clickExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("fresh_uia_revalidation_to_input", clickExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", clickExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.True(clickExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.False(clickExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.True(clickExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
+        Assert.True(clickExecutionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(clickExecutionFacts.GetProperty("successorStateAvailable").GetBoolean());
         Assert.Contains(
             clickResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
             block => block.GetProperty("type").GetString() == "image");
@@ -464,6 +473,13 @@ public sealed class McpProtocolSmokeTests
         JsonElement setValuePayload = setValueResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
         Assert.Equal(ComputerUseWinStatusValues.Done, setValuePayload.GetProperty("status").GetString());
         Assert.Equal(helperHwnd, setValuePayload.GetProperty("targetHwnd").GetInt64());
+        JsonElement setValueExecutionFacts = setValuePayload.GetProperty("executionFacts");
+        Assert.Equal("semantic", setValueExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_value_pattern", setValueExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", setValueExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.False(setValueExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.False(setValueExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(setValueExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
 
         using JsonDocument secondStateResponse = await session.CallToolAsync(
             ToolNames.ComputerUseWinGetAppState,
@@ -606,6 +622,14 @@ public sealed class McpProtocolSmokeTests
         JsonElement typeTextPayload = typeTextResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
         Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
         Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+        JsonElement typeTextExecutionFacts = typeTextPayload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", typeTextExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", typeTextExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", typeTextExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.False(typeTextExecutionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.False(typeTextExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(typeTextExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
 
         using JsonDocument finalStateResponse = await session.CallToolAsync(
             ToolNames.ComputerUseWinGetAppState,
@@ -703,6 +727,18 @@ public sealed class McpProtocolSmokeTests
         Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
         Assert.False(typeTextPayload.GetProperty("refreshStateRecommended").GetBoolean());
         Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+        JsonElement typeTextExecutionFacts = typeTextPayload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", typeTextExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_unicode", typeTextExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", typeTextExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.True(typeTextExecutionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.False(typeTextExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(typeTextExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("successorStateAvailable").GetBoolean());
         Assert.Contains(
             typeTextResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
             block => block.GetProperty("type").GetString() == "image");
@@ -796,6 +832,18 @@ public sealed class McpProtocolSmokeTests
         Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, typeTextPayload.GetProperty("status").GetString());
         Assert.False(typeTextPayload.GetProperty("refreshStateRecommended").GetBoolean());
         Assert.Equal(helperHwnd, typeTextPayload.GetProperty("targetHwnd").GetInt64());
+        JsonElement typeTextExecutionFacts = typeTextPayload.GetProperty("executionFacts");
+        Assert.Equal("fallback_physical", typeTextExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("capture_pixels_text_input", typeTextExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("capture_point", typeTextExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.True(typeTextExecutionFacts.GetProperty("confirmationRequired").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("confirmationSatisfied").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("fallbackUsed").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(typeTextExecutionFacts.GetProperty("successorStateAvailable").GetBoolean());
         Assert.Contains(
             typeTextResponse.RootElement.GetProperty("result").GetProperty("content").EnumerateArray(),
             block => block.GetProperty("type").GetString() == "image");
