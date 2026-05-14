@@ -12,6 +12,7 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/test.ps1` | runtime unit tests + fast integration tests with staged server/helper bundle |
 | `powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1` | install/release acceptance suite for packaging, installer, shared runtime and public install surface |
 | `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1` | stdio MCP smoke with staged run bundle, owned helper scenario, click-first `windows.input` proof, fresh-host acceptance, terminal `windows.open_target` folder proof and artifact report |
+| `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1` | narrow helper-backed real-STDIO proof-smoke for phase-1 `computer-use-win` executionFacts, covering semantic, expected_physical and fallback_physical action paths |
 | `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |
 | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |
 | `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | full release gate: fast CI + install/release acceptance + cache-install publication proof |
@@ -39,7 +40,7 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/install-computer-use-win.ps1 -Mode codex|runtime-only -PayloadArchivePath <zip> [-PayloadChecksumPath <path>] [-DescriptorPath <path>]` | thin PowerShell bootstrap installer that runs the packaged setup CLI without repo checkout and verifies local payload archives by checksum unless an explicit unsafe dev-only bypass is used |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1` | publish self-contained `computer-use-win` runtime bundle into `plugins/computer-use-win/runtime/win-x64/` |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/materialize-computer-use-win-cache-copy.ps1` | mirror the repo `computer-use-win` plugin into the local cache-install proof root before cache-surface verification |
-| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema/list_apps surface matches the repo plugin copy, `type_text.coordinateSpace` is capture_pixels-only, runtime bundle is fresh for current publication inputs, and runtime release descriptor metadata is present |
+| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema surface matches the repo plugin copy, fresh-thread `get_app_state -> set_value` materializes `executionFacts`, `type_text.coordinateSpace` is capture_pixels-only, runtime bundle is fresh for current publication inputs, and runtime release descriptor metadata is present |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/test-install-surface-acceptance.ps1` | Codex wrapper for the install/release acceptance suite |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/release-verify.ps1` | Codex wrapper for the full release gate |
@@ -55,6 +56,7 @@
 - `powershell -ExecutionPolicy Bypass -File scripts/test.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1`
@@ -74,3 +76,5 @@
 - `artifacts/diagnostics/<run_id>/wait/visual/<visual_wait_artifact>.png`
 - `artifacts/smoke/<run_id>/report.json`
 - `artifacts/smoke/<run_id>/summary.md`
+- `artifacts/smoke/computer-use-win-physical-policy-phase-1/<run_id>/report.json`
+- `artifacts/smoke/computer-use-win-physical-policy-phase-1/<run_id>/summary.md`

@@ -478,6 +478,7 @@ function Start-CacheMcpHost {
     $startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
     $startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
     $startInfo.UseShellExecute = $false
+    $startInfo.Environment['COMPUTER_USE_WIN_APPROVAL_STORE'] = Join-Path $repoRoot ".tmp\.codex\computer-use-win-cache-proof\approvals-$([Guid]::NewGuid().ToString('N')).json"
 
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if ($null -eq $process) {
@@ -487,6 +488,91 @@ function Start-CacheMcpHost {
     return $process
 }
 
+function Wait-HelperMainWindowHandle {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+        [int] $TimeoutMs = 10000
+    )
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($stopwatch.ElapsedMilliseconds -lt $TimeoutMs) {
+        if ($Process.HasExited) {
+            throw "Cache-install helper exited before publishing a main window handle."
+        }
+
+        $Process.Refresh()
+        if ($Process.MainWindowHandle -ne [IntPtr]::Zero) {
+            Start-Sleep -Milliseconds 300
+            return $Process.MainWindowHandle.ToInt64()
+        }
+
+        Start-Sleep -Milliseconds 100
+    }
+
+    throw "Timed out waiting for cache-install helper main window handle after $TimeoutMs ms."
+}
+
+function Start-HelperWindowForActionProof {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot
+    )
+
+    $bundle = Use-OknoTestBundle -RepoRoot $RepoRoot
+    $title = "Okno Cache Proof Helper $([Guid]::NewGuid().ToString('N'))"
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = [string]$bundle.helperExe
+    $startInfo.Arguments = '--title ' + (Convert-ToProcessArgument -Value $title) + ' --lifetime-ms 20000'
+    $startInfo.WorkingDirectory = $RepoRoot
+    $startInfo.UseShellExecute = $false
+
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    if ($null -eq $process) {
+        throw 'Failed to start cache-install helper window host.'
+    }
+
+    try {
+        $hwnd = Wait-HelperMainWindowHandle -Process $process
+        return [PSCustomObject]@{
+            Process = $process
+            Hwnd = $hwnd
+            Title = $title
+        }
+    }
+    catch {
+        try {
+            if (-not $process.HasExited) {
+                $process.Kill()
+                $process.WaitForExit()
+            }
+        }
+        finally {
+            $process.Dispose()
+        }
+
+        throw
+    }
+}
+
+function Stop-HelperWindowForActionProof {
+    param(
+        [Parameter(Mandatory)]
+        [psobject] $Helper
+    )
+
+    $process = [System.Diagnostics.Process]$Helper.Process
+    try {
+        if (-not $process.HasExited) {
+            $process.Kill()
+            $process.WaitForExit()
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
 $repoPluginRoot = Join-Path $repoRoot 'plugins\computer-use-win'
 $cacheRoot = Convert-ToNormalizedPath -Path $CachePluginRoot
 $cachePathContext = Assert-WinBridgeComputerUseWinCacheMirrorPaths -RepoRoot $repoRoot -SourcePluginRoot $repoPluginRoot -CachePluginRoot $cacheRoot
@@ -494,6 +580,7 @@ $cacheRoot = [string]$cachePathContext.CachePluginRoot
 $copyProof = Assert-PluginCopiesMatch -RepoPluginRoot $repoPluginRoot -CacheRoot $cacheRoot
 $runtimeFreshness = Assert-RuntimeBundleFreshForPublicationInputs -RepoRoot $repoRoot -RepoPluginRoot $repoPluginRoot
 $runtimeReleaseDescriptor = Read-RuntimeReleaseDescriptor -PluginRoot $repoPluginRoot
+$helper = $null
 
 $process = Start-CacheMcpHost -CacheRoot $cacheRoot
 try {
@@ -558,6 +645,59 @@ try {
     $listAppsStatus = [string]$listAppsCall.Json.result.structuredContent.status
     Assert-Condition -Condition ($listAppsStatus -eq 'ok') -Message "list_apps returned status '$listAppsStatus'."
 
+    $helper = Start-HelperWindowForActionProof -RepoRoot $repoRoot
+    try {
+        $getAppStateCall = Invoke-McpRequest -Process $process -Method 'tools/call' -Id 4 -TimeoutMs $TimeoutMs -Params @{
+            name = 'get_app_state'
+            arguments = @{
+                hwnd = [long]$helper.Hwnd
+                confirm = $true
+            }
+        }
+        $getAppStatePayload = $getAppStateCall.Json.result.structuredContent
+        Assert-Condition -Condition ([string]$getAppStatePayload.status -eq 'ok') -Message "cache-installed get_app_state returned status '$($getAppStatePayload.status)'."
+        $stateToken = [string]$getAppStatePayload.stateToken
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($stateToken)) -Message 'cache-installed get_app_state did not return stateToken.'
+        $queryInputElement = @($getAppStatePayload.accessibilityTree | Where-Object { [string]$_.name -eq 'Smoke query input' })[0]
+        Assert-Condition -Condition ($null -ne $queryInputElement) -Message 'cache-installed get_app_state did not expose Smoke query input.'
+        $elementIndex = [int]$queryInputElement.index
+
+        $setValueCall = Invoke-McpRequest -Process $process -Method 'tools/call' -Id 5 -TimeoutMs $TimeoutMs -Params @{
+            name = 'set_value'
+            arguments = @{
+                stateToken = $stateToken
+                elementIndex = $elementIndex
+                valueKind = 'text'
+                textValue = 'cache install proof value'
+            }
+        }
+        $setValuePayload = $setValueCall.Json.result.structuredContent
+        Assert-Condition -Condition ([string]$setValuePayload.status -eq 'done') -Message "cache-installed set_value returned status '$($setValuePayload.status)'."
+        $executionFacts = $setValuePayload.executionFacts
+        Assert-Condition -Condition ($null -ne $executionFacts) -Message 'cache-installed set_value did not publish executionFacts.'
+        Assert-Condition -Condition ([string]$executionFacts.dispatchClass -eq 'semantic') -Message "cache-installed set_value returned unexpected dispatchClass '$($executionFacts.dispatchClass)'."
+        Assert-Condition -Condition ([string]$executionFacts.executor -eq 'uia_value_pattern') -Message "cache-installed set_value returned unexpected executor '$($executionFacts.executor)'."
+        Assert-Condition -Condition ([string]$executionFacts.targetProof -eq 'uia_revalidated') -Message "cache-installed set_value returned unexpected targetProof '$($executionFacts.targetProof)'."
+
+        $followUpStateCall = Invoke-McpRequest -Process $process -Method 'tools/call' -Id 6 -TimeoutMs $TimeoutMs -Params @{
+            name = 'get_app_state'
+            arguments = @{
+                hwnd = [long]$helper.Hwnd
+                confirm = $true
+            }
+        }
+        $followUpStatePayload = $followUpStateCall.Json.result.structuredContent
+        Assert-Condition -Condition ([string]$followUpStatePayload.status -eq 'ok') -Message "cache-installed follow-up get_app_state returned status '$($followUpStatePayload.status)'."
+        $mirrorUpdated = @($followUpStatePayload.accessibilityTree | Where-Object { [string]$_.name -eq 'Query mirror: cache install proof value' }).Count -gt 0
+        Assert-Condition -Condition $mirrorUpdated -Message 'cache-installed follow-up get_app_state did not expose the updated query mirror.'
+    }
+    finally {
+        if ($null -ne $helper) {
+            Stop-HelperWindowForActionProof -Helper $helper
+            $helper = $null
+        }
+    }
+
     $repoHead = (& git -C $repoRoot rev-parse HEAD).Trim()
     $repoStatusShort = @(& git -C $repoRoot status --short)
     $runtimeAffectingDirtyPaths = @(
@@ -612,6 +752,16 @@ try {
         semanticOnlyActionsLackObserveAfter = $true
         listAppsStatus = $listAppsStatus
         appCount = @($listAppsCall.Json.result.structuredContent.apps).Count
+        freshThreadActionTool = 'set_value'
+        freshThreadActionStatus = [string]$setValuePayload.status
+        freshThreadActionExecutionFacts = [PSCustomObject]@{
+            dispatchClass = [string]$executionFacts.dispatchClass
+            executor = [string]$executionFacts.executor
+            targetProof = [string]$executionFacts.targetProof
+            stateTokenPresent = [bool]$executionFacts.stateTokenPresent
+            captureReferencePresent = [bool]$executionFacts.captureReferencePresent
+        }
+        freshThreadActionMirrorUpdated = $mirrorUpdated
     }
 
     $outputDirectory = Split-Path -Parent $OutputPath

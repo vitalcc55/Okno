@@ -156,6 +156,15 @@ successor observe materialize-ится как advisory `successorStateFailure` �
 window перед capture/UIA и не переносит pre-action `windowId` в nested session,
 если runtime не публикует заново strict current-snapshot selector proof.
 
+Current phase-1 physical-policy hardening теперь делает action truth явной и в
+самом public result: каждый shipped action path публикует nested
+`executionFacts`, где runtime честно различает `semantic`,
+`expected_physical` и `fallback_physical`, фиксирует `executor`,
+`targetProof`, confirmation/fallback facts, `windowContinuity`,
+`foregroundIntegrity`, physical pointer/keyboard usage и
+`observeAfterRequested` / `successorStateAvailable`. Это не новый tool family,
+а product truth layer поверх уже shipped action surface.
+
 ## Ближайший product gap
 
 Первые три post-wave gap уже закрыты как bounded Stage 1/Stage 2/Stage 3 slices:
@@ -173,6 +182,10 @@ window перед capture/UIA и не переносит pre-action `windowId` �
 - repeated unchanged discovery loops теперь сохраняют прежний `windowId`, пока
   strict discovery proof остаётся тем же, а drift/replacement paths получают
   новый selector или fail-close.
+- companion `scripts/computer-use-win-physical-policy-proof-smoke.ps1` теперь
+  держит narrow helper-backed real-STDIO proof для phase-1 execution facts:
+  semantic `set_value`, expected-physical `click` / explicit-focus `type_text`
+  и fallback-physical focused + coordinate-confirmed `type_text`.
 
 Feedback после shipped wave всё ещё оставляет соседние follow-up зоны:
 

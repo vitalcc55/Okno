@@ -61,11 +61,13 @@ exec-plans, а не как немедленный queue:
 - shipped click-first action layer: `windows.input` для `move`, `click`, `double_click` и `click(button=right)` с smoke/fresh-host proof;
 - shipped public Codex-facing operator surface: plugin/profile `computer-use-win` с `list_apps`, `get_app_state`, `click`, `press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`;
 - shipped `observeAfter=true` successor-state path для выбранных public actions;
-- observability уже несёт часть execution facts (`dispatch_path`, `risk_class`,
-  `fallback_used`, `observe_after_requested`, `successor_state_available`);
+- public `computer-use-win` action results теперь уже публикуют nested
+  `executionFacts` с `semantic / expected_physical / fallback_physical`,
+  `executor`, `targetProof`, confirmation/fallback markers и conservative
+  continuity/integrity facts;
 - advisory app playbooks уже существуют для небольшого набора известных apps;
 - shared safety/gating/redaction/evidence foundation;
-- sequential verification loop `build -> test -> smoke -> refresh-generated-docs -> verify`.
+- sequential verification loop `build -> test -> smoke -> physical-policy-proof-smoke -> refresh-generated-docs -> verify`.
 
 То есть roadmap ниже — это уже roadmap **полноценного продукта**, а не “первой демки”.
 
@@ -85,7 +87,7 @@ exec-plans, а не как немедленный queue:
 | 10 | `src/WinBridge.Runtime.Windows.Input` + public Computer Use action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) | текущая global action wave для `computer-use-win`; весь целевой action set уже shipped в public callable surface, а `drag` больше не остаётся deferred: runtime/input path materialize-ит separate source/destination proof, factual move/down/move/up dispatch, helper smoke и install/publication proof | `реализовано` | `93%` | `R2-следом` |
 | 11 | `plugins/computer-use-win` + poor-UIA `type_text` fallback follow-up | explicit `allowFocusedFallback=true` fallback for poor-UIA text-entry-like targets after screenshot-first navigation: focused path with fresh target-local focus proof, plus coordinate-confirmed `capture_pixels` point path for top-level-only Qt/custom UI focus, always `confirm=true`, no raw screen-coordinate typing, no arbitrary focused-clickable typing, no hidden previous-click reuse, no clipboard default and public `verify_needed` semantics. Repo/helper proof and cache-installed Telegram product acceptance are complete; result honesty remains screenshot-confirmed dispatch, not semantic `done`. | `реализовано` | `100%` | `R2-следом` |
 | 12 | `plugins/computer-use-win` + successor-state/action+observe follow-up | explicit `observeAfter=true` post-action reobserve path для `click`, `press_key`, `type_text`, `scroll` и `drag`: nested `successorState`, updated screenshot image block, новый short-lived `stateToken`, factual top-level action status и advisory `successorStateFailure` без optimistic semantic proof | `реализовано` | `100%` | `R2-следом` |
-| 13 | `plugins/computer-use-win` + physical execution policy hardening | explicit execution facts for semantic vs expected-physical vs fallback-physical paths, risky physical confirmation, shared physical-input lease/policy, user-interference/foreground integrity semantics, target-local proof discipline and clearer proof-weighted action results without widening the public tool surface | `запланировано` | `0%` | `R2` |
+| 13 | `plugins/computer-use-win` + physical execution policy hardening | first shipped phase now covers the explicit public `executionFacts` envelope, `semantic / expected_physical / fallback_physical` classification across the current public action surface, conservative `windowContinuity` / `foregroundIntegrity` facts and the companion minimal proof-smoke; the broader workstream still owns later confirmation/interference/lease follow-ups without widening the public tool surface | `частично` | `35%` | `R2` |
 | 14 | `plugins/computer-use-win` + app playbooks / capability hints | shipped advisory app instructions for a few known apps today; next step is broader app playbooks plus lightweight capability hints/memory so the runtime can distinguish strong-semantic, poor-UIA expected-physical, dialog-like, browser-like and terminal-like targets without widening the public tool surface | `частично` | `25%` | `R2` |
 | 15 | proposed `windows.region_capture` | narrow visual crop by explicit region or capture-derived target area for verify-after-action, ROI/frame-digest proof, low-noise visual successor evidence and future bounded OCR/visual fallback bridge | `запланировано` | `0%` | `R2` |
 | 16 | `src/WinBridge.Runtime.Windows.Clipboard` + `windows.clipboard_get` / `windows.clipboard_set` | explicit clipboard read/write surface как отдельный slice; clipboard stays an explicit shared resource and must not flow back into hidden `type_text` defaults | `декларировано` | `15%` | `R2` |
@@ -93,7 +95,7 @@ exec-plans, а не как немедленный queue:
 | 18 | proposed `windows.dialog` | common dialogs: open/save/confirm, path input, accept/close flow | `запланировано` | `0%` | `R2` |
 | 19 | proposed `windows.surface_lifecycle` | claim/reconcile/close only owned shell/window/dialog surfaces after `launch_process` / `open_target`; fail-closed на reused unowned surface | `запланировано` | `0%` | `R2-R3` |
 | 20 | proposed `windows.menu` / `windows.taskbar` / `windows.tray` | desktop surfaces beyond core window automation | `запланировано` | `0%` | `R2-R3` |
-| 21 | `scripts/*` + `docs/generated/*` + smoke/verify control plane | bootstrap/build/test/smoke/refresh-generated-docs/ci, generated surface sync, deterministic local proof loop and the minimal proof-smoke / benchmark baseline harness needed to validate near-term action-proof slices before the later full benchmark suite exists | `частично` | `70%` | `Операции` |
+| 21 | `scripts/*` + `docs/generated/*` + smoke/verify control plane | bootstrap/build/test/smoke/physical-policy-proof-smoke/refresh-generated-docs/ci, generated surface sync, deterministic local proof loop and the minimal proof-smoke / benchmark baseline harness needed to validate near-term action-proof slices before the later full benchmark suite exists | `частично` | `80%` | `Операции` |
 | 22 | proposed `daemon` / `overlay` / `virtual desktop` / richer shell modes | background companion, visualizer, virtual desktop support, deeper shell/runtime modes | `запланировано` | `0%` | `R3+` |
 | 23 | `plugins/computer-use-win` + proof envelope / semantic successor proof | structured action results with `execution facts`, `action receipt`, `recommended recovery`, successor-state-backed semantic proof and honest `verify_needed` when accepted proof is absent; strengthens current action tools instead of adding a competing action family | `запланировано` | `0%` | `R2-R3` |
 | 24 | proposed stable target identity / lease substrate | runtime-owned target identity above legacy `elementIndex`: target proof digest, stale/ambiguous fail-close behavior, target lease semantics and stronger continuity across observe -> act -> verify loops while keeping the current public operator surface stable | `запланировано` | `0%` | `R3` |
@@ -107,24 +109,23 @@ exec-plans, а не как немедленный queue:
 
 Текущий practical order такой:
 
-1. `computer-use-win` physical execution policy hardening + execution facts envelope
-2. minimal proof-smoke / benchmark baseline for current action-proof slices
-3. app playbooks expansion + lightweight capability hints
-4. `windows.region_capture`
-5. `windows.clipboard_get` / `windows.clipboard_set`
-6. `windows.uia_action`
-7. proof envelope / semantic successor proof
-8. native visual benchmark baseline + region/crop geometry contract
-9. native visual performance substrate for `windows.wait` / `observeAfter` / `windows.region_capture`
-10. `windows.dialog`
-11. `windows.surface_lifecycle`
-12. `windows.menu` / `windows.taskbar` / `windows.tray`
-13. stable target identity / lease substrate
-14. bounded OCR / visual proof provider
-15. local browser/Electron substrate
-16. controlled terminal surface
-17. public benchmark / proof suite hardening
-18. `daemon` / `overlay` / `virtual desktop` / richer shell modes
+1. `computer-use-win` physical execution policy hardening phase 2 / remaining closure beyond phase-1
+2. app playbooks expansion + lightweight capability hints
+3. `windows.region_capture`
+4. `windows.clipboard_get` / `windows.clipboard_set`
+5. `windows.uia_action`
+6. proof envelope / semantic successor proof
+7. native visual benchmark baseline + region/crop geometry contract
+8. native visual performance substrate for `windows.wait` / `observeAfter` / `windows.region_capture`
+9. `windows.dialog`
+10. `windows.surface_lifecycle`
+11. `windows.menu` / `windows.taskbar` / `windows.tray`
+12. stable target identity / lease substrate
+13. bounded OCR / visual proof provider
+14. local browser/Electron substrate
+15. controlled terminal surface
+16. public benchmark / proof suite hardening
+17. `daemon` / `overlay` / `virtual desktop` / richer shell modes
 
 Почему именно так:
 
@@ -133,9 +134,10 @@ exec-plans, а не как немедленный queue:
 - для poor-UIA / weak-semantic приложений physical mouse/keyboard path уже стал first-class execution mode, а не редким исключением; после shipped screenshot-first hardening следующий логичный шаг — не новый tool zoo, а общий policy/observability слой, который честно различает semantic path, expected physical path и fallback physical path;
 - Windows не даёт проекту поддерживаемую модель второго независимого системного курсора в том же интерактивном desktop, поэтому roadmap не должен уходить в “second cursor” research. Вместо этого physical input надо делать explicit, measured, guarded and successor-verified внутри текущего state/action/observe loop;
 - текущая observability уже partially показывает `dispatch_path`, `risk_class`, `fallback_used`, `observe_after_requested` и `successor_state_available`, но следующему workstream нужен более цельный execution-fact envelope и единая physical-input policy, прежде чем расширять breadth;
-- minimal proof-smoke нельзя откладывать до позднего benchmark wave: текущим
-  slices `physical policy`, `region_capture`, `uia_action` и `proof envelope`
-  уже нужен ранний measurable harness для stale-state blocking, foreground
+- minimal proof-smoke уже shipped рядом с первым physical-policy slice и не
+  должен откатываться обратно в “потом в benchmark wave”: текущим slices
+  `physical policy`, `region_capture`, `uia_action` и `proof envelope` всё ещё
+  нужен этот ранний measurable harness для stale-state blocking, foreground
   blocking, risky physical confirmation и successor observation;
 - poor-UIA text-entry implementation path закрыт как bounded `type_text` fallback slice через explicit `allowFocusedFallback=true` + `confirm=true`: focused path требует fresh target-local focus proof, а coordinate-confirmed path принимает explicit `capture_pixels` point из последнего screenshot state для top-level-only Qt/custom UI, без raw screen-coordinate typing, hidden previous-click reuse, clipboard default и optimistic `done`; real Telegram/cache-installed product acceptance пройден как Stage 8 proof через ordinary plugin tools;
 - successor-state / action+observe gap тоже закрыт explicit `observeAfter=true` path: честный `verify_needed` больше не обязан автоматически означать полный следующий `get_app_state`, если runtime уже вернул nested `successorState` и screenshot image block;

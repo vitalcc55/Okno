@@ -89,6 +89,9 @@ paths.
 
 Notable current behavior:
 
+- action results now publish nested `executionFacts`, so agents can see whether
+  the runtime used a `semantic`, `expected_physical`, or `fallback_physical`
+  path plus conservative confirmation/continuity facts;
 - `type_text` supports ordinary editable targets, focused fallback with
   `allowFocusedFallback=true`, the required confirmation gate `confirm=true`,
   and coordinate-confirmed typing from the latest `capture_pixels` state;

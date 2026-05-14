@@ -192,6 +192,9 @@ Important runtime-facing fields:
 - `windowId` is a public selector for the current discovery state, not an
   eternal window identity.
 - `stateToken` is a short-lived proof artifact for the last observation state.
+- `executionFacts` is the public action-truth envelope: it exposes whether the
+  runtime took a `semantic`, `expected_physical`, or `fallback_physical` path
+  plus conservative proof/continuity markers.
 - `verify_needed` means the dispatch happened but the semantic outcome still
   needs observation.
 - `successorState` is the fresh post-action state when `observeAfter=true`

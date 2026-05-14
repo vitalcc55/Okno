@@ -945,7 +945,7 @@ control surface. Поэтому progress отмечается прямо в эт
 - [x] Step `5` — migrate expected physical paths
 - [x] Step `6` — migrate fallback physical typing and failure boundaries
 - [x] Step `7` — add the companion minimal proof-smoke
-- [ ] Step `8` — sync docs, generated surfaces and installed-copy proof
+- [x] Step `8` — sync docs, generated surfaces and installed-copy proof
 - [ ] Step `9` — final sequential closure and acceptance pass
 
 ### 10.1.3. Commit discipline
@@ -1750,7 +1750,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 14:22 UTC
 - owner: Codex
-- commit: pending step-7 commit hash
+- commit: `0c1dcec`
 - scope:
   - added the new helper-backed proof entrypoint `scripts/computer-use-win-physical-policy-proof-smoke.ps1`
   - wired the proof-smoke into `scripts/ci.ps1` after broad smoke and before generated-doc refresh
@@ -1768,17 +1768,38 @@ slot below.
 - next_unblocked_step: `8`
 
 #### Step 8 — Sync docs, generated surfaces and installed-copy proof
-- status: in_progress
-- current_focus:
-  - refreshing generated/docs truth for the new proof entrypoint and phase-1 execution-facts surface
-  - extending cache-install/publication proof so a fresh-thread installed plugin path also demonstrates `executionFacts`
-- blocker: none
+- status: done
+- completed_at: 2026-05-14 14:39 UTC
+- owner: Codex
+- commit: pending step-8 commit hash
+- scope:
+  - updated public contract wording, product/architecture docs, roadmap and plugin docs so they now describe the shipped `executionFacts` layer and the companion proof-smoke entrypoint
+  - extended cache-install/publication proof to drive a fresh-thread `get_app_state -> set_value -> get_app_state` action path on the installed plugin and assert `executionFacts`
+  - refreshed generated docs and bootstrap status from the updated control plane, command inventory and profile notes
+- verification:
+  - `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj --no-restore --filter "FullyQualifiedName~ToolContractManifestTests|FullyQualifiedName~ToolContractExporterTests"`
+  - passed: `34/34`
+  - `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1`
+  - passed
+  - `powershell -ExecutionPolicy Bypass -File scripts/codex/materialize-computer-use-win-cache-copy.ps1`
+  - passed
+  - `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1`
+  - passed with fresh-thread `set_value` proof and `executionFacts.dispatchClass=semantic`
+  - `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`
+  - passed
+- decisions:
+  - installed-copy proof stays intentionally narrow: one helper-backed semantic action is enough to prove that a cache-installed plugin materializes the new public result surface, while the broader triad behavior remains owned by the dedicated proof-smoke entrypoint
+  - generated docs were refreshed from generator templates rather than hand-edited, so the new proof entrypoint and install-proof wording now stay under `refresh-generated-docs.ps1`
+- residual_risks:
+  - final contour still needs a full sequential end-to-end run on the branch before phase-1 can be declared complete
+- next_unblocked_step: `9`
 
 #### Step 9 — Final sequential closure and acceptance pass
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: in_progress
+- current_focus:
+  - running the canonical end-to-end contour after all runtime/docs/install surfaces are in sync
+  - checking explicit acceptance criteria against final branch evidence before closure
+- blocker: none
 
 ## 11. Test ladder
 
