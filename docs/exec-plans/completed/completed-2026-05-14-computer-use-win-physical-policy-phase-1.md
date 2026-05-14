@@ -1798,7 +1798,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 15:06 UTC
 - owner: Codex
-- commit: pending step-9 commit hash
+- commit: `ee43342`
 - scope:
   - fixed the last stale integration expectation uncovered only by the full branch-wide contour
   - ran the canonical end-to-end verification order from build through cache-installed publication proof after all runtime/docs/install surfaces were synced
