@@ -109,6 +109,10 @@ Reference repos помогают ответить на другие вопрос
 - `references/` целиком игнорируется git;
 - это рабочий cache для инженера, а не часть shipped surface;
 - его можно обновлять локально без влияния на repo contract.
+- registry внешних reference repo identities должен жить именно в ignored
+  `references/INDEX.md` и соседних ignored helper files; tracked product docs,
+  roadmap и exec-plans могут ссылаться на reference cohorts и выводы, но не
+  должны превращаться в постоянно устаревающий каталог чужих repo names.
 
 Примеры use cases:
 
