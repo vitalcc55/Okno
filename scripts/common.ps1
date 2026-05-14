@@ -35,6 +35,169 @@ function Resolve-WinBridgePathArgument {
     return [System.IO.Path]::GetFullPath((Join-Path ([System.IO.Path]::GetFullPath($RepoRoot)) $Path))
 }
 
+function Get-WinBridgeComputerUseWinVersionState {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot
+    )
+
+    $resolvedRepoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
+    $directoryBuildPropsPath = Join-Path $resolvedRepoRoot 'Directory.Build.props'
+    $pluginManifestPath = Join-Path $resolvedRepoRoot 'plugins\computer-use-win\.codex-plugin\plugin.json'
+    $runtimeReleaseDescriptorPath = Join-Path $resolvedRepoRoot 'plugins\computer-use-win\runtime-release.json'
+
+    [xml]$directoryBuildProps = Get-Content -Path $directoryBuildPropsPath -Raw
+    $pluginManifest = Get-Content -Path $pluginManifestPath -Raw | ConvertFrom-Json
+    $runtimeReleaseDescriptor = Get-Content -Path $runtimeReleaseDescriptorPath -Raw | ConvertFrom-Json
+
+    return [PSCustomObject]@{
+        BuildVersion                 = ([string]$directoryBuildProps.Project.PropertyGroup.Version).Trim()
+        PluginVersion                = ([string]$pluginManifest.version).Trim()
+        RuntimeReleaseVersion        = ([string]$runtimeReleaseDescriptor.version).Trim()
+        DirectoryBuildPropsPath      = $directoryBuildPropsPath
+        PluginManifestPath           = $pluginManifestPath
+        RuntimeReleaseDescriptorPath = $runtimeReleaseDescriptorPath
+    }
+}
+
+function Assert-WinBridgeComputerUseWinVersionState {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot,
+        [string] $RequestedVersion
+    )
+
+    $state = Get-WinBridgeComputerUseWinVersionState -RepoRoot $RepoRoot
+    $missingSources = @()
+    if ([string]::IsNullOrWhiteSpace($state.BuildVersion)) {
+        $missingSources += 'Directory.Build.props'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($state.PluginVersion)) {
+        $missingSources += 'plugins/computer-use-win/.codex-plugin/plugin.json'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($state.RuntimeReleaseVersion)) {
+        $missingSources += 'plugins/computer-use-win/runtime-release.json'
+    }
+
+    if ($missingSources.Count -gt 0) {
+        throw "Repo source-of-truth version is missing in: $($missingSources -join ', ')."
+    }
+
+    $declaredVersions = @(
+        @(
+            $state.BuildVersion
+            $state.PluginVersion
+            $state.RuntimeReleaseVersion
+        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
+    )
+
+    if ($declaredVersions.Count -ne 1) {
+        throw "Repo source-of-truth version drift: Directory.Build.props='$($state.BuildVersion)', plugin.json='$($state.PluginVersion)', runtime-release.json='$($state.RuntimeReleaseVersion)'."
+    }
+
+    $resolvedVersion = [string]$declaredVersions[0]
+    if (-not [string]::IsNullOrWhiteSpace($RequestedVersion) -and -not [string]::Equals($resolvedVersion, $RequestedVersion, [System.StringComparison]::Ordinal)) {
+        throw "Requested release version '$RequestedVersion' does not match repo source-of-truth version '$resolvedVersion'."
+    }
+
+    return [PSCustomObject]@{
+        Version                      = $resolvedVersion
+        BuildVersion                 = $state.BuildVersion
+        PluginVersion                = $state.PluginVersion
+        RuntimeReleaseVersion        = $state.RuntimeReleaseVersion
+        DirectoryBuildPropsPath      = $state.DirectoryBuildPropsPath
+        PluginManifestPath           = $state.PluginManifestPath
+        RuntimeReleaseDescriptorPath = $state.RuntimeReleaseDescriptorPath
+    }
+}
+
+function Get-WinBridgeComputerUseWinCacheBaseRoot {
+    param(
+        [string] $UserProfile = $env:USERPROFILE
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserProfile)) {
+        throw 'USERPROFILE is required to resolve the Codex cache root.'
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $UserProfile '.codex\plugins\cache')).TrimEnd('\')
+}
+
+function Get-WinBridgeComputerUseWinCachePluginRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot,
+        [string] $UserProfile = $env:USERPROFILE
+    )
+
+    $versionState = Assert-WinBridgeComputerUseWinVersionState -RepoRoot $RepoRoot
+    return Join-Path (Get-WinBridgeComputerUseWinCacheBaseRoot -UserProfile $UserProfile) ("computer-use-win-local\computer-use-win\" + $versionState.Version)
+}
+
+function Test-WinBridgePathWithinRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Path,
+        [Parameter(Mandatory)]
+        [string] $Root
+    )
+
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $resolvedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+    if ([string]::Equals($resolvedPath, $resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    return $resolvedPath.StartsWith($resolvedRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-WinBridgeComputerUseWinCacheMirrorPaths {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot,
+        [Parameter(Mandatory)]
+        [string] $SourcePluginRoot,
+        [Parameter(Mandatory)]
+        [string] $CachePluginRoot,
+        [string] $UserProfile = $env:USERPROFILE
+    )
+
+    $resolvedRepoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
+    $resolvedSourcePluginRoot = [System.IO.Path]::GetFullPath($SourcePluginRoot).TrimEnd('\')
+    $resolvedCachePluginRoot = [System.IO.Path]::GetFullPath($CachePluginRoot).TrimEnd('\')
+    $canonicalSourcePluginRoot = [System.IO.Path]::GetFullPath((Join-Path $resolvedRepoRoot 'plugins\computer-use-win')).TrimEnd('\')
+    $cacheBaseRoot = Get-WinBridgeComputerUseWinCacheBaseRoot -UserProfile $UserProfile
+    $canonicalCachePluginRoot = [System.IO.Path]::GetFullPath((Get-WinBridgeComputerUseWinCachePluginRoot -RepoRoot $resolvedRepoRoot -UserProfile $UserProfile)).TrimEnd('\')
+
+    if (-not [string]::Equals($resolvedSourcePluginRoot, $canonicalSourcePluginRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Source plugin root must resolve to the canonical repo plugin root '$canonicalSourcePluginRoot', got '$resolvedSourcePluginRoot'."
+    }
+
+    if (-not (Test-WinBridgePathWithinRoot -Path $resolvedCachePluginRoot -Root $cacheBaseRoot)) {
+        throw "Cache plugin root '$resolvedCachePluginRoot' must stay under the Codex cache root '$cacheBaseRoot'."
+    }
+
+    if ([string]::Equals($resolvedCachePluginRoot, $cacheBaseRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Cache plugin root '$resolvedCachePluginRoot' must resolve to a leaf plugin directory, not the cache root."
+    }
+
+    if (-not [string]::Equals($resolvedCachePluginRoot, $canonicalCachePluginRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Cache plugin root '$resolvedCachePluginRoot' must resolve to the owned computer-use-win cache root '$canonicalCachePluginRoot'."
+    }
+
+    if ((Test-WinBridgePathWithinRoot -Path $resolvedSourcePluginRoot -Root $resolvedCachePluginRoot) -or (Test-WinBridgePathWithinRoot -Path $resolvedCachePluginRoot -Root $resolvedSourcePluginRoot)) {
+        throw "Unsafe cache copy path combination. Source='$resolvedSourcePluginRoot', cache='$resolvedCachePluginRoot'."
+    }
+
+    return [PSCustomObject]@{
+        SourcePluginRoot = $resolvedSourcePluginRoot
+        CachePluginRoot  = $resolvedCachePluginRoot
+        CacheBaseRoot    = $cacheBaseRoot
+    }
+}
+
 function Get-WinBridgeRunRoot {
     param(
         [Parameter(Mandatory)]

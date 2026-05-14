@@ -520,6 +520,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private static void WriteDepsFixtureFromRealAssetShape(string repoRoot, string depsPath, string assetKind, string fileName)
     {
+        EnsurePublishedRuntimeBundle(repoRoot, GetPublishScriptPath(repoRoot), GetReleasePackagingRuntimeRoot(repoRoot));
         using JsonDocument realDeps = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(GetReleasePackagingRuntimeRoot(repoRoot), "Okno.Server.deps.json")));
         GetRealDepsAssetFixture(

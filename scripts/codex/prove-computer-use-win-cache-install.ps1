@@ -1,5 +1,5 @@
 ﻿param(
-    [string] $CachePluginRoot = (Join-Path $env:USERPROFILE '.codex\plugins\cache\computer-use-win-local\computer-use-win\0.2.3'),
+    [string] $CachePluginRoot = '',
     [string] $OutputPath,
     [int] $TimeoutMs = 10000
 )
@@ -11,7 +11,13 @@ if (Get-Variable -Name PSStyle -ErrorAction Ignore) {
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+. (Join-Path $PSScriptRoot '..\common.ps1')
+
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$versionState = Assert-WinBridgeComputerUseWinVersionState -RepoRoot $repoRoot
+if ([string]::IsNullOrWhiteSpace($CachePluginRoot)) {
+    $CachePluginRoot = Get-WinBridgeComputerUseWinCachePluginRoot -RepoRoot $repoRoot
+}
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $OutputPath = Join-Path $repoRoot ".tmp\.codex\computer-use-win-cache-proof\proof-$timestamp.json"
@@ -483,6 +489,8 @@ function Start-CacheMcpHost {
 
 $repoPluginRoot = Join-Path $repoRoot 'plugins\computer-use-win'
 $cacheRoot = Convert-ToNormalizedPath -Path $CachePluginRoot
+$cachePathContext = Assert-WinBridgeComputerUseWinCacheMirrorPaths -RepoRoot $repoRoot -SourcePluginRoot $repoPluginRoot -CachePluginRoot $cacheRoot
+$cacheRoot = [string]$cachePathContext.CachePluginRoot
 $copyProof = Assert-PluginCopiesMatch -RepoPluginRoot $repoPluginRoot -CacheRoot $cacheRoot
 $runtimeFreshness = Assert-RuntimeBundleFreshForPublicationInputs -RepoRoot $repoRoot -RepoPluginRoot $repoPluginRoot
 $runtimeReleaseDescriptor = Read-RuntimeReleaseDescriptor -PluginRoot $repoPluginRoot
@@ -494,7 +502,7 @@ try {
         capabilities = @{}
         clientInfo = @{
             name = 'Okno.CacheInstallProof'
-            version = '0.2.3'
+            version = $versionState.Version
         }
     }
     Send-McpNotification -Process $process -Method 'notifications/initialized' -Params @{}

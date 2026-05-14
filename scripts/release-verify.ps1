@@ -1,6 +1,11 @@
+param(
+    [string] $Version = ''
+)
+
 . (Join-Path $PSScriptRoot 'common.ps1')
 
 $repoRoot = Get-RepoRoot -ScriptRoot $PSScriptRoot
+${null} = Assert-WinBridgeComputerUseWinVersionState -RepoRoot $repoRoot -RequestedVersion $Version
 ${null} = Initialize-WinBridgeExecutionContext -RepoRoot $repoRoot -DefaultRunId ("release-verify-" + (Get-Date -Format 'yyyyMMddTHHmmssfff')) -UseArtifactsRoot
 Set-Location $repoRoot
 

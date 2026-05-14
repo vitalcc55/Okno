@@ -54,12 +54,28 @@
 - `scripts/lint-powershell.ps1`
 - `scripts/build.ps1`
 - `scripts/test.ps1`
+- `scripts/test-install-surface-acceptance.ps1`
 - `scripts/smoke.ps1`
 - `scripts/ci.ps1`
+- `scripts/release-verify.ps1`
 - `scripts/investigate.ps1`
 - `scripts/refresh-generated-docs.ps1`
 - `scripts/codex/bootstrap.ps1`
+- `scripts/codex/prepare-okno-test-bundle.ps1`
+- `scripts/codex/resolve-okno-test-bundle.ps1`
+- `scripts/codex/resolve-okno-server-launch-target.ps1`
+- `scripts/codex/package-computer-use-win-runtime-release.ps1`
+- `scripts/codex/package-computer-use-win-plugin-release.ps1`
+- `scripts/codex/package-computer-use-win-setup-cli-payload.ps1`
+- `scripts/codex/package-okno-setup-app-release.ps1`
+- `scripts/codex/install-computer-use-win.ps1`
+- `scripts/codex/publish-computer-use-win-plugin.ps1`
+- `scripts/codex/materialize-computer-use-win-cache-copy.ps1`
+- `scripts/codex/prove-computer-use-win-cache-install.ps1`
+- `scripts/codex/test-install-surface-acceptance.ps1`
 - `scripts/codex/verify.ps1`
+- `scripts/codex/release-verify.ps1`
+- `scripts/codex/write-okno-plugin-repo-root-hint.ps1`
 
 ## Artifact interfaces
 

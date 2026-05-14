@@ -124,6 +124,18 @@ public sealed class ToolContractExporterTests
     }
 
     [Fact]
+    public void ExporterPublishesSplitFastAndReleaseControlPlaneScripts()
+    {
+        ToolContractExportDocument document = ToolContractExporter.CreateDocument();
+
+        Assert.Contains("scripts/test-install-surface-acceptance.ps1", document.Scripts);
+        Assert.Contains("scripts/release-verify.ps1", document.Scripts);
+        Assert.Contains("scripts/codex/materialize-computer-use-win-cache-copy.ps1", document.Scripts);
+        Assert.Contains("scripts/codex/test-install-surface-acceptance.ps1", document.Scripts);
+        Assert.Contains("scripts/codex/release-verify.ps1", document.Scripts);
+    }
+
+    [Fact]
     public void ExportJsonUsesCanonicalSnakeCaseContractLiterals()
     {
         string root = CreateTempDirectory();

@@ -37,7 +37,13 @@ jobs:
             $version = "${{ inputs.version }}"
           }
           else {
-            $version = "${{ github.ref_name }}".TrimStart('v')
+            $tag = "${{ github.ref_name }}"
+            $tagMatch = [System.Text.RegularExpressions.Regex]::Match($tag, '^v(?<version>\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$')
+            if (-not $tagMatch.Success) {
+              throw "Release tag '$tag' does not match the canonical 'v<semver>' format."
+            }
+
+            $version = $tagMatch.Groups['version'].Value
           }
 
           if ([string]::IsNullOrWhiteSpace($version)) {
@@ -50,7 +56,7 @@ jobs:
       - name: Run full release verify gate
         shell: pwsh
         run: |
-          powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/release-verify.ps1
+          powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/release-verify.ps1 -Version "${{ steps.version.outputs.version }}"
 
       - name: Package runtime release asset
         id: package_runtime

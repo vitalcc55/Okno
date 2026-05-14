@@ -10,16 +10,19 @@ if (Get-Variable -Name PSStyle -ErrorAction Ignore) {
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+. (Join-Path $PSScriptRoot '..\common.ps1')
+
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if ([string]::IsNullOrWhiteSpace($SourcePluginRoot)) {
     $SourcePluginRoot = Join-Path $repoRoot 'plugins\computer-use-win'
 }
 if ([string]::IsNullOrWhiteSpace($CachePluginRoot)) {
-    $CachePluginRoot = Join-Path $env:USERPROFILE '.codex\plugins\cache\computer-use-win-local\computer-use-win\0.2.3'
+    $CachePluginRoot = Get-WinBridgeComputerUseWinCachePluginRoot -RepoRoot $repoRoot
 }
 
-$resolvedSourcePluginRoot = [System.IO.Path]::GetFullPath($SourcePluginRoot)
-$resolvedCachePluginRoot = [System.IO.Path]::GetFullPath($CachePluginRoot)
+$pathContext = Assert-WinBridgeComputerUseWinCacheMirrorPaths -RepoRoot $repoRoot -SourcePluginRoot $SourcePluginRoot -CachePluginRoot $CachePluginRoot
+$resolvedSourcePluginRoot = [string]$pathContext.SourcePluginRoot
+$resolvedCachePluginRoot = [string]$pathContext.CachePluginRoot
 
 if (-not (Test-Path $resolvedSourcePluginRoot -PathType Container)) {
     throw "Source plugin root not found: $resolvedSourcePluginRoot"
