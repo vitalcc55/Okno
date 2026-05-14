@@ -938,7 +938,7 @@ control surface. Поэтому progress отмечается прямо в эт
 ### 10.1.2. Master progress checklist
 
 - [x] Step `0` — freeze the baseline and failure surface
-- [ ] Step `1` — introduce the phase-1 domain seam
+- [x] Step `1` — introduce the phase-1 domain seam
 - [ ] Step `2` — add the additive public `executionFacts` envelope
 - [ ] Step `3` — make lifecycle owners the single materialization path
 - [ ] Step `4` — migrate semantic paths first
@@ -1612,7 +1612,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 13:26 UTC
 - owner: Codex
-- commit: pending step-0 commit hash
+- commit: `9097728`
 - scope:
   - added characterization test for the current flat public action payload without `executionFacts` or `actionReceipt`
   - added characterization test for current partial top-level observability fields in the action artifact without a nested phase-1 envelope
@@ -1627,10 +1627,25 @@ slot below.
 - next_unblocked_step: `1`
 
 #### Step 1 — Introduce the phase-1 domain seam
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: done
+- completed_at: 2026-05-14 13:29 UTC
+- owner: Codex
+- commit: pending step-1 commit hash
+- scope:
+  - added the narrow internal execution-facts seam with stable value sets for `dispatchClass`, `targetProof`, `windowContinuity` and `foregroundIntegrity`
+  - added shared `ComputerUseWinExecutionFactsBuilder` and `ComputerUseWinPhysicalExecutionPolicy`
+  - added fail-fast characterization tests for semantic, expected physical, fallback physical and unknown executor mapping
+- verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinExecutionFactsBuilderTests"`
+  - passed: `4/4`
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinFinalizationTests|FullyQualifiedName~ComputerUseWinExecutionFactsBuilderTests"`
+  - passed: `35/35`
+- decisions:
+  - step `1` stayed internal-only: the new seam lives under `WinBridge.Server/ComputerUse` and is not yet threaded into the public result contract
+  - unknown executors fail closed in the shared policy so later action migration cannot silently widen semantics
+- residual_risks:
+  - executor taxonomy is intentionally still narrow and will need extension in later steps when the seam is wired into all shipped actions
+- next_unblocked_step: `2`
 
 #### Step 2 — Add the additive public `executionFacts` envelope
 - status: pending
