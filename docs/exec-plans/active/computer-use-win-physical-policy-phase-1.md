@@ -1693,7 +1693,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 13:41 UTC
 - owner: Codex
-- commit: pending step-4 commit hash
+- commit: `52ffa1b`
 - scope:
   - added semantic-envelope assertions for successful `set_value`, semantic `scroll(elementIndex)` and `perform_secondary_action`
   - confirmed that the current post-step-3 wiring already classifies these paths as semantic without requiring extra coordinator changes
@@ -1708,10 +1708,22 @@ slot below.
 - next_unblocked_step: `5`
 
 #### Step 5 — Migrate expected physical paths
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: done
+- completed_at: 2026-05-14 13:45 UTC
+- owner: Codex
+- commit: pending step-5 commit hash
+- scope:
+  - extended shared physical-execution policy to cover the semantic-proof drag executor path
+  - added expected-physical envelope assertions for success-path `click`, `press_key`, semantic-proof `drag` and coordinate `scroll`
+- verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ClickHandlerEmbedsSuccessorStateAndImageWhenObserveAfterSucceeds|FullyQualifiedName~PressKeyHandlerDispatchesNormalizedShortcutThroughInputService|FullyQualifiedName~DragHandlerDispatchesElementToElementPathThroughInputService|FullyQualifiedName~ScrollHandlerUsesCoordinateFallbackWithConfirmationAndReturnsVerifyNeeded"`
+  - passed: `4/4`
+- decisions:
+  - current phase-1 `executor` continues to reuse existing handler dispatch-path vocabulary for expected-physical paths, including `fresh_uia_revalidation_to_input_drag`
+  - drag was treated as an expected-physical path even when the endpoints are semantically revalidated, because the final dispatch remains physical
+- residual_risks:
+  - focused and coordinate-confirmed typing fallback still needs explicit `fallback_physical` closure in step `6`
+- next_unblocked_step: `6`
 
 #### Step 6 — Migrate fallback physical typing and failure boundaries
 - status: pending

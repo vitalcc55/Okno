@@ -152,6 +152,7 @@ internal static class ComputerUseWinPhysicalExecutionPolicy
             "uia_semantic_set" => ComputerUseWinDispatchClassValues.Semantic,
             "win32_pointer_click" => ComputerUseWinDispatchClassValues.ExpectedPhysical,
             "fresh_uia_revalidation_to_input" => ComputerUseWinDispatchClassValues.ExpectedPhysical,
+            "fresh_uia_revalidation_to_input_drag" => ComputerUseWinDispatchClassValues.ExpectedPhysical,
             "capture_pixels_input" => ComputerUseWinDispatchClassValues.ExpectedPhysical,
             "screen_input" => ComputerUseWinDispatchClassValues.ExpectedPhysical,
             "win32_sendinput_keypress" => ComputerUseWinDispatchClassValues.ExpectedPhysical,
@@ -180,6 +181,7 @@ internal static class ComputerUseWinPhysicalExecutionPolicy
             "win32_sendinput_unicode" => false,
             "win32_pointer_click" or
             "fresh_uia_revalidation_to_input" or
+            "fresh_uia_revalidation_to_input_drag" or
             "capture_pixels_input" or
             "screen_input" or
             "win32_sendinput_drag" or
@@ -206,6 +208,7 @@ internal static class ComputerUseWinPhysicalExecutionPolicy
             "uia_semantic_set" or
             "win32_pointer_click" or
             "fresh_uia_revalidation_to_input" or
+            "fresh_uia_revalidation_to_input_drag" or
             "capture_pixels_input" or
             "screen_input" or
             "win32_sendinput_drag" or
@@ -220,6 +223,7 @@ internal static class ComputerUseWinPhysicalExecutionPolicy
         {
             "win32_pointer_click" or
             "fresh_uia_revalidation_to_input" or
+            "fresh_uia_revalidation_to_input_drag" or
             "capture_pixels_input" or
             "screen_input" or
             "win32_sendinput_drag" or

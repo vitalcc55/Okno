@@ -788,6 +788,15 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.False(result.IsError, result.StructuredContent!.Value.GetRawText());
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        JsonElement clickExecutionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", clickExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("fresh_uia_revalidation_to_input", clickExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", clickExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.True(clickExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.False(clickExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.True(clickExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
+        Assert.True(clickExecutionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(clickExecutionFacts.GetProperty("successorStateAvailable").GetBoolean());
         Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
         Assert.False(payload.TryGetProperty("successorStateFailure", out _));
         JsonElement successorState = payload.GetProperty("successorState");
@@ -837,6 +846,13 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.False(result.IsError, result.StructuredContent!.Value.GetRawText());
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        JsonElement dragExecutionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", dragExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("fresh_uia_revalidation_to_input_drag", dragExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", dragExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.True(dragExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.False(dragExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.True(dragExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
         Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
         Assert.False(payload.TryGetProperty("successorState", out _));
         JsonElement successorFailure = payload.GetProperty("successorStateFailure");
@@ -1108,6 +1124,13 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        JsonElement pressKeyExecutionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", pressKeyExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_keypress", pressKeyExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("none", pressKeyExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.False(pressKeyExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.True(pressKeyExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(pressKeyExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
         Assert.NotNull(inputService.LastRequest);
         InputAction action = Assert.Single(inputService.LastRequest!.Actions);
         Assert.Equal(InputActionTypeValues.Keypress, action.Type);
@@ -1495,6 +1518,14 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        JsonElement scrollExecutionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", scrollExecutionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("win32_sendinput_wheel", scrollExecutionFacts.GetProperty("executor").GetString());
+        Assert.Equal("capture_point", scrollExecutionFacts.GetProperty("targetProof").GetString());
+        Assert.True(scrollExecutionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+        Assert.False(scrollExecutionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
+        Assert.False(scrollExecutionFacts.GetProperty("systemCursorMoved").GetBoolean());
+        Assert.True(scrollExecutionFacts.GetProperty("fallbackUsed").GetBoolean());
         Assert.NotNull(inputService.LastRequest);
         InputAction action = Assert.Single(inputService.LastRequest!.Actions);
         Assert.Equal(InputActionTypeValues.Type, action.Type);
