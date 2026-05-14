@@ -481,7 +481,7 @@ Primary external sources behind this plan:
 - OpenAI API MCP tool:
   - `https://developers.openai.com/api/docs/guides/tools-connectors-mcp`
 - MCP transports:
-  - `https://modelcontextprotocol.io/specification/2025-03-26/basic/transports`
+  - `https://modelcontextprotocol.io/specification/2025-11-25/basic/transports`
 - GitHub immutable releases:
   - `https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases`
 - GitHub linking to latest release assets:
