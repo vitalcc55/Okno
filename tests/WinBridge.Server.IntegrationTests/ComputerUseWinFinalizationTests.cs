@@ -254,6 +254,63 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void ActionFinalizerCurrentPublicPayloadRemainsFlatWithoutExecutionFactsOrReceipt()
+    {
+        using TestHarness test = new("computer-use-win-flat-public-payload-characterization-tests");
+        using AuditInvocationScope invocation = test.BeginClickInvocation(ConfirmedClickRequest());
+
+        CallToolResult result = FinalizeClickResult(invocation, VerifyNeededClickInputResult());
+
+        JsonElement payload = result.StructuredContent!.Value;
+        string[] propertyNames = payload.EnumerateObject()
+            .Select(static property => property.Name)
+            .OrderBy(static name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            ["elementIndex", "reason", "refreshStateRecommended", "status", "targetHwnd"],
+            propertyNames);
+        Assert.False(payload.TryGetProperty("executionFacts", out _));
+        Assert.False(payload.TryGetProperty("actionReceipt", out _));
+    }
+
+    [Fact]
+    public void ActionArtifactCurrentBaselineKeepsPartialTopLevelFactsWithoutExecutionFactsEnvelope()
+    {
+        using TestHarness test = new("computer-use-win-partial-observability-characterization-tests");
+        using AuditInvocationScope invocation = test.BeginClickInvocation(ConfirmedClickRequest());
+
+        _ = ComputerUseWinActionFinalizer.FinalizeResult(
+            invocation,
+            ToolNames.ComputerUseWinClick,
+            targetHwnd: TargetHwnd,
+            elementIndex: ElementIndex,
+            VerifyNeededClickInputResult(),
+            new ComputerUseWinActionObservabilityContext(
+                ActionName: ToolNames.ComputerUseWinClick,
+                RuntimeState: "observed",
+                AppId: "explorer",
+                WindowIdPresent: true,
+                StateTokenPresent: true,
+                TargetMode: "element_index",
+                ElementIndexPresent: true,
+                CoordinateSpace: null,
+                CaptureReferencePresent: false,
+                ConfirmationRequired: false,
+                Confirmed: true,
+                RiskClass: "semantic_target",
+                DispatchPath: "fresh_uia_revalidation_to_input",
+                FallbackUsed: false));
+
+        using JsonDocument artifact = test.ReadSingleActionArtifact();
+        Assert.Equal("semantic_target", artifact.RootElement.GetProperty("risk_class").GetString());
+        Assert.Equal("fresh_uia_revalidation_to_input", artifact.RootElement.GetProperty("dispatch_path").GetString());
+        Assert.False(artifact.RootElement.GetProperty("fallback_used").GetBoolean());
+        Assert.False(artifact.RootElement.TryGetProperty("execution_facts", out _));
+        Assert.False(artifact.RootElement.TryGetProperty("action_receipt", out _));
+    }
+
+    [Fact]
     public void ActionFinalizerMaterializesSecondaryActionObservabilityMarkers()
     {
         using TestHarness test = new("computer-use-win-secondary-action-observability-tests");

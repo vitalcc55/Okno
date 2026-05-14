@@ -937,7 +937,7 @@ control surface. Поэтому progress отмечается прямо в эт
 
 ### 10.1.2. Master progress checklist
 
-- [ ] Step `0` — freeze the baseline and failure surface
+- [x] Step `0` — freeze the baseline and failure surface
 - [ ] Step `1` — introduce the phase-1 domain seam
 - [ ] Step `2` — add the additive public `executionFacts` envelope
 - [ ] Step `3` — make lifecycle owners the single materialization path
@@ -1609,10 +1609,22 @@ Reserved per-step execution log for the implementer. Each step owns exactly one
 slot below.
 
 #### Step 0 — Freeze the baseline and failure surface
-- status: pending
-- commit: —
-- verification: —
-- mini-report: not started
+- status: done
+- completed_at: 2026-05-14 13:26 UTC
+- owner: Codex
+- commit: pending step-0 commit hash
+- scope:
+  - added characterization test for the current flat public action payload without `executionFacts` or `actionReceipt`
+  - added characterization test for current partial top-level observability fields in the action artifact without a nested phase-1 envelope
+- verification:
+  - `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~ComputerUseWinFinalizationTests|FullyQualifiedName~ComputerUseWinActionAndProjectionTests|FullyQualifiedName~McpProtocolSmokeTests"`
+  - passed: `181/181`
+- decisions:
+  - step `0` characterization stayed in `ComputerUseWinFinalizationTests` because that file already owns the current public result, action artifact and runtime-event baseline
+  - baseline was frozen by asserting the absence of phase-1 fields rather than by broad file-wide snapshotting, to keep later red bars high-signal
+- residual_risks:
+  - current baseline for semantic vs physical behavior is still mostly pinned through existing integration coverage rather than many new characterization tests; this is acceptable because step `0` only needs the minimal guardrail before step `1`
+- next_unblocked_step: `1`
 
 #### Step 1 — Introduce the phase-1 domain seam
 - status: pending
