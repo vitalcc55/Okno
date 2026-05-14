@@ -1,9 +1,9 @@
 # ExecPlan: Computer Use for Windows physical policy phase 1
 
-Status: `active`  
+Status: `completed`  
 Branch: `codex/computer-use-win-physical-policy-phase-1`  
 Date: `2026-05-14`  
-Parent workstream: [computer-use-win-physical-execution-policy-hardening.md](computer-use-win-physical-execution-policy-hardening.md)
+Parent workstream: [computer-use-win-physical-execution-policy-hardening.md](../active/computer-use-win-physical-execution-policy-hardening.md)
 
 ## 1. Goal
 
@@ -56,7 +56,7 @@ Phase-1 сознательно **не** делает следующее:
 - не добавляет новый public action family;
 - не меняет product boundary `computer-use-win` vs internal `windows.*`;
 - не трогает packaging/install model как основной scope;
-- не смешивает работу с [okno-release-and-install-packaging.md](okno-release-and-install-packaging.md);
+- не смешивает работу с [okno-release-and-install-packaging.md](../active/okno-release-and-install-packaging.md);
 - не делает `windows.region_capture`;
 - не делает `windows.uia_action`;
 - не делает broad app capability memory/profile layer;
@@ -82,7 +82,7 @@ Phase-1 сознательно **не** делает следующее:
   как `computer-use-win physical execution policy hardening` и уже ставит
   рядом minimal proof-smoke как следующий companion step;
 - broad umbrella plan
-  [computer-use-win-physical-execution-policy-hardening.md](computer-use-win-physical-execution-policy-hardening.md)
+  [computer-use-win-physical-execution-policy-hardening.md](../active/computer-use-win-physical-execution-policy-hardening.md)
   существует, но остаётся слишком верхнеуровневым для package-by-package
   implementation;
 - planned leadership document
@@ -92,7 +92,7 @@ Phase-1 сознательно **не** делает следующее:
   - `semantic / expected_physical / fallback_physical`
   - companion minimal proof-smoke
 - release/install packaging выделен в отдельный active workstream
-  [okno-release-and-install-packaging.md](okno-release-and-install-packaging.md)
+  [okno-release-and-install-packaging.md](../active/okno-release-and-install-packaging.md)
   и не должен смешиваться с этой веткой.
 
 ### 3.2. Current shipped public surface
@@ -246,10 +246,10 @@ invariants:
 
 ### C. Current and future plans
 
-- [computer-use-win-physical-execution-policy-hardening.md](computer-use-win-physical-execution-policy-hardening.md)
+- [computer-use-win-physical-execution-policy-hardening.md](../active/computer-use-win-physical-execution-policy-hardening.md)
 - [okno-agent-native-runtime-leadership.md](../planned/okno-agent-native-runtime-leadership.md)
 - [okno-native-visual-performance.md](../planned/okno-native-visual-performance.md)
-- [okno-release-and-install-packaging.md](okno-release-and-install-packaging.md)
+- [okno-release-and-install-packaging.md](../active/okno-release-and-install-packaging.md)
 
 ### D. Completed history defining current action surface
 
@@ -946,7 +946,7 @@ control surface. Поэтому progress отмечается прямо в эт
 - [x] Step `6` — migrate fallback physical typing and failure boundaries
 - [x] Step `7` — add the companion minimal proof-smoke
 - [x] Step `8` — sync docs, generated surfaces and installed-copy proof
-- [ ] Step `9` — final sequential closure and acceptance pass
+- [x] Step `9` — final sequential closure and acceptance pass
 
 ### 10.1.3. Commit discipline
 
@@ -1771,7 +1771,7 @@ slot below.
 - status: done
 - completed_at: 2026-05-14 14:39 UTC
 - owner: Codex
-- commit: pending step-8 commit hash
+- commit: `66a42fc`
 - scope:
   - updated public contract wording, product/architecture docs, roadmap and plugin docs so they now describe the shipped `executionFacts` layer and the companion proof-smoke entrypoint
   - extended cache-install/publication proof to drive a fresh-thread `get_app_state -> set_value -> get_app_state` action path on the installed plugin and assert `executionFacts`
@@ -1795,11 +1795,35 @@ slot below.
 - next_unblocked_step: `9`
 
 #### Step 9 — Final sequential closure and acceptance pass
-- status: in_progress
-- current_focus:
-  - running the canonical end-to-end contour after all runtime/docs/install surfaces are in sync
-  - checking explicit acceptance criteria against final branch evidence before closure
-- blocker: none
+- status: done
+- completed_at: 2026-05-14 15:06 UTC
+- owner: Codex
+- commit: pending step-9 commit hash
+- scope:
+  - fixed the last stale integration expectation uncovered only by the full branch-wide contour
+  - ran the canonical end-to-end verification order from build through cache-installed publication proof after all runtime/docs/install surfaces were synced
+  - confirmed acceptance against the final branch state and prepared the phase-specific plan to leave `active` and move into the completed record set
+- verification:
+  - `powershell -ExecutionPolicy Bypass -File scripts/build.ps1`
+  - passed
+  - `powershell -ExecutionPolicy Bypass -File scripts/test.ps1`
+  - passed on the second full attempt after a targeted rerun separated one stale click expectation fix and one transient smoke-style failure from stable regressions
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1`
+  - passed with run `20260514T175416408`
+  - `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1`
+  - passed with run `20260514T175522508`
+  - `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1`
+  - passed
+  - `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1`
+  - passed on the second full attempt after a targeted rerun isolated a transient visual-wait timeout
+  - `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1`
+  - passed with fresh-thread `set_value` action proof and installed `executionFacts`
+- decisions:
+  - final closure kept the runtime model unchanged and treated the last full-contour breakage as stale test debt, not as a reason to reopen the phase-1 domain seam
+  - the first `scripts/test.ps1` and first `scripts/codex/verify.ps1` failures were recorded as transient timing evidence because both reproduced green on targeted reruns and then on the next full contour attempt
+- residual_risks:
+  - the branch still carries transient smoke-style timing sensitivity in a few helper/visual waits, even though the canonical contour is green end-to-end on retry
+- next_unblocked_step: `phase-1 complete; next product slice is physical-policy phase 2 / remaining broad hardening`
 
 ## 11. Test ladder
 
