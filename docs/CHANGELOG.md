@@ -8,6 +8,7 @@
 
 ## 2026-06-10
 
+- A separate planned slice was added for `computer-use-win` observation completeness and deep semantic lookup. The plan frames the Karing/Flutter poor-UIA and R130SH/PySide6 deep-tree reports as one bounded defect family, keeps it out of the current physical-policy closure branch, and proposes a future R2 workstream that separates screenshot-backed visual observation from semantic readiness, adds product-owned completeness metadata, unifies public failure materialization, and introduces a bounded semantic lookup lane without turning the surface into a raw-tree, OCR, or browser workaround.
 - A follow-up review closure pass finished the remaining `executionFacts` executor-drift hardening instead of leaving the fix half-manual. Shared execution executor constants, executor descriptors, and builder support now live behind one canonical registry owner, so `ComputerUseWinPhysicalExecutionPolicy` no longer keeps its own parallel executor map and the integration seam no longer depends on a second hand-maintained allowlist in tests. Focused regression coverage now pins the invariant `declared executor constants == shared descriptor registry == builder support`, while the broader `computer-use-win` action/finalization/protocol contour and the dedicated physical-policy proof-smoke stayed green. This closes the residual class without widening the public contract or introducing another compatibility layer.
 
 ## 2026-05-14
