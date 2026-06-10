@@ -39,6 +39,10 @@ $script:ValidationEntryPoints = @(
         Command = 'powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1'
     },
     [PSCustomObject]@{
+        Key     = 'computer_use_win_observation_completeness_proof_smoke'
+        Command = 'powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-observation-completeness-proof-smoke.ps1'
+    },
+    [PSCustomObject]@{
         Key     = 'refresh_generated_docs'
         Command = 'powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1'
     },
@@ -156,6 +160,7 @@ function New-CommandsMarkdown {
         '| `powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1` | install/release acceptance suite for packaging, installer, shared runtime and public install surface |',
         "| $smokeCommandLiteral | $smokeCommandPurpose |",
         '| `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1` | narrow helper-backed real-STDIO proof-smoke for phase-1 `computer-use-win` executionFacts, covering semantic, expected_physical and fallback_physical action paths |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-observation-completeness-proof-smoke.ps1` | narrow helper-backed real-STDIO proof-smoke for `computer-use-win` observation completeness, covering screenshot-backed visual state with incomplete semantic preview metadata and selector lookup beyond the compact preview |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | full release gate: fast CI + install/release acceptance + cache-install publication proof |',
@@ -183,7 +188,7 @@ function New-CommandsMarkdown {
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/install-computer-use-win.ps1 -Mode codex|runtime-only -PayloadArchivePath <zip> [-PayloadChecksumPath <path>] [-DescriptorPath <path>]` | thin PowerShell bootstrap installer that runs the packaged setup CLI without repo checkout and verifies local payload archives by checksum unless an explicit unsafe dev-only bypass is used |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1` | publish self-contained `computer-use-win` runtime bundle into `plugins/computer-use-win/runtime/win-x64/` |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/materialize-computer-use-win-cache-copy.ps1` | mirror the repo `computer-use-win` plugin into the local cache-install proof root before cache-surface verification |',
-        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema surface matches the repo plugin copy, fresh-thread `get_app_state -> set_value` materializes `executionFacts`, `type_text.coordinateSpace` is capture_pixels-only, runtime bundle is fresh for current publication inputs, and runtime release descriptor metadata is present |',
+        '| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema surface matches the repo plugin copy, fresh-thread `get_app_state -> set_value` materializes `executionFacts`, selector schemas are published, selector-backed `click` reaches a deep target outside the compact preview, `type_text.coordinateSpace` is capture_pixels-only, runtime bundle is fresh for current publication inputs, and runtime release descriptor metadata is present |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/test-install-surface-acceptance.ps1` | Codex wrapper for the install/release acceptance suite |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |',
         '| `powershell -ExecutionPolicy Bypass -File scripts/codex/release-verify.ps1` | Codex wrapper for the full release gate |',
@@ -214,7 +219,9 @@ function New-CommandsMarkdown {
         '- `artifacts/smoke/<run_id>/report.json`',
         '- `artifacts/smoke/<run_id>/summary.md`',
         '- `artifacts/smoke/computer-use-win-physical-policy-phase-1/<run_id>/report.json`',
-        '- `artifacts/smoke/computer-use-win-physical-policy-phase-1/<run_id>/summary.md`'
+        '- `artifacts/smoke/computer-use-win-physical-policy-phase-1/<run_id>/summary.md`',
+        '- `artifacts/smoke/computer-use-win-observation-completeness/<run_id>/report.json`',
+        '- `artifacts/smoke/computer-use-win-observation-completeness/<run_id>/summary.md`'
     )
 
     return $lines -join [Environment]::NewLine
@@ -238,10 +245,11 @@ function New-TestMatrixMarkdown {
         '| Unit | `dotnet test tests/WinBridge.Runtime.Tests/WinBridge.Runtime.Tests.csproj` | audit schema routing, launch exporter drift, launch runtime/status/evidence policy, input contract/runtime/materializer policy, display identity pipeline, monitor id formatting, activation decision logic, wait runtime/status/evidence policy, UIA runtime packaging/evidence, session dedupe, session mutation |',
         '| Integration | `dotnet test tests/WinBridge.Server.IntegrationTests/WinBridge.Server.IntegrationTests.csproj` | raw stdio MCP protocol through staged server/helper bundle with run-aware resolver semantics, public `windows.launch_process`, `windows.open_target` and click-first `windows.input` schema/result mapping, public `computer-use-win` action wave (`press_key`, `set_value`, `type_text`, `scroll`, `perform_secondary_action`, `drag`) including focused and coordinate-confirmed `type_text` fallback, selected-action `observeAfter` / `successorState`, strict `windowId` continuity reuse/fail-close, helper-backed drag proof, attach/focus/activate contract semantics, live `windows.uia_snapshot` target policy/result shape, public `windows.wait` schema/result mapping, monitor inventory, desktop capture by `monitorId`, desktop capture by explicit `hwnd`, capture result shape, runtime bundle resolver semantics |',
         '| Install surface acceptance | `powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1` | shared-runtime foundation CLI (`runtime install/status/verify/repair`), installer orchestration core (`install/update/repair/uninstall` for `codex` and `runtime-only`), bootstrap installer shell, setup CLI payload packaging, WinUI setup app packaging, setup-shell controller mapping, plugin/runtime release packaging, release-backed launcher fallback/rehydration, localization parity, and temp plugin install-copy public surface proof |',
-        '| Install/publication proof | `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | cache-installed `computer-use-win` plugin hash matches repo plugin files, launches from user cache path, exposes exact nine-tool tools/list surface, includes `type_text.allowFocusedFallback`, `type_text.observeAfter`, `type_text.point`, `type_text.coordinateSpace` with capture_pixels-only enum, selected-action `observeAfter`, no semantic-only `observeAfter`, `list_apps.status=ok`, and a fresh-thread `get_app_state -> set_value` action result carrying `executionFacts`; proof metadata records `repoHead`, working-tree cleanliness, runtime-affecting dirty paths, runtime bundle manifest freshness against publication inputs, acceptance eligibility, plugin digest and the installed action-proof summary |',
+        '| Install/publication proof | `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | cache-installed `computer-use-win` plugin hash matches repo plugin files, launches from user cache path, exposes exact nine-tool tools/list surface, includes `type_text.allowFocusedFallback`, `type_text.observeAfter`, `type_text.point`, `type_text.coordinateSpace` with capture_pixels-only enum, selected-action `observeAfter`, no semantic-only `observeAfter`, selector schemas for semantic target tools and drag endpoints, `list_apps.status=ok`, a fresh-thread `get_app_state -> set_value` action result carrying `executionFacts`, and a selector-backed `click` that reaches a deep helper target outside the compact preview with `observeAfter` successor state; proof metadata records `repoHead`, working-tree cleanliness, runtime-affecting dirty paths, runtime bundle manifest freshness against publication inputs, acceptance eligibility, plugin digest and the installed action-proof summary |',
         "| Smoke | $smokeCommandLiteral | $smokeCoverageNarrative |",
         '| Minimal proof-smoke | `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1` | helper-backed real STDIO phase-1 policy proof for semantic `set_value`, expected_physical `click` + explicit-focus `type_text`, and fallback_physical focused + coordinate-confirmed `type_text`, each with public `executionFacts` assertions |',
-        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + PowerShell static analysis + build + fast tests + smoke + minimal proof-smoke |',
+        '| Observation proof-smoke | `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-observation-completeness-proof-smoke.ps1` | helper-backed real STDIO proof for screenshot-backed `get_app_state` with incomplete semantic preview metadata and bounded selector lookup beyond the compact preview with `observeAfter` successor state |',
+        '| Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + PowerShell static analysis + build + fast tests + smoke + physical-policy proof-smoke + observation-completeness proof-smoke |',
         '| Release verify | `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | fast CI contour + install/release acceptance + cache-installed publication proof |',
         '',
         '## Чего пока не хватает',

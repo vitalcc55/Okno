@@ -311,6 +311,43 @@ public sealed class McpProtocolSmokeTests
     }
 
     [Fact]
+    public async Task ComputerUseWinGetAppStatePublishesIncompleteSemanticPreviewWithImageWhenNodeBudgetIsBounded()
+    {
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
+            title: $"Okno Smoke Helper Incomplete Preview {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
+
+        using JsonDocument response = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+                maxNodes = 2,
+            });
+
+        JsonElement result = response.RootElement.GetProperty("result");
+        Assert.False(result.GetProperty("isError").GetBoolean());
+        Assert.Contains(
+            result.GetProperty("content").EnumerateArray(),
+            block => block.GetProperty("type").GetString() == "image");
+        JsonElement payload = result.GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, payload.GetProperty("status").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("stateToken").GetString()));
+        JsonElement semanticPreview = payload.GetProperty("semanticPreview");
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Incomplete, semanticPreview.GetProperty("status").GetString());
+        Assert.Equal(2, semanticPreview.GetProperty("requestedMaxNodes").GetInt32());
+        Assert.True(semanticPreview.GetProperty("nodeBudgetBoundaryReached").GetBoolean());
+        Assert.True(
+            semanticPreview.GetProperty("truncated").GetBoolean()
+            || semanticPreview.GetProperty("depthBoundaryReached").GetBoolean(),
+            "Bounded helper preview must publish an incomplete semantic proof, not just a silent node-budget marker.");
+    }
+
+    [Fact]
     public async Task ComputerUseWinClickUsesStateTokenAndElementIndexAfterApprovedAppState()
     {
         await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
@@ -567,6 +604,75 @@ public sealed class McpProtocolSmokeTests
         Assert.Contains(
             secondStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
             element => string.Equals(element.GetProperty("name").GetString(), "Range mirror: 9", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ComputerUseWinClickUpdatesDeepSemanticMirrorThroughSelectorOutsidePreview()
+    {
+        await using HelperWindowScope helper = await StartHelperWindowScopeAsync(
+            title: $"Okno Smoke Helper Deep Selector {Guid.NewGuid():N}",
+            lifetimeMs: 20000);
+        long helperHwnd = helper.Hwnd;
+        await using ServerSession server = await StartInitializedServerSessionAsync(ToolSurfaceProfileValues.ComputerUseWin);
+        McpRequestSession session = server.Mcp;
+
+        using JsonDocument firstStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
+
+        JsonElement firstStatePayload = firstStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, firstStatePayload.GetProperty("status").GetString());
+        string stateToken = firstStatePayload.GetProperty("stateToken").GetString()!;
+        JsonElement[] previewElements = [.. firstStatePayload.GetProperty("accessibilityTree").EnumerateArray()];
+        Assert.DoesNotContain(
+            previewElements,
+            element => string.Equals(element.GetProperty("name").GetString(), "Deep semantic action", StringComparison.Ordinal));
+
+        using JsonDocument clickResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinClick,
+            new
+            {
+                stateToken,
+                selector = new
+                {
+                    automationId = "DeepSemanticActionButton",
+                    controlType = "button",
+                },
+                confirm = false,
+                observeAfter = true,
+            });
+
+        JsonElement clickPayload = clickResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.VerifyNeeded, clickPayload.GetProperty("status").GetString());
+        Assert.False(clickPayload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.Equal(helperHwnd, clickPayload.GetProperty("targetHwnd").GetInt64());
+        Assert.False(clickPayload.TryGetProperty("elementIndex", out JsonElement elementIndex) && elementIndex.ValueKind != JsonValueKind.Null);
+        JsonElement executionFacts = clickPayload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("fresh_uia_revalidation_to_input", executionFacts.GetProperty("executor").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(executionFacts.GetProperty("successorStateAvailable").GetBoolean());
+        JsonElement successorState = clickPayload.GetProperty("successorState");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, successorState.GetProperty("status").GetString());
+
+        using JsonDocument secondStateResponse = await session.CallToolAsync(
+            ToolNames.ComputerUseWinGetAppState,
+            new
+            {
+                hwnd = helperHwnd,
+                confirm = true,
+            });
+
+        JsonElement secondStatePayload = secondStateResponse.RootElement.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, secondStatePayload.GetProperty("status").GetString());
+        Assert.Contains(
+            secondStatePayload.GetProperty("accessibilityTree").EnumerateArray(),
+            element => string.Equals(element.GetProperty("name").GetString(), "Deep selector mirror: clicked", StringComparison.Ordinal));
     }
 
     [Fact]

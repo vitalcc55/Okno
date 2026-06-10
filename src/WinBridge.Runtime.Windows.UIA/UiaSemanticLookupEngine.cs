@@ -74,7 +74,16 @@ internal sealed class UiaSemanticLookupEngine(TimeProvider timeProvider)
 
                 TraversalNode current = pending.Pop();
                 visitedNodeCount++;
-                UiaSnapshotNodeData data = current.Node.GetData();
+                UiaSnapshotNodeData data;
+                try
+                {
+                    data = current.Node.GetData();
+                }
+                catch (Exception exception) when (IsProviderFailure(exception) && current.Depth > 0)
+                {
+                    continue;
+                }
+
                 string elementId = CreateElementId(data.RuntimeId, current.RawPath);
 
                 if (ElementSelectorPolicy.Matches(selector, data.Name, data.AutomationId, data.ControlType))
@@ -99,7 +108,16 @@ internal sealed class UiaSemanticLookupEngine(TimeProvider timeProvider)
                         current.Ordinal);
                 }
 
-                IReadOnlyList<IUiaSemanticLookupNode> children = current.Node.GetChildren();
+                IReadOnlyList<IUiaSemanticLookupNode> children;
+                try
+                {
+                    children = current.Node.GetChildren();
+                }
+                catch (Exception exception) when (IsProviderFailure(exception) && current.Depth > 0)
+                {
+                    continue;
+                }
+
                 if (children.Count == 0)
                 {
                     continue;

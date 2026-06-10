@@ -30,6 +30,7 @@ Invoke-CiTimedStep -Key 'build' -Description 'build step' -ScriptPath (Join-Path
 Invoke-CiTimedStep -Key 'test' -Description 'test step' -ScriptPath (Join-Path $PSScriptRoot 'test.ps1')
 Invoke-CiTimedStep -Key 'smoke' -Description 'smoke step' -ScriptPath (Join-Path $PSScriptRoot 'smoke.ps1')
 Invoke-CiTimedStep -Key 'computer_use_win_physical_policy_proof_smoke' -Description 'computer-use-win physical policy proof smoke step' -ScriptPath (Join-Path $PSScriptRoot 'computer-use-win-physical-policy-proof-smoke.ps1')
+Invoke-CiTimedStep -Key 'computer_use_win_observation_completeness_proof_smoke' -Description 'computer-use-win observation completeness proof smoke step' -ScriptPath (Join-Path $PSScriptRoot 'computer-use-win-observation-completeness-proof-smoke.ps1')
 Invoke-CiTimedStep -Key 'refresh_generated_docs' -Description 'refresh generated docs step' -ScriptPath (Join-Path $PSScriptRoot 'refresh-generated-docs.ps1')
 
 $ciStopwatch.Stop()

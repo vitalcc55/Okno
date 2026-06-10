@@ -197,6 +197,33 @@ public sealed class UiaSemanticLookupEngineTests
         Assert.DoesNotContain("secret provider failure", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void SearchSkipsNonRootProviderFailureAndContinuesSiblingTraversal()
+    {
+        FakeSemanticLookupNode target = Node("target", automationId: "DeepTarget", controlType: "button");
+        FakeSemanticLookupNode root = Node(
+            "root",
+            controlType: "window",
+            children:
+            [
+                new ThrowingSemanticLookupNode(),
+                target,
+            ]);
+
+        UiaSemanticLookupResult result = Search(
+            root,
+            new UiaSemanticLookupRequest
+            {
+                Selector = new WaitElementSelector(AutomationId: "DeepTarget", ControlType: "button"),
+                MaxDepth = 2,
+                MaxNodes = 8,
+            });
+
+        Assert.Equal(UiaSemanticLookupStatusValues.UniqueMatch, result.Status);
+        Assert.Equal("DeepTarget", result.Element?.AutomationId);
+        Assert.Equal(3, result.VisitedNodeCount);
+    }
+
     private static UiaSemanticLookupResult Search(
         FakeSemanticLookupNode root,
         UiaSemanticLookupRequest request,
@@ -220,7 +247,7 @@ public sealed class UiaSemanticLookupEngineTests
         string? automationId = null,
         string controlType = "pane",
         int[]? runtimeId = null,
-        FakeSemanticLookupNode[]? children = null) =>
+        IUiaSemanticLookupNode[]? children = null) =>
         new(
             new UiaSnapshotNodeData(
                 RuntimeId: runtimeId,
@@ -248,7 +275,7 @@ public sealed class UiaSemanticLookupEngineTests
 
     private sealed class FakeSemanticLookupNode(
         UiaSnapshotNodeData data,
-        IReadOnlyList<FakeSemanticLookupNode> children) : IUiaSemanticLookupNode
+        IReadOnlyList<IUiaSemanticLookupNode> children) : IUiaSemanticLookupNode
     {
         public UiaSnapshotNodeData GetData() => data;
 

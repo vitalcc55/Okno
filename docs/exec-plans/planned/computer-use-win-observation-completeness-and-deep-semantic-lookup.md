@@ -417,7 +417,7 @@ Master progress checklist:
 - [x] Step 6. Integrate the selector lane into semantic actions first
 - [x] Step 7. Close the same reachability class across proof-backed physical actions
 - [x] Step 8. Carry the new observation model through `observeAfter` and stored successor state
-- [ ] Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
+- [x] Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
 - [ ] Step 10. Final closure pass, cleanup, and roadmap handoff
 
 ### Step 0. Freeze the baseline and add red characterization
@@ -1214,10 +1214,10 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] Deterministic poor-UIA and deep-tree characterization exists in local proof surfaces.
-- [ ] Physical-policy proof-smoke wording remains honest about what it proves.
-- [ ] Cache-installed proof covers the final shipped public contract for this slice.
-- [ ] Closure pass completed for runtime, tests, smoke, and cache-install symmetry.
+- [x] Deterministic poor-UIA and deep-tree characterization exists in local proof surfaces.
+- [x] Physical-policy proof-smoke wording remains honest about what it proves.
+- [x] Cache-installed proof covers the final shipped public contract for this slice.
+- [x] Closure pass completed for runtime, tests, smoke, and cache-install symmetry.
 
 ### Step 10. Final closure pass, cleanup, and roadmap handoff
 

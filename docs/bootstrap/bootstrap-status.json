@@ -34,6 +34,7 @@
     "test_install_surface_acceptance": "powershell -ExecutionPolicy Bypass -File scripts/test-install-surface-acceptance.ps1",
     "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",
     "computer_use_win_physical_policy_proof_smoke": "powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1",
+    "computer_use_win_observation_completeness_proof_smoke": "powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-observation-completeness-proof-smoke.ps1",
     "refresh_generated_docs": "powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1",
     "ci": "powershell -ExecutionPolicy Bypass -File scripts/ci.ps1",
     "release_verify": "powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1",

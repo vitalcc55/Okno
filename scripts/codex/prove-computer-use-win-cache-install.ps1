@@ -372,6 +372,39 @@ function Test-Property {
     return @($Object.PSObject.Properties.Name) -contains $Name
 }
 
+function Get-PropertyValue {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Object,
+        [Parameter(Mandatory)]
+        [string] $Name
+    )
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+
+    return $property.Value
+}
+
+function Assert-SelectorSchema {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Tool,
+        [Parameter(Mandatory)]
+        [string] $PropertyName
+    )
+
+    $toolName = [string]$Tool.name
+    Assert-Condition -Condition (Test-Property -Object $Tool.inputSchema.properties -Name $PropertyName) -Message "$toolName schema is missing $PropertyName."
+    $selectorSchema = Get-PropertyValue -Object $Tool.inputSchema.properties -Name $PropertyName
+    Assert-Condition -Condition ([string]$selectorSchema.type -eq 'object') -Message "$toolName $PropertyName schema must be an object."
+    foreach ($selectorField in @('automationId', 'controlType', 'name')) {
+        Assert-Condition -Condition (Test-Property -Object $selectorSchema.properties -Name $selectorField) -Message "$toolName $PropertyName schema is missing $selectorField."
+    }
+}
+
 function Assert-Condition {
     param(
         [Parameter(Mandatory)]
@@ -642,6 +675,15 @@ try {
         Assert-Condition -Condition (-not (Test-Property -Object $tool.inputSchema.properties -Name 'observeAfter')) -Message "$toolName unexpectedly exposes observeAfter."
     }
 
+    $selectorSchemaToolNames = @('click', 'set_value', 'type_text', 'scroll', 'perform_secondary_action')
+    foreach ($toolName in $selectorSchemaToolNames) {
+        $tool = @($tools | Where-Object { $_.name -eq $toolName })[0]
+        Assert-SelectorSchema -Tool $tool -PropertyName 'selector'
+    }
+    $dragTool = @($tools | Where-Object { $_.name -eq 'drag' })[0]
+    Assert-SelectorSchema -Tool $dragTool -PropertyName 'fromSelector'
+    Assert-SelectorSchema -Tool $dragTool -PropertyName 'toSelector'
+
     $listAppsStatus = [string]$listAppsCall.Json.result.structuredContent.status
     Assert-Condition -Condition ($listAppsStatus -eq 'ok') -Message "list_apps returned status '$listAppsStatus'."
 
@@ -656,6 +698,9 @@ try {
         }
         $getAppStatePayload = $getAppStateCall.Json.result.structuredContent
         Assert-Condition -Condition ([string]$getAppStatePayload.status -eq 'ok') -Message "cache-installed get_app_state returned status '$($getAppStatePayload.status)'."
+        Assert-Condition -Condition ($null -ne $getAppStatePayload.semanticPreview) -Message 'cache-installed get_app_state did not publish semanticPreview.'
+        $getAppStateSemanticPreviewStatus = [string]$getAppStatePayload.semanticPreview.status
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($getAppStateSemanticPreviewStatus)) -Message 'cache-installed get_app_state semanticPreview did not publish status.'
         $stateToken = [string]$getAppStatePayload.stateToken
         Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($stateToken)) -Message 'cache-installed get_app_state did not return stateToken.'
         $queryInputElement = @($getAppStatePayload.accessibilityTree | Where-Object { [string]$_.name -eq 'Smoke query input' })[0]
@@ -690,6 +735,47 @@ try {
         Assert-Condition -Condition ([string]$followUpStatePayload.status -eq 'ok') -Message "cache-installed follow-up get_app_state returned status '$($followUpStatePayload.status)'."
         $mirrorUpdated = @($followUpStatePayload.accessibilityTree | Where-Object { [string]$_.name -eq 'Query mirror: cache install proof value' }).Count -gt 0
         Assert-Condition -Condition $mirrorUpdated -Message 'cache-installed follow-up get_app_state did not expose the updated query mirror.'
+        $followUpStateToken = [string]$followUpStatePayload.stateToken
+        Assert-Condition -Condition (-not [string]::IsNullOrWhiteSpace($followUpStateToken)) -Message 'cache-installed follow-up get_app_state did not return stateToken.'
+        $deepSelectorPreviewVisible = @($followUpStatePayload.accessibilityTree | Where-Object { [string]$_.name -eq 'Deep semantic action' }).Count -gt 0
+        Assert-Condition -Condition (-not $deepSelectorPreviewVisible) -Message 'cache-installed helper unexpectedly exposed Deep semantic action in compact preview.'
+
+        $selectorClickCall = Invoke-McpRequest -Process $process -Method 'tools/call' -Id 7 -TimeoutMs $TimeoutMs -Params @{
+            name = 'click'
+            arguments = @{
+                stateToken = $followUpStateToken
+                selector = @{
+                    automationId = 'DeepSemanticActionButton'
+                    controlType = 'button'
+                }
+                confirm = $false
+                observeAfter = $true
+            }
+        }
+        $selectorClickPayload = $selectorClickCall.Json.result.structuredContent
+        Assert-Condition -Condition ([string]$selectorClickPayload.status -eq 'verify_needed') -Message "cache-installed selector click returned status '$($selectorClickPayload.status)'."
+        Assert-Condition -Condition ([bool]$selectorClickPayload.refreshStateRecommended -eq $false) -Message 'cache-installed selector click unexpectedly recommended state refresh.'
+        Assert-Condition -Condition ([long]$selectorClickPayload.targetHwnd -eq [long]$helper.Hwnd) -Message 'cache-installed selector click targeted a different hwnd.'
+        $selectorExecutionFacts = $selectorClickPayload.executionFacts
+        Assert-Condition -Condition ($null -ne $selectorExecutionFacts) -Message 'cache-installed selector click did not publish executionFacts.'
+        Assert-Condition -Condition ([string]$selectorExecutionFacts.dispatchClass -eq 'expected_physical') -Message "cache-installed selector click returned unexpected dispatchClass '$($selectorExecutionFacts.dispatchClass)'."
+        Assert-Condition -Condition ([string]$selectorExecutionFacts.executor -eq 'fresh_uia_revalidation_to_input') -Message "cache-installed selector click returned unexpected executor '$($selectorExecutionFacts.executor)'."
+        Assert-Condition -Condition ([string]$selectorExecutionFacts.targetProof -eq 'uia_revalidated') -Message "cache-installed selector click returned unexpected targetProof '$($selectorExecutionFacts.targetProof)'."
+        Assert-Condition -Condition ([bool]$selectorExecutionFacts.observeAfterRequested) -Message 'cache-installed selector click did not publish observeAfterRequested=true.'
+        Assert-Condition -Condition ([bool]$selectorExecutionFacts.successorStateAvailable) -Message 'cache-installed selector click did not publish successorStateAvailable=true.'
+        Assert-Condition -Condition ([string]$selectorClickPayload.successorState.status -eq 'ok') -Message "cache-installed selector click successorState returned status '$($selectorClickPayload.successorState.status)'."
+
+        $finalStateCall = Invoke-McpRequest -Process $process -Method 'tools/call' -Id 8 -TimeoutMs $TimeoutMs -Params @{
+            name = 'get_app_state'
+            arguments = @{
+                hwnd = [long]$helper.Hwnd
+                confirm = $true
+            }
+        }
+        $finalStatePayload = $finalStateCall.Json.result.structuredContent
+        Assert-Condition -Condition ([string]$finalStatePayload.status -eq 'ok') -Message "cache-installed final get_app_state returned status '$($finalStatePayload.status)'."
+        $selectorMirrorUpdated = @($finalStatePayload.accessibilityTree | Where-Object { [string]$_.name -eq 'Deep selector mirror: clicked' }).Count -gt 0
+        Assert-Condition -Condition $selectorMirrorUpdated -Message 'cache-installed final get_app_state did not expose the updated deep selector mirror.'
     }
     finally {
         if ($null -ne $helper) {
@@ -750,8 +836,11 @@ try {
         typeTextCoordinateSpaceValues = $typeTextCoordinateSpaces
         selectedActionsHaveObserveAfter = $true
         semanticOnlyActionsLackObserveAfter = $true
+        selectorSchemasPresent = $true
+        selectorSchemaTools = @($selectorSchemaToolNames + @('drag.fromSelector', 'drag.toSelector'))
         listAppsStatus = $listAppsStatus
         appCount = @($listAppsCall.Json.result.structuredContent.apps).Count
+        getAppStateSemanticPreviewStatus = $getAppStateSemanticPreviewStatus
         freshThreadActionTool = 'set_value'
         freshThreadActionStatus = [string]$setValuePayload.status
         freshThreadActionExecutionFacts = [PSCustomObject]@{
@@ -762,6 +851,17 @@ try {
             captureReferencePresent = [bool]$executionFacts.captureReferencePresent
         }
         freshThreadActionMirrorUpdated = $mirrorUpdated
+        selectorActionTool = 'click'
+        selectorActionStatus = [string]$selectorClickPayload.status
+        selectorActionExecutionFacts = [PSCustomObject]@{
+            dispatchClass = [string]$selectorExecutionFacts.dispatchClass
+            executor = [string]$selectorExecutionFacts.executor
+            targetProof = [string]$selectorExecutionFacts.targetProof
+            observeAfterRequested = [bool]$selectorExecutionFacts.observeAfterRequested
+            successorStateAvailable = [bool]$selectorExecutionFacts.successorStateAvailable
+        }
+        selectorActionPreviewExcluded = -not $deepSelectorPreviewVisible
+        selectorActionMirrorUpdated = $selectorMirrorUpdated
     }
 
     $outputDirectory = Split-Path -Parent $OutputPath

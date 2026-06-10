@@ -89,6 +89,8 @@ internal static class Program
         private readonly Button _dragSourceButton;
         private readonly Panel _dragDestinationPanel;
         private readonly Label _dragMirrorLabel;
+        private readonly Button _deepSemanticButton;
+        private readonly Label _deepSemanticMirrorLabel;
         private readonly Panel _visualHeartbeatPanel;
         private readonly Label _visualHeartbeatLabel;
         private readonly System.Windows.Forms.Timer _dragPollTimer;
@@ -127,8 +129,11 @@ internal static class Program
             _dragDestinationPanel = CreateDragDestinationPanel();
             _dragMirrorLabel = CreateDragMirrorLabel();
             _dragSourceOrigin = _dragSourceButton.Location;
+            _deepSemanticButton = CreateDeepSemanticButton();
+            _deepSemanticMirrorLabel = CreateDeepSemanticMirrorLabel("ready");
             _visualHeartbeatPanel = CreateVisualHeartbeatPanel();
             _visualHeartbeatLabel = CreateVisualHeartbeatLabel();
+            _visualHeartbeatPanel.Controls.Add(CreateDeepSemanticHost(_deepSemanticButton));
             _dragPollTimer = CreateDragPollTimer();
             _visualHeartbeatTimer = CreateVisualHeartbeatTimer();
             _autoCloseTimer = CreateAutoCloseTimer(lifetimeMs);
@@ -143,6 +148,7 @@ internal static class Program
             _rememberCheckBox.CheckedChanged += (_, _) => UpdateRememberSemanticSelectionName();
             _rangeInput.ValueChanged += (_, _) => UpdateRangeMirror();
             _scrollListBox.TopVisibleItemChanged += (_, _) => UpdateScrollMirror();
+            _deepSemanticButton.Click += (_, _) => UpdateDeepSemanticMirror("clicked");
             _dragSourceButton.MouseDown += DragSourceButtonOnMouseDown;
             Controls.Add(_runButton);
             Controls.Add(_transientWaitButton);
@@ -158,6 +164,7 @@ internal static class Program
             Controls.Add(CreateTreeView());
             Controls.Add(_visualHeartbeatPanel);
             Controls.Add(_visualHeartbeatLabel);
+            Controls.Add(_deepSemanticMirrorLabel);
             Controls.Add(_scrollListBox);
             Controls.Add(_scrollMirrorLabel);
             Controls.Add(_dragSourceButton);
@@ -337,6 +344,49 @@ internal static class Program
                 BackColor = Color.White,
             };
 
+        private static Button CreateDeepSemanticButton() =>
+            new()
+            {
+                Name = "DeepSemanticActionButton",
+                AccessibleName = "Deep semantic action",
+                Text = "Deep semantic action",
+                Bounds = new Rectangle(4, 4, 132, 26),
+                UseVisualStyleBackColor = true,
+            };
+
+        private static Label CreateDeepSemanticMirrorLabel(string status) =>
+            new()
+            {
+                Name = "DeepSemanticMirrorLabel",
+                AccessibleName = $"Deep selector mirror: {status}",
+                Text = $"Deep selector mirror: {status}",
+                Bounds = new Rectangle(260, 276, 212, 24),
+                BackColor = Color.White,
+            };
+
+        private static Panel CreateDeepSemanticHost(Control targetControl)
+        {
+            Panel outerPanel = CreateNestedPanel("DeepSemanticOuterPanel", "Deep semantic outer panel", new Rectangle(12, 84, 188, 96));
+            Panel firstPanel = CreateNestedPanel("DeepSemanticFirstPanel", "Deep semantic first panel", new Rectangle(8, 8, 168, 76));
+            Panel secondPanel = CreateNestedPanel("DeepSemanticSecondPanel", "Deep semantic second panel", new Rectangle(8, 8, 148, 56));
+            Panel thirdPanel = CreateNestedPanel("DeepSemanticThirdPanel", "Deep semantic third panel", new Rectangle(8, 8, 132, 38));
+            thirdPanel.Controls.Add(targetControl);
+            secondPanel.Controls.Add(thirdPanel);
+            firstPanel.Controls.Add(secondPanel);
+            outerPanel.Controls.Add(firstPanel);
+            return outerPanel;
+        }
+
+        private static Panel CreateNestedPanel(string name, string accessibleName, Rectangle bounds) =>
+            new()
+            {
+                Name = name,
+                AccessibleName = accessibleName,
+                Bounds = bounds,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.LightYellow,
+            };
+
         private static Panel CreateVisualHeartbeatPanel() =>
             new()
             {
@@ -465,6 +515,13 @@ internal static class Program
             string mirrorText = $"Scroll mirror: {_scrollListBox.TopVisibleItemText}";
             _scrollMirrorLabel.Text = mirrorText;
             _scrollMirrorLabel.AccessibleName = mirrorText;
+        }
+
+        private void UpdateDeepSemanticMirror(string status)
+        {
+            string mirrorText = $"Deep selector mirror: {status}";
+            _deepSemanticMirrorLabel.Text = mirrorText;
+            _deepSemanticMirrorLabel.AccessibleName = mirrorText;
         }
 
         private void DragSourceButtonOnMouseDown(object? sender, MouseEventArgs eventArgs)
