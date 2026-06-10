@@ -9,6 +9,7 @@ namespace WinBridge.Server.ComputerUse;
 internal sealed record ComputerUseWinDragEndpointPayload(
     string Mode,
     int? ElementIndex,
+    WaitElementSelector? Selector,
     InputPoint? Point);
 
 internal sealed record ComputerUseWinDragPayload(
@@ -41,6 +42,7 @@ internal static class ComputerUseWinDragContract
 
         if (!TryParseEndpoint(
                 request.FromElementIndex,
+                request.FromSelector,
                 request.FromPoint,
                 endpointLabel: "source",
                 out ComputerUseWinDragEndpointPayload? source,
@@ -51,6 +53,7 @@ internal static class ComputerUseWinDragContract
 
         if (!TryParseEndpoint(
                 request.ToElementIndex,
+                request.ToSelector,
                 request.ToPoint,
                 endpointLabel: "destination",
                 out ComputerUseWinDragEndpointPayload? destination,
@@ -64,6 +67,14 @@ internal static class ComputerUseWinDragContract
             && request.FromElementIndex.Value == request.ToElementIndex.Value)
         {
             failure = "Для drag source и destination elementIndex должны ссылаться на разные элементы.";
+            return false;
+        }
+
+        if (request.FromSelector is not null
+            && request.ToSelector is not null
+            && SelectorsEqual(request.FromSelector, request.ToSelector))
+        {
+            failure = "Для drag source и destination selector должны ссылаться на разные элементы.";
             return false;
         }
 
@@ -179,13 +190,14 @@ internal static class ComputerUseWinDragContract
     }
 
     public static JsonArray CreateSourceSelectorModeSchema() =>
-        CreateEndpointSelectorModeSchema("fromElementIndex", "fromPoint");
+        CreateEndpointSelectorModeSchema("fromElementIndex", "fromSelector", "fromPoint");
 
     public static JsonArray CreateDestinationSelectorModeSchema() =>
-        CreateEndpointSelectorModeSchema("toElementIndex", "toPoint");
+        CreateEndpointSelectorModeSchema("toElementIndex", "toSelector", "toPoint");
 
     private static bool TryParseEndpoint(
         int? elementIndex,
+        WaitElementSelector? selector,
         InputPoint? point,
         string endpointLabel,
         out ComputerUseWinDragEndpointPayload? endpoint,
@@ -194,16 +206,24 @@ internal static class ComputerUseWinDragContract
         endpoint = null;
 
         bool hasElementTarget = elementIndex is not null;
+        bool hasSelectorTarget = selector is not null;
         bool hasPointTarget = point is not null;
-        if (hasElementTarget == hasPointTarget)
+        int targetCount = (hasElementTarget ? 1 : 0) + (hasSelectorTarget ? 1 : 0) + (hasPointTarget ? 1 : 0);
+        if (targetCount != 1)
         {
-            failure = $"Для drag {endpointLabel} нужно передать ровно один selector mode: {(endpointLabel == "source" ? "fromElementIndex или fromPoint" : "toElementIndex или toPoint")}.";
+            failure = $"Для drag {endpointLabel} нужно передать ровно один selector mode: {(endpointLabel == "source" ? "fromElementIndex, fromSelector или fromPoint" : "toElementIndex, toSelector или toPoint")}.";
             return false;
         }
 
         if (elementIndex is < 1)
         {
             failure = $"Параметр {(endpointLabel == "source" ? "fromElementIndex" : "toElementIndex")} для drag должен быть >= 1, если он передан.";
+            return false;
+        }
+
+        if (hasSelectorTarget && !ElementSelectorPolicy.HasCriteria(selector))
+        {
+            failure = $"Параметр {(endpointLabel == "source" ? "fromSelector" : "toSelector")} для drag должен содержать хотя бы одно поле: name, automationId или controlType.";
             return false;
         }
 
@@ -216,13 +236,15 @@ internal static class ComputerUseWinDragContract
         }
 
         endpoint = hasElementTarget
-            ? new("element_index", elementIndex, null)
-            : new("point", null, point);
+            ? new(ComputerUseWinSemanticTargetModeValues.ElementIndex, elementIndex, null, null)
+            : hasSelectorTarget
+                ? new(ComputerUseWinSemanticTargetModeValues.Selector, null, selector, null)
+                : new("point", null, null, point);
         failure = null;
         return true;
     }
 
-    private static JsonArray CreateEndpointSelectorModeSchema(string elementPropertyName, string pointPropertyName) =>
+    private static JsonArray CreateEndpointSelectorModeSchema(string elementPropertyName, string selectorPropertyName, string pointPropertyName) =>
         new()
         {
             new JsonObject
@@ -238,6 +260,14 @@ internal static class ComputerUseWinDragContract
             },
             new JsonObject
             {
+                ["required"] = CreateStringArray(selectorPropertyName),
+                ["properties"] = new JsonObject
+                {
+                    [selectorPropertyName] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
+                },
+            },
+            new JsonObject
+            {
                 ["required"] = CreateStringArray(pointPropertyName),
                 ["properties"] = new JsonObject
                 {
@@ -245,6 +275,11 @@ internal static class ComputerUseWinDragContract
                 },
             },
         };
+
+    private static bool SelectorsEqual(WaitElementSelector left, WaitElementSelector right) =>
+        string.Equals(left.Name, right.Name, StringComparison.Ordinal)
+        && string.Equals(left.AutomationId, right.AutomationId, StringComparison.Ordinal)
+        && string.Equals(left.ControlType, right.ControlType, StringComparison.Ordinal);
 
     private static JsonArray CreateStringArray(params string[] values)
     {

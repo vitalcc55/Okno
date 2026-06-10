@@ -50,6 +50,14 @@ internal static class ComputerUseWinClickContract
             },
             new JsonObject
             {
+                ["required"] = new JsonArray("selector"),
+                ["properties"] = new JsonObject
+                {
+                    ["selector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
+                },
+            },
+            new JsonObject
+            {
                 ["required"] = new JsonArray("point"),
                 ["properties"] = new JsonObject
                 {
@@ -105,6 +113,12 @@ internal static class ComputerUseWinClickContract
                 return true;
             }
 
+            outcome = null;
+            return false;
+        }
+
+        if (request.Selector is not null)
+        {
             outcome = null;
             return false;
         }
@@ -167,7 +181,7 @@ internal static class ComputerUseWinClickContract
         outcome = ComputerUseWinActionExecutionOutcome.Failure(
             ComputerUseWinFailureDetails.Expected(
                 ComputerUseWinFailureCodeValues.InvalidRequest,
-                "Для click требуется elementIndex или point."),
+                "Для click требуется elementIndex, selector или point."),
             ComputerUseWinActionLifecyclePhase.BeforeActivation,
             confirmationRequired: false,
             riskClass: null,
@@ -177,9 +191,35 @@ internal static class ComputerUseWinClickContract
 
     private static string? ValidateSelectorMode(ComputerUseWinClickRequest request)
     {
-        if (request.ElementIndex is not null && request.Point is not null)
+        int semanticSelectorCount = 0;
+        if (request.ElementIndex is not null)
         {
-            return "Для click нужно передать либо elementIndex, либо point, но не оба селектора сразу.";
+            semanticSelectorCount++;
+        }
+
+        if (request.Selector is not null)
+        {
+            semanticSelectorCount++;
+        }
+
+        if (request.Point is not null)
+        {
+            semanticSelectorCount++;
+        }
+
+        if (semanticSelectorCount > 1)
+        {
+            return "Для click нужно передать ровно один selector mode: elementIndex, selector или point.";
+        }
+
+        if (request.ElementIndex is < 1)
+        {
+            return "Параметр elementIndex для click должен быть >= 1, если он передан.";
+        }
+
+        if (request.Selector is not null && !ElementSelectorPolicy.HasCriteria(request.Selector))
+        {
+            return "Параметр selector для click должен содержать хотя бы одно поле: name, automationId или controlType.";
         }
 
         return null;
@@ -187,9 +227,9 @@ internal static class ComputerUseWinClickContract
 
     private static string? ValidateSelectorPresence(ComputerUseWinClickRequest request)
     {
-        if (request.ElementIndex is null && request.Point is null)
+        if (request.ElementIndex is null && request.Selector is null && request.Point is null)
         {
-            return "Для click требуется elementIndex или point.";
+            return "Для click требуется elementIndex, selector или point.";
         }
 
         return null;

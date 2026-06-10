@@ -54,11 +54,15 @@ builder.Services.AddSingleton(static services => new ComputerUseWinAppStateObser
     services.GetRequiredService<IComputerUseWinInstructionProvider>()));
 builder.Services.AddSingleton(static services => new ComputerUseWinClickExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
-    new ComputerUseWinClickTargetResolver(services.GetRequiredService<IUiAutomationService>()),
+    new ComputerUseWinClickTargetResolver(
+        services.GetRequiredService<IUiAutomationService>(),
+        services.GetRequiredService<IUiAutomationSemanticLookupService>()),
     services.GetRequiredService<IInputService>()));
 builder.Services.AddSingleton(static services => new ComputerUseWinDragExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
-    new ComputerUseWinDragTargetResolver(services.GetRequiredService<IUiAutomationService>()),
+    new ComputerUseWinDragTargetResolver(
+        services.GetRequiredService<IUiAutomationService>(),
+        services.GetRequiredService<IUiAutomationSemanticLookupService>()),
     services.GetRequiredService<IInputService>()));
 builder.Services.AddSingleton(static services => new ComputerUseWinPressKeyExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
@@ -71,7 +75,8 @@ builder.Services.AddSingleton(static services => new ComputerUseWinSetValueExecu
 builder.Services.AddSingleton(static services => new ComputerUseWinTypeTextExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
     services.GetRequiredService<IUiAutomationService>(),
-    services.GetRequiredService<IInputService>()));
+    services.GetRequiredService<IInputService>(),
+    services.GetRequiredService<IUiAutomationSemanticLookupService>()));
 builder.Services.AddSingleton(static services => new ComputerUseWinScrollExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
     services.GetRequiredService<IUiAutomationService>(),

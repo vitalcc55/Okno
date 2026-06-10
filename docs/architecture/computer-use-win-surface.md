@@ -120,7 +120,7 @@ semantic selector (`automationId` / `controlType` / optional `name`) и не
 деградирует в blind typing fallback. Текущий
 `type_text` v1 остаётся lower-confidence input path: он печатает только в
 focused writable `edit` target, который заново подтверждён через fresh UIA
-snapshot и UIA read-only semantics. Для poor-UIA targets есть два explicit
+snapshot или bounded semantic selector lookup, с UIA read-only semantics. Для poor-UIA targets есть два explicit
 `allowFocusedFallback=true` branch-а, оба требуют `confirm=true`: focused branch
 требует fresh target-local focus proof и text-entry-like focused target
 candidate (`edit`, либо `document`/`custom` с tokenized
@@ -143,8 +143,8 @@ semantic-only: он публикуется только для strong UIA second
 `toggle`, требует fresh target proof через `elementIndex` revalidation или
 bounded semantic selector lookup и не деградирует в context-menu/right-click
 fallback. Текущий `drag` v1 требует separate source и
-destination proof, принимает `fromElementIndex|fromPoint` и
-`toElementIndex|toPoint`, использует один Windows-native input runtime вместо
+destination proof, принимает `fromElementIndex|fromSelector|fromPoint` и
+`toElementIndex|toSelector|toPoint`, использует один Windows-native input runtime вместо
 второго dispatch layer, требует explicit confirmation для coordinate endpoints
 и по умолчанию завершает generic path как `verify_needed`, а не optimistic
 `done`.
@@ -281,7 +281,7 @@ Feedback после shipped wave всё ещё оставляет соседни
 - `get_app_state` публикует `stateToken` и commit-ит shared state только после полной успешной materialization public result; failed observation не должна оставлять ghost tokens или другие скрытые bounded-state commits;
 - `get_app_state` не является observation-only read-only hint: approved/confirmed path может менять approval store, foreground state и attached/session state, поэтому public metadata не должна рекламировать его как pure read-only tool;
 - malformed request shapes должны отсекаться на public boundary как `invalid_request`: explicit invalid `tool-surface-profile`, nested extra fields и schema-invalid `maxNodes` не должны уходить в widened surface или поздний `observation_failed`;
-- public `click` contract должен совпадать в validator, `tools/list` schema и generated exports: допустимые `button`/`coordinateSpace`, обязательный `stateToken` и selector mode (`elementIndex` xor `point`) публикуются из того же owner-слоя, что и runtime enforcement;
+- public `click` contract должен совпадать в validator, `tools/list` schema и generated exports: допустимые `button`/`coordinateSpace`, обязательный `stateToken` и selector mode (`elementIndex` xor bounded semantic `selector` xor `point`) публикуются из того же owner-слоя, что и runtime enforcement;
 - action layer должен оставаться маленьким и semantically clear: `set_value`
   и `perform_secondary_action` допустимы как Windows-native semantic additions,
   но broad tool zoo, orchestration-only tools и “do anything” surface сюда не

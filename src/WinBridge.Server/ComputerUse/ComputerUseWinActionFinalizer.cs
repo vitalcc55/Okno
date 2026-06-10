@@ -281,7 +281,9 @@ internal static class ComputerUseWinActionFinalizer
         }
 
         if (context.ElementIndexPresent
-            || string.Equals(context.TargetMode, ComputerUseWinSemanticTargetModeValues.Selector, StringComparison.Ordinal))
+            || string.Equals(context.TargetMode, ComputerUseWinSemanticTargetModeValues.Selector, StringComparison.Ordinal)
+            || string.Equals(context.SourceMode, ComputerUseWinSemanticTargetModeValues.Selector, StringComparison.Ordinal)
+            || string.Equals(context.DestinationMode, ComputerUseWinSemanticTargetModeValues.Selector, StringComparison.Ordinal))
         {
             return ComputerUseWinTargetProofValues.UiaRevalidated;
         }

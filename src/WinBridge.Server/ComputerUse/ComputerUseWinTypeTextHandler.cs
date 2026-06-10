@@ -55,7 +55,9 @@ internal sealed class ComputerUseWinTypeTextHandler(
                 ? request.Point is not null
                     ? "coordinate_confirmed_fallback"
                     : request.ElementIndex is null ? "focused_fallback" : "element_focused_fallback"
-                : request.ElementIndex is null ? "focused_editable" : "element_index",
+                : request.Selector is not null
+                    ? ComputerUseWinSemanticTargetModeValues.Selector
+                    : request.ElementIndex is null ? "focused_editable" : ComputerUseWinSemanticTargetModeValues.ElementIndex,
             ElementIndexPresent: request.ElementIndex is not null,
             CoordinateSpace: parsed ? payload!.CoordinateSpace : request.CoordinateSpace,
             CaptureReferencePresent: request.Point is not null && resolvedState.CaptureReference is not null,

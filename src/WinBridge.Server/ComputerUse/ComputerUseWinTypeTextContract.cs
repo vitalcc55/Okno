@@ -44,6 +44,12 @@ internal static class ComputerUseWinTypeTextContract
             return false;
         }
 
+        if (request.Selector is not null && !ElementSelectorPolicy.HasCriteria(request.Selector))
+        {
+            failure = "Параметр selector для type_text должен содержать хотя бы одно поле: name, automationId или controlType.";
+            return false;
+        }
+
         string? pointFailure = ComputerUseWinPointContract.Validate(request.Point, "point");
         if (pointFailure is not null)
         {
@@ -74,9 +80,12 @@ internal static class ComputerUseWinTypeTextContract
             return false;
         }
 
-        if (request.ElementIndex is not null && request.Point is not null)
+        int explicitTargetCount = (request.ElementIndex is not null ? 1 : 0)
+            + (request.Selector is not null ? 1 : 0)
+            + (request.Point is not null ? 1 : 0);
+        if (explicitTargetCount > 1)
         {
-            failure = "Для type_text нужно передать либо elementIndex, либо point, но не оба селектора сразу.";
+            failure = "Для type_text нужно передать не больше одного explicit target: elementIndex, selector или point.";
             return false;
         }
 

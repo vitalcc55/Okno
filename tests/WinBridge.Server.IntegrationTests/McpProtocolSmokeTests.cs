@@ -218,15 +218,19 @@ public sealed class McpProtocolSmokeTests
         Assert.Equal(1, pressKeyProperties.GetProperty("repeat").GetProperty("minimum").GetInt32());
         Assert.Equal(InputActionScalarConstraints.MaximumKeypressRepeat, pressKeyProperties.GetProperty("repeat").GetProperty("maximum").GetInt32());
         Assert.Equal(1, dragProperties.GetProperty("fromElementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal("object", dragProperties.GetProperty("fromSelector").GetProperty("type").GetString());
         Assert.Equal(1, dragProperties.GetProperty("toElementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal("object", dragProperties.GetProperty("toSelector").GetProperty("type").GetString());
         Assert.Equal(
             [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels],
             dragProperties.GetProperty("coordinateSpace").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
         JsonElement[] dragSelectorSets = [.. dragSchema.GetProperty("allOf").EnumerateArray()];
         Assert.Equal(2, dragSelectorSets.Length);
         Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromElementIndex"));
+        Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromSelector"));
         Assert.Contains(dragSelectorSets[0].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "fromPoint"));
         Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toElementIndex"));
+        Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toSelector"));
         Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toPoint"));
         Assert.Equal(1, secondaryActionProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
         Assert.Equal("object", secondaryActionProperties.GetProperty("selector").GetProperty("type").GetString());
@@ -245,6 +249,8 @@ public sealed class McpProtocolSmokeTests
         Assert.Equal("string", setValueProperties.GetProperty("textValue").GetProperty("type").GetString());
         Assert.Equal("number", setValueProperties.GetProperty("numberValue").GetProperty("type").GetString());
         Assert.Equal(1, typeTextProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal("object", clickProperties.GetProperty("selector").GetProperty("type").GetString());
+        Assert.Equal("object", typeTextProperties.GetProperty("selector").GetProperty("type").GetString());
         Assert.Equal("string", typeTextProperties.GetProperty("text").GetProperty("type").GetString());
         Assert.Equal("boolean", typeTextProperties.GetProperty("allowFocusedFallback").GetProperty("type").GetString());
         Assert.Equal("boolean", typeTextProperties.GetProperty("confirm").GetProperty("type").GetString());
@@ -263,8 +269,9 @@ public sealed class McpProtocolSmokeTests
         Assert.False(typeTextProperties.TryGetProperty("valueKind", out _));
 
         JsonElement[] selectorModes = [.. clickDescriptor.GetProperty("inputSchema").GetProperty("oneOf").EnumerateArray()];
-        Assert.Equal(2, selectorModes.Length);
+        Assert.Equal(3, selectorModes.Length);
         Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
+        Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "selector"));
         Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
         JsonElement[] scrollSelectorModes = [.. scrollSchema.GetProperty("oneOf").EnumerateArray()];
         Assert.Contains(scrollSelectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));

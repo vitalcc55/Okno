@@ -119,6 +119,7 @@ public sealed record ComputerUseWinGetAppStateResult(
 public sealed record ComputerUseWinClickRequest(
     string? StateToken = null,
     int? ElementIndex = null,
+    WaitElementSelector? Selector = null,
     InputPoint? Point = null,
     string? CoordinateSpace = null,
     string? Button = null,
@@ -128,6 +129,7 @@ public sealed record ComputerUseWinClickRequest(
 public sealed record ComputerUseWinTypeTextRequest(
     string? StateToken = null,
     int? ElementIndex = null,
+    WaitElementSelector? Selector = null,
     InputPoint? Point = null,
     string? CoordinateSpace = null,
     string? Text = null,
@@ -171,8 +173,10 @@ public sealed record ComputerUseWinPerformSecondaryActionRequest(
 public sealed record ComputerUseWinDragRequest(
     string? StateToken = null,
     int? FromElementIndex = null,
+    WaitElementSelector? FromSelector = null,
     InputPoint? FromPoint = null,
     int? ToElementIndex = null,
+    WaitElementSelector? ToSelector = null,
     InputPoint? ToPoint = null,
     string? CoordinateSpace = null,
     bool Confirm = false,

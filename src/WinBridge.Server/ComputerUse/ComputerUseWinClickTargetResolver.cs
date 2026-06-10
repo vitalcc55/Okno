@@ -8,8 +8,14 @@ using WinBridge.Runtime.Windows.UIA;
 
 namespace WinBridge.Server.ComputerUse;
 
-internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiAutomationService)
+internal sealed class ComputerUseWinClickTargetResolver(
+    IUiAutomationService uiAutomationService,
+    IUiAutomationSemanticLookupService? semanticLookupService = null)
 {
+    private readonly ComputerUseWinSemanticTargetResolver? _semanticTargetResolver = semanticLookupService is null
+        ? null
+        : new ComputerUseWinSemanticTargetResolver(uiAutomationService, semanticLookupService);
+
     public async Task<ComputerUseWinClickTargetResolution> ResolveAsync(
         ComputerUseWinStoredState state,
         ComputerUseWinClickRequest request,
@@ -84,12 +90,54 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
             }
         }
 
+        if (request.Selector is not null)
+        {
+            if (_semanticTargetResolver is null)
+            {
+                return ComputerUseWinClickTargetResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
+                        ComputerUseWinFailureCodeValues.ObservationFailed,
+                        "Computer Use for Windows не смог выполнить bounded semantic lookup для click."));
+            }
+
+            ComputerUseWinSemanticTargetResolution resolution = await _semanticTargetResolver.ResolveAsync(
+                state,
+                elementIndex: null,
+                request.Selector,
+                CreateClickPolicy(),
+                cancellationToken).ConfigureAwait(false);
+            if (!resolution.IsSuccess)
+            {
+                return ComputerUseWinClickTargetResolution.Failure(resolution.FailureDetails!);
+            }
+
+            ComputerUseWinStoredElement effectiveElement = resolution.EffectiveElement!;
+            if (effectiveElement.Bounds is not Bounds bounds)
+            {
+                return ComputerUseWinClickTargetResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
+                        ComputerUseWinFailureCodeValues.UnsupportedAction,
+                        "selector нашёл click target без usable bounds."));
+            }
+
+            return ComputerUseWinClickTargetResolution.Success(
+                new InputAction
+                {
+                    Type = InputActionTypeValues.Click,
+                    CoordinateSpace = InputCoordinateSpaceValues.Screen,
+                    Point = new InputPoint((bounds.Left + bounds.Right) / 2, (bounds.Top + bounds.Bottom) / 2),
+                    Button = request.Button is null ? InputButtonValues.Left : request.Button,
+                },
+                effectiveElement,
+                ComputerUseWinTargetPolicy.RequiresRiskConfirmation(effectiveElement, ToolNames.ComputerUseWinClick));
+        }
+
         if (request.Point is not InputPoint point)
         {
             return ComputerUseWinClickTargetResolution.Failure(
                 ComputerUseWinFailureDetails.Expected(
                     ComputerUseWinFailureCodeValues.InvalidRequest,
-                    "Для click требуется elementIndex или point."));
+                    "Для click требуется elementIndex, selector или point."));
         }
 
         string coordinateSpace = request.CoordinateSpace is null
@@ -109,6 +157,22 @@ internal sealed class ComputerUseWinClickTargetResolver(IUiAutomationService uiA
             element: null,
             requiresConfirmation: true);
     }
+
+    private static ComputerUseWinSemanticTargetPolicy CreateClickPolicy() =>
+        new(
+            IsActionable: ComputerUseWinActionability.IsClickActionable,
+            MissingTargetFailureCode: ComputerUseWinFailureCodeValues.InvalidRequest,
+            MissingTargetReason: "elementIndex {0} не существует в последнем get_app_state.",
+            PreviewUnsupportedReason: "elementIndex {0} больше не является clickable target в последнем get_app_state.",
+            FreshObservationFailureReason: "Computer Use for Windows не смог пере-подтвердить click target по fresh observation path.",
+            FreshStaleReason: "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.",
+            FreshUnsupportedReason: "live element больше не является clickable target.",
+            SelectorZeroMatchesReason: "selector не нашёл clickable target в текущем live UI.",
+            SelectorAmbiguousReason: "selector matched несколько clickable candidates; уточни selector перед retry.",
+            SelectorBudgetExceededReason: "selector lookup для click достиг bounded node budget; уточни selector или обнови state.",
+            SelectorTimeoutReason: "selector lookup для click превысил bounded timeout; уточни selector или обнови state.",
+            SelectorObservationFailureReason: "Computer Use for Windows не смог выполнить bounded semantic lookup для click.",
+            SelectorUnsupportedReason: "selector нашёл element, но он не является clickable target.");
 
 }
 

@@ -415,7 +415,7 @@ Master progress checklist:
 - [x] Step 4. Extract the shared bounded selector domain
 - [x] Step 5. Implement bounded deep semantic lookup in the UIA runtime
 - [x] Step 6. Integrate the selector lane into semantic actions first
-- [ ] Step 7. Close the same reachability class across proof-backed physical actions
+- [x] Step 7. Close the same reachability class across proof-backed physical actions
 - [ ] Step 8. Carry the new observation model through `observeAfter` and stored successor state
 - [ ] Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
 - [ ] Step 10. Final closure pass, cleanup, and roadmap handoff
@@ -1051,10 +1051,31 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] Reachability class audited across `click`, `drag`, and ordinary `type_text`.
-- [ ] Any changed proof-backed physical paths are green under the shared target-proof model.
-- [ ] Any intentionally excluded path has an explicit written justification in implementation artifacts.
-- [ ] Closure pass completed across all target-bearing action families.
+- [x] Reachability class audited across `click`, `drag`, and ordinary `type_text`.
+- [x] Any changed proof-backed physical paths are green under the shared target-proof model.
+- [x] Any intentionally excluded path has an explicit written justification in implementation artifacts.
+- [x] Closure pass completed across all target-bearing action families.
+
+Step 7 execution notes:
+
+- `click`, ordinary focused `type_text`, and semantic `drag` endpoints now accept
+  bounded semantic selectors where the same reachability class previously
+  depended on compact-preview `elementIndex`. The coordinate `point` paths were
+  intentionally left coordinate-only because they do not resolve descendants and
+  already carry their low-confidence confirmation/capture proof policy.
+- The changed physical paths reuse the shared semantic target resolver and
+  publish `uia_revalidated` target proof for selector-backed execution. `press_key`
+  remains outside selector scope because it targets the active window/keyboard
+  stream rather than a descendant UIA element.
+- Closure covered the already-updated semantic `set_value`, semantic `scroll`,
+  and `perform_secondary_action` paths to avoid a new local path: all target
+  families now share either the selector lookup lane, the existing elementIndex
+  revalidation lane, or an explicitly coordinate-only fallback lane.
+- Verification evidence: the Step 7 selector red tests first failed to compile on
+  the missing DTO/handler hooks, then passed after implementation (`3/3`). The
+  broader action/projection filter passed `133/133`, the architecture+MCP filter
+  passed `120/120`, and `scripts\refresh-generated-docs.ps1` completed with `0`
+  warnings and `0` errors.
 
 ### Step 8. Carry the new observation model through `observeAfter` and stored successor state
 

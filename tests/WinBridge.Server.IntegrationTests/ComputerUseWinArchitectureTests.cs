@@ -807,7 +807,7 @@ public sealed class ComputerUseWinArchitectureTests
             arguments,
             new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-        AssertFailureReasonContains(reason, "elementIndex", "point");
+        AssertFailureReasonContains(reason, "elementIndex", "selector", "point");
     }
 
     [Fact]
@@ -855,7 +855,7 @@ public sealed class ComputerUseWinArchitectureTests
             arguments,
             new ComputerUseWinClickRequest(),
             static value => ComputerUseWinRequestContractValidator.Validate(value));
-        AssertFailureReasonContains(reason, "elementIndex", "point");
+        AssertFailureReasonContains(reason, "elementIndex", "selector", "point");
     }
 
     [Fact]
@@ -940,6 +940,7 @@ public sealed class ComputerUseWinArchitectureTests
 
         AssertNullableStringEnum(properties.GetProperty("button"), [InputButtonValues.Left, InputButtonValues.Right]);
         AssertNullableStringEnum(properties.GetProperty("coordinateSpace"), [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels]);
+        AssertSchemaPropertyType(properties, "selector", "object");
         AssertSchemaPropertyType(properties, "point", "object");
     }
 
@@ -950,8 +951,9 @@ public sealed class ComputerUseWinArchitectureTests
         JsonElement[] selectorModes = GetSchemaBranches(inputSchema, "oneOf");
 
         AssertRequiredProperties(inputSchema, ["stateToken"]);
-        Assert.Equal(2, selectorModes.Length);
+        Assert.Equal(3, selectorModes.Length);
         Assert.Contains(selectorModes, mode => RequiresSchemaProperty(mode, "elementIndex"));
+        Assert.Contains(selectorModes, mode => RequiresSchemaProperty(mode, "selector"));
         Assert.Contains(selectorModes, mode => RequiresSchemaProperty(mode, "point"));
     }
 
@@ -972,6 +974,7 @@ public sealed class ComputerUseWinArchitectureTests
         AssertRequiredProperties(inputSchema, ["stateToken", "text"]);
         AssertSchemaPropertyType(properties, "allowFocusedFallback", "boolean");
         AssertSchemaPropertyType(properties, "confirm", "boolean");
+        AssertSchemaPropertyType(properties, "selector", "object");
         AssertSchemaPropertyType(properties, "point", "object");
         Assert.Equal(
             [InputCoordinateSpaceValues.CapturePixels],
@@ -1031,15 +1034,21 @@ public sealed class ComputerUseWinArchitectureTests
             mode => Assert.True(mode.TryGetProperty("oneOf", out _)));
 
         JsonElement sourceBranch = GetSchemaBranchRequiring(selectorModes[0].GetProperty("oneOf"), "fromElementIndex");
+        JsonElement sourceSelectorBranch = GetSchemaBranchRequiring(selectorModes[0].GetProperty("oneOf"), "fromSelector");
         JsonElement sourcePointBranch = GetSchemaBranchRequiring(selectorModes[0].GetProperty("oneOf"), "fromPoint");
         JsonElement destinationBranch = GetSchemaBranchRequiring(selectorModes[1].GetProperty("oneOf"), "toElementIndex");
+        JsonElement destinationSelectorBranch = GetSchemaBranchRequiring(selectorModes[1].GetProperty("oneOf"), "toSelector");
         JsonElement destinationPointBranch = GetSchemaBranchRequiring(selectorModes[1].GetProperty("oneOf"), "toPoint");
 
         AssertBranchPropertyType(sourceBranch, "fromElementIndex", "integer");
+        AssertBranchPropertyType(sourceSelectorBranch, "fromSelector", "object");
         AssertBranchPropertyType(sourcePointBranch, "fromPoint", "object");
         AssertBranchPropertyType(destinationBranch, "toElementIndex", "integer");
+        AssertBranchPropertyType(destinationSelectorBranch, "toSelector", "object");
         AssertBranchPropertyType(destinationPointBranch, "toPoint", "object");
+        AssertSchemaPropertyType(properties, "fromSelector", "object");
         AssertSchemaPropertyType(properties, "fromPoint", "object");
+        AssertSchemaPropertyType(properties, "toSelector", "object");
         AssertSchemaPropertyType(properties, "toPoint", "object");
         AssertSchemaPropertyPattern(properties, "stateToken", NonBlankJsonStringPattern);
     }

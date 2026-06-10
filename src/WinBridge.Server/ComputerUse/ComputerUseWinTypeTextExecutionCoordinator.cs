@@ -11,12 +11,16 @@ namespace WinBridge.Server.ComputerUse;
 internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
     IWindowActivationService windowActivationService,
     IUiAutomationService uiAutomationService,
-    IInputService inputService)
+    IInputService inputService,
+    IUiAutomationSemanticLookupService? semanticLookupService = null)
 {
     private const string DispatchPath = ComputerUseWinExecutionExecutorValues.Win32SendInputUnicode;
     private const string RiskClass = "text_input";
     private const string FocusedFallbackRiskClass = "focused_text_fallback";
     private const string CoordinateConfirmedFallbackRiskClass = "coordinate_confirmed_text_fallback";
+    private readonly ComputerUseWinSemanticTargetResolver? _semanticTargetResolver = semanticLookupService is null
+        ? null
+        : new ComputerUseWinSemanticTargetResolver(uiAutomationService, semanticLookupService);
 
     public async Task<ComputerUseWinActionExecutionOutcome> ExecuteAsync(
         ComputerUseWinStoredState state,
@@ -42,6 +46,15 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
         {
             return await ExecuteCoordinateConfirmedFallbackAsync(
                 state,
+                parsedPayload,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        if (request.Selector is not null)
+        {
+            return await ExecuteSelectorTargetAsync(
+                state,
+                request,
                 parsedPayload,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -140,6 +153,102 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
             dispatchPath: DispatchPath,
             fallbackUsed: focusedFallbackUsed,
             successorObservationWindow: resolvedState.Window);
+    }
+
+    private async Task<ComputerUseWinActionExecutionOutcome> ExecuteSelectorTargetAsync(
+        ComputerUseWinStoredState state,
+        ComputerUseWinTypeTextRequest request,
+        ComputerUseWinTypeTextPayload payload,
+        CancellationToken cancellationToken)
+    {
+        ActivateWindowResult activation = await windowActivationService.ActivateAsync(state.Window, cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(activation.Status, ActivateWindowStatusValues.Done, StringComparison.Ordinal)
+            && !string.Equals(activation.Status, "already_active", StringComparison.Ordinal))
+        {
+            return ComputerUseWinActionExecutionOutcome.Failure(
+                ComputerUseWinActivationFailureMapper.Map(activation),
+                ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch,
+                confirmationRequired: false,
+                riskClass: RiskClass,
+                dispatchPath: DispatchPath);
+        }
+
+        ComputerUseWinStoredState resolvedState = state with
+        {
+            Window = activation.Window ?? state.Window,
+        };
+
+        ComputerUseWinFailureDetails? resolutionFailure = await ResolveSelectorTargetAsync(
+            resolvedState,
+            request.Selector!,
+            cancellationToken).ConfigureAwait(false);
+        if (resolutionFailure is not null)
+        {
+            return ComputerUseWinActionExecutionOutcome.Failure(
+                resolutionFailure,
+                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
+                confirmationRequired: false,
+                riskClass: RiskClass,
+                dispatchPath: DispatchPath);
+        }
+
+        InputResult input = await ExecuteInputAsync(resolvedState, payload.Text, cancellationToken).ConfigureAwait(false);
+        if (NeedsActivationRetry(input))
+        {
+            ActivateWindowResult retryActivation = await windowActivationService.ActivateAsync(resolvedState.Window, cancellationToken).ConfigureAwait(false);
+            if (string.Equals(retryActivation.Status, ActivateWindowStatusValues.Done, StringComparison.Ordinal)
+                || string.Equals(retryActivation.Status, "already_active", StringComparison.Ordinal))
+            {
+                resolvedState = resolvedState with
+                {
+                    Window = retryActivation.Window ?? resolvedState.Window,
+                };
+
+                resolutionFailure = await ResolveSelectorTargetAsync(
+                    resolvedState,
+                    request.Selector!,
+                    cancellationToken).ConfigureAwait(false);
+                if (resolutionFailure is not null)
+                {
+                    return ComputerUseWinActionExecutionOutcome.Failure(
+                        resolutionFailure,
+                        ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
+                        confirmationRequired: false,
+                        riskClass: RiskClass,
+                        dispatchPath: DispatchPath);
+                }
+
+                input = await ExecuteInputAsync(resolvedState, payload.Text, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return ComputerUseWinActionExecutionOutcome.Success(
+            input,
+            confirmationRequired: false,
+            riskClass: RiskClass,
+            dispatchPath: DispatchPath,
+            successorObservationWindow: resolvedState.Window);
+    }
+
+    private async Task<ComputerUseWinFailureDetails?> ResolveSelectorTargetAsync(
+        ComputerUseWinStoredState state,
+        WaitElementSelector selector,
+        CancellationToken cancellationToken)
+    {
+        if (_semanticTargetResolver is null)
+        {
+            return ComputerUseWinFailureDetails.Expected(
+                ComputerUseWinFailureCodeValues.ObservationFailed,
+                "Computer Use for Windows не смог выполнить bounded semantic lookup для type_text.");
+        }
+
+        ComputerUseWinSemanticTargetResolution resolution = await _semanticTargetResolver.ResolveAsync(
+            state,
+            elementIndex: null,
+            selector,
+            CreateTypeTextPolicy(),
+            cancellationToken).ConfigureAwait(false);
+        return resolution.IsSuccess ? null : resolution.FailureDetails;
     }
 
     private async Task<ComputerUseWinActionExecutionOutcome> ExecuteCoordinateConfirmedFallbackAsync(
@@ -466,5 +575,21 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
             Reason = input.Reason ?? "Coordinate-confirmed type_text fallback dispatched через SendInput; проверь обновлённое состояние UI.",
         };
     }
+
+    private static ComputerUseWinSemanticTargetPolicy CreateTypeTextPolicy() =>
+        new(
+            IsActionable: ComputerUseWinActionability.IsTypeTextActionable,
+            MissingTargetFailureCode: ComputerUseWinFailureCodeValues.InvalidRequest,
+            MissingTargetReason: "elementIndex {0} не существует в последнем get_app_state.",
+            PreviewUnsupportedReason: "type_text требует elementIndex, который уже опубликован как focused editable target; сначала переведи focus через click и заново вызови get_app_state.",
+            FreshObservationFailureReason: "Computer Use for Windows не смог пере-подтвердить focused editable target для type_text.",
+            FreshStaleReason: "Focused editable element из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.",
+            FreshUnsupportedReason: "Focused editable proof из stateToken устарел; сначала заново получи get_app_state после click/focus.",
+            SelectorZeroMatchesReason: "selector не нашёл focused editable target в текущем live UI.",
+            SelectorAmbiguousReason: "selector matched несколько focused editable candidates; уточни selector перед retry.",
+            SelectorBudgetExceededReason: "selector lookup для type_text достиг bounded node budget; уточни selector или обнови state.",
+            SelectorTimeoutReason: "selector lookup для type_text превысил bounded timeout; уточни selector или обнови state.",
+            SelectorObservationFailureReason: "Computer Use for Windows не смог выполнить bounded semantic lookup для type_text.",
+            SelectorUnsupportedReason: "selector нашёл element, но он не является focused editable target для type_text.");
 
 }

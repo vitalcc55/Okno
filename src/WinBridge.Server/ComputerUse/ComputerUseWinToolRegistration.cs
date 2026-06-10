@@ -197,6 +197,7 @@ internal static class ComputerUseWinToolRegistration
                 {
                     ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
                     ["elementIndex"] = new JsonObject { ["type"] = CreateTypeSet("integer", "null") },
+                    ["selector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
                     ["point"] = CreatePointSchema(),
                     ["coordinateSpace"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedCoordinateSpaceValues),
                     ["button"] = CreateNullableStringEnumSchema(ComputerUseWinClickContract.AllowedButtonValues),
@@ -355,6 +356,7 @@ internal static class ComputerUseWinToolRegistration
                         ["type"] = CreateTypeSet("integer", "null"),
                         ["minimum"] = 1,
                     },
+                    ["selector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
                     ["point"] = CreatePointSchema(),
                     ["coordinateSpace"] = CreateNullableStringEnumSchema(ComputerUseWinTypeTextContract.AllowedCoordinateSpaceValues),
                     ["text"] = new JsonObject
@@ -434,12 +436,14 @@ internal static class ComputerUseWinToolRegistration
                         ["type"] = CreateTypeSet("integer", "null"),
                         ["minimum"] = 1,
                     },
+                    ["fromSelector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
                     ["fromPoint"] = CreatePointSchema("fromPoint"),
                     ["toElementIndex"] = new JsonObject
                     {
                         ["type"] = CreateTypeSet("integer", "null"),
                         ["minimum"] = 1,
                     },
+                    ["toSelector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
                     ["toPoint"] = CreatePointSchema("toPoint"),
                     ["coordinateSpace"] = CreateNullableStringEnumSchema(
                         [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels]),

@@ -56,7 +56,7 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
         if (resolution.RequiresConfirmation && !request.Confirm)
         {
             return ComputerUseWinActionExecutionOutcome.ApprovalRequired(
-                request.ElementIndex is null
+                request.Point is not null
                     ? ComputerUseWinClickContract.CoordinateApprovalReason
                     : "Клик по выбранному элементу требует явного подтверждения.",
                 ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
@@ -78,7 +78,7 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
                 };
 
                 InputAction retryAction = resolution.Action!;
-                if (request.ElementIndex is not null)
+                if (request.ElementIndex is not null || request.Selector is not null)
                 {
                     ComputerUseWinClickTargetResolution retryResolution = await clickTargetResolver.ResolveAsync(resolvedState, request, cancellationToken).ConfigureAwait(false);
                     if (!retryResolution.IsSuccess)
@@ -142,6 +142,11 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
             return ComputerUseWinExecutionExecutorValues.FreshUiaRevalidationToInput;
         }
 
+        if (request.Selector is not null)
+        {
+            return ComputerUseWinExecutionExecutorValues.FreshUiaRevalidationToInput;
+        }
+
         string coordinateSpace = request.CoordinateSpace ?? InputCoordinateSpaceValues.CapturePixels;
         return string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
             ? ComputerUseWinExecutionExecutorValues.CapturePixelsInput
@@ -150,7 +155,7 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
 
     private static string DetermineRiskClass(ComputerUseWinClickRequest request, bool confirmationRequired)
     {
-        if (request.ElementIndex is null)
+        if (request.Point is not null)
         {
             return "coordinate_low_confidence";
         }

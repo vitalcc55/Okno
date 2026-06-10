@@ -96,7 +96,10 @@ internal sealed class ComputerUseWinDragExecutionCoordinator(
                 };
 
                 InputAction retryAction = resolution.Action!;
-                if (request.FromElementIndex is not null || request.ToElementIndex is not null)
+                if (request.FromElementIndex is not null
+                    || request.FromSelector is not null
+                    || request.ToElementIndex is not null
+                    || request.ToSelector is not null)
                 {
                     ComputerUseWinDragTargetResolution retryResolution = await dragTargetResolver.ResolveAsync(
                         resolvedState,

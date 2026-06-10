@@ -35,6 +35,11 @@ internal sealed class ComputerUseWinClickHandler(
             return ComputerUseWinStoredStateValidationMode.SemanticElementAction;
         }
 
+        if (request.Selector is not null)
+        {
+            return ComputerUseWinStoredStateValidationMode.SemanticElementAction;
+        }
+
         string coordinateSpace = request.CoordinateSpace is null
             ? InputCoordinateSpaceValues.CapturePixels
             : request.CoordinateSpace!;
@@ -48,8 +53,10 @@ internal sealed class ComputerUseWinClickHandler(
         ComputerUseWinClickRequest request,
         ComputerUseWinActionExecutionOutcome outcome)
     {
-        string targetMode = request.ElementIndex is not null ? "element_index" : "point";
-        string coordinateSpace = request.ElementIndex is not null
+        string targetMode = request.Selector is not null
+            ? ComputerUseWinSemanticTargetModeValues.Selector
+            : request.ElementIndex is not null ? ComputerUseWinSemanticTargetModeValues.ElementIndex : "point";
+        string coordinateSpace = request.ElementIndex is not null || request.Selector is not null
             ? InputCoordinateSpaceValues.Screen
             : request.CoordinateSpace ?? InputCoordinateSpaceValues.CapturePixels;
 

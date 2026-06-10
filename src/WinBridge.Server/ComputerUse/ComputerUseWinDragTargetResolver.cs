@@ -6,8 +6,14 @@ using WinBridge.Runtime.Windows.UIA;
 
 namespace WinBridge.Server.ComputerUse;
 
-internal sealed class ComputerUseWinDragTargetResolver(IUiAutomationService uiAutomationService)
+internal sealed class ComputerUseWinDragTargetResolver(
+    IUiAutomationService uiAutomationService,
+    IUiAutomationSemanticLookupService? semanticLookupService = null)
 {
+    private readonly ComputerUseWinSemanticTargetResolver? _semanticTargetResolver = semanticLookupService is null
+        ? null
+        : new ComputerUseWinSemanticTargetResolver(uiAutomationService, semanticLookupService);
+
     public async Task<ComputerUseWinDragTargetResolution> ResolveAsync(
         ComputerUseWinStoredState state,
         ComputerUseWinDragRequest request,
@@ -55,36 +61,34 @@ internal sealed class ComputerUseWinDragTargetResolver(IUiAutomationService uiAu
             }
         }
 
-        if (!TryResolveEndpoint(
+        ComputerUseWinDragEndpointResolution sourceResolution = await ResolveEndpointAsync(
                 state,
                 freshElements,
-                request.FromElementIndex,
-                request.FromPoint,
                 payload.Source,
                 payload.CoordinateSpace,
                 endpointLabel: "source",
-                out ComputerUseWinStoredElement? sourceElement,
-                out InputPoint sourcePoint,
-                out ComputerUseWinFailureDetails? sourceFailure))
+                cancellationToken).ConfigureAwait(false);
+        if (!sourceResolution.IsSuccess)
         {
-            return ComputerUseWinDragTargetResolution.Failure(sourceFailure!);
+            return ComputerUseWinDragTargetResolution.Failure(sourceResolution.FailureDetails!);
         }
 
-        if (!TryResolveEndpoint(
+        ComputerUseWinDragEndpointResolution destinationResolution = await ResolveEndpointAsync(
                 state,
                 freshElements,
-                request.ToElementIndex,
-                request.ToPoint,
                 payload.Destination,
                 payload.CoordinateSpace,
                 endpointLabel: "destination",
-                out ComputerUseWinStoredElement? destinationElement,
-                out InputPoint destinationPoint,
-                out ComputerUseWinFailureDetails? destinationFailure))
+                cancellationToken).ConfigureAwait(false);
+        if (!destinationResolution.IsSuccess)
         {
-            return ComputerUseWinDragTargetResolution.Failure(destinationFailure!);
+            return ComputerUseWinDragTargetResolution.Failure(destinationResolution.FailureDetails!);
         }
 
+        ComputerUseWinStoredElement? sourceElement = sourceResolution.EffectiveElement;
+        ComputerUseWinStoredElement? destinationElement = destinationResolution.EffectiveElement;
+        InputPoint sourcePoint = sourceResolution.ResolvedPoint;
+        InputPoint destinationPoint = destinationResolution.ResolvedPoint;
         if (sourcePoint.X == destinationPoint.X && sourcePoint.Y == destinationPoint.Y)
         {
             return ComputerUseWinDragTargetResolution.Failure(
@@ -115,84 +119,104 @@ internal sealed class ComputerUseWinDragTargetResolver(IUiAutomationService uiAu
             payload);
     }
 
-    private static bool TryResolveEndpoint(
+    private async Task<ComputerUseWinDragEndpointResolution> ResolveEndpointAsync(
         ComputerUseWinStoredState state,
         IReadOnlyDictionary<int, ComputerUseWinStoredElement>? freshElements,
-        int? requestedElementIndex,
-        InputPoint? requestedPoint,
         ComputerUseWinDragEndpointPayload endpointPayload,
         string? coordinateSpace,
         string endpointLabel,
-        out ComputerUseWinStoredElement? effectiveElement,
-        out InputPoint resolvedPoint,
-        out ComputerUseWinFailureDetails? failure)
+        CancellationToken cancellationToken)
     {
-        if (requestedElementIndex is int elementIndex)
+        if (endpointPayload.ElementIndex is int elementIndex)
         {
             if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
                 || !ComputerUseWinActionability.IsDragEndpointActionable(storedElement))
             {
-                effectiveElement = null!;
-                resolvedPoint = new InputPoint();
-                failure = ComputerUseWinFailureDetails.Expected(
+                return ComputerUseWinDragEndpointResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
                     ComputerUseWinFailureCodeValues.UnsupportedAction,
-                    $"{endpointLabel} elementIndex {elementIndex} не является drag-capable target в последнем get_app_state.");
-                return false;
+                    $"{endpointLabel} elementIndex {elementIndex} не является drag-capable target в последнем get_app_state."));
             }
 
             if (freshElements is null
                 || !ComputerUseWinFreshElementResolver.TryResolve(freshElements, storedElement, out ComputerUseWinStoredElement? freshElement)
                 || freshElement is null)
             {
-                effectiveElement = null!;
-                resolvedPoint = new InputPoint();
-                failure = ComputerUseWinFailureDetails.Expected(
+                return ComputerUseWinDragEndpointResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
                     ComputerUseWinFailureCodeValues.StaleState,
-                    $"{endpointLabel} elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.");
-                return false;
+                    $"{endpointLabel} elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element."));
             }
 
             if (!ComputerUseWinActionability.IsDragEndpointActionable(freshElement)
                 || freshElement.Bounds is not Bounds freshBounds)
             {
-                effectiveElement = null!;
-                resolvedPoint = new InputPoint();
-                failure = ComputerUseWinFailureDetails.Expected(
+                return ComputerUseWinDragEndpointResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
                     ComputerUseWinFailureCodeValues.UnsupportedAction,
-                    $"{endpointLabel} live element больше не предоставляет usable bounds для drag endpoint.");
-                return false;
+                    $"{endpointLabel} live element больше не предоставляет usable bounds для drag endpoint."));
             }
 
-            effectiveElement = freshElement;
-            resolvedPoint = new InputPoint(
+            return ComputerUseWinDragEndpointResolution.Success(
+                freshElement,
+                new InputPoint(
                 (freshBounds.Left + freshBounds.Right) / 2,
-                (freshBounds.Top + freshBounds.Bottom) / 2);
-            failure = null;
-            return true;
+                (freshBounds.Top + freshBounds.Bottom) / 2));
         }
 
-        if (requestedPoint is not InputPoint point)
+        if (endpointPayload.Selector is not null)
         {
-                effectiveElement = null!;
-                resolvedPoint = new InputPoint();
-            failure = ComputerUseWinFailureDetails.Expected(
-                ComputerUseWinFailureCodeValues.InvalidRequest,
-                $"Для drag {endpointLabel} требуется elementIndex или point.");
-            return false;
+            if (_semanticTargetResolver is null)
+            {
+                return ComputerUseWinDragEndpointResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
+                        ComputerUseWinFailureCodeValues.ObservationFailed,
+                        $"Computer Use for Windows не смог выполнить bounded semantic lookup для drag {endpointLabel}."));
+            }
+
+            ComputerUseWinSemanticTargetResolution resolution = await _semanticTargetResolver.ResolveAsync(
+                state,
+                elementIndex: null,
+                endpointPayload.Selector,
+                CreateDragEndpointPolicy(endpointLabel),
+                cancellationToken).ConfigureAwait(false);
+            if (!resolution.IsSuccess)
+            {
+                return ComputerUseWinDragEndpointResolution.Failure(resolution.FailureDetails!);
+            }
+
+            ComputerUseWinStoredElement effectiveElement = resolution.EffectiveElement!;
+            if (effectiveElement.Bounds is not Bounds bounds)
+            {
+                return ComputerUseWinDragEndpointResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
+                        ComputerUseWinFailureCodeValues.UnsupportedAction,
+                        $"{endpointLabel} selector нашёл drag target без usable bounds."));
+            }
+
+            return ComputerUseWinDragEndpointResolution.Success(
+                effectiveElement,
+                new InputPoint(
+                    (bounds.Left + bounds.Right) / 2,
+                    (bounds.Top + bounds.Bottom) / 2));
         }
 
-        effectiveElement = null!;
-        resolvedPoint = point;
-        failure = null;
+        if (endpointPayload.Point is not InputPoint point)
+        {
+            return ComputerUseWinDragEndpointResolution.Failure(
+                ComputerUseWinFailureDetails.Expected(
+                ComputerUseWinFailureCodeValues.InvalidRequest,
+                $"Для drag {endpointLabel} требуется elementIndex, selector или point."));
+        }
 
         if (string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal))
         {
             if (state.CaptureReference is null)
             {
-                failure = ComputerUseWinFailureDetails.Expected(
+                return ComputerUseWinDragEndpointResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
                     ComputerUseWinFailureCodeValues.CaptureReferenceRequired,
-                    $"Для drag {endpointLabel} point в coordinateSpace=`capture_pixels` нужен актуальный get_app_state со свежим capture proof.");
-                return false;
+                    $"Для drag {endpointLabel} point в coordinateSpace=`capture_pixels` нужен актуальный get_app_state со свежим capture proof."));
             }
 
             if (point.X < 0
@@ -200,15 +224,31 @@ internal sealed class ComputerUseWinDragTargetResolver(IUiAutomationService uiAu
                 || point.X >= state.CaptureReference.PixelWidth
                 || point.Y >= state.CaptureReference.PixelHeight)
             {
-                failure = ComputerUseWinFailureDetails.Expected(
+                return ComputerUseWinDragEndpointResolution.Failure(
+                    ComputerUseWinFailureDetails.Expected(
                     ComputerUseWinFailureCodeValues.PointOutOfBounds,
-                    $"Указанная {endpointLabel} capture_pixels point выходит за пределы capture raster из последнего get_app_state.");
-                return false;
+                    $"Указанная {endpointLabel} capture_pixels point выходит за пределы capture raster из последнего get_app_state."));
             }
         }
 
-        return true;
+        return ComputerUseWinDragEndpointResolution.Success(null, point);
     }
+
+    private static ComputerUseWinSemanticTargetPolicy CreateDragEndpointPolicy(string endpointLabel) =>
+        new(
+            IsActionable: ComputerUseWinActionability.IsDragEndpointActionable,
+            MissingTargetFailureCode: ComputerUseWinFailureCodeValues.UnsupportedAction,
+            MissingTargetReason: $"{endpointLabel} elementIndex {{0}} не является drag-capable target в последнем get_app_state.",
+            PreviewUnsupportedReason: $"{endpointLabel} elementIndex {{0}} не является drag-capable target в последнем get_app_state.",
+            FreshObservationFailureReason: $"Computer Use for Windows не смог пере-подтвердить drag {endpointLabel} endpoint по fresh observation path.",
+            FreshStaleReason: $"{endpointLabel} elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.",
+            FreshUnsupportedReason: $"{endpointLabel} live element больше не предоставляет usable bounds для drag endpoint.",
+            SelectorZeroMatchesReason: $"{endpointLabel} selector не нашёл drag-capable target в текущем live UI.",
+            SelectorAmbiguousReason: $"{endpointLabel} selector matched несколько drag candidates; уточни selector перед retry.",
+            SelectorBudgetExceededReason: $"{endpointLabel} selector lookup для drag достиг bounded node budget; уточни selector или обнови state.",
+            SelectorTimeoutReason: $"{endpointLabel} selector lookup для drag превысил bounded timeout; уточни selector или обнови state.",
+            SelectorObservationFailureReason: $"Computer Use for Windows не смог выполнить bounded semantic lookup для drag {endpointLabel}.",
+            SelectorUnsupportedReason: $"{endpointLabel} selector нашёл element, но он не является drag-capable target.");
 }
 
 internal sealed record ComputerUseWinDragTargetResolution(
@@ -228,4 +268,19 @@ internal sealed record ComputerUseWinDragTargetResolution(
 
     public static ComputerUseWinDragTargetResolution Failure(ComputerUseWinFailureDetails failure) =>
         new(false, null, null, null, null, failure);
+}
+
+internal sealed record ComputerUseWinDragEndpointResolution(
+    bool IsSuccess,
+    ComputerUseWinStoredElement? EffectiveElement,
+    InputPoint ResolvedPoint,
+    ComputerUseWinFailureDetails? FailureDetails)
+{
+    public static ComputerUseWinDragEndpointResolution Success(
+        ComputerUseWinStoredElement? element,
+        InputPoint point) =>
+        new(true, element, point, null);
+
+    public static ComputerUseWinDragEndpointResolution Failure(ComputerUseWinFailureDetails failure) =>
+        new(false, null, new InputPoint(), failure);
 }
