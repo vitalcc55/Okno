@@ -27,7 +27,7 @@ public sealed class ComputerUseWinObservationTests
     }
 
     [Fact]
-    public async Task AppStateObserverReturnsStructuredFailureWhenSnapshotDoesNotComplete()
+    public async Task AppStateObserverReturnsVisualSuccessWhenSnapshotDoesNotComplete()
     {
         ComputerUseWinAppStateObservationOutcome outcome = await ObserveAsync(
             uiAutomationService: SnapshotService(
@@ -35,9 +35,9 @@ public sealed class ComputerUseWinObservationTests
                 reason: "Параметр maxNodes для UIA snapshot должен быть <= 1024."),
             maxNodes: 2048);
 
-        AssertObservationFailed(outcome);
-        Assert.DoesNotContain("maxNodes", outcome.Reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("get_app_state", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+        JsonElement json = AssertVisualSuccessWithFailedSemanticPreview(outcome, "snapshot-failed-token", expectedMaxNodes: 2048);
+        Assert.DoesNotContain("Параметр maxNodes", json.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("get_app_state", json.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -48,9 +48,9 @@ public sealed class ComputerUseWinObservationTests
                 status: UiaSnapshotStatusValues.Failed,
                 reason: "secret raw provider invalid operation from UIA"));
 
-        AssertObservationFailed(outcome);
-        Assert.DoesNotContain("secret raw provider", outcome.Reason, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("get_app_state", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+        JsonElement json = AssertVisualSuccessWithFailedSemanticPreview(outcome, "sanitized-token");
+        Assert.DoesNotContain("secret raw provider", json.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("get_app_state", json.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -80,14 +80,14 @@ public sealed class ComputerUseWinObservationTests
     }
 
     [Fact]
-    public async Task AppStateObserverMaterializesUnexpectedSnapshotExceptionsAsStructuredFailure()
+    public async Task AppStateObserverMaterializesUnexpectedSnapshotExceptionsAsVisualSemanticFailure()
     {
         ComputerUseWinAppStateObservationOutcome outcome = await ObserveAsync(
             uiAutomationService: new FakeUiAutomationService((_, _, _) => throw new InvalidOperationException("secret uia failure")));
 
-        AssertObservationFailed(outcome);
-        Assert.DoesNotContain("secret", outcome.Reason, StringComparison.OrdinalIgnoreCase);
-        AssertAuditException<InvalidOperationException>(outcome);
+        JsonElement json = AssertVisualSuccessWithFailedSemanticPreview(outcome, "exception-token");
+        Assert.DoesNotContain("secret", json.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("get_app_state", json.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -271,6 +271,29 @@ public sealed class ComputerUseWinObservationTests
     {
         Assert.False(outcome.IsSuccess);
         Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, outcome.FailureCode);
+    }
+
+    private static JsonElement AssertVisualSuccessWithFailedSemanticPreview(
+        ComputerUseWinAppStateObservationOutcome outcome,
+        string stateToken,
+        int expectedMaxNodes = DefaultMaxNodes)
+    {
+        Assert.True(outcome.IsSuccess, outcome.Reason);
+        Assert.NotNull(outcome.PreparedState);
+
+        ComputerUseWinGetAppStateResult payload = outcome.PreparedState!.CreatePayload(stateToken);
+        Assert.Equal(ComputerUseWinStatusValues.Ok, payload.Status);
+        Assert.Equal(stateToken, payload.StateToken);
+        Assert.Empty(payload.AccessibilityTree!);
+        Assert.NotNull(payload.SemanticPreview);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Failed, payload.SemanticPreview!.Status);
+        Assert.Equal(UiaSnapshotDefaults.Depth, payload.SemanticPreview.RequestedDepth);
+        Assert.Equal(expectedMaxNodes, payload.SemanticPreview.RequestedMaxNodes);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, payload.SemanticPreview.FailureCode);
+
+        return JsonSerializer.SerializeToElement(
+            payload,
+            ComputerUseWinToolResultFactory.PayloadJsonOptions);
     }
 
     private static void AssertAuditException<TException>(ComputerUseWinAppStateObservationOutcome outcome)

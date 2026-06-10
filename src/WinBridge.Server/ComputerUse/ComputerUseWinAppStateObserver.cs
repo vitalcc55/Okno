@@ -28,26 +28,60 @@ internal sealed class ComputerUseWinAppStateObserver(
                 new CaptureTarget(CaptureScope.Window, selectedWindow),
                 cancellationToken).ConfigureAwait(false);
 
-            UiaSnapshotResult snapshot = await uiAutomationService.SnapshotAsync(
-                selectedWindow,
-                new UiaSnapshotRequest
-                {
-                    Depth = UiaSnapshotDefaults.Depth,
-                    MaxNodes = effectiveMaxNodes,
-                },
-                cancellationToken).ConfigureAwait(false);
-
-            if (!string.Equals(snapshot.Status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal)
-                || snapshot.Root is null)
+            UiaSnapshotRequest snapshotRequest = new()
             {
-                return ComputerUseWinAppStateObservationOutcome.Failure(
-                    ComputerUseWinPublicFailureMaterializer.MaterializeStateFailure(
+                Depth = UiaSnapshotDefaults.Depth,
+                MaxNodes = effectiveMaxNodes,
+            };
+            ComputerUseWinObservationEnvelope observation;
+            IReadOnlyDictionary<int, ComputerUseWinStoredElement> elements;
+            List<string> effectiveWarnings = [.. warnings];
+
+            try
+            {
+                UiaSnapshotResult snapshot = await uiAutomationService.SnapshotAsync(
+                    selectedWindow,
+                    snapshotRequest,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (string.Equals(snapshot.Status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal)
+                    && snapshot.Root is not null)
+                {
+                    observation = ComputerUseWinObservationEnvelope.FromSnapshot(snapshot);
+                    elements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
+                }
+                else
+                {
+                    ComputerUseWinFailureDetails semanticFailure = ComputerUseWinPublicFailureMaterializer.MaterializeStateFailure(
                         ComputerUseWinFailureDetails.Expected(
                             ComputerUseWinFailureCodeValues.ObservationFailed,
-                            snapshot.Reason ?? "UIA snapshot did not complete successfully.")));
+                            snapshot.Reason ?? "UIA snapshot did not complete successfully."));
+                    observation = ComputerUseWinObservationEnvelope.FromFailure(
+                        snapshot.RequestedDepth,
+                        snapshot.RequestedMaxNodes,
+                        semanticFailure.FailureCode);
+                    elements = new Dictionary<int, ComputerUseWinStoredElement>();
+                    effectiveWarnings.Add(semanticFailure.Reason);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ComputerUseWinFailureDetails semanticFailure = ComputerUseWinPublicFailureMaterializer.MaterializeStateFailure(
+                    ComputerUseWinObservationFailureTranslator.Translate(
+                        exception,
+                        "Computer Use for Windows не смог завершить semantic preview stage для get_app_state."));
+                observation = ComputerUseWinObservationEnvelope.FromFailure(
+                    snapshotRequest.Depth,
+                    snapshotRequest.MaxNodes,
+                    semanticFailure.FailureCode);
+                elements = new Dictionary<int, ComputerUseWinStoredElement>();
+                effectiveWarnings.Add(semanticFailure.Reason);
             }
 
-            IReadOnlyDictionary<int, ComputerUseWinStoredElement> elements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
             ComputerUseWinAppSession session = new(
                 AppId: appId,
                 WindowId: windowId,
@@ -60,9 +94,8 @@ internal sealed class ComputerUseWinAppStateObserver(
                 selectedWindow,
                 capture.Metadata.CaptureReference,
                 elements,
-                ComputerUseWinObservationEnvelope.FromSnapshot(snapshot),
+                observation,
                 capture.Metadata.CapturedAtUtc);
-            List<string> effectiveWarnings = [.. warnings];
             IReadOnlyList<string> instructions = [];
 
             try

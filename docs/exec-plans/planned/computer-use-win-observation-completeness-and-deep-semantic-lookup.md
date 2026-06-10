@@ -411,7 +411,7 @@ Master progress checklist:
 - [x] Step 0. Freeze the baseline and add red characterization
 - [x] Step 1. Unify public failure materialization for state, action, and successor state
 - [x] Step 2. Introduce a product-owned semantic completeness model
-- [ ] Step 3. Split visual observation success from semantic preview readiness
+- [x] Step 3. Split visual observation success from semantic preview readiness
 - [ ] Step 4. Extract the shared bounded selector domain
 - [ ] Step 5. Implement bounded deep semantic lookup in the UIA runtime
 - [ ] Step 6. Integrate the selector lane into semantic actions first
@@ -721,15 +721,30 @@ Closure pass:
 
 - Recheck initial state, activation warning path, advisory instruction failure,
   unexpected instruction-provider bug, and hard capture failure.
-- Confirm `observeAfter` is still pending and has not silently diverged from the
-  new model.
+- Confirm broad `observeAfter` carry-through is still Step 8, while the
+  inherited successor-state path that already goes through the same observer is
+  covered here.
 
 Step completion checklist:
 
-- [ ] Screenshot-success and UIA-incomplete path now returns public visual success.
-- [ ] Capture failure remains a hard `observation_failed` path.
-- [ ] `accessibilityTree` empty-or-partial policy is explicit and tested.
-- [ ] Closure pass completed for activation warnings, instruction-provider branches, and hard capture failure.
+- [x] Screenshot-success and UIA-incomplete path now returns public visual success.
+- [x] Capture failure remains a hard `observation_failed` path.
+- [x] `accessibilityTree` empty-or-partial policy is explicit and tested.
+- [x] Closure pass completed for activation warnings, instruction-provider branches, and hard capture failure.
+
+Step 3 execution notes:
+
+- Refactored the app-state observer so successful capture is the visual
+  observation boundary and UIA snapshot failure/exception is materialized as a
+  failed semantic preview inside an otherwise successful state.
+- Public payloads now keep `stateToken`, image content and empty
+  `accessibilityTree` for screenshot-backed poor-UIA states, while raw
+  provider/UIA text stays out of the serialized result.
+- Verification evidence: targeted `ComputerUseWinObservationTests` and
+  `ComputerUseWinActionAndProjectionTests` passed `133/133`, covering hard
+  capture failure, UIA-incomplete visual success, activation warnings,
+  advisory instruction warnings, unexpected instruction-provider failure and
+  the inherited click `observeAfter` successor visual-state path.
 
 ### Step 4. Extract the shared bounded selector domain
 

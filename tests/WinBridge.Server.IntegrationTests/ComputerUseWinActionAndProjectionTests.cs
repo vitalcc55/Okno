@@ -925,7 +925,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
-    public async Task ClickHandlerSanitizesSuccessorObservationFailureReason()
+    public async Task ClickHandlerSanitizesSuccessorSemanticPreviewFailureReason()
     {
         ComputerUseWinStateStore stateStore = new();
         string token = stateStore.Create(CreateSafeStoredState());
@@ -982,12 +982,14 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.False(result.IsError, result.StructuredContent!.Value.GetRawText());
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
-        Assert.True(payload.GetProperty("refreshStateRecommended").GetBoolean());
-        JsonElement successorFailure = payload.GetProperty("successorStateFailure");
-        AssertJsonFailureCode(successorFailure, ComputerUseWinFailureCodeValues.ObservationFailed);
-        string reason = successorFailure.GetProperty("reason").GetString()!;
-        Assert.DoesNotContain("secret traversal failure", reason, StringComparison.Ordinal);
-        Assert.Contains("get_app_state", reason, StringComparison.Ordinal);
+        Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.False(payload.TryGetProperty("successorStateFailure", out _));
+        JsonElement successorState = payload.GetProperty("successorState");
+        AssertJsonStatus(successorState, ComputerUseWinStatusValues.Ok);
+        JsonElement semanticPreview = successorState.GetProperty("semanticPreview");
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Failed, semanticPreview.GetProperty("status").GetString());
+        Assert.DoesNotContain("secret traversal failure", successorState.GetRawText(), StringComparison.Ordinal);
+        Assert.Contains("get_app_state", successorState.GetRawText(), StringComparison.Ordinal);
         Assert.Equal(2, snapshotCalls);
         Assert.Equal(1, inputService.Calls);
     }
