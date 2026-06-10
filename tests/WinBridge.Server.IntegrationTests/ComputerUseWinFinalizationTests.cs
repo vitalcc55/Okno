@@ -928,6 +928,7 @@ public sealed class ComputerUseWinFinalizationTests
                 DpiScale: 1.0,
                 CaptureReference: null),
             AccessibilityTree: [],
+            SemanticPreview: storedState.Observation.ToPublicSemanticPreview(),
             Instructions: [],
             Warnings: [],
             PngBytes: [1, 2, 3],

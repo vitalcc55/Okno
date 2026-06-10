@@ -110,11 +110,47 @@ public sealed class ComputerUseWinObservationTests
         Assert.True(outcome.IsSuccess);
         Assert.NotNull(outcome.PreparedState);
         Assert.Equal(DefaultMaxNodes, outcome.PreparedState!.StoredState.Observation.RequestedMaxNodes);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Complete, outcome.PreparedState.StoredState.Observation.Status);
+        Assert.Equal(2, outcome.PreparedState.StoredState.Observation.NodeCount);
         ComputerUseWinGetAppStateResult payload = outcome.PreparedState.CreatePayload("token-1");
         Assert.Equal(ComputerUseWinStatusValues.Ok, payload.Status);
         Assert.Equal("token-1", payload.StateToken);
         Assert.Contains("activation degraded", payload.Warnings!);
         Assert.Contains(payload.AccessibilityTree!, element => element.HasKeyboardFocus);
+        Assert.NotNull(payload.SemanticPreview);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Complete, payload.SemanticPreview!.Status);
+        Assert.Equal(UiaSnapshotDefaults.View, payload.SemanticPreview.View);
+        Assert.Equal(UiaSnapshotDefaults.Depth, payload.SemanticPreview.RequestedDepth);
+        Assert.Equal(DefaultMaxNodes, payload.SemanticPreview.RequestedMaxNodes);
+        Assert.Equal(2, payload.SemanticPreview.NodeCount);
+    }
+
+    [Fact]
+    public async Task AppStateObserverPublishesIncompleteSemanticPreviewWhenSnapshotIsTruncated()
+    {
+        ComputerUseWinAppStateObservationOutcome outcome = await ObserveAsync(
+            uiAutomationService: SnapshotService(
+                root: RootWindowElement(),
+                realizedDepth: UiaSnapshotDefaults.Depth,
+                nodeCount: DefaultMaxNodes,
+                truncated: true,
+                depthBoundaryReached: true,
+                nodeBudgetBoundaryReached: true));
+
+        Assert.True(outcome.IsSuccess);
+        Assert.NotNull(outcome.PreparedState);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Incomplete, outcome.PreparedState!.StoredState.Observation.Status);
+        Assert.True(outcome.PreparedState.StoredState.Observation.Truncated);
+        Assert.True(outcome.PreparedState.StoredState.Observation.DepthBoundaryReached);
+        Assert.True(outcome.PreparedState.StoredState.Observation.NodeBudgetBoundaryReached);
+
+        ComputerUseWinGetAppStateResult payload = outcome.PreparedState.CreatePayload("token-1");
+        Assert.NotNull(payload.SemanticPreview);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Incomplete, payload.SemanticPreview!.Status);
+        Assert.True(payload.SemanticPreview.Truncated);
+        Assert.True(payload.SemanticPreview.DepthBoundaryReached);
+        Assert.True(payload.SemanticPreview.NodeBudgetBoundaryReached);
+        Assert.Equal(DefaultMaxNodes, payload.SemanticPreview.NodeCount);
     }
 
     [Fact]
@@ -187,7 +223,12 @@ public sealed class ComputerUseWinObservationTests
     private static FakeUiAutomationService SnapshotService(
         string? status = null,
         UiaElementSnapshot? root = null,
-        string? reason = null) =>
+        string? reason = null,
+        int? realizedDepth = null,
+        int? nodeCount = null,
+        bool truncated = false,
+        bool depthBoundaryReached = false,
+        bool nodeBudgetBoundaryReached = false) =>
         new((window, request, _) => Task.FromResult(
             new UiaSnapshotResult(
                 Status: status ?? UiaSnapshotStatusValues.Done,
@@ -196,7 +237,20 @@ public sealed class ComputerUseWinObservationTests
                 Root: root,
                 RequestedDepth: request.Depth,
                 RequestedMaxNodes: request.MaxNodes,
+                RealizedDepth: realizedDepth ?? GetRealizedDepth(root),
+                NodeCount: nodeCount ?? CountNodes(root),
+                Truncated: truncated,
+                DepthBoundaryReached: depthBoundaryReached,
+                NodeBudgetBoundaryReached: nodeBudgetBoundaryReached,
                 CapturedAtUtc: DateTimeOffset.UtcNow)));
+
+    private static int CountNodes(UiaElementSnapshot? node) =>
+        node is null ? 0 : 1 + node.Children.Sum(CountNodes);
+
+    private static int GetRealizedDepth(UiaElementSnapshot? node) =>
+        node is null || node.Children.Count == 0
+            ? 0
+            : 1 + node.Children.Max(GetRealizedDepth);
 
     private static UiaElementSnapshot RootWindowElement() =>
         new()

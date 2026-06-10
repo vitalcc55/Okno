@@ -60,9 +60,7 @@ internal sealed class ComputerUseWinAppStateObserver(
                 selectedWindow,
                 capture.Metadata.CaptureReference,
                 elements,
-                new ComputerUseWinObservationEnvelope(
-                    RequestedDepth: UiaSnapshotDefaults.Depth,
-                    RequestedMaxNodes: effectiveMaxNodes),
+                ComputerUseWinObservationEnvelope.FromSnapshot(snapshot),
                 capture.Metadata.CapturedAtUtc);
             List<string> effectiveWarnings = [.. warnings];
             IReadOnlyList<string> instructions = [];
@@ -85,6 +83,7 @@ internal sealed class ComputerUseWinAppStateObserver(
                 StoredState: storedState,
                 Capture: capture.Metadata,
                 AccessibilityTree: ComputerUseWinAccessibilityProjector.CreatePublicTree(elements),
+                SemanticPreview: storedState.Observation.ToPublicSemanticPreview(),
                 Instructions: instructions,
                 Warnings: effectiveWarnings,
                 PngBytes: capture.PngBytes,
@@ -128,6 +127,7 @@ internal sealed record ComputerUseWinPreparedAppState(
     ComputerUseWinStoredState StoredState,
     CaptureMetadata Capture,
     IReadOnlyList<ComputerUseWinAccessibilityElement> AccessibilityTree,
+    ComputerUseWinSemanticPreview SemanticPreview,
     IReadOnlyList<string> Instructions,
     IReadOnlyList<string> Warnings,
     byte[] PngBytes,
@@ -140,6 +140,7 @@ internal sealed record ComputerUseWinPreparedAppState(
             StateToken: stateToken,
             Capture: Capture,
             AccessibilityTree: AccessibilityTree,
+            SemanticPreview: SemanticPreview,
             Instructions: Instructions,
             Warnings: Warnings);
 }

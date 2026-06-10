@@ -36,6 +36,14 @@ public static class ComputerUseWinFailureCodeValues
     public const string InputDispatchFailed = InputFailureCodeValues.InputDispatchFailed;
 }
 
+public static class ComputerUseWinSemanticPreviewStatusValues
+{
+    public const string Complete = "complete";
+    public const string Incomplete = "incomplete";
+    public const string Unavailable = "unavailable";
+    public const string Failed = "failed";
+}
+
 public sealed record ComputerUseWinWindowDescriptor(
     string WindowId,
     long Hwnd,
@@ -83,12 +91,25 @@ public sealed record ComputerUseWinAccessibilityElement(
     bool HasKeyboardFocus,
     IReadOnlyList<string> Actions);
 
+public sealed record ComputerUseWinSemanticPreview(
+    string Status,
+    string View = UiaSnapshotDefaults.View,
+    int RequestedDepth = UiaSnapshotDefaults.Depth,
+    int RequestedMaxNodes = UiaSnapshotDefaults.MaxNodes,
+    int RealizedDepth = 0,
+    int NodeCount = 0,
+    bool Truncated = false,
+    bool DepthBoundaryReached = false,
+    bool NodeBudgetBoundaryReached = false,
+    string? FailureCode = null);
+
 public sealed record ComputerUseWinGetAppStateResult(
     string Status,
     ComputerUseWinAppSession? Session = null,
     string? StateToken = null,
     CaptureMetadata? Capture = null,
     IReadOnlyList<ComputerUseWinAccessibilityElement>? AccessibilityTree = null,
+    ComputerUseWinSemanticPreview? SemanticPreview = null,
     IReadOnlyList<string>? Instructions = null,
     IReadOnlyList<string>? Warnings = null,
     bool ApprovalRequired = false,

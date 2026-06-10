@@ -273,6 +273,36 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task GetAppStateBlockedTargetDoesNotPublishStateTokenOrSemanticPreview()
+    {
+        WindowDescriptor window = CreateWindow(hwnd: 101, title: "PowerShell", processName: "powershell", processId: 1001);
+        ComputerUseWinExecutionTargetCatalog executionTargetCatalog = new(TimeProvider.System, TimeSpan.FromMinutes(2), maxEntries: 16);
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-blocked-no-state-token-tests");
+        using TempDirectoryScope temp = new();
+        ComputerUseWinApprovalStore approvalStore = CreateApprovalStore(temp);
+        ComputerUseWinGetAppStateHandler handler = CreateGetAppStateHandler(
+            new FakeListAppsWindowManager([window]),
+            sessionManager,
+            approvalStore,
+            executionTargetCatalog);
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinGetAppState,
+            new { hwnd = 101 });
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinGetAppStateRequest(Hwnd: 101),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Blocked);
+        AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.BlockedTarget);
+        Assert.False(payload.TryGetProperty("stateToken", out _));
+        Assert.False(payload.TryGetProperty("semanticPreview", out _));
+    }
+
+    [Fact]
     public async Task GetAppStateOmitsPublishedWindowIdWhenActivationDriftsDiscoverySnapshot()
     {
         WindowDescriptor discoveredWindow = CreateWindow(
@@ -806,6 +836,11 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.NotEqual(token, successorToken);
         Assert.True(stateStore.TryGet(successorToken, out ComputerUseWinStoredState? successorStoredState));
         Assert.NotNull(successorStoredState);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Complete, successorStoredState!.Observation.Status);
+        Assert.Equal(2, successorStoredState.Observation.NodeCount);
+        JsonElement semanticPreview = successorState.GetProperty("semanticPreview");
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Complete, semanticPreview.GetProperty("status").GetString());
+        Assert.Equal(2, semanticPreview.GetProperty("nodeCount").GetInt32());
         Assert.IsType<TextContentBlock>(result.Content[0]);
         ImageContentBlock imageBlock = Assert.IsType<ImageContentBlock>(result.Content[1]);
         Assert.Equal("image/png", imageBlock.MimeType);
@@ -4412,7 +4447,17 @@ public sealed class ComputerUseWinActionAndProjectionTests
             Root: root,
             RequestedDepth: requestedDepth,
             RequestedMaxNodes: requestedMaxNodes,
+            RealizedDepth: GetRealizedDepth(root),
+            NodeCount: CountNodes(root),
             CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static int CountNodes(UiaElementSnapshot? node) =>
+        node is null ? 0 : 1 + node.Children.Sum(CountNodes);
+
+    private static int GetRealizedDepth(UiaElementSnapshot? node) =>
+        node is null || node.Children.Count == 0
+            ? 0
+            : 1 + node.Children.Max(GetRealizedDepth);
 
     private static UiaElementSnapshot CreateWindowRoot(params UiaElementSnapshot[] children) =>
         new()

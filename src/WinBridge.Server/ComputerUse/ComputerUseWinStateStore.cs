@@ -119,7 +119,58 @@ internal sealed record ComputerUseWinStoredState(
 
 internal sealed record ComputerUseWinObservationEnvelope(
     int RequestedDepth,
-    int RequestedMaxNodes);
+    int RequestedMaxNodes,
+    string Status = ComputerUseWinSemanticPreviewStatusValues.Complete,
+    string View = UiaSnapshotDefaults.View,
+    int RealizedDepth = 0,
+    int NodeCount = 0,
+    bool Truncated = false,
+    bool DepthBoundaryReached = false,
+    bool NodeBudgetBoundaryReached = false,
+    string? FailureCode = null)
+{
+    public static ComputerUseWinObservationEnvelope FromSnapshot(UiaSnapshotResult snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        string status = snapshot.Truncated || snapshot.DepthBoundaryReached
+            ? ComputerUseWinSemanticPreviewStatusValues.Incomplete
+            : ComputerUseWinSemanticPreviewStatusValues.Complete;
+        return new(
+            RequestedDepth: snapshot.RequestedDepth,
+            RequestedMaxNodes: snapshot.RequestedMaxNodes,
+            Status: status,
+            View: snapshot.View,
+            RealizedDepth: snapshot.RealizedDepth,
+            NodeCount: snapshot.NodeCount,
+            Truncated: snapshot.Truncated,
+            DepthBoundaryReached: snapshot.DepthBoundaryReached,
+            NodeBudgetBoundaryReached: snapshot.NodeBudgetBoundaryReached);
+    }
+
+    public static ComputerUseWinObservationEnvelope FromFailure(
+        int requestedDepth,
+        int requestedMaxNodes,
+        string failureCode) =>
+        new(
+            RequestedDepth: requestedDepth,
+            RequestedMaxNodes: requestedMaxNodes,
+            Status: ComputerUseWinSemanticPreviewStatusValues.Failed,
+            FailureCode: failureCode);
+
+    public ComputerUseWinSemanticPreview ToPublicSemanticPreview() =>
+        new(
+            Status: Status,
+            View: View,
+            RequestedDepth: RequestedDepth,
+            RequestedMaxNodes: RequestedMaxNodes,
+            RealizedDepth: RealizedDepth,
+            NodeCount: NodeCount,
+            Truncated: Truncated,
+            DepthBoundaryReached: DepthBoundaryReached,
+            NodeBudgetBoundaryReached: NodeBudgetBoundaryReached,
+            FailureCode: FailureCode);
+}
 
 internal sealed record ComputerUseWinStoredElement(
     int Index,

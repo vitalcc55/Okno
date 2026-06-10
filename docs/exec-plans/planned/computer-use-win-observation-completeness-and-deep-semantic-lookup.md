@@ -410,7 +410,7 @@ Master progress checklist:
 
 - [x] Step 0. Freeze the baseline and add red characterization
 - [x] Step 1. Unify public failure materialization for state, action, and successor state
-- [ ] Step 2. Introduce a product-owned semantic completeness model
+- [x] Step 2. Introduce a product-owned semantic completeness model
 - [ ] Step 3. Split visual observation success from semantic preview readiness
 - [ ] Step 4. Extract the shared bounded selector domain
 - [ ] Step 5. Implement bounded deep semantic lookup in the UIA runtime
@@ -645,10 +645,23 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] Semantic completeness envelope added to the public state contract.
-- [ ] Stored observation model carries realized completeness and product-owned semantic failure code.
-- [ ] Ghost-token behavior checked on approval-required, blocked, and hard-failure paths.
-- [ ] Closure pass completed for initial-state and successor-state storage semantics.
+- [x] Semantic completeness envelope added to the public state contract.
+- [x] Stored observation model carries realized completeness and product-owned semantic failure code.
+- [x] Ghost-token behavior checked on approval-required, blocked, and hard-failure paths.
+- [x] Closure pass completed for initial-state and successor-state storage semantics.
+
+Step 2 execution notes:
+
+- Added the public `semanticPreview` envelope with product-owned status values
+  and factual requested/realized depth, node, truncation and boundary metadata.
+- Expanded the stored observation envelope so `stateToken` carries the same
+  semantic-preview facts used by public payloads.
+- Verification evidence: Step 2 targeted server integration filter passed `9/9`
+  across complete/incomplete semantic preview, successor-state carry-through,
+  approval-required, blocked and hard-failure no-token paths. The full
+  `ComputerUseWinFinalizationTests` class passed `33/33`.
+- The Step 0 characterization filter now has `1` pass and `5` intentional
+  remaining failures for Step 3 visual-success and later selector work.
 
 ### Step 3. Split visual observation success from semantic preview readiness
 
