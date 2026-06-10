@@ -31,7 +31,7 @@ public static class UiaSemanticLookupDefaults
 {
     public const int MaxDepth = 12;
     public const int MaxNodes = 1024;
-    public const int TimeoutMs = 1000;
+    public const int TimeoutMs = 3000;
     public const int MaxDepthCeiling = 64;
     public const int MaxNodesCeiling = 4096;
     public const int TimeoutMsCeiling = 10000;
