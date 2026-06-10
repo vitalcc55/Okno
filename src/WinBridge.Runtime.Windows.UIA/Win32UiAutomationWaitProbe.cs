@@ -80,7 +80,7 @@ internal sealed class Win32UiAutomationWaitProbe : IUiAutomationWaitProbe
                 UiaSnapshotNodeData data = current.Node.GetData();
                 string elementId = UiaElementIdBuilder.Create(data.RuntimeId, current.Path);
 
-                if (SelectorMatches(data, request.Selector))
+                if (ElementSelectorPolicy.Matches(request.Selector, data.Name, data.AutomationId, data.ControlType))
                 {
                     UiaElementSnapshot snapshot = CreateLeafSnapshot(data, elementId, current.ParentElementId, current.Depth, current.Ordinal);
                     matches.AddSelectorHit(
@@ -123,29 +123,6 @@ internal sealed class Win32UiAutomationWaitProbe : IUiAutomationWaitProbe
         {
             return Failed("UI Automation не смогла материализовать wait probe для выбранного hwnd.");
         }
-    }
-
-    private static bool SelectorMatches(UiaSnapshotNodeData data, WaitElementSelector selector)
-    {
-        if (!string.IsNullOrWhiteSpace(selector.Name)
-            && !string.Equals(data.Name, selector.Name, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (!string.IsNullOrWhiteSpace(selector.AutomationId)
-            && !string.Equals(data.AutomationId, selector.AutomationId, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (!string.IsNullOrWhiteSpace(selector.ControlType)
-            && !string.Equals(data.ControlType, selector.ControlType, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return true;
     }
 
     private static UiaElementSnapshot CreateLeafSnapshot(
@@ -251,7 +228,7 @@ internal sealed class Win32UiAutomationWaitProbe : IUiAutomationWaitProbe
 
             AutomationSnapshotNode focusedNode = new(focusedElement, cacheRequest);
             UiaSnapshotNodeData focusedData = focusedNode.GetData();
-            if (!SelectorMatches(focusedData, selector))
+            if (!ElementSelectorPolicy.Matches(selector, focusedData.Name, focusedData.AutomationId, focusedData.ControlType))
             {
                 return new(FocusProbeOutcome.NotMatched, null);
             }

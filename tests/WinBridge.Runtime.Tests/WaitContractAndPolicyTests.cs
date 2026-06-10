@@ -100,6 +100,29 @@ public sealed class WaitContractAndPolicyTests
     }
 
     [Fact]
+    public void ElementSelectorPolicyUsesCanonicalCriteriaAndExactMatchSemantics()
+    {
+        WaitElementSelector selector = new(Name: "Search", AutomationId: "SearchBox", ControlType: "edit");
+
+        Assert.True(ElementSelectorPolicy.HasCriteria(selector));
+        Assert.True(ElementSelectorPolicy.Matches(selector, name: "Search", automationId: "SearchBox", controlType: "edit"));
+        Assert.False(ElementSelectorPolicy.Matches(selector, name: "search", automationId: "SearchBox", controlType: "edit"));
+        Assert.False(ElementSelectorPolicy.Matches(selector, name: "Search", automationId: "searchbox", controlType: "edit"));
+        Assert.False(ElementSelectorPolicy.Matches(selector, name: "Search", automationId: "SearchBox", controlType: "Edit"));
+    }
+
+    [Theory]
+    [InlineData(0, ElementSelectorMatchCardinalityValues.None)]
+    [InlineData(1, ElementSelectorMatchCardinalityValues.Unique)]
+    [InlineData(2, ElementSelectorMatchCardinalityValues.Ambiguous)]
+    [InlineData(3, ElementSelectorMatchCardinalityValues.Ambiguous)]
+    public void ElementSelectorPolicyClassifiesMatchCardinality(int matchCount, string expectedCardinality)
+    {
+        Assert.Equal(expectedCardinality, ElementSelectorPolicy.ClassifyMatchCount(matchCount));
+        Assert.Equal(matchCount >= 2, ElementSelectorPolicy.IsAmbiguous(matchCount));
+    }
+
+    [Fact]
     public void WaitStatusValuesExposeExpectedLiterals()
     {
         Assert.Equal("done", WaitStatusValues.Done);

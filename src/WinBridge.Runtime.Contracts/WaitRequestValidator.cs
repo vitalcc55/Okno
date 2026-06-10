@@ -21,7 +21,7 @@ public static class WaitRequestValidator
             return false;
         }
 
-        if (RequiresSelector(request.Condition) && !HasSelector(request.Selector))
+        if (RequiresSelector(request.Condition) && !ElementSelectorPolicy.HasCriteria(request.Selector))
         {
             reason = "Для этого wait condition нужен selector хотя бы с одним из полей: name, automationId или controlType.";
             return false;
@@ -60,12 +60,6 @@ public static class WaitRequestValidator
         reason = $"Условие wait '{request.Condition}' не поддерживается.";
         return false;
     }
-
-    private static bool HasSelector(WaitElementSelector? selector) =>
-        selector is not null
-        && (!string.IsNullOrWhiteSpace(selector.Name)
-            || !string.IsNullOrWhiteSpace(selector.AutomationId)
-            || !string.IsNullOrWhiteSpace(selector.ControlType));
 
     private static bool RequiresSelector(string condition) =>
         string.Equals(condition, WaitConditionValues.ElementExists, StringComparison.Ordinal)

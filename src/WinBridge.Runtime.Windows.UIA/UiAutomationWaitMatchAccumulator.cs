@@ -11,7 +11,7 @@ internal sealed class UiAutomationWaitMatchAccumulator(string condition, string?
     private string? _matchedText;
     private string? _matchedTextSource;
 
-    public bool ShouldContinueTraversal => _matches.Count < 2;
+    public bool ShouldContinueTraversal => !ElementSelectorPolicy.IsAmbiguous(_matches.Count);
 
     public void AddSelectorHit(
         UiaElementSnapshot snapshot,

@@ -412,7 +412,7 @@ Master progress checklist:
 - [x] Step 1. Unify public failure materialization for state, action, and successor state
 - [x] Step 2. Introduce a product-owned semantic completeness model
 - [x] Step 3. Split visual observation success from semantic preview readiness
-- [ ] Step 4. Extract the shared bounded selector domain
+- [x] Step 4. Extract the shared bounded selector domain
 - [ ] Step 5. Implement bounded deep semantic lookup in the UIA runtime
 - [ ] Step 6. Integrate the selector lane into semantic actions first
 - [ ] Step 7. Close the same reachability class across proof-backed physical actions
@@ -805,10 +805,26 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] Selector shape reused directly or extracted once into a shared owner.
-- [ ] `windows.wait` remains green without public selector shape drift.
-- [ ] Shared selector-match policy is canonical for `name`, `automationId`, and `controlType`.
-- [ ] Closure pass completed for selector semantics and wait regressions.
+- [x] Selector shape reused directly or extracted once into a shared owner.
+- [x] `windows.wait` remains green without public selector shape drift.
+- [x] Shared selector-match policy is canonical for `name`, `automationId`, and `controlType`.
+- [x] Closure pass completed for selector semantics and wait regressions.
+
+Step 4 execution notes:
+
+- Kept `WaitElementSelector` as the single selector shape and introduced a
+  shared contract-level `ElementSelectorPolicy` plus typed match-cardinality
+  values for `none`, `unique`, and `ambiguous`.
+- Replaced `WaitRequestValidator` local selector-presence logic and
+  `Win32UiAutomationWaitProbe` local `SelectorMatches(...)` logic with the
+  shared policy; `UiAutomationWaitMatchAccumulator` now uses the same
+  ambiguity threshold instead of a local `_matches.Count < 2` branch.
+- TDD evidence: the new selector-policy tests first failed to compile because
+  the shared owner did not exist; after implementation, targeted runtime tests
+  passed `28/28`.
+- Closure evidence: `WindowWaitToolTests` passed `12/12`, and a repository
+  search confirmed the old private `SelectorMatches(...)`, `HasSelector(...)`
+  and `_matches.Count < 2` paths were removed.
 
 ### Step 5. Implement bounded deep semantic lookup in the UIA runtime
 
