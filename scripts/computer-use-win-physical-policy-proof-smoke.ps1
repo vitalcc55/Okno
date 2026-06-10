@@ -68,18 +68,18 @@ function Get-ProofSmokeScenarioResults {
 
     $scenarioReports = @()
     foreach ($scenarioName in $ScenarioNames) {
-        $matches = @(
+        $scenarioMatches = @(
             $unitResults |
                 Where-Object {
                     $testName = [string]$_.testName
                     $testName -eq $scenarioName -or $testName.EndsWith(".$scenarioName", [System.StringComparison]::Ordinal)
                 })
 
-        if ($matches.Count -ne 1) {
-            throw "Proof-smoke TRX must contain exactly one result for scenario '$scenarioName', but found $($matches.Count)."
+        if ($scenarioMatches.Count -ne 1) {
+            throw "Proof-smoke TRX must contain exactly one result for scenario '$scenarioName', but found $($scenarioMatches.Count)."
         }
 
-        $match = $matches[0]
+        $match = $scenarioMatches[0]
         $outcome = [string]$match.outcome
         if ($outcome -ne 'Passed') {
             throw "Proof-smoke scenario '$scenarioName' finished with outcome '$outcome'."
