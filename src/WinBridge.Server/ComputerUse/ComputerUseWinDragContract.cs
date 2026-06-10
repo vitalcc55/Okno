@@ -290,9 +290,11 @@ internal static class ComputerUseWinDragContract
 
     public static string DetermineDispatchPath(ComputerUseWinDragPayload payload) =>
         !payload.UsesCoordinateEndpoint
-            ? "fresh_uia_revalidation_to_input_drag"
+            ? ComputerUseWinExecutionExecutorValues.FreshUiaRevalidationToInputDrag
             : DetermineDispatchPath(string.Equals(payload.CoordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal));
 
     public static string DetermineDispatchPath(bool capturePixels) =>
-        capturePixels ? "capture_pixels_drag_input" : "screen_drag_input";
+        capturePixels
+            ? ComputerUseWinExecutionExecutorValues.CapturePixelsDragInput
+            : ComputerUseWinExecutionExecutorValues.ScreenDragInput;
 }

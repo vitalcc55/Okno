@@ -57,7 +57,7 @@ internal sealed class ComputerUseWinPerformSecondaryActionExecutionCoordinator(
                 ComputerUseWinActionLifecyclePhase.BeforeActivation,
                 confirmationRequired: true,
                 riskClass: "secondary_semantic_risky",
-                dispatchPath: "uia_toggle");
+                dispatchPath: ComputerUseWinExecutionExecutorValues.UiaToggle);
         }
 
         ActivateWindowResult activation = await windowActivationService.ActivateAsync(state.Window, cancellationToken).ConfigureAwait(false);
@@ -69,7 +69,7 @@ internal sealed class ComputerUseWinPerformSecondaryActionExecutionCoordinator(
                 ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch,
                 confirmationRequired: storedTargetIsRisky,
                 riskClass: storedTargetIsRisky ? "secondary_semantic_risky" : "secondary_semantic",
-                dispatchPath: "uia_toggle");
+                dispatchPath: ComputerUseWinExecutionExecutorValues.UiaToggle);
         }
 
         ComputerUseWinStoredState resolvedState = state with
@@ -98,7 +98,7 @@ internal sealed class ComputerUseWinPerformSecondaryActionExecutionCoordinator(
                 ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
                 confirmationRequired: true,
                 riskClass: "secondary_semantic_risky",
-                dispatchPath: $"uia_{resolution.ActionKind}");
+                dispatchPath: ComputerUseWinExecutionExecutorValues.ResolveSecondaryAction(resolution.ActionKind!, resolvedPattern: null));
         }
 
         UiaSecondaryActionResult semanticAction;
@@ -132,7 +132,7 @@ internal sealed class ComputerUseWinPerformSecondaryActionExecutionCoordinator(
                     FailedActionIndex: 0),
                 confirmationRequired: resolution.RequiresConfirmation,
                 riskClass: resolution.IsRisky ? "secondary_semantic_risky" : "secondary_semantic",
-                dispatchPath: semanticAction.ResolvedPattern is null ? $"uia_{resolution.ActionKind}" : $"uia_{semanticAction.ResolvedPattern}");
+                dispatchPath: ComputerUseWinExecutionExecutorValues.ResolveSecondaryAction(resolution.ActionKind!, semanticAction.ResolvedPattern));
         }
 
         return ComputerUseWinActionExecutionOutcome.Success(
@@ -144,7 +144,7 @@ internal sealed class ComputerUseWinPerformSecondaryActionExecutionCoordinator(
                 CompletedActionCount: 1),
             confirmationRequired: resolution.RequiresConfirmation,
             riskClass: resolution.IsRisky ? "secondary_semantic_risky" : "secondary_semantic",
-            dispatchPath: semanticAction.ResolvedPattern is null ? $"uia_{resolution.ActionKind}" : $"uia_{semanticAction.ResolvedPattern}");
+            dispatchPath: ComputerUseWinExecutionExecutorValues.ResolveSecondaryAction(resolution.ActionKind!, semanticAction.ResolvedPattern));
     }
 
     private static string MapFailureCode(string? failureKind) =>

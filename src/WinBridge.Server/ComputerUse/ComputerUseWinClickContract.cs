@@ -89,7 +89,7 @@ internal static class ComputerUseWinClickContract
                     ComputerUseWinActionLifecyclePhase.BeforeActivation,
                     confirmationRequired: false,
                     riskClass: "semantic_target",
-                    dispatchPath: "fresh_uia_revalidation_to_input");
+                    dispatchPath: ComputerUseWinExecutionExecutorValues.FreshUiaRevalidationToInput);
                 return true;
             }
 
@@ -101,7 +101,7 @@ internal static class ComputerUseWinClickContract
                     ComputerUseWinActionLifecyclePhase.BeforeActivation,
                     confirmationRequired: true,
                     riskClass: "semantic_risky",
-                    dispatchPath: "fresh_uia_revalidation_to_input");
+                    dispatchPath: ComputerUseWinExecutionExecutorValues.FreshUiaRevalidationToInput);
                 return true;
             }
 
@@ -125,7 +125,7 @@ internal static class ComputerUseWinClickContract
                         ComputerUseWinActionLifecyclePhase.BeforeActivation,
                         confirmationRequired: true,
                         riskClass: "coordinate_low_confidence",
-                        dispatchPath: "capture_pixels_input");
+                        dispatchPath: ComputerUseWinExecutionExecutorValues.CapturePixelsInput);
                     return true;
                 }
 
@@ -142,7 +142,7 @@ internal static class ComputerUseWinClickContract
                         ComputerUseWinActionLifecyclePhase.BeforeActivation,
                         confirmationRequired: true,
                         riskClass: "coordinate_low_confidence",
-                        dispatchPath: "capture_pixels_input");
+                        dispatchPath: ComputerUseWinExecutionExecutorValues.CapturePixelsInput);
                     return true;
                 }
             }
@@ -155,8 +155,8 @@ internal static class ComputerUseWinClickContract
                     confirmationRequired: true,
                     riskClass: "coordinate_low_confidence",
                     dispatchPath: string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
-                        ? "capture_pixels_input"
-                        : "screen_input");
+                        ? ComputerUseWinExecutionExecutorValues.CapturePixelsInput
+                        : ComputerUseWinExecutionExecutorValues.ScreenInput);
                 return true;
             }
 

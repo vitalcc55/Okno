@@ -139,7 +139,7 @@ internal static class ComputerUseWinScrollContract
                     ComputerUseWinActionLifecyclePhase.BeforeActivation,
                     confirmationRequired: false,
                     riskClass: "semantic_scroll",
-                    dispatchPath: "uia_scroll_pattern");
+                    dispatchPath: ComputerUseWinExecutionExecutorValues.UiaScrollPattern);
                 return true;
             }
 
@@ -158,7 +158,7 @@ internal static class ComputerUseWinScrollContract
                     ComputerUseWinActionLifecyclePhase.BeforeActivation,
                     confirmationRequired: true,
                     riskClass: "coordinate_scroll",
-                    dispatchPath: "win32_sendinput_wheel");
+                    dispatchPath: ComputerUseWinExecutionExecutorValues.Win32SendInputWheel);
                 return true;
             }
 
@@ -175,7 +175,7 @@ internal static class ComputerUseWinScrollContract
                     ComputerUseWinActionLifecyclePhase.BeforeActivation,
                     confirmationRequired: true,
                     riskClass: "coordinate_scroll",
-                    dispatchPath: "win32_sendinput_wheel");
+                    dispatchPath: ComputerUseWinExecutionExecutorValues.Win32SendInputWheel);
                 return true;
             }
         }
@@ -187,7 +187,7 @@ internal static class ComputerUseWinScrollContract
                 ComputerUseWinActionLifecyclePhase.BeforeActivation,
                 confirmationRequired: true,
                 riskClass: "coordinate_scroll",
-                dispatchPath: "win32_sendinput_wheel");
+                dispatchPath: ComputerUseWinExecutionExecutorValues.Win32SendInputWheel);
             return true;
         }
 

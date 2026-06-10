@@ -149,12 +149,7 @@ internal sealed class ComputerUseWinSetValueExecutionCoordinator(
                 NumberValue: payload.NumberValue),
             cancellationToken).ConfigureAwait(false);
 
-        string dispatchPath = setResult.ResolvedPattern switch
-        {
-            "value_pattern" => "uia_value_pattern",
-            "range_value_pattern" => "uia_range_value_pattern",
-            _ => "uia_semantic_set",
-        };
+        string dispatchPath = ComputerUseWinExecutionExecutorValues.ResolveSetValue(setResult.ResolvedPattern);
 
         if (!setResult.Success)
         {

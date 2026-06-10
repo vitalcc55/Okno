@@ -626,6 +626,60 @@ public sealed class ComputerUseWinFinalizationTests
     }
 
     [Fact]
+    public void StructuredBoundaryFailureDoesNotPublishExecutionFactsBeforeDispatch()
+    {
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredFailurePayload(
+            ComputerUseWinFailureCodeValues.StaleState,
+            "State became stale before dispatch.",
+            targetHwnd: TargetHwnd,
+            elementIndex: ElementIndex,
+            phase: ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
+            observabilityContext: new ComputerUseWinActionObservabilityContext(
+                ActionName: ToolNames.ComputerUseWinTypeText,
+                RuntimeState: "observed",
+                AppId: "explorer",
+                WindowIdPresent: true,
+                StateTokenPresent: true,
+                TargetMode: "focused_fallback",
+                ElementIndexPresent: false,
+                CoordinateSpace: null,
+                CaptureReferencePresent: false,
+                ConfirmationRequired: true,
+                Confirmed: true,
+                RiskClass: "focused_text_fallback",
+                DispatchPath: "win32_sendinput_unicode",
+                FallbackUsed: true));
+
+        Assert.Null(payload.ExecutionFacts);
+    }
+
+    [Fact]
+    public void StructuredApprovalRequiredDoesNotPublishExecutionFactsBeforeDispatch()
+    {
+        ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredApprovalRequiredPayload(
+            "Confirm required.",
+            targetHwnd: TargetHwnd,
+            elementIndex: ElementIndex,
+            phase: ComputerUseWinActionLifecyclePhase.BeforeActivation,
+            observabilityContext: new ComputerUseWinActionObservabilityContext(
+                ActionName: ToolNames.ComputerUseWinPressKey,
+                RuntimeState: "observed",
+                AppId: "explorer",
+                WindowIdPresent: true,
+                StateTokenPresent: true,
+                TargetMode: "element_index",
+                ElementIndexPresent: true,
+                CoordinateSpace: null,
+                CaptureReferencePresent: false,
+                ConfirmationRequired: true,
+                Confirmed: false,
+                RiskClass: "dangerous_key",
+                DispatchPath: "win32_sendinput_keypress"));
+
+        Assert.Null(payload.ExecutionFacts);
+    }
+
+    [Fact]
     public void StructuredActionFailureRecommendsRefreshAfterActivationBeforeDispatch()
     {
         ComputerUseWinActionResult payload = ComputerUseWinActionFinalizer.CreateStructuredFailurePayload(

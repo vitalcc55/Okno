@@ -50,7 +50,9 @@ internal sealed class ComputerUseWinScrollExecutionCoordinator(
                 ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch,
                 confirmationRequired: string.Equals(typedPayload.TargetMode, "point", StringComparison.Ordinal),
                 riskClass: string.Equals(typedPayload.TargetMode, "point", StringComparison.Ordinal) ? "coordinate_scroll" : "semantic_scroll",
-                dispatchPath: string.Equals(typedPayload.TargetMode, "point", StringComparison.Ordinal) ? "win32_sendinput_wheel" : "uia_scroll_pattern");
+                dispatchPath: string.Equals(typedPayload.TargetMode, "point", StringComparison.Ordinal)
+                    ? ComputerUseWinExecutionExecutorValues.Win32SendInputWheel
+                    : ComputerUseWinExecutionExecutorValues.UiaScrollPattern);
         }
 
         ComputerUseWinStoredState resolvedState = state with
@@ -107,7 +109,7 @@ internal sealed class ComputerUseWinScrollExecutionCoordinator(
                         FailedActionIndex: 0),
                     confirmationRequired: false,
                     riskClass: "semantic_scroll",
-                    dispatchPath: semanticScroll.ResolvedPattern is null ? "uia_scroll_pattern" : $"uia_{semanticScroll.ResolvedPattern}",
+                    dispatchPath: ComputerUseWinExecutionExecutorValues.ResolveScroll(semanticScroll.ResolvedPattern),
                     successorObservationWindow: resolvedState.Window);
             }
 
@@ -120,7 +122,7 @@ internal sealed class ComputerUseWinScrollExecutionCoordinator(
                     CompletedActionCount: 1),
                 confirmationRequired: false,
                 riskClass: "semantic_scroll",
-                dispatchPath: semanticScroll.ResolvedPattern is null ? "uia_scroll_pattern" : $"uia_{semanticScroll.ResolvedPattern}",
+                dispatchPath: ComputerUseWinExecutionExecutorValues.ResolveScroll(semanticScroll.ResolvedPattern),
                 successorObservationWindow: resolvedState.Window);
         }
 
@@ -161,7 +163,7 @@ internal sealed class ComputerUseWinScrollExecutionCoordinator(
             input,
             confirmationRequired: targetResolution.RequiresConfirmation,
             riskClass: "coordinate_scroll",
-            dispatchPath: "win32_sendinput_wheel",
+            dispatchPath: ComputerUseWinExecutionExecutorValues.Win32SendInputWheel,
             successorObservationWindow: resolvedState.Window);
     }
 

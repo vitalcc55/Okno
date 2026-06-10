@@ -63,10 +63,5 @@ internal sealed class ComputerUseWinPerformSecondaryActionHandler(
     }
 
     internal static string? ResolveSemanticActionKind(string? dispatchPath) =>
-        dispatchPath switch
-        {
-            "uia_toggle" or "uia_toggle_pattern" => UiaSecondaryActionKindValues.Toggle,
-            "uia_expand_collapse" or "uia_expand_collapse_pattern" => UiaSecondaryActionKindValues.ExpandCollapse,
-            _ => null,
-        };
+        ComputerUseWinExecutionExecutorValues.ResolveSecondaryActionKind(dispatchPath);
 }

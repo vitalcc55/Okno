@@ -5,6 +5,27 @@ Branch: `codex/computer-use-win-physical-policy-phase-1`
 Date: `2026-05-14`  
 Parent workstream: [computer-use-win-physical-execution-policy-hardening.md](../active/computer-use-win-physical-execution-policy-hardening.md)
 
+Post-review closure note (`2026-05-17`):
+
+- `executionFacts` now materialize only for factual execution paths.
+- structured `approval_required` and other pre-dispatch structured failure
+  payloads no longer publish the public envelope merely because a planned
+  `dispatchPath` was already known.
+- shared executor vocabulary was centralized so the builder and producer paths
+  no longer drift independently.
+
+Follow-up closure note (`2026-06-10`):
+
+- the remaining executor-drift seam is now closed by one canonical registry:
+  declared executor constants, shared descriptor metadata, and builder support
+  no longer live in separate manual lists.
+- `ComputerUseWinPhysicalExecutionPolicy` now resolves executor semantics from
+  that shared registry instead of maintaining its own parallel map.
+- regression coverage now pins the invariant
+  `declared executor constants == shared descriptor registry == builder support`
+  so future executor additions fail closed before they can become a new review
+  iteration.
+
 ## 1. Goal
 
 Сделать **первый implementation-ready phase** большого workstream

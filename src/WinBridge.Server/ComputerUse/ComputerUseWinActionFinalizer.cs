@@ -79,7 +79,7 @@ internal static class ComputerUseWinActionFinalizer
             Reason: status == ComputerUseWinStatusValues.Failed ? failure.Reason : input.Reason,
             TargetHwnd: input.TargetHwnd ?? targetHwnd,
             ElementIndex: elementIndex,
-            ExecutionFacts: CreateExecutionFacts(observabilityContext, status, failure.FailureCode, successorObservation),
+            ExecutionFacts: CreateExecutionFacts(observabilityContext, status, failure.FailureCode, successorObservation, factualExecutionObserved: true),
             SuccessorState: successorState,
             SuccessorStateFailure: successorObservation?.Failure);
     }
@@ -229,26 +229,28 @@ internal static class ComputerUseWinActionFinalizer
         ComputerUseWinActionObservabilityContext? context,
         string publicStatus,
         string? publicFailureCode,
-        ComputerUseWinActionSuccessorObservation? successorObservation)
+        ComputerUseWinActionSuccessorObservation? successorObservation,
+        bool factualExecutionObserved)
     {
-        if (context is null || string.IsNullOrWhiteSpace(context.DispatchPath))
+        if (!ComputerUseWinExecutionFactsPublicationPolicy.CanPublish(context, factualExecutionObserved))
         {
             return null;
         }
 
+        ComputerUseWinActionObservabilityContext executionContext = context!;
         ComputerUseWinExecutionFacts internalFacts = ComputerUseWinExecutionFactsBuilder.Build(
             new ComputerUseWinExecutionFactsInputs(
-                Executor: context.DispatchPath,
-                ConfirmationRequired: context.ConfirmationRequired,
-                Confirmed: context.Confirmed,
-                FallbackUsed: context.FallbackUsed ?? false,
-                TargetProof: ResolveTargetProof(context),
-                StateTokenPresent: context.StateTokenPresent,
-                CaptureReferencePresent: context.CaptureReferencePresent,
-                WindowContinuity: ResolveWindowContinuity(context, publicFailureCode),
+                Executor: executionContext.DispatchPath!,
+                ConfirmationRequired: executionContext.ConfirmationRequired,
+                Confirmed: executionContext.Confirmed,
+                FallbackUsed: executionContext.FallbackUsed ?? false,
+                TargetProof: ResolveTargetProof(executionContext),
+                StateTokenPresent: executionContext.StateTokenPresent,
+                CaptureReferencePresent: executionContext.CaptureReferencePresent,
+                WindowContinuity: ResolveWindowContinuity(executionContext, publicFailureCode),
                 ForegroundIntegrity: ResolveForegroundIntegrity(publicStatus, publicFailureCode),
-                ObserveAfterRequested: context.ObserveAfterRequested ?? false,
-                SuccessorStateAvailable: successorObservation?.SuccessorState is not null || context.SuccessorStateAvailable == true));
+                ObserveAfterRequested: executionContext.ObserveAfterRequested ?? false,
+                SuccessorStateAvailable: successorObservation?.SuccessorState is not null || executionContext.SuccessorStateAvailable == true));
 
         return new(
             DispatchClass: internalFacts.DispatchClass,
@@ -349,7 +351,8 @@ internal static class ComputerUseWinActionFinalizer
                 observabilityContext,
                 ComputerUseWinStatusValues.Failed,
                 failureCode,
-                successorObservation: null));
+                successorObservation: null,
+                factualExecutionObserved: false));
 
     internal static ComputerUseWinActionResult CreateStructuredApprovalRequiredPayload(
         string reason,
@@ -368,5 +371,6 @@ internal static class ComputerUseWinActionFinalizer
                 observabilityContext,
                 ComputerUseWinStatusValues.ApprovalRequired,
                 ComputerUseWinFailureCodeValues.ApprovalRequired,
-                successorObservation: null));
+                successorObservation: null,
+                factualExecutionObserved: false));
 }

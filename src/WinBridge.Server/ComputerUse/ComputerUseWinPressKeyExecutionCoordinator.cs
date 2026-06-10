@@ -39,7 +39,7 @@ internal sealed class ComputerUseWinPressKeyExecutionCoordinator(
                 ComputerUseWinActionLifecyclePhase.BeforeActivation,
                 confirmationRequired: true,
                 riskClass: "dangerous_key",
-                dispatchPath: "win32_sendinput_keypress");
+                dispatchPath: ComputerUseWinExecutionExecutorValues.Win32SendInputKeypress);
         }
 
         ActivateWindowResult activation = await windowActivationService.ActivateAsync(state.Window, cancellationToken).ConfigureAwait(false);
@@ -51,7 +51,7 @@ internal sealed class ComputerUseWinPressKeyExecutionCoordinator(
                 ComputerUseWinActionLifecyclePhase.AfterActivationBeforeDispatch,
                 confirmationRequired: requiresConfirmation,
                 riskClass: requiresConfirmation ? "dangerous_key" : "keyboard_key",
-                dispatchPath: "win32_sendinput_keypress");
+                dispatchPath: ComputerUseWinExecutionExecutorValues.Win32SendInputKeypress);
         }
 
         ComputerUseWinStoredState resolvedState = state with
@@ -79,7 +79,7 @@ internal sealed class ComputerUseWinPressKeyExecutionCoordinator(
             input,
             confirmationRequired: requiresConfirmation,
             riskClass: requiresConfirmation ? "dangerous_key" : "keyboard_key",
-            dispatchPath: "win32_sendinput_keypress",
+            dispatchPath: ComputerUseWinExecutionExecutorValues.Win32SendInputKeypress,
             successorObservationWindow: resolvedState.Window);
     }
 

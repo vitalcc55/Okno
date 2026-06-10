@@ -813,6 +813,34 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ClickHandlerRequiresConfirmationForCoordinatePathWithoutExecutionFacts()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSafeStoredState());
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-click-coordinate-approval-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinClick,
+            new { stateToken = token, point = new { x = 20, y = 30 }, confirm = false });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeInputService inputService = new();
+        FakeUiAutomationService uiAutomationService = new();
+        ComputerUseWinClickHandler handler = CreateClickHandler(stateStore, activationService, inputService, uiAutomationService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinClickRequest(StateToken: token, Point: new InputPoint(20, 30), CoordinateSpace: InputCoordinateSpaceValues.CapturePixels, Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.ApprovalRequired);
+        Assert.False(payload.TryGetProperty("executionFacts", out _));
+        AssertNoActivationAttempted(activationService);
+        AssertNoInputDispatched(inputService);
+        AssertNoUiAutomationSnapshotRequested(uiAutomationService);
+    }
+
+    [Fact]
     public async Task ClickHandlerKeepsCommittedActionOutcomeWhenObserveAfterFails()
     {
         ComputerUseWinStateStore stateStore = new();
@@ -1093,6 +1121,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.ApprovalRequired);
         Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.False(payload.TryGetProperty("executionFacts", out _));
         AssertNoInputDispatched(inputService);
         AssertNoActivationAttempted(activationService);
     }
@@ -1926,17 +1955,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.Failed);
         AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.CaptureReferenceRequired);
-        JsonElement executionFacts = payload.GetProperty("executionFacts");
-        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
-        Assert.Equal("capture_pixels_text_input", executionFacts.GetProperty("executor").GetString());
-        Assert.Equal("none", executionFacts.GetProperty("targetProof").GetString());
-        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
-        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
-        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
-        Assert.True(executionFacts.GetProperty("stateTokenPresent").GetBoolean());
-        Assert.False(executionFacts.GetProperty("captureReferencePresent").GetBoolean());
-        Assert.Equal("accepted", executionFacts.GetProperty("windowContinuity").GetString());
-        Assert.Equal("unknown", executionFacts.GetProperty("foregroundIntegrity").GetString());
+        Assert.False(payload.TryGetProperty("executionFacts", out _));
         AssertNoUiAutomationSnapshotRequested(uiAutomationService);
         AssertNoInputDispatched(inputService);
     }
@@ -2307,15 +2326,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.Failed);
         AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.StaleState);
-        JsonElement executionFacts = payload.GetProperty("executionFacts");
-        Assert.Equal("fallback_physical", executionFacts.GetProperty("dispatchClass").GetString());
-        Assert.Equal("win32_sendinput_unicode", executionFacts.GetProperty("executor").GetString());
-        Assert.Equal("none", executionFacts.GetProperty("targetProof").GetString());
-        Assert.True(executionFacts.GetProperty("confirmationRequired").GetBoolean());
-        Assert.True(executionFacts.GetProperty("confirmationSatisfied").GetBoolean());
-        Assert.True(executionFacts.GetProperty("fallbackUsed").GetBoolean());
-        Assert.Equal("failed", executionFacts.GetProperty("windowContinuity").GetString());
-        Assert.Equal("unknown", executionFacts.GetProperty("foregroundIntegrity").GetString());
+        Assert.False(payload.TryGetProperty("executionFacts", out _));
         AssertNoInputDispatched(inputService);
     }
 
@@ -2546,6 +2557,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
 
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.ApprovalRequired);
+        Assert.False(payload.TryGetProperty("executionFacts", out _));
         AssertNoActivationAttempted(activationService);
         AssertNoInputDispatched(inputService);
         AssertNoSemanticScrollDispatched(scrollService);
@@ -2792,6 +2804,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.ApprovalRequired);
         AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.ApprovalRequired);
+        Assert.False(payload.TryGetProperty("executionFacts", out _));
         AssertNoActivationAttempted(activationService);
         AssertNoUiAutomationSnapshotRequested(uiAutomationService);
         AssertNoInputDispatched(inputService);
@@ -2985,6 +2998,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         JsonElement payload = GetPayload(result);
         AssertJsonStatus(payload, ComputerUseWinStatusValues.ApprovalRequired);
         AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.ApprovalRequired);
+        Assert.False(payload.TryGetProperty("executionFacts", out _));
         AssertNoSecondaryActionDispatched(secondaryActionService);
         AssertNoActivationAttempted(activationService);
     }

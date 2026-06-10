@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025–2026 Власов Виталий Андреевич <vital.cc55@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using System.Reflection;
 using WinBridge.Server.ComputerUse;
 
 namespace WinBridge.Server.IntegrationTests;
@@ -78,6 +79,70 @@ public sealed class ComputerUseWinExecutionFactsBuilderTests
         Assert.True(facts.PhysicalKeyboardUsed);
         Assert.True(facts.SystemCursorMoved);
         Assert.True(facts.FallbackUsed);
+    }
+
+    [Fact]
+    public void BuildMapsExpandCollapsePatternExecutorToSemanticDispatchClass()
+    {
+        ComputerUseWinExecutionFacts facts = ComputerUseWinExecutionFactsBuilder.Build(
+            new ComputerUseWinExecutionFactsInputs(
+                Executor: "uia_expand_collapse_pattern",
+                ConfirmationRequired: false,
+                Confirmed: true,
+                FallbackUsed: false,
+                TargetProof: ComputerUseWinTargetProofValues.UiaRevalidated,
+                StateTokenPresent: true,
+                CaptureReferencePresent: false,
+                WindowContinuity: ComputerUseWinWindowContinuityValues.Accepted,
+                ForegroundIntegrity: ComputerUseWinForegroundIntegrityValues.Accepted,
+                ObserveAfterRequested: false,
+                SuccessorStateAvailable: false));
+
+        Assert.Equal(ComputerUseWinDispatchClassValues.Semantic, facts.DispatchClass);
+        Assert.Equal("uia_expand_collapse_pattern", facts.Executor);
+        Assert.False(facts.PhysicalPointerUsed);
+        Assert.False(facts.PhysicalKeyboardUsed);
+        Assert.False(facts.SystemCursorMoved);
+    }
+
+    [Fact]
+    public void SharedExecutionExecutorDescriptorsCoverAllDeclaredExecutorConstants()
+    {
+        HashSet<string> declaredExecutors = typeof(ComputerUseWinExecutionExecutorValues)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field is { IsLiteral: true, IsInitOnly: false } && field.FieldType == typeof(string))
+            .Select(field => (string)field.GetRawConstantValue()!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        HashSet<string> registeredExecutors = ComputerUseWinExecutionExecutorValues.SupportedDescriptors
+            .Select(descriptor => descriptor.Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(declaredExecutors, registeredExecutors);
+        Assert.Equal(declaredExecutors, ComputerUseWinExecutionExecutorValues.All.ToHashSet(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void BuildClassifiesAllRegisteredExecutionExecutors()
+    {
+        foreach (string executor in ComputerUseWinExecutionExecutorValues.All)
+        {
+            ComputerUseWinExecutionFacts facts = ComputerUseWinExecutionFactsBuilder.Build(
+                new ComputerUseWinExecutionFactsInputs(
+                    Executor: executor,
+                    ConfirmationRequired: false,
+                    Confirmed: true,
+                    FallbackUsed: false,
+                    TargetProof: ComputerUseWinTargetProofValues.None,
+                    StateTokenPresent: true,
+                    CaptureReferencePresent: false,
+                    WindowContinuity: ComputerUseWinWindowContinuityValues.Accepted,
+                    ForegroundIntegrity: ComputerUseWinForegroundIntegrityValues.Accepted,
+                    ObserveAfterRequested: false,
+                    SuccessorStateAvailable: false));
+
+            Assert.Equal(executor, facts.Executor);
+        }
     }
 
     [Fact]

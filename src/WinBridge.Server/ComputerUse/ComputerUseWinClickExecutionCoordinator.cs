@@ -139,13 +139,13 @@ internal sealed class ComputerUseWinClickExecutionCoordinator(
     {
         if (request.ElementIndex is not null)
         {
-            return "fresh_uia_revalidation_to_input";
+            return ComputerUseWinExecutionExecutorValues.FreshUiaRevalidationToInput;
         }
 
         string coordinateSpace = request.CoordinateSpace ?? InputCoordinateSpaceValues.CapturePixels;
         return string.Equals(coordinateSpace, InputCoordinateSpaceValues.CapturePixels, StringComparison.Ordinal)
-            ? "capture_pixels_input"
-            : "screen_input";
+            ? ComputerUseWinExecutionExecutorValues.CapturePixelsInput
+            : ComputerUseWinExecutionExecutorValues.ScreenInput;
     }
 
     private static string DetermineRiskClass(ComputerUseWinClickRequest request, bool confirmationRequired)

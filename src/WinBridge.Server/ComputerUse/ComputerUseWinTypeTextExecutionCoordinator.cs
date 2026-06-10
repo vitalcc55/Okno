@@ -13,7 +13,7 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
     IUiAutomationService uiAutomationService,
     IInputService inputService)
 {
-    private const string DispatchPath = "win32_sendinput_unicode";
+    private const string DispatchPath = ComputerUseWinExecutionExecutorValues.Win32SendInputUnicode;
     private const string RiskClass = "text_input";
     private const string FocusedFallbackRiskClass = "focused_text_fallback";
     private const string CoordinateConfirmedFallbackRiskClass = "coordinate_confirmed_text_fallback";
@@ -149,7 +149,7 @@ internal sealed class ComputerUseWinTypeTextExecutionCoordinator(
     {
         InputPoint point = payload.Point!;
         string coordinateSpace = payload.CoordinateSpace ?? InputCoordinateSpaceValues.CapturePixels;
-        const string dispatchPath = "capture_pixels_text_input";
+        const string dispatchPath = ComputerUseWinExecutionExecutorValues.CapturePixelsTextInput;
 
         if (state.CaptureReference is null)
         {
