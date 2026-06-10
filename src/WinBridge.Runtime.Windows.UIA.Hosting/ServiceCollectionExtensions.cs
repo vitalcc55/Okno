@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IUiAutomationSetValueService, Win32UiAutomationSetValueService>();
         services.AddSingleton<IUiAutomationScrollService, Win32UiAutomationScrollService>();
         services.AddSingleton<IUiAutomationSecondaryActionService, Win32UiAutomationSecondaryActionService>();
+        services.AddSingleton<IUiAutomationSemanticLookupService, Win32UiAutomationSemanticLookupService>();
         services.AddSingleton<IUiAutomationWaitProbe, ProcessIsolatedUiAutomationWaitProbe>();
         services.AddSingleton<IUiaGuardFactSource, UiaWorkerGuardFactSource>();
         return services;

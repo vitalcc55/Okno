@@ -413,7 +413,7 @@ Master progress checklist:
 - [x] Step 2. Introduce a product-owned semantic completeness model
 - [x] Step 3. Split visual observation success from semantic preview readiness
 - [x] Step 4. Extract the shared bounded selector domain
-- [ ] Step 5. Implement bounded deep semantic lookup in the UIA runtime
+- [x] Step 5. Implement bounded deep semantic lookup in the UIA runtime
 - [ ] Step 6. Integrate the selector lane into semantic actions first
 - [ ] Step 7. Close the same reachability class across proof-backed physical actions
 - [ ] Step 8. Carry the new observation model through `observeAfter` and stored successor state
@@ -888,10 +888,32 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] Bounded semantic lookup runtime exists with typed outcomes.
-- [ ] Budget, timeout, and ambiguity behavior are covered by tests.
-- [ ] No public raw-tree surface or unbounded descendant traversal was introduced.
-- [ ] Closure pass completed for cancellation and provider-failure paths.
+- [x] Bounded semantic lookup runtime exists with typed outcomes.
+- [x] Budget, timeout, and ambiguity behavior are covered by tests.
+- [x] No public raw-tree surface or unbounded descendant traversal was introduced.
+- [x] Closure pass completed for cancellation and provider-failure paths.
+
+Step 5 execution notes:
+
+- Added `IUiAutomationSemanticLookupService` and
+  `Win32UiAutomationSemanticLookupService` with typed outcomes for
+  `unique_match`, `zero_matches`, `ambiguous_matches`, `budget_exceeded`,
+  `timeout`, and `failed`.
+- Implemented a bounded raw-view lookup adapter rooted at the selected window
+  handle. It uses `TreeWalker.RawViewWalker` under explicit `maxDepth`,
+  `maxNodes`, and `timeoutMs` budgets, returns only the resolved target
+  snapshot/typed outcome, and does not publish a raw tree or add a public tool.
+- Added focused TDD coverage for unique deep match, zero matches, ambiguity,
+  node budget, depth budget, timeout, cancellation, invalid request and provider
+  traversal failure. The initial red signal was a compile failure before the
+  lookup request/result/node types existed.
+- Verification evidence: the focused lookup tests passed `9/9`, the wider
+  runtime selector/UIA/wait contour passed `45/45`, and `WindowWaitToolTests`
+  passed `12/12`.
+- Closure evidence: repository search found no new
+  `FindAll(TreeScope.Descendants, TrueCondition)` usage and no public raw-tree
+  surface; the only new raw traversal is the bounded `RawViewWalker` lookup
+  rooted at the selected window.
 
 ### Step 6. Integrate the selector lane into semantic actions first
 

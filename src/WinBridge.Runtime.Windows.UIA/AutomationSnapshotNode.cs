@@ -36,12 +36,18 @@ internal sealed class AutomationSnapshotNode(AutomationElement element, CacheReq
 
     public AutomationElement Element => element;
 
-    public static CacheRequest CreateControlViewCacheRequest()
+    public static CacheRequest CreateControlViewCacheRequest() =>
+        CreateCacheRequest(Automation.ControlViewCondition);
+
+    public static CacheRequest CreateRawViewCacheRequest() =>
+        CreateCacheRequest(Automation.RawViewCondition);
+
+    private static CacheRequest CreateCacheRequest(System.Windows.Automation.Condition treeFilter)
     {
         CacheRequest cacheRequest = new()
         {
             AutomationElementMode = AutomationElementMode.Full,
-            TreeFilter = Automation.ControlViewCondition,
+            TreeFilter = treeFilter,
             TreeScope = TreeScope.Element,
         };
 
