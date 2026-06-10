@@ -277,7 +277,7 @@ Feedback после shipped wave всё ещё оставляет соседни
 - снижение per-step friction должно идти через better successor-state /
   action+observe shaping и более сильный visual follow-up loop, а не через
   optimistic `done` там, где semantic outcome не доказан;
-- `get_app_state` разделяет critical observation и advisory enrichment: screenshot + accessibility tree определяют success/failure; expected advisory-unavailable path для playbook hints не имеет права downcast-ить успешный observation result, но unexpected provider/runtime bug всё ещё materialize-ится как truthful `observation_failed` с sanitized audit provenance;
+- `get_app_state` разделяет screenshot-backed visual observation и semantic preview readiness: успешный screenshot может materialize-иться как `ok` visual state со `semanticPreview=failed|incomplete`, sanitized warnings и empty/partial compact tree; hard capture/target observation failure всё ещё materialize-ится как truthful `observation_failed` с sanitized audit provenance;
 - `get_app_state` публикует `stateToken` и commit-ит shared state только после полной успешной materialization public result; failed observation не должна оставлять ghost tokens или другие скрытые bounded-state commits;
 - `get_app_state` не является observation-only read-only hint: approved/confirmed path может менять approval store, foreground state и attached/session state, поэтому public metadata не должна рекламировать его как pure read-only tool;
 - malformed request shapes должны отсекаться на public boundary как `invalid_request`: explicit invalid `tool-surface-profile`, nested extra fields и schema-invalid `maxNodes` не должны уходить в widened surface или поздний `observation_failed`;

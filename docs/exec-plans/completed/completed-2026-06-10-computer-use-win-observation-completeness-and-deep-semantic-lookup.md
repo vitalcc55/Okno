@@ -1,9 +1,10 @@
 # ExecPlan: computer-use-win observation completeness / deep semantic lookup
 
-Branch: `codex/computer-use-win-observation-completeness-plan`
-Status: `planned`
+Status: `completed`
 Created: `2026-06-10`
-Recommended implementation branch: `codex/computer-use-win-observation-completeness`
+Completed: `2026-06-10`
+Planning branch: `codex/computer-use-win-observation-completeness-plan`
+Implementation branch: `codex/computer-use-win-observation-completeness`
 
 ## 1. Goal
 
@@ -418,7 +419,7 @@ Master progress checklist:
 - [x] Step 7. Close the same reachability class across proof-backed physical actions
 - [x] Step 8. Carry the new observation model through `observeAfter` and stored successor state
 - [x] Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
-- [ ] Step 10. Final closure pass, cleanup, and roadmap handoff
+- [x] Step 10. Final closure pass, cleanup, and roadmap handoff
 
 ### Step 0. Freeze the baseline and add red characterization
 
@@ -1278,10 +1279,10 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] Obsolete narrow paths and duplicate owners removed or explicitly replaced.
-- [ ] Full sequential verification contour is green.
-- [ ] Docs and generated surfaces updated only after green runtime truth.
-- [ ] Final closure pass confirms no symmetric gaps or implicit TODOs remain.
+- [x] Obsolete narrow paths and duplicate owners removed or explicitly replaced.
+- [x] Full sequential verification contour is green.
+- [x] Docs and generated surfaces updated only after green runtime truth.
+- [x] Final closure pass confirms no symmetric gaps or implicit TODOs remain.
 
 ## 11. Verification strategy by step
 
