@@ -66,6 +66,7 @@ builder.Services.AddSingleton(static services => new ComputerUseWinPressKeyExecu
 builder.Services.AddSingleton(static services => new ComputerUseWinSetValueExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
     services.GetRequiredService<IUiAutomationService>(),
+    services.GetRequiredService<IUiAutomationSemanticLookupService>(),
     services.GetRequiredService<IUiAutomationSetValueService>()));
 builder.Services.AddSingleton(static services => new ComputerUseWinTypeTextExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
@@ -74,11 +75,13 @@ builder.Services.AddSingleton(static services => new ComputerUseWinTypeTextExecu
 builder.Services.AddSingleton(static services => new ComputerUseWinScrollExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
     services.GetRequiredService<IUiAutomationService>(),
+    services.GetRequiredService<IUiAutomationSemanticLookupService>(),
     services.GetRequiredService<IUiAutomationScrollService>(),
     services.GetRequiredService<IInputService>()));
 builder.Services.AddSingleton(static services => new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
     services.GetRequiredService<IWindowActivationService>(),
     services.GetRequiredService<IUiAutomationService>(),
+    services.GetRequiredService<IUiAutomationSemanticLookupService>(),
     services.GetRequiredService<IUiAutomationSecondaryActionService>()));
 builder.Services.AddSingleton<ComputerUseWinStateStore>();
 builder.Services.AddSingleton<ComputerUseWinStoredStateResolver>();

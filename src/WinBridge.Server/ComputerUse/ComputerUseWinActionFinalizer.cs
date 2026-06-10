@@ -280,7 +280,8 @@ internal static class ComputerUseWinActionFinalizer
             return ComputerUseWinTargetProofValues.CapturePoint;
         }
 
-        if (context.ElementIndexPresent)
+        if (context.ElementIndexPresent
+            || string.Equals(context.TargetMode, ComputerUseWinSemanticTargetModeValues.Selector, StringComparison.Ordinal))
         {
             return ComputerUseWinTargetProofValues.UiaRevalidated;
         }

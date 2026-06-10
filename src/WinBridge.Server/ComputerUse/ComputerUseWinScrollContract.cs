@@ -42,16 +42,24 @@ internal static class ComputerUseWinScrollContract
         }
 
         bool hasElementTarget = request.ElementIndex is not null;
+        bool hasSelectorTarget = request.Selector is not null;
         bool hasPointTarget = request.Point is not null;
-        if (hasElementTarget == hasPointTarget)
+        int targetModeCount = (hasElementTarget ? 1 : 0) + (hasSelectorTarget ? 1 : 0) + (hasPointTarget ? 1 : 0);
+        if (targetModeCount != 1)
         {
-            failure = "Для scroll нужно передать ровно один target mode: elementIndex или point.";
+            failure = "Для scroll нужно передать ровно один target mode: elementIndex, selector или point.";
             return false;
         }
 
         if (request.ElementIndex is < 1)
         {
             failure = "Параметр elementIndex для scroll должен быть >= 1, если он передан.";
+            return false;
+        }
+
+        if (hasSelectorTarget && !ElementSelectorPolicy.HasCriteria(request.Selector))
+        {
+            failure = "Параметр selector для scroll должен содержать хотя бы одно поле: name, automationId или controlType.";
             return false;
         }
 
@@ -85,7 +93,26 @@ internal static class ComputerUseWinScrollContract
             }
 
             payload = new(
-                TargetMode: "element_index",
+                TargetMode: ComputerUseWinSemanticTargetModeValues.ElementIndex,
+                Direction: direction,
+                Pages: pages,
+                Delta: 0,
+                DeltaBucket: ClassifyPagesBucket(pages),
+                CoordinateSpace: null);
+            failure = null;
+            return true;
+        }
+
+        if (hasSelectorTarget)
+        {
+            if (request.Point is not null || request.CoordinateSpace is not null)
+            {
+                failure = "semantic scroll по selector не должен задавать point или coordinateSpace.";
+                return false;
+            }
+
+            payload = new(
+                TargetMode: ComputerUseWinSemanticTargetModeValues.Selector,
                 Direction: direction,
                 Pages: pages,
                 Delta: 0,
@@ -126,7 +153,7 @@ internal static class ComputerUseWinScrollContract
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(payload);
 
-        if (string.Equals(payload.TargetMode, "element_index", StringComparison.Ordinal))
+        if (string.Equals(payload.TargetMode, ComputerUseWinSemanticTargetModeValues.ElementIndex, StringComparison.Ordinal))
         {
             int elementIndex = request.ElementIndex!.Value;
             if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
@@ -143,6 +170,12 @@ internal static class ComputerUseWinScrollContract
                 return true;
             }
 
+            outcome = null;
+            return false;
+        }
+
+        if (string.Equals(payload.TargetMode, ComputerUseWinSemanticTargetModeValues.Selector, StringComparison.Ordinal))
+        {
             outcome = null;
             return false;
         }
@@ -207,6 +240,14 @@ internal static class ComputerUseWinScrollContract
                     {
                         ["type"] = "integer",
                     },
+                },
+            },
+            new JsonObject
+            {
+                ["required"] = CreateStringArray("selector"),
+                ["properties"] = new JsonObject
+                {
+                    ["selector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
                 },
             },
             new JsonObject

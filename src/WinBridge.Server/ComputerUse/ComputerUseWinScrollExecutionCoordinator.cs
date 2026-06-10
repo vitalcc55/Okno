@@ -11,10 +11,11 @@ namespace WinBridge.Server.ComputerUse;
 internal sealed class ComputerUseWinScrollExecutionCoordinator(
     IWindowActivationService windowActivationService,
     IUiAutomationService uiAutomationService,
+    IUiAutomationSemanticLookupService semanticLookupService,
     IUiAutomationScrollService uiAutomationScrollService,
     IInputService inputService)
 {
-    private readonly ComputerUseWinScrollTargetResolver _targetResolver = new(uiAutomationService);
+    private readonly ComputerUseWinScrollTargetResolver _targetResolver = new(uiAutomationService, semanticLookupService);
 
     public async Task<ComputerUseWinActionExecutionOutcome> ExecuteAsync(
         ComputerUseWinStoredState state,

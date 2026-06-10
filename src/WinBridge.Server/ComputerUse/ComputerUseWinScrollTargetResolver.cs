@@ -7,8 +7,26 @@ using WinBridge.Runtime.Windows.UIA;
 
 namespace WinBridge.Server.ComputerUse;
 
-internal sealed class ComputerUseWinScrollTargetResolver(IUiAutomationService uiAutomationService)
+internal sealed class ComputerUseWinScrollTargetResolver(
+    IUiAutomationService uiAutomationService,
+    IUiAutomationSemanticLookupService semanticLookupService)
 {
+    private readonly ComputerUseWinSemanticTargetResolver _semanticTargetResolver = new(uiAutomationService, semanticLookupService);
+    private static readonly ComputerUseWinSemanticTargetPolicy TargetPolicy = new(
+        ComputerUseWinActionability.IsScrollActionable,
+        ComputerUseWinFailureCodeValues.UnsupportedAction,
+        "elementIndex {0} не является scrollable target в последнем get_app_state.",
+        "elementIndex {0} не является scrollable target в последнем get_app_state.",
+        "Computer Use for Windows не смог пере-подтвердить scroll target по fresh observation path.",
+        "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим scrollable live UI element.",
+        "Fresh live element больше не поддерживает semantic scroll path.",
+        "Selector больше не находит scroll target в текущем live UI state.",
+        "Selector сопоставился с несколькими scroll targets в текущем live UI state.",
+        "Selector lookup достиг budget до доказательства уникального scroll target.",
+        "Selector lookup превысил timeout до доказательства scroll target.",
+        "Computer Use for Windows не смог выполнить bounded semantic lookup для scroll target.",
+        "Selector target не поддерживает semantic scroll path.");
+
     public async Task<ComputerUseWinScrollTargetResolution> ResolveAsync(
         ComputerUseWinStoredState state,
         ComputerUseWinScrollRequest request,
@@ -18,74 +36,33 @@ internal sealed class ComputerUseWinScrollTargetResolver(IUiAutomationService ui
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(payload);
 
-        if (string.Equals(payload.TargetMode, "element_index", StringComparison.Ordinal))
+        if (string.Equals(payload.TargetMode, ComputerUseWinSemanticTargetModeValues.ElementIndex, StringComparison.Ordinal)
+            || string.Equals(payload.TargetMode, ComputerUseWinSemanticTargetModeValues.Selector, StringComparison.Ordinal))
         {
-            return await ResolveElementTargetAsync(state, request, payload, cancellationToken).ConfigureAwait(false);
+            return await ResolveSemanticTargetAsync(state, request, payload, cancellationToken).ConfigureAwait(false);
         }
 
         return ResolvePointTarget(state, request, payload);
     }
 
-    private async Task<ComputerUseWinScrollTargetResolution> ResolveElementTargetAsync(
+    private async Task<ComputerUseWinScrollTargetResolution> ResolveSemanticTargetAsync(
         ComputerUseWinStoredState state,
         ComputerUseWinScrollRequest request,
         ComputerUseWinScrollPayload payload,
         CancellationToken cancellationToken)
     {
-        int elementIndex = request.ElementIndex!.Value;
-        try
+        ComputerUseWinSemanticTargetResolution targetResolution = await _semanticTargetResolver.ResolveAsync(
+            state,
+            request.ElementIndex,
+            request.Selector,
+            TargetPolicy,
+            cancellationToken).ConfigureAwait(false);
+        if (!targetResolution.IsSuccess)
         {
-            if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
-                || !ComputerUseWinActionability.IsScrollActionable(storedElement))
-            {
-                return ComputerUseWinScrollTargetResolution.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.UnsupportedAction,
-                        $"elementIndex {elementIndex} не является scrollable target в последнем get_app_state."));
-            }
-
-            UiaSnapshotResult snapshot = await uiAutomationService.SnapshotAsync(
-                state.Window,
-                new UiaSnapshotRequest
-                {
-                    Depth = state.Observation.RequestedDepth,
-                    MaxNodes = state.Observation.RequestedMaxNodes,
-                },
-                cancellationToken).ConfigureAwait(false);
-
-            if (!string.Equals(snapshot.Status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal)
-                || snapshot.Root is null)
-            {
-                return ComputerUseWinScrollTargetResolution.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.ObservationFailed,
-                        snapshot.Reason ?? "Computer Use for Windows не смог пере-подтвердить scroll target по fresh observation path."));
-            }
-
-            IReadOnlyDictionary<int, ComputerUseWinStoredElement> freshElements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
-            if (!ComputerUseWinFreshElementResolver.TryResolve(freshElements, storedElement, out ComputerUseWinStoredElement? freshElement)
-                || freshElement is null
-                || !ComputerUseWinActionability.IsScrollActionable(freshElement))
-            {
-                return ComputerUseWinScrollTargetResolution.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.StaleState,
-                        "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим scrollable live UI element."));
-            }
-
-            return ComputerUseWinScrollTargetResolution.SemanticSuccess(freshElement, payload);
+            return ComputerUseWinScrollTargetResolution.Failure(targetResolution.FailureDetails!);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            ComputerUseWinFailureDetails failure = ComputerUseWinObservationFailureTranslator.Translate(
-                exception,
-                "Computer Use for Windows не смог пере-подтвердить scroll target по fresh observation path.");
-            return ComputerUseWinScrollTargetResolution.Failure(failure);
-        }
+
+        return ComputerUseWinScrollTargetResolution.SemanticSuccess(targetResolution.EffectiveElement!, payload);
     }
 
     private static ComputerUseWinScrollTargetResolution ResolvePointTarget(

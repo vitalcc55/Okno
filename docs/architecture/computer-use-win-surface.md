@@ -115,7 +115,9 @@ proof.
 `repeat` ограничен диапазоном `1..10`, а shortcut-базы `A-Z` / `0-9`
 диспетчатся как invariant virtual keys, а не как layout-sensitive text input.
 Текущий `set_value` v1 использует semantic set path через `ValuePattern` /
-`RangeValuePattern` и не деградирует в blind typing fallback. Текущий
+`RangeValuePattern`, принимает либо опубликованный `elementIndex`, либо bounded
+semantic selector (`automationId` / `controlType` / optional `name`) и не
+деградирует в blind typing fallback. Текущий
 `type_text` v1 остаётся lower-confidence input path: он печатает только в
 focused writable `edit` target, который заново подтверждён через fresh UIA
 snapshot и UIA read-only semantics. Для poor-UIA targets есть два explicit
@@ -131,14 +133,16 @@ SendInput batch, требует capture proof и bounds check для `capture_pi
 использует hidden previous-click reuse и не притворяется, что появился
 child/caret proof. Оба fallback path остаются
 dispatch-only `verify_needed`, не используют clipboard/paste как default
-shortcut и не возвращают optimistic `done`. Текущий `scroll` v1 предпочитает semantic `ScrollPattern`
-для `elementIndex` target, не меняет selector/session ownership и допускает
-coordinate wheel fallback только через explicit `point` + `confirm` path с
-fresh geometry proof; semantic success возвращает `done`, а wheel fallback
-остается `verify_needed`. Текущий `perform_secondary_action` v1 тоже остаётся
+shortcut и не возвращают optimistic `done`. Текущий `scroll` v1 предпочитает
+semantic `ScrollPattern` для `elementIndex` или bounded semantic selector
+target, не меняет window selector/session ownership и допускает coordinate
+wheel fallback только через explicit `point` + `confirm` path с fresh geometry
+proof; semantic success возвращает `done`, а wheel fallback остается
+`verify_needed`. Текущий `perform_secondary_action` v1 тоже остаётся
 semantic-only: он публикуется только для strong UIA secondary affordance
-`toggle`, требует fresh `elementIndex` proof и не деградирует в
-context-menu/right-click fallback. Текущий `drag` v1 требует separate source и
+`toggle`, требует fresh target proof через `elementIndex` revalidation или
+bounded semantic selector lookup и не деградирует в context-menu/right-click
+fallback. Текущий `drag` v1 требует separate source и
 destination proof, принимает `fromElementIndex|fromPoint` и
 `toElementIndex|toPoint`, использует один Windows-native input runtime вместо
 второго dispatch layer, требует explicit confirmation для coordinate endpoints

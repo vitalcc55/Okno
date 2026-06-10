@@ -31,7 +31,14 @@ internal static class UiAutomationElementResolver
 
             if (TryParsePath(elementId, out int[]? ordinals)
                 && ordinals is not null
-                && TryFollowPath(root, cacheRequest, ordinals, out element))
+                && TryFollowPath(root, cacheRequest, ordinals, TreeWalker.ControlViewWalker, out element))
+            {
+                return true;
+            }
+
+            if (TryParseRawPath(elementId, out int[]? rawOrdinals)
+                && rawOrdinals is not null
+                && TryFollowPath(root, cacheRequest, rawOrdinals, TreeWalker.RawViewWalker, out element))
             {
                 return true;
             }
@@ -80,16 +87,17 @@ internal static class UiAutomationElementResolver
         AutomationElement root,
         CacheRequest cacheRequest,
         int[] ordinals,
+        TreeWalker walker,
         out AutomationElement? element)
     {
         AutomationElement current = root;
         foreach (int ordinal in ordinals)
         {
-            AutomationElement? child = TreeWalker.ControlViewWalker.GetFirstChild(current, cacheRequest);
+            AutomationElement? child = walker.GetFirstChild(current, cacheRequest);
             int currentOrdinal = 0;
             while (child is not null && currentOrdinal < ordinal)
             {
-                child = TreeWalker.ControlViewWalker.GetNextSibling(child, cacheRequest);
+                child = walker.GetNextSibling(child, cacheRequest);
                 currentOrdinal++;
             }
 
@@ -149,12 +157,21 @@ internal static class UiAutomationElementResolver
     {
         ordinals = null;
         int pathIndex = elementId.IndexOf("path:", StringComparison.Ordinal);
-        if (pathIndex < 0)
-        {
-            return false;
-        }
+        return pathIndex >= 0
+            && TryParseOrdinalPath(elementId[(pathIndex + "path:".Length)..], out ordinals);
+    }
 
-        string rawPath = elementId[(pathIndex + "path:".Length)..];
+    private static bool TryParseRawPath(string elementId, out int[]? ordinals)
+    {
+        ordinals = null;
+        int pathIndex = elementId.IndexOf("raw:", StringComparison.Ordinal);
+        return pathIndex >= 0
+            && TryParseOrdinalPath(elementId[(pathIndex + "raw:".Length)..], out ordinals);
+    }
+
+    private static bool TryParseOrdinalPath(string rawPath, out int[]? ordinals)
+    {
+        ordinals = null;
         if (string.IsNullOrWhiteSpace(rawPath))
         {
             return false;

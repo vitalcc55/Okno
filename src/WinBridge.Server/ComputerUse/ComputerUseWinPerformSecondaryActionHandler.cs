@@ -40,7 +40,7 @@ internal sealed class ComputerUseWinPerformSecondaryActionHandler(
             AppId: resolvedState.Session.AppId,
             WindowIdPresent: !string.IsNullOrWhiteSpace(resolvedState.Session.WindowId),
             StateTokenPresent: !string.IsNullOrWhiteSpace(request.StateToken),
-            TargetMode: "element_index",
+            TargetMode: ComputerUseWinSemanticSelectorContract.ResolveTargetMode(request.ElementIndex, request.Selector),
             ElementIndexPresent: request.ElementIndex is not null,
             CoordinateSpace: null,
             CaptureReferencePresent: false,

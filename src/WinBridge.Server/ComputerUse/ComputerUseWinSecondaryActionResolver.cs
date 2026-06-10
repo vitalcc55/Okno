@@ -7,8 +7,40 @@ using WinBridge.Runtime.Windows.UIA;
 
 namespace WinBridge.Server.ComputerUse;
 
-internal sealed class ComputerUseWinSecondaryActionResolver(IUiAutomationService uiAutomationService)
+internal sealed class ComputerUseWinSecondaryActionResolver(
+    IUiAutomationService uiAutomationService,
+    IUiAutomationSemanticLookupService semanticLookupService)
 {
+    internal static readonly ComputerUseWinSemanticTargetPolicy TargetPolicy = new(
+        ComputerUseWinActionability.IsPerformSecondaryActionActionable,
+        ComputerUseWinFailureCodeValues.UnsupportedAction,
+        "elementIndex {0} не является supported secondary semantic target в последнем get_app_state.",
+        "elementIndex {0} не является supported secondary semantic target в последнем get_app_state.",
+        "Computer Use for Windows не смог пере-подтвердить target для secondary semantic path.",
+        "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим secondary semantic target.",
+        "Fresh live element больше не имеет supported secondary semantic affordance в текущем live UI state.",
+        "Selector больше не находит secondary semantic target в текущем live UI state.",
+        "Selector сопоставился с несколькими secondary semantic targets в текущем live UI state.",
+        "Selector lookup достиг budget до доказательства уникального secondary semantic target.",
+        "Selector lookup превысил timeout до доказательства secondary semantic target.",
+        "Computer Use for Windows не смог выполнить bounded semantic lookup для secondary semantic target.",
+        "Selector target не поддерживает secondary semantic action.");
+
+    private readonly ComputerUseWinSemanticTargetResolver _targetResolver = new(uiAutomationService, semanticLookupService);
+
+    public static bool TryClassifyBeforeActivation(
+        ComputerUseWinStoredState state,
+        ComputerUseWinPerformSecondaryActionRequest request,
+        out ComputerUseWinStoredElement? storedElement,
+        out ComputerUseWinFailureDetails? failure) =>
+        ComputerUseWinSemanticTargetResolver.TryClassifyBeforeActivation(
+            state,
+            request.ElementIndex,
+            request.Selector,
+            TargetPolicy,
+            out storedElement,
+            out failure);
+
     public async Task<ComputerUseWinSecondaryActionResolution> ResolveAsync(
         ComputerUseWinStoredState state,
         ComputerUseWinPerformSecondaryActionRequest request,
@@ -16,70 +48,30 @@ internal sealed class ComputerUseWinSecondaryActionResolver(IUiAutomationService
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        int elementIndex = request.ElementIndex!.Value;
-        if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
-            || !ComputerUseWinActionability.IsPerformSecondaryActionActionable(storedElement))
+        ComputerUseWinSemanticTargetResolution targetResolution = await _targetResolver.ResolveAsync(
+            state,
+            request.ElementIndex,
+            request.Selector,
+            TargetPolicy,
+            cancellationToken).ConfigureAwait(false);
+        if (!targetResolution.IsSuccess)
+        {
+            return ComputerUseWinSecondaryActionResolution.Failure(
+                targetResolution.FailureDetails!);
+        }
+
+        ComputerUseWinStoredElement effectiveElement = targetResolution.EffectiveElement!;
+        if (!TryResolveActionKind(effectiveElement.Patterns, out string? actionKind))
         {
             return ComputerUseWinSecondaryActionResolution.Failure(
                 ComputerUseWinFailureDetails.Expected(
                     ComputerUseWinFailureCodeValues.UnsupportedAction,
-                    $"elementIndex {elementIndex} не является supported secondary semantic target в последнем get_app_state."));
+                    "Fresh live element больше не имеет supported secondary semantic affordance в текущем live UI state."));
         }
 
-        try
-        {
-            UiaSnapshotResult snapshot = await uiAutomationService.SnapshotAsync(
-                state.Window,
-                new UiaSnapshotRequest
-                {
-                    Depth = state.Observation.RequestedDepth,
-                    MaxNodes = state.Observation.RequestedMaxNodes,
-                },
-                cancellationToken).ConfigureAwait(false);
+        bool isRisky = ComputerUseWinTargetPolicy.RequiresRiskConfirmation(effectiveElement, ToolNames.ComputerUseWinPerformSecondaryAction);
 
-            if (!string.Equals(snapshot.Status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal)
-                || snapshot.Root is null)
-            {
-                return ComputerUseWinSecondaryActionResolution.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.ObservationFailed,
-                        snapshot.Reason ?? "Computer Use for Windows не смог пере-подтвердить target для secondary semantic path."));
-            }
-
-            IReadOnlyDictionary<int, ComputerUseWinStoredElement> freshElements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
-            if (!ComputerUseWinFreshElementResolver.TryResolve(freshElements, storedElement, out ComputerUseWinStoredElement? freshElement)
-                || freshElement is null)
-            {
-                return ComputerUseWinSecondaryActionResolution.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.StaleState,
-                        "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим secondary semantic target."));
-            }
-
-            if (!ComputerUseWinActionability.IsPerformSecondaryActionActionable(freshElement)
-                || !TryResolveActionKind(freshElement.Patterns, out string? actionKind))
-            {
-                return ComputerUseWinSecondaryActionResolution.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.UnsupportedAction,
-                        $"elementIndex {elementIndex} больше не имеет supported secondary semantic affordance в текущем live UI state."));
-            }
-
-            bool isRisky = ComputerUseWinTargetPolicy.RequiresRiskConfirmation(freshElement, ToolNames.ComputerUseWinPerformSecondaryAction);
-
-            return ComputerUseWinSecondaryActionResolution.Success(freshElement, actionKind!, isRisky);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            return ComputerUseWinSecondaryActionResolution.Failure(
-                ComputerUseWinObservationFailureTranslator.Translate(
-                    exception,
-                    "Computer Use for Windows не смог пере-подтвердить target для secondary semantic path."));
-        }
+        return ComputerUseWinSecondaryActionResolution.Success(effectiveElement, actionKind!, isRisky);
     }
 
     public static bool TryResolveActionKind(IReadOnlyList<string>? patterns, out string? actionKind)

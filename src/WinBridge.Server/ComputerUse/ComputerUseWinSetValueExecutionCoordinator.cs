@@ -10,8 +10,25 @@ namespace WinBridge.Server.ComputerUse;
 internal sealed class ComputerUseWinSetValueExecutionCoordinator(
     IWindowActivationService windowActivationService,
     IUiAutomationService uiAutomationService,
+    IUiAutomationSemanticLookupService semanticLookupService,
     IUiAutomationSetValueService setValueService)
 {
+    private readonly ComputerUseWinSemanticTargetResolver _targetResolver = new(uiAutomationService, semanticLookupService);
+    private static readonly ComputerUseWinSemanticTargetPolicy TargetPolicy = new(
+        ComputerUseWinActionability.IsSetValueActionable,
+        ComputerUseWinFailureCodeValues.InvalidRequest,
+        "elementIndex {0} не существует в последнем get_app_state.",
+        "elementIndex {0} не является settable semantic target в последнем get_app_state.",
+        "Computer Use for Windows не смог пере-подтвердить set_value target по fresh observation path.",
+        "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element.",
+        "Fresh live element больше не поддерживает semantic set path.",
+        "Selector больше не находит set_value target в текущем live UI state.",
+        "Selector сопоставился с несколькими set_value targets в текущем live UI state.",
+        "Selector lookup достиг budget до доказательства уникального set_value target.",
+        "Selector lookup превысил timeout до доказательства set_value target.",
+        "Computer Use for Windows не смог выполнить bounded semantic lookup для set_value target.",
+        "Selector target не поддерживает semantic set path.");
+
     public async Task<ComputerUseWinActionExecutionOutcome> ExecuteAsync(
         ComputerUseWinStoredState state,
         ComputerUseWinSetValueRequest request,
@@ -31,24 +48,16 @@ internal sealed class ComputerUseWinSetValueExecutionCoordinator(
                 dispatchPath: null);
         }
 
-        if (!state.Elements.TryGetValue(request.ElementIndex!.Value, out ComputerUseWinStoredElement? storedElement))
+        if (ComputerUseWinSemanticTargetResolver.TryClassifyBeforeActivation(
+                state,
+                request.ElementIndex,
+                request.Selector,
+                TargetPolicy,
+                out _,
+                out ComputerUseWinFailureDetails? targetFailure))
         {
             return ComputerUseWinActionExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(
-                    ComputerUseWinFailureCodeValues.InvalidRequest,
-                    $"elementIndex {request.ElementIndex.Value} не существует в последнем get_app_state."),
-                ComputerUseWinActionLifecyclePhase.BeforeActivation,
-                confirmationRequired: false,
-                riskClass: null,
-                dispatchPath: null);
-        }
-
-        if (!ComputerUseWinActionability.IsSetValueActionable(storedElement))
-        {
-            return ComputerUseWinActionExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(
-                    ComputerUseWinFailureCodeValues.UnsupportedAction,
-                    $"elementIndex {request.ElementIndex.Value} не является settable semantic target в последнем get_app_state."),
+                targetFailure!,
                 ComputerUseWinActionLifecyclePhase.BeforeActivation,
                 confirmationRequired: false,
                 riskClass: "semantic_value",
@@ -72,68 +81,16 @@ internal sealed class ComputerUseWinSetValueExecutionCoordinator(
             Window = activation.Window ?? state.Window,
         };
 
-        UiaSnapshotResult snapshot;
-        try
-        {
-            snapshot = await uiAutomationService.SnapshotAsync(
-                resolvedState.Window,
-                new UiaSnapshotRequest
-                {
-                    Depth = state.Observation.RequestedDepth,
-                    MaxNodes = state.Observation.RequestedMaxNodes,
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            ComputerUseWinFailureDetails failureDetails = ComputerUseWinObservationFailureTranslator.Translate(
-                exception,
-                "Computer Use for Windows не смог пере-подтвердить set_value target по fresh observation path.");
-            return ComputerUseWinActionExecutionOutcome.Failure(
-                failureDetails,
-                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
-                confirmationRequired: false,
-                riskClass: "semantic_value",
-                dispatchPath: null);
-        }
-
-        if (!string.Equals(snapshot.Status, UiaSnapshotStatusValues.Done, StringComparison.Ordinal)
-            || snapshot.Root is null)
+        ComputerUseWinSemanticTargetResolution targetResolution = await _targetResolver.ResolveAsync(
+            resolvedState,
+            request.ElementIndex,
+            request.Selector,
+            TargetPolicy,
+            cancellationToken).ConfigureAwait(false);
+        if (!targetResolution.IsSuccess)
         {
             return ComputerUseWinActionExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(
-                    ComputerUseWinFailureCodeValues.ObservationFailed,
-                    snapshot.Reason ?? "Computer Use for Windows не смог пере-подтвердить set_value target по fresh observation path."),
-                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
-                confirmationRequired: false,
-                riskClass: "semantic_value",
-                dispatchPath: null);
-        }
-
-        IReadOnlyDictionary<int, ComputerUseWinStoredElement> freshElements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
-        if (!ComputerUseWinFreshElementResolver.TryResolve(freshElements, storedElement, out ComputerUseWinStoredElement? freshElement)
-            || freshElement is null)
-        {
-            return ComputerUseWinActionExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(
-                    ComputerUseWinFailureCodeValues.StaleState,
-                    "elementIndex из stateToken больше не удаётся доказуемо сопоставить с текущим live UI element."),
-                ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
-                confirmationRequired: false,
-                riskClass: "semantic_value",
-                dispatchPath: null);
-        }
-
-        if (!ComputerUseWinActionability.IsSetValueActionable(freshElement))
-        {
-            return ComputerUseWinActionExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(
-                    ComputerUseWinFailureCodeValues.UnsupportedAction,
-                    "Fresh live element больше не поддерживает semantic set path."),
+                targetResolution.FailureDetails!,
                 ComputerUseWinActionLifecyclePhase.AfterRevalidationBeforeDispatch,
                 confirmationRequired: false,
                 riskClass: "semantic_value",
@@ -143,7 +100,7 @@ internal sealed class ComputerUseWinSetValueExecutionCoordinator(
         UiaSetValueResult setResult = await setValueService.SetValueAsync(
             resolvedState.Window,
             new UiaSetValueRequest(
-                ElementId: freshElement.ElementId,
+                ElementId: targetResolution.EffectiveElement!.ElementId,
                 ValueKind: payload!.ValueKind,
                 TextValue: payload.TextValue,
                 NumberValue: payload.NumberValue),

@@ -31,9 +31,12 @@ internal static class ComputerUseWinSetValueContract
             return false;
         }
 
-        if (request.ElementIndex is null or < 1)
+        if (!ComputerUseWinSemanticSelectorContract.TryValidateElementIndexOrSelector(
+                request.ElementIndex,
+                request.Selector,
+                "set_value",
+                out failure))
         {
-            failure = "Параметр elementIndex обязателен для set_value и должен быть >= 1.";
             return false;
         }
 

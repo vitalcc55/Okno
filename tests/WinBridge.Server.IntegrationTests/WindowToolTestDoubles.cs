@@ -171,6 +171,18 @@ internal sealed class FakeUiAutomationService(
         ExecuteCoreAsync(targetWindow, request, cancellationToken);
 }
 
+internal sealed class FakeUiAutomationSemanticLookupService(
+    Func<WindowDescriptor, UiaSemanticLookupRequest, CancellationToken, Task<UiaSemanticLookupResult>>? handler = null)
+    : WindowToolFakeWindowRequestService<UiaSemanticLookupRequest, UiaSemanticLookupResult>(handler, "UIA semantic lookup"),
+      IUiAutomationSemanticLookupService
+{
+    public Task<UiaSemanticLookupResult> LookupAsync(
+        WindowDescriptor targetWindow,
+        UiaSemanticLookupRequest request,
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(targetWindow, request, cancellationToken);
+}
+
 internal sealed class FakeUiAutomationSetValueService(
     Func<WindowDescriptor, UiaSetValueRequest, CancellationToken, Task<UiaSetValueResult>>? handler = null)
     : WindowToolFakeWindowRequestService<UiaSetValueRequest, UiaSetValueResult>(handler, "UIA set_value"),

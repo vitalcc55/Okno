@@ -1458,6 +1458,165 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task SetValueHandlerAppliesTextValueViaSemanticSelectorOutsidePreview()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector selector = new(AutomationId: "DeepQueryInputTextBox", ControlType: "edit");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-set-value-selector-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinSetValue,
+            new
+            {
+                stateToken = token,
+                selector = new { automationId = "DeepQueryInputTextBox", controlType = "edit" },
+                valueKind = "text",
+                textValue = "deep semantic text",
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSemanticLookupService semanticLookupService = CreateSuccessfulSemanticLookupService(
+            () => CreateDeepSettableLookupElement());
+        FakeUiAutomationSetValueService setValueService = new((window, request, _) =>
+            Task.FromResult(UiaSetValueResult.SuccessResult("value_pattern")));
+        ComputerUseWinSetValueHandler handler = CreateSetValueHandler(
+            stateStore,
+            activationService,
+            uiAutomationService,
+            setValueService,
+            semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinSetValueRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Selector: selector,
+                ValueKind: "text",
+                TextValue: "deep semantic text",
+                NumberValue: null,
+                Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Done);
+        Assert.Equal(1, semanticLookupService.Calls);
+        AssertNoUiAutomationSnapshotRequested(uiAutomationService);
+        Assert.NotNull(setValueService.LastRequest);
+        Assert.Equal("raw:0/5", setValueService.LastRequest!.ElementId);
+        Assert.Equal("deep semantic text", setValueService.LastRequest.TextValue);
+        Assert.False(payload.TryGetProperty("elementIndex", out JsonElement elementIndex) && elementIndex.ValueKind != JsonValueKind.Null);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("semantic", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+    }
+
+    [Fact]
+    public async Task SetValueHandlerReturnsAmbiguousTargetForSemanticSelector()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector selector = new(ControlType: "edit");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-set-value-selector-ambiguous-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinSetValue,
+            new
+            {
+                stateToken = token,
+                selector = new { controlType = "edit" },
+                valueKind = "text",
+                textValue = "value",
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSemanticLookupService semanticLookupService = CreateSemanticLookupService(
+            UiaSemanticLookupStatusValues.AmbiguousMatches,
+            matchCount: 2,
+            reason: "ambiguous selector");
+        FakeUiAutomationSetValueService setValueService = new();
+        ComputerUseWinSetValueHandler handler = CreateSetValueHandler(
+            stateStore,
+            activationService,
+            uiAutomationService,
+            setValueService,
+            semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinSetValueRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Selector: selector,
+                ValueKind: "text",
+                TextValue: "value",
+                NumberValue: null,
+                Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Failed);
+        AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.AmbiguousTarget);
+        Assert.Equal(1, semanticLookupService.Calls);
+        AssertNoUiAutomationSnapshotRequested(uiAutomationService);
+        AssertNoSetValueDispatched(setValueService);
+    }
+
+    [Fact]
+    public async Task SetValueHandlerReturnsUnsupportedActionForSemanticSelectorWithoutSettableAffordance()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector selector = new(AutomationId: "DeepReadOnlyLabel", ControlType: "text");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-set-value-selector-unsupported-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinSetValue,
+            new
+            {
+                stateToken = token,
+                selector = new { automationId = "DeepReadOnlyLabel", controlType = "text" },
+                valueKind = "text",
+                textValue = "value",
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSemanticLookupService semanticLookupService = CreateSuccessfulSemanticLookupService(
+            () => CreateDeepLookupElement(
+                elementId: "raw:0/6",
+                name: "Deep read-only label",
+                automationId: "DeepReadOnlyLabel",
+                controlType: "text",
+                patterns: []));
+        FakeUiAutomationSetValueService setValueService = new();
+        ComputerUseWinSetValueHandler handler = CreateSetValueHandler(
+            stateStore,
+            activationService,
+            uiAutomationService,
+            setValueService,
+            semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinSetValueRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Selector: selector,
+                ValueKind: "text",
+                TextValue: "value",
+                NumberValue: null,
+                Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Failed);
+        AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.UnsupportedAction);
+        AssertNoUiAutomationSnapshotRequested(uiAutomationService);
+        AssertNoSetValueDispatched(setValueService);
+    }
+
+    [Fact]
     public async Task SetValueHandlerReturnsInvalidRequestWhenSemanticServiceRejectsValueFormat()
     {
         ComputerUseWinStateStore stateStore = new();
@@ -2606,6 +2765,63 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ScrollHandlerAppliesSemanticScrollViaSelectorOutsidePreview()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector selector = new(AutomationId: "DeepScrollListBox", ControlType: "list");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-scroll-selector-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinScroll,
+            new
+            {
+                stateToken = token,
+                selector = new { automationId = "DeepScrollListBox", controlType = "list" },
+                direction = "down",
+                pages = 2,
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSemanticLookupService semanticLookupService = CreateSuccessfulSemanticLookupService(
+            () => CreateDeepScrollableLookupElement());
+        FakeUiAutomationScrollService scrollService = new((window, request, _) =>
+            Task.FromResult(UiaScrollResult.SuccessResult("scroll_pattern", movementObserved: true)));
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = CreateScrollHandler(
+            stateStore,
+            activationService,
+            uiAutomationService,
+            scrollService,
+            inputService,
+            semanticLookupService: semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Selector: selector,
+                Direction: "down",
+                Pages: 2,
+                Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Done);
+        Assert.Equal(1, semanticLookupService.Calls);
+        AssertNoUiAutomationSnapshotRequested(uiAutomationService);
+        Assert.NotNull(scrollService.LastRequest);
+        Assert.Equal("raw:0/7", scrollService.LastRequest!.ElementId);
+        Assert.Equal("down", scrollService.LastRequest.Direction);
+        Assert.Equal(2, scrollService.LastRequest.Pages);
+        AssertNoInputDispatched(inputService);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("semantic", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+    }
+
+    [Fact]
     public async Task ScrollHandlerReturnsFailedWhenSemanticScrollReportsNoMovement()
     {
         ComputerUseWinStateStore stateStore = new();
@@ -3230,6 +3446,106 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.False(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
         Assert.False(executionFacts.GetProperty("physicalKeyboardUsed").GetBoolean());
         Assert.False(executionFacts.GetProperty("systemCursorMoved").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerAppliesToggleViaSemanticSelectorOutsidePreview()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector selector = new(AutomationId: "DeepRememberSelectionCheckBox", ControlType: "check_box");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-secondary-selector-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new
+            {
+                stateToken = token,
+                selector = new { automationId = "DeepRememberSelectionCheckBox", controlType = "check_box" },
+                confirm = true,
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSemanticLookupService semanticLookupService = CreateSuccessfulSemanticLookupService(
+            () => CreateDeepSecondaryLookupElement());
+        FakeUiAutomationSecondaryActionService secondaryActionService = new((window, request, _) =>
+            Task.FromResult(UiaSecondaryActionResult.SuccessResult(UiaSecondaryActionKindValues.Toggle, "toggle_pattern")));
+        ComputerUseWinPerformSecondaryActionHandler handler = CreatePerformSecondaryActionHandler(
+            stateStore,
+            activationService,
+            uiAutomationService,
+            secondaryActionService,
+            semanticLookupService: semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Selector: selector,
+                Confirm: true),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Done);
+        Assert.Equal(1, semanticLookupService.Calls);
+        AssertNoUiAutomationSnapshotRequested(uiAutomationService);
+        Assert.NotNull(secondaryActionService.LastRequest);
+        Assert.Equal("raw:0/8", secondaryActionService.LastRequest!.ElementId);
+        Assert.Equal(UiaSecondaryActionKindValues.Toggle, secondaryActionService.LastRequest.ActionKind);
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("semantic", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+    }
+
+    [Fact]
+    public async Task PerformSecondaryActionHandlerReturnsApprovalRequiredForRiskySemanticSelectorAfterLookup()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector selector = new(AutomationId: "DeepDeleteArchiveCheckBox", ControlType: "check_box");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-secondary-selector-risky-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinPerformSecondaryAction,
+            new
+            {
+                stateToken = token,
+                selector = new { automationId = "DeepDeleteArchiveCheckBox", controlType = "check_box" },
+                confirm = false,
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSemanticLookupService semanticLookupService = CreateSuccessfulSemanticLookupService(
+            () => CreateDeepLookupElement(
+                elementId: "raw:0/9",
+                name: "Delete archived item",
+                automationId: "DeepDeleteArchiveCheckBox",
+                controlType: "check_box",
+                patterns: ["toggle"]));
+        FakeUiAutomationSecondaryActionService secondaryActionService = new();
+        ComputerUseWinPerformSecondaryActionHandler handler = CreatePerformSecondaryActionHandler(
+            stateStore,
+            activationService,
+            uiAutomationService,
+            secondaryActionService,
+            semanticLookupService: semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinPerformSecondaryActionRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Selector: selector,
+                Confirm: false),
+            CancellationToken.None);
+
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.ApprovalRequired);
+        AssertJsonFailureCode(payload, ComputerUseWinFailureCodeValues.ApprovalRequired);
+        Assert.Equal(1, semanticLookupService.Calls);
+        AssertNoUiAutomationSnapshotRequested(uiAutomationService);
+        AssertNoSecondaryActionDispatched(secondaryActionService);
     }
 
     [Fact]
@@ -4373,10 +4689,15 @@ public sealed class ComputerUseWinActionAndProjectionTests
         ComputerUseWinStateStore stateStore,
         FakeWindowActivationService activationService,
         FakeUiAutomationService uiAutomationService,
-        FakeUiAutomationSetValueService setValueService) =>
+        FakeUiAutomationSetValueService setValueService,
+        FakeUiAutomationSemanticLookupService? semanticLookupService = null) =>
         new(
             CreateActionRequestExecutor(stateStore),
-            new ComputerUseWinSetValueExecutionCoordinator(activationService, uiAutomationService, setValueService));
+            new ComputerUseWinSetValueExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                semanticLookupService ?? new FakeUiAutomationSemanticLookupService(),
+                setValueService));
 
     private static ComputerUseWinTypeTextHandler CreateTypeTextHandler(
         ComputerUseWinStateStore stateStore,
@@ -4404,10 +4725,16 @@ public sealed class ComputerUseWinActionAndProjectionTests
         FakeUiAutomationService uiAutomationService,
         FakeUiAutomationScrollService scrollService,
         FakeInputService inputService,
-        IWindowManager? windowManager = null) =>
+        IWindowManager? windowManager = null,
+        FakeUiAutomationSemanticLookupService? semanticLookupService = null) =>
         new(
             CreateActionRequestExecutor(stateStore, windowManager),
-            new ComputerUseWinScrollExecutionCoordinator(activationService, uiAutomationService, scrollService, inputService));
+            new ComputerUseWinScrollExecutionCoordinator(
+                activationService,
+                uiAutomationService,
+                semanticLookupService ?? new FakeUiAutomationSemanticLookupService(),
+                scrollService,
+                inputService));
 
     private static ComputerUseWinDragHandler CreateDragHandler(
         ComputerUseWinStateStore stateStore,
@@ -4426,17 +4753,46 @@ public sealed class ComputerUseWinActionAndProjectionTests
         FakeWindowActivationService activationService,
         FakeUiAutomationService uiAutomationService,
         FakeUiAutomationSecondaryActionService secondaryActionService,
-        IWindowManager? windowManager = null) =>
+        IWindowManager? windowManager = null,
+        FakeUiAutomationSemanticLookupService? semanticLookupService = null) =>
         new(
             CreateActionRequestExecutor(stateStore, windowManager),
             new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
                 activationService,
                 uiAutomationService,
+                semanticLookupService ?? new FakeUiAutomationSemanticLookupService(),
                 secondaryActionService));
 
     private static FakeUiAutomationService CreateSuccessfulUiAutomationService(Func<UiaElementSnapshot> rootFactory) =>
         new((window, request, _) => Task.FromResult(
             CreateSuccessfulUiaSnapshot(window, rootFactory(), request.Depth, request.MaxNodes)));
+
+    private static FakeUiAutomationSemanticLookupService CreateSuccessfulSemanticLookupService(Func<UiaElementSnapshot> elementFactory) =>
+        new((window, request, _) => Task.FromResult(
+            new UiaSemanticLookupResult(
+                Status: UiaSemanticLookupStatusValues.UniqueMatch,
+                Window: CreateObservedWindow(window),
+                Element: elementFactory(),
+                VisitedNodeCount: 9,
+                MatchCount: 1,
+                MatchCardinality: ElementSelectorMatchCardinalityValues.Unique,
+                MaxDepth: request.MaxDepth,
+                MaxNodes: request.MaxNodes)));
+
+    private static FakeUiAutomationSemanticLookupService CreateSemanticLookupService(
+        string status,
+        int matchCount,
+        string reason) =>
+        new((window, request, _) => Task.FromResult(
+            new UiaSemanticLookupResult(
+                Status: status,
+                Window: CreateObservedWindow(window),
+                VisitedNodeCount: 9,
+                MatchCount: matchCount,
+                MatchCardinality: ElementSelectorPolicy.ClassifyMatchCount(matchCount),
+                MaxDepth: request.MaxDepth,
+                MaxNodes: request.MaxNodes,
+                Reason: reason)));
 
     private static UiaSnapshotResult CreateSuccessfulUiaSnapshot(
         WindowDescriptor window,
@@ -4467,6 +4823,52 @@ public sealed class ComputerUseWinActionAndProjectionTests
             ElementId = "root",
             ControlType = "window",
             Children = [.. children],
+        };
+
+    private static UiaElementSnapshot CreateDeepSettableLookupElement() =>
+        CreateDeepLookupElement(
+            elementId: "raw:0/5",
+            name: "Deep query input",
+            automationId: "DeepQueryInputTextBox",
+            controlType: "edit",
+            patterns: ["value"],
+            isReadOnly: false);
+
+    private static UiaElementSnapshot CreateDeepScrollableLookupElement() =>
+        CreateDeepLookupElement(
+            elementId: "raw:0/7",
+            name: "Deep scroll list",
+            automationId: "DeepScrollListBox",
+            controlType: "list",
+            patterns: ["scroll"]);
+
+    private static UiaElementSnapshot CreateDeepSecondaryLookupElement() =>
+        CreateDeepLookupElement(
+            elementId: "raw:0/8",
+            name: "Deep remember selection",
+            automationId: "DeepRememberSelectionCheckBox",
+            controlType: "check_box",
+            patterns: ["toggle"]);
+
+    private static UiaElementSnapshot CreateDeepLookupElement(
+        string elementId,
+        string name,
+        string automationId,
+        string controlType,
+        IReadOnlyList<string> patterns,
+        bool? isReadOnly = null) =>
+        new()
+        {
+            ElementId = elementId,
+            ControlType = controlType,
+            Name = name,
+            AutomationId = automationId,
+            BoundingRectangle = new Bounds(24, 104, 244, 128),
+            IsEnabled = true,
+            IsOffscreen = false,
+            IsReadOnly = isReadOnly,
+            Patterns = patterns,
+            Children = [],
         };
 
     private static JsonElement GetPayload(CallToolResult result) =>
@@ -4523,6 +4925,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-stage-2-test");
         ComputerUseWinStateStore stateStore = new();
         FakeUiAutomationService uiAutomationService = new();
+        FakeUiAutomationSemanticLookupService semanticLookupService = new();
         FakeUiAutomationSetValueService setValueService = new();
         FakeWindowActivationService activationService = new();
         FakeInputService inputService = new();
@@ -4544,6 +4947,7 @@ public sealed class ComputerUseWinActionAndProjectionTests
         ComputerUseWinSetValueExecutionCoordinator setValueExecutionCoordinator = new(
             activationService,
             uiAutomationService,
+            semanticLookupService,
             setValueService);
         ComputerUseWinTypeTextExecutionCoordinator typeTextExecutionCoordinator = new(
             activationService,
@@ -4553,12 +4957,14 @@ public sealed class ComputerUseWinActionAndProjectionTests
         ComputerUseWinScrollExecutionCoordinator scrollExecutionCoordinator = new(
             activationService,
             uiAutomationService,
+            semanticLookupService,
             scrollService,
             inputService);
         FakeUiAutomationSecondaryActionService secondaryActionService = new();
         ComputerUseWinPerformSecondaryActionExecutionCoordinator performSecondaryActionExecutionCoordinator = new(
             activationService,
             uiAutomationService,
+            semanticLookupService,
             secondaryActionService);
         ComputerUseWinActionRequestExecutor actionRequestExecutor = new(
             new ComputerUseWinStoredStateResolver(stateStore, windowManager),

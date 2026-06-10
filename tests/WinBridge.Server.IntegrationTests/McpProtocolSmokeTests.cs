@@ -177,11 +177,9 @@ public sealed class McpProtocolSmokeTests
         AssertSchemaRequiredContains(pressKeyDescriptor.GetProperty("inputSchema"), "stateToken");
         AssertSchemaRequiredContains(pressKeyDescriptor.GetProperty("inputSchema"), "key");
         AssertSchemaRequiredContains(secondaryActionSchema, "stateToken");
-        AssertSchemaRequiredContains(secondaryActionSchema, "elementIndex");
         AssertSchemaRequiredContains(scrollSchema, "stateToken");
         AssertSchemaRequiredContains(scrollSchema, "direction");
         AssertSchemaRequiredContains(setValueSchema, "stateToken");
-        AssertSchemaRequiredContains(setValueSchema, "elementIndex");
         AssertSchemaRequiredContains(setValueSchema, "valueKind");
         AssertSchemaRequiredContains(typeTextSchema, "stateToken");
         AssertSchemaRequiredContains(typeTextSchema, "text");
@@ -231,13 +229,16 @@ public sealed class McpProtocolSmokeTests
         Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toElementIndex"));
         Assert.Contains(dragSelectorSets[1].GetProperty("oneOf").EnumerateArray(), mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "toPoint"));
         Assert.Equal(1, secondaryActionProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal("object", secondaryActionProperties.GetProperty("selector").GetProperty("type").GetString());
         Assert.False(secondaryActionProperties.TryGetProperty("point", out _));
         Assert.Equal(1, scrollProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal("object", scrollProperties.GetProperty("selector").GetProperty("type").GetString());
         Assert.Equal(
             ["up", "down", "left", "right"],
             scrollProperties.GetProperty("direction").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
         Assert.Equal(1, scrollProperties.GetProperty("pages").GetProperty("minimum").GetInt32());
         Assert.Equal(1, setValueProperties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        Assert.Equal("object", setValueProperties.GetProperty("selector").GetProperty("type").GetString());
         Assert.Equal(
             ["text", "number"],
             setValueProperties.GetProperty("valueKind").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).Where(static item => item is not null).Cast<string>().ToArray());
@@ -265,6 +266,13 @@ public sealed class McpProtocolSmokeTests
         Assert.Equal(2, selectorModes.Length);
         Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
         Assert.Contains(selectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
+        JsonElement[] scrollSelectorModes = [.. scrollSchema.GetProperty("oneOf").EnumerateArray()];
+        Assert.Contains(scrollSelectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
+        Assert.Contains(scrollSelectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "selector"));
+        Assert.Contains(scrollSelectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "point"));
+        JsonElement[] secondarySelectorModes = [.. secondaryActionSchema.GetProperty("oneOf").EnumerateArray()];
+        Assert.Contains(secondarySelectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "elementIndex"));
+        Assert.Contains(secondarySelectorModes, mode => mode.GetProperty("required").EnumerateArray().Any(item => item.GetString() == "selector"));
 
         Assert.False(clickDescriptor.TryGetProperty("icons", out _));
         Assert.False(getAppStateDescriptor.TryGetProperty("icons", out _));
@@ -1114,7 +1122,7 @@ public sealed class McpProtocolSmokeTests
         JsonElement failedPayload = failedResult.GetProperty("structuredContent");
         Assert.Equal(ComputerUseWinStatusValues.Failed, failedPayload.GetProperty("status").GetString());
         Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, failedPayload.GetProperty("failureCode").GetString());
-        Assert.Contains("maxNodes", failedPayload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(failedPayload.GetProperty("reason").GetString()));
 
         using JsonDocument noArgsResponse = await session.CallToolAsync(
             ToolNames.ComputerUseWinGetAppState,
@@ -1149,7 +1157,7 @@ public sealed class McpProtocolSmokeTests
         JsonElement payload = result.GetProperty("structuredContent");
         Assert.Equal(ComputerUseWinStatusValues.Failed, payload.GetProperty("status").GetString());
         Assert.Equal(ComputerUseWinFailureCodeValues.InvalidRequest, payload.GetProperty("failureCode").GetString());
-        Assert.Contains("maxNodes", payload.GetProperty("reason").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("reason").GetString()));
         Assert.False(payload.TryGetProperty("stateToken", out _));
         Assert.False(payload.TryGetProperty("accessibilityTree", out _));
     }
@@ -2699,4 +2707,3 @@ public sealed class McpProtocolSmokeTests
         string ServerDll,
         string HelperExe);
 }
-

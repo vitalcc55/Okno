@@ -145,6 +145,7 @@ public sealed record ComputerUseWinPressKeyRequest(
 public sealed record ComputerUseWinSetValueRequest(
     string? StateToken = null,
     int? ElementIndex = null,
+    WaitElementSelector? Selector = null,
     string? ValueKind = null,
     string? TextValue = null,
     double? NumberValue = null,
@@ -153,6 +154,7 @@ public sealed record ComputerUseWinSetValueRequest(
 public sealed record ComputerUseWinScrollRequest(
     string? StateToken = null,
     int? ElementIndex = null,
+    WaitElementSelector? Selector = null,
     InputPoint? Point = null,
     string? CoordinateSpace = null,
     string? Direction = null,
@@ -163,6 +165,7 @@ public sealed record ComputerUseWinScrollRequest(
 public sealed record ComputerUseWinPerformSecondaryActionRequest(
     string? StateToken = null,
     int? ElementIndex = null,
+    WaitElementSelector? Selector = null,
     bool Confirm = false);
 
 public sealed record ComputerUseWinDragRequest(

@@ -14,9 +14,13 @@ internal static class ComputerUseWinPerformSecondaryActionContract
             return "Параметр stateToken обязателен для perform_secondary_action.";
         }
 
-        if (request.ElementIndex is null or < 1)
+        if (!ComputerUseWinSemanticSelectorContract.TryValidateElementIndexOrSelector(
+                request.ElementIndex,
+                request.Selector,
+                "perform_secondary_action",
+                out string? targetFailure))
         {
-            return "Параметр elementIndex для perform_secondary_action должен быть >= 1.";
+            return targetFailure;
         }
 
         return null;

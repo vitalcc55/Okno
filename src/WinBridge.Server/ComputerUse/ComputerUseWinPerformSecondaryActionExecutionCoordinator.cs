@@ -11,9 +11,10 @@ namespace WinBridge.Server.ComputerUse;
 internal sealed class ComputerUseWinPerformSecondaryActionExecutionCoordinator(
     IWindowActivationService windowActivationService,
     IUiAutomationService uiAutomationService,
+    IUiAutomationSemanticLookupService semanticLookupService,
     IUiAutomationSecondaryActionService secondaryActionService)
 {
-    private readonly ComputerUseWinSecondaryActionResolver _resolver = new(uiAutomationService);
+    private readonly ComputerUseWinSecondaryActionResolver _resolver = new(uiAutomationService, semanticLookupService);
 
     public async Task<ComputerUseWinActionExecutionOutcome> ExecuteAsync(
         ComputerUseWinStoredState state,
@@ -35,29 +36,33 @@ internal sealed class ComputerUseWinPerformSecondaryActionExecutionCoordinator(
                 dispatchPath: null);
         }
 
-        int elementIndex = request.ElementIndex!.Value;
-        if (!state.Elements.TryGetValue(elementIndex, out ComputerUseWinStoredElement? storedElement)
-            || !ComputerUseWinActionability.IsPerformSecondaryActionActionable(storedElement))
+        bool storedTargetIsRisky = false;
+        if (ComputerUseWinSecondaryActionResolver.TryClassifyBeforeActivation(
+                state,
+                request,
+                out ComputerUseWinStoredElement? storedElement,
+                out ComputerUseWinFailureDetails? targetFailure))
         {
             return ComputerUseWinActionExecutionOutcome.Failure(
-                ComputerUseWinFailureDetails.Expected(
-                    ComputerUseWinFailureCodeValues.UnsupportedAction,
-                    $"elementIndex {elementIndex} не является supported secondary semantic target в последнем get_app_state."),
+                targetFailure!,
                 ComputerUseWinActionLifecyclePhase.BeforeActivation,
                 confirmationRequired: false,
                 riskClass: "secondary_semantic",
                 dispatchPath: null);
         }
 
-        bool storedTargetIsRisky = ComputerUseWinTargetPolicy.RequiresRiskConfirmation(storedElement, ToolNames.ComputerUseWinPerformSecondaryAction);
-        if (storedTargetIsRisky && !request.Confirm)
+        if (storedElement is not null)
         {
-            return ComputerUseWinActionExecutionOutcome.ApprovalRequired(
-                "Выбранный secondary semantic target требует явного подтверждения.",
-                ComputerUseWinActionLifecyclePhase.BeforeActivation,
-                confirmationRequired: true,
-                riskClass: "secondary_semantic_risky",
-                dispatchPath: ComputerUseWinExecutionExecutorValues.UiaToggle);
+            storedTargetIsRisky = ComputerUseWinTargetPolicy.RequiresRiskConfirmation(storedElement, ToolNames.ComputerUseWinPerformSecondaryAction);
+            if (storedTargetIsRisky && !request.Confirm)
+            {
+                return ComputerUseWinActionExecutionOutcome.ApprovalRequired(
+                    "Выбранный secondary semantic target требует явного подтверждения.",
+                    ComputerUseWinActionLifecyclePhase.BeforeActivation,
+                    confirmationRequired: true,
+                    riskClass: "secondary_semantic_risky",
+                    dispatchPath: ComputerUseWinExecutionExecutorValues.UiaToggle);
+            }
         }
 
         ActivateWindowResult activation = await windowActivationService.ActivateAsync(state.Window, cancellationToken).ConfigureAwait(false);

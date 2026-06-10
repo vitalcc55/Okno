@@ -286,28 +286,38 @@ internal static class ComputerUseWinToolRegistration
             {
                 ["type"] = "object",
                 ["additionalProperties"] = false,
-                ["required"] = CreateStringArray("stateToken", "elementIndex", "valueKind"),
+                ["required"] = CreateStringArray("stateToken", "valueKind"),
                 ["not"] = new JsonObject
                 {
                     ["required"] = CreateStringArray("textValue", "numberValue"),
                 },
-                ["oneOf"] = new JsonArray
+                ["allOf"] = new JsonArray
                 {
                     new JsonObject
                     {
-                        ["properties"] = new JsonObject
-                        {
-                            ["valueKind"] = new JsonObject { ["const"] = UiaSetValueKindValues.Text },
-                        },
-                        ["required"] = CreateStringArray("textValue"),
+                        ["oneOf"] = ComputerUseWinSemanticSelectorContract.CreateElementIndexOrSelectorModeSchema(),
                     },
                     new JsonObject
                     {
-                        ["properties"] = new JsonObject
+                        ["oneOf"] = new JsonArray
                         {
-                            ["valueKind"] = new JsonObject { ["const"] = UiaSetValueKindValues.Number },
+                            new JsonObject
+                            {
+                                ["properties"] = new JsonObject
+                                {
+                                    ["valueKind"] = new JsonObject { ["const"] = UiaSetValueKindValues.Text },
+                                },
+                                ["required"] = CreateStringArray("textValue"),
+                            },
+                            new JsonObject
+                            {
+                                ["properties"] = new JsonObject
+                                {
+                                    ["valueKind"] = new JsonObject { ["const"] = UiaSetValueKindValues.Number },
+                                },
+                                ["required"] = CreateStringArray("numberValue"),
+                            },
                         },
-                        ["required"] = CreateStringArray("numberValue"),
                     },
                 },
                 ["properties"] = new JsonObject
@@ -318,6 +328,7 @@ internal static class ComputerUseWinToolRegistration
                         ["type"] = "integer",
                         ["minimum"] = 1,
                     },
+                    ["selector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
                     ["valueKind"] = new JsonObject
                     {
                         ["type"] = "string",
@@ -373,6 +384,7 @@ internal static class ComputerUseWinToolRegistration
                         ["type"] = CreateTypeSet("integer", "null"),
                         ["minimum"] = 1,
                     },
+                    ["selector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
                     ["point"] = CreatePointSchema(),
                     ["coordinateSpace"] = CreateNullableStringEnumSchema(
                         [InputCoordinateSpaceValues.Screen, InputCoordinateSpaceValues.CapturePixels]),
@@ -442,7 +454,8 @@ internal static class ComputerUseWinToolRegistration
             {
                 ["type"] = "object",
                 ["additionalProperties"] = false,
-                ["required"] = CreateStringArray("stateToken", "elementIndex"),
+                ["required"] = CreateStringArray("stateToken"),
+                ["oneOf"] = ComputerUseWinSemanticSelectorContract.CreateElementIndexOrSelectorModeSchema(),
                 ["properties"] = new JsonObject
                 {
                     ["stateToken"] = ComputerUseWinClickContract.CreateRequiredStateTokenSchema(),
@@ -451,6 +464,7 @@ internal static class ComputerUseWinToolRegistration
                         ["type"] = "integer",
                         ["minimum"] = 1,
                     },
+                    ["selector"] = ComputerUseWinSemanticSelectorContract.CreateSelectorSchema(),
                     ["confirm"] = new JsonObject { ["type"] = "boolean" },
                 },
             });

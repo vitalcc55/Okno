@@ -414,7 +414,7 @@ Master progress checklist:
 - [x] Step 3. Split visual observation success from semantic preview readiness
 - [x] Step 4. Extract the shared bounded selector domain
 - [x] Step 5. Implement bounded deep semantic lookup in the UIA runtime
-- [ ] Step 6. Integrate the selector lane into semantic actions first
+- [x] Step 6. Integrate the selector lane into semantic actions first
 - [ ] Step 7. Close the same reachability class across proof-backed physical actions
 - [ ] Step 8. Carry the new observation model through `observeAfter` and stored successor state
 - [ ] Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
@@ -984,10 +984,10 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] Semantic actions accept the additive selector branch according to the chosen shared selector model.
-- [ ] `set_value`, `perform_secondary_action`, and semantic `scroll` can resolve deep targets outside preview.
-- [ ] Existing `elementIndex` paths remain green.
-- [ ] Closure pass completed for stale, ambiguous, unsupported, and post-activation failure paths.
+- [x] Semantic actions accept the additive selector branch according to the chosen shared selector model.
+- [x] `set_value`, `perform_secondary_action`, and semantic `scroll` can resolve deep targets outside preview.
+- [x] Existing `elementIndex` paths remain green.
+- [x] Closure pass completed for stale, ambiguous, unsupported, and post-activation failure paths.
 
 ### Step 7. Close the same reachability class across proof-backed physical actions
 

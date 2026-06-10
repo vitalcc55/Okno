@@ -1006,11 +1006,13 @@ public sealed class ComputerUseWinArchitectureTests
         JsonElement properties = inputSchema.GetProperty("properties");
         JsonElement[] selectorModes = GetSchemaBranches(inputSchema, "oneOf");
         JsonElement elementBranch = selectorModes.Single(mode => RequiresSchemaProperty(mode, "elementIndex"));
+        JsonElement selectorBranch = selectorModes.Single(mode => RequiresSchemaProperty(mode, "selector"));
         JsonElement pointBranch = selectorModes.Single(mode => RequiresSchemaProperty(mode, "point"));
 
         Assert.Equal(10, properties.GetProperty("pages").GetProperty("maximum").GetInt32());
         AssertSchemaPropertyType(properties, "point", "object");
         AssertBranchPropertyType(elementBranch, "elementIndex", "integer");
+        AssertBranchPropertyType(selectorBranch, "selector", "object");
         AssertBranchPropertyType(pointBranch, "point", "object");
     }
 
@@ -1043,13 +1045,17 @@ public sealed class ComputerUseWinArchitectureTests
     }
 
     [Fact]
-    public void ComputerUseWinSecondaryActionToolSchemaRequiresStateTokenAndElementIndex()
+    public void ComputerUseWinSecondaryActionToolSchemaRequiresStateTokenAndSemanticTarget()
     {
         JsonElement inputSchema = GetComputerUseWinInputSchema(ToolNames.ComputerUseWinPerformSecondaryAction);
         JsonElement properties = inputSchema.GetProperty("properties");
+        JsonElement[] selectorModes = GetSchemaBranches(inputSchema, "oneOf");
 
-        AssertRequiredProperties(inputSchema, ["stateToken", "elementIndex"]);
+        AssertRequiredProperties(inputSchema, ["stateToken"]);
+        Assert.Contains(selectorModes, mode => RequiresSchemaProperty(mode, "elementIndex"));
+        Assert.Contains(selectorModes, mode => RequiresSchemaProperty(mode, "selector"));
         Assert.Equal(1, properties.GetProperty("elementIndex").GetProperty("minimum").GetInt32());
+        AssertSchemaPropertyType(properties, "selector", "object");
         Assert.False(properties.TryGetProperty("point", out _));
     }
 
@@ -1399,21 +1405,25 @@ public sealed class ComputerUseWinArchitectureTests
         services.AddSingleton(static provider => new ComputerUseWinSetValueExecutionCoordinator(
             provider.GetRequiredService<IWindowActivationService>(),
             provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationSemanticLookupService>(),
             provider.GetRequiredService<IUiAutomationSetValueService>()));
         services.AddSingleton(static provider => new ComputerUseWinTypeTextExecutionCoordinator(
             provider.GetRequiredService<IWindowActivationService>(),
             provider.GetRequiredService<IUiAutomationService>(),
             provider.GetRequiredService<IInputService>()));
         services.AddSingleton<IUiAutomationScrollService>(new FakeUiAutomationScrollService());
+        services.AddSingleton<IUiAutomationSemanticLookupService>(new FakeUiAutomationSemanticLookupService());
         services.AddSingleton(static provider => new ComputerUseWinScrollExecutionCoordinator(
             provider.GetRequiredService<IWindowActivationService>(),
             provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationSemanticLookupService>(),
             provider.GetRequiredService<IUiAutomationScrollService>(),
             provider.GetRequiredService<IInputService>()));
         services.AddSingleton<IUiAutomationSecondaryActionService>(new FakeUiAutomationSecondaryActionService());
         services.AddSingleton(static provider => new ComputerUseWinPerformSecondaryActionExecutionCoordinator(
             provider.GetRequiredService<IWindowActivationService>(),
             provider.GetRequiredService<IUiAutomationService>(),
+            provider.GetRequiredService<IUiAutomationSemanticLookupService>(),
             provider.GetRequiredService<IUiAutomationSecondaryActionService>()));
         services.AddSingleton<ComputerUseWinStateStore>();
         services.AddSingleton<ComputerUseWinStoredStateResolver>();
