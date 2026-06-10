@@ -398,6 +398,28 @@ Open decisions that the implementation branch still must close explicitly:
 
 ## 10. Sequential implementation plan
 
+Execution discipline for the implementation branch:
+
+- Do not start the next `Step` until every checkbox in the current
+  `Step completion checklist` is marked `[x]`.
+- If a `Step` is reopened after review or failed verification, reset the
+  affected checkboxes for that `Step` and record the reason in the execution log
+  or commit trail before continuing.
+
+Master progress checklist:
+
+- [ ] Step 0. Freeze the baseline and add red characterization
+- [ ] Step 1. Unify public failure materialization for state, action, and successor state
+- [ ] Step 2. Introduce a product-owned semantic completeness model
+- [ ] Step 3. Split visual observation success from semantic preview readiness
+- [ ] Step 4. Extract the shared bounded selector domain
+- [ ] Step 5. Implement bounded deep semantic lookup in the UIA runtime
+- [ ] Step 6. Integrate the selector lane into semantic actions first
+- [ ] Step 7. Close the same reachability class across proof-backed physical actions
+- [ ] Step 8. Carry the new observation model through `observeAfter` and stored successor state
+- [ ] Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
+- [ ] Step 10. Final closure pass, cleanup, and roadmap handoff
+
 ### Step 0. Freeze the baseline and add red characterization
 
 Target level:
@@ -461,6 +483,13 @@ Closure pass:
 - If any scenario is left untested, justify explicitly why it belongs to a later
   step and not to the same class.
 
+Step completion checklist:
+
+- [ ] Current baseline rerun and current shipped behavior captured.
+- [ ] New future-behavior tests added and red.
+- [ ] Any new fixture support added without changing production behavior.
+- [ ] Closure pass completed and uncovered scenarios either covered or explicitly deferred.
+
 ### Step 1. Unify public failure materialization for state, action, and successor state
 
 Target level:
@@ -516,6 +545,13 @@ Closure pass:
   failure, successor observe failure, and unexpected exception paths.
 - Confirm there is no symmetric leak left in state, action, or successor-state
   materialization.
+
+Step completion checklist:
+
+- [ ] One shared public failure owner introduced or existing owner extended.
+- [ ] Initial `get_app_state` failure no longer leaks raw provider/UIA text.
+- [ ] Action-path and successor-state-path sanitization remain green.
+- [ ] Closure pass completed for capture, traversal, resolution, and unexpected-failure paths.
 
 ### Step 2. Introduce a product-owned semantic completeness model
 
@@ -573,6 +609,13 @@ Closure pass:
 - Confirm approval-required, blocked, and hard observation-failure paths do not
   create ghost state tokens.
 - Confirm the model uses only product-owned failure codes.
+
+Step completion checklist:
+
+- [ ] Semantic completeness envelope added to the public state contract.
+- [ ] Stored observation model carries realized completeness and product-owned semantic failure code.
+- [ ] Ghost-token behavior checked on approval-required, blocked, and hard-failure paths.
+- [ ] Closure pass completed for initial-state and successor-state storage semantics.
 
 ### Step 3. Split visual observation success from semantic preview readiness
 
@@ -635,6 +678,13 @@ Closure pass:
 - Confirm `observeAfter` is still pending and has not silently diverged from the
   new model.
 
+Step completion checklist:
+
+- [ ] Screenshot-success and UIA-incomplete path now returns public visual success.
+- [ ] Capture failure remains a hard `observation_failed` path.
+- [ ] `accessibilityTree` empty-or-partial policy is explicit and tested.
+- [ ] Closure pass completed for activation warnings, instruction-provider branches, and hard capture failure.
+
 ### Step 4. Extract the shared bounded selector domain
 
 Target level:
@@ -691,6 +741,13 @@ Closure pass:
 - Re-run `WindowWaitToolTests` and selector validation tests.
 - Confirm exact-match semantics stay consistent across `name`, `automationId`,
   and `controlType`.
+
+Step completion checklist:
+
+- [ ] Selector shape reused directly or extracted once into a shared owner.
+- [ ] `windows.wait` remains green without public selector shape drift.
+- [ ] Shared selector-match policy is canonical for `name`, `automationId`, and `controlType`.
+- [ ] Closure pass completed for selector semantics and wait regressions.
 
 ### Step 5. Implement bounded deep semantic lookup in the UIA runtime
 
@@ -751,6 +808,13 @@ Closure pass:
 - Recheck cancellation, timeout, node-budget exhaustion, ambiguous matches,
   element-not-available, and invalid operation paths.
 - Confirm the new service does not introduce a parallel public result surface.
+
+Step completion checklist:
+
+- [ ] Bounded semantic lookup runtime exists with typed outcomes.
+- [ ] Budget, timeout, and ambiguity behavior are covered by tests.
+- [ ] No public raw-tree surface or unbounded descendant traversal was introduced.
+- [ ] Closure pass completed for cancellation and provider-failure paths.
 
 ### Step 6. Integrate the selector lane into semantic actions first
 
@@ -819,6 +883,13 @@ Closure pass:
   post-activation revalidation failure.
 - Confirm the shared resolver did not leave local duplicate branches behind.
 
+Step completion checklist:
+
+- [ ] Semantic actions accept the additive selector branch according to the chosen shared selector model.
+- [ ] `set_value`, `perform_secondary_action`, and semantic `scroll` can resolve deep targets outside preview.
+- [ ] Existing `elementIndex` paths remain green.
+- [ ] Closure pass completed for stale, ambiguous, unsupported, and post-activation failure paths.
+
 ### Step 7. Close the same reachability class across proof-backed physical actions
 
 Target level:
@@ -879,6 +950,13 @@ Closure pass:
 - If any one of them is deliberately left out, document why it is not part of
   the same class.
 
+Step completion checklist:
+
+- [ ] Reachability class audited across `click`, `drag`, and ordinary `type_text`.
+- [ ] Any changed proof-backed physical paths are green under the shared target-proof model.
+- [ ] Any intentionally excluded path has an explicit written justification in implementation artifacts.
+- [ ] Closure pass completed across all target-bearing action families.
+
 ### Step 8. Carry the new observation model through `observeAfter` and stored successor state
 
 Target level:
@@ -928,6 +1006,13 @@ Closure pass:
 - Recheck `click`, `type_text`, `scroll`, and `drag` `observeAfter` branches.
 - Confirm successor state, successor failure, audit, and artifact paths all use
   the same new model.
+
+Step completion checklist:
+
+- [ ] `observeAfter` now returns the new semantic completeness model.
+- [ ] Successor-state storage carries the completeness envelope.
+- [ ] Top-level action outcome and `refreshStateRecommended` semantics remain honest.
+- [ ] Closure pass completed for `click`, `type_text`, `scroll`, and `drag` successor branches.
 
 ### Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
 
@@ -982,6 +1067,13 @@ Closure pass:
 
 - Recheck runtime/tests/smoke symmetry, fresh-thread cache-install proof,
   install-surface materialization, and artifact wording.
+
+Step completion checklist:
+
+- [ ] Deterministic poor-UIA and deep-tree characterization exists in local proof surfaces.
+- [ ] Physical-policy proof-smoke wording remains honest about what it proves.
+- [ ] Cache-installed proof covers the final shipped public contract for this slice.
+- [ ] Closure pass completed for runtime, tests, smoke, and cache-install symmetry.
 
 ### Step 10. Final closure pass, cleanup, and roadmap handoff
 
@@ -1039,6 +1131,13 @@ Closure pass:
   state/action/successor-state consistency.
 - If any remaining gap is intentionally deferred, record it as a new slice with
   exact boundaries instead of leaving an implicit TODO.
+
+Step completion checklist:
+
+- [ ] Obsolete narrow paths and duplicate owners removed or explicitly replaced.
+- [ ] Full sequential verification contour is green.
+- [ ] Docs and generated surfaces updated only after green runtime truth.
+- [ ] Final closure pass confirms no symmetric gaps or implicit TODOs remain.
 
 ## 11. Verification strategy by step
 
