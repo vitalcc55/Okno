@@ -409,7 +409,7 @@ Execution discipline for the implementation branch:
 Master progress checklist:
 
 - [x] Step 0. Freeze the baseline and add red characterization
-- [ ] Step 1. Unify public failure materialization for state, action, and successor state
+- [x] Step 1. Unify public failure materialization for state, action, and successor state
 - [ ] Step 2. Introduce a product-owned semantic completeness model
 - [ ] Step 3. Split visual observation success from semantic preview readiness
 - [ ] Step 4. Extract the shared bounded selector domain
@@ -567,10 +567,24 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] One shared public failure owner introduced or existing owner extended.
-- [ ] Initial `get_app_state` failure no longer leaks raw provider/UIA text.
-- [ ] Action-path and successor-state-path sanitization remain green.
-- [ ] Closure pass completed for capture, traversal, resolution, and unexpected-failure paths.
+- [x] One shared public failure owner introduced or existing owner extended.
+- [x] Initial `get_app_state` failure no longer leaks raw provider/UIA text.
+- [x] Action-path and successor-state-path sanitization remain green.
+- [x] Closure pass completed for capture, traversal, resolution, and unexpected-failure paths.
+
+Step 1 execution notes:
+
+- Introduced a shared public failure materialization owner for state, action,
+  runtime-input and successor-state wording.
+- Initial `get_app_state` observation failures now use product-owned public
+  wording for capture exceptions and UIA snapshot failures instead of forwarding
+  raw provider/capture messages.
+- Verification evidence: targeted Step 1 server integration filter passed `8/8`
+  across state failure sanitization, action failure materialization and
+  successor-state failure sanitization.
+- Closure evidence: direct `ToPublicFailure(...)` calls are now centralized in
+  the shared owner; the remaining direct `ToPublicFailureCode(...)` usage is a
+  code-only refresh recommendation check, not public reason materialization.
 
 ### Step 2. Introduce a product-owned semantic completeness model
 

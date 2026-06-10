@@ -164,7 +164,7 @@ internal static class ComputerUseWinActivationFailureMapper
     public static ComputerUseWinFailureDetails Map(ActivateWindowResult activation)
     {
         string failureCode = ClassifyFailure(activation);
-        ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(
+        ComputerUseWinFailureTranslation failure = ComputerUseWinPublicFailureMaterializer.MaterializeRuntimeFailure(
             failureCode,
             activation.Reason);
 

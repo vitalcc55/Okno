@@ -41,9 +41,10 @@ internal sealed class ComputerUseWinAppStateObserver(
                 || snapshot.Root is null)
             {
                 return ComputerUseWinAppStateObservationOutcome.Failure(
-                    ComputerUseWinFailureDetails.Expected(
-                        ComputerUseWinFailureCodeValues.ObservationFailed,
-                        snapshot.Reason ?? "UIA snapshot did not complete successfully."));
+                    ComputerUseWinPublicFailureMaterializer.MaterializeStateFailure(
+                        ComputerUseWinFailureDetails.Expected(
+                            ComputerUseWinFailureCodeValues.ObservationFailed,
+                            snapshot.Reason ?? "UIA snapshot did not complete successfully.")));
             }
 
             IReadOnlyDictionary<int, ComputerUseWinStoredElement> elements = ComputerUseWinAccessibilityProjector.Flatten(snapshot.Root);
@@ -100,7 +101,8 @@ internal sealed class ComputerUseWinAppStateObserver(
             ComputerUseWinFailureDetails failure = ComputerUseWinObservationFailureTranslator.Translate(
                 exception,
                 "Computer Use for Windows не смог завершить observation stage для get_app_state.");
-            return ComputerUseWinAppStateObservationOutcome.Failure(failure);
+            return ComputerUseWinAppStateObservationOutcome.Failure(
+                ComputerUseWinPublicFailureMaterializer.MaterializeStateFailure(failure));
         }
     }
 }

@@ -69,7 +69,9 @@ internal static class ComputerUseWinActionFinalizer
             : string.Equals(input.Status, InputStatusValues.Done, StringComparison.Ordinal)
                 ? ComputerUseWinStatusValues.Done
                 : ComputerUseWinStatusValues.Failed;
-        ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(input.FailureCode, input.Reason);
+        ComputerUseWinFailureTranslation failure = ComputerUseWinPublicFailureMaterializer.MaterializeRuntimeFailure(
+            input.FailureCode,
+            input.Reason);
         ComputerUseWinGetAppStateResult? successorState = successorObservation?.SuccessorState;
 
         return new(

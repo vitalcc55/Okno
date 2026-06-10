@@ -22,7 +22,8 @@ public sealed class ComputerUseWinObservationTests
             captureService: new ThrowingCaptureService(new CaptureOperationException("Свернутое окно нельзя использовать для window capture.")));
 
         AssertObservationFailed(outcome);
-        Assert.Contains("Свернутое окно", outcome.Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("Свернутое окно", outcome.Reason, StringComparison.Ordinal);
+        Assert.Contains("get_app_state", outcome.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -35,7 +36,8 @@ public sealed class ComputerUseWinObservationTests
             maxNodes: 2048);
 
         AssertObservationFailed(outcome);
-        Assert.Contains("maxNodes", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("maxNodes", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("get_app_state", outcome.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

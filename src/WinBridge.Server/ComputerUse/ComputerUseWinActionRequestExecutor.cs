@@ -176,13 +176,11 @@ internal sealed class ComputerUseWinActionRequestExecutor
                     out WindowDescriptor? selectedWindow,
                     out ComputerUseWinFailureDetails? targetFailure))
             {
-                ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(
-                    targetFailure!.FailureCode,
-                    targetFailure.Reason);
                 return ComputerUseWinActionSuccessorObservation.Failed(
-                    new ComputerUseWinActionSuccessorStateFailure(
-                        failure.FailureCode ?? ComputerUseWinFailureCodeValues.StaleState,
-                        failure.Reason ?? "Computer Use for Windows не смог подтвердить post-action target для observeAfter."));
+                    ComputerUseWinPublicFailureMaterializer.MaterializeSuccessorStateFailure(
+                        targetFailure!,
+                        ComputerUseWinFailureCodeValues.StaleState,
+                        "Computer Use for Windows не смог подтвердить post-action target для observeAfter."));
             }
 
             ComputerUseWinAppStateObservationOutcome observation = await appStateObserver.ObserveAsync(
@@ -194,13 +192,12 @@ internal sealed class ComputerUseWinActionRequestExecutor
                 cancellationToken).ConfigureAwait(false);
             if (!observation.IsSuccess)
             {
-                ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(
-                    observation.FailureCode,
-                    observation.Reason);
                 return ComputerUseWinActionSuccessorObservation.Failed(
-                    new ComputerUseWinActionSuccessorStateFailure(
-                        failure.FailureCode ?? ComputerUseWinFailureCodeValues.ObservationFailed,
-                        failure.Reason ?? "Computer Use for Windows не смог materialize successorState после committed action."));
+                    ComputerUseWinPublicFailureMaterializer.MaterializeSuccessorStateFailure(
+                        observation.FailureCode,
+                        observation.Reason,
+                        ComputerUseWinFailureCodeValues.ObservationFailed,
+                        "Computer Use for Windows не смог materialize successorState после committed action."));
             }
 
             ComputerUseWinMaterializedAppState materializedState = ComputerUseWinGetAppStateFinalizer.CommitPreparedState(

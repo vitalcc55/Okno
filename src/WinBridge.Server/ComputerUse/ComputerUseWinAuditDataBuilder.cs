@@ -38,7 +38,9 @@ internal static class ComputerUseWinAuditDataBuilder
         PublicComputerUseWinExecutionFacts? executionFacts = null,
         string? failurePhase = null)
     {
-        ComputerUseWinFailureTranslation failure = ComputerUseWinFailureCodeMapper.ToPublicFailure(input.FailureCode, input.Reason);
+        ComputerUseWinFailureTranslation failure = ComputerUseWinPublicFailureMaterializer.MaterializeRuntimeFailure(
+            input.FailureCode,
+            input.Reason);
         Dictionary<string, string?> data = new(StringComparer.Ordinal)
         {
             ["status"] = input.Status,
