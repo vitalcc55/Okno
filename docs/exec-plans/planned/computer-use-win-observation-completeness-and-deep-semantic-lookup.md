@@ -122,14 +122,24 @@ Current implementation:
 - [ComputerUseWinStateStore.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinStateStore.cs)
 - [ComputerUseWinAccessibilityProjector.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinAccessibilityProjector.cs)
 - [ComputerUseWinFreshElementResolver.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinFreshElementResolver.cs)
+- [ComputerUseWinScrollTargetResolver.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinScrollTargetResolver.cs)
 - [ComputerUseWinActionRequestExecutor.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinActionRequestExecutor.cs)
+- [ComputerUseWinSetValueExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinSetValueExecutionCoordinator.cs)
+- [ComputerUseWinScrollExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinScrollExecutionCoordinator.cs)
+- [ComputerUseWinPerformSecondaryActionExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinPerformSecondaryActionExecutionCoordinator.cs)
+- [ComputerUseWinTypeTextExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinTypeTextExecutionCoordinator.cs)
+- [ComputerUseWinActionability.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinActionability.cs)
+- [ComputerUseWinAffordanceResolver.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinAffordanceResolver.cs)
 - [ComputerUseWinToolRegistration.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs)
 - [ComputerUseWinContracts.cs](../../../src/WinBridge.Runtime.Contracts/ComputerUseWinContracts.cs)
 - [AutomationSnapshotNode.cs](../../../src/WinBridge.Runtime.Windows.UIA/AutomationSnapshotNode.cs)
 - [UiaSnapshotTreeBuilder.cs](../../../src/WinBridge.Runtime.Windows.UIA/UiaSnapshotTreeBuilder.cs)
 - [Win32UiAutomationBackend.cs](../../../src/WinBridge.Runtime.Windows.UIA/Win32UiAutomationBackend.cs)
+- [Win32UiAutomationWaitProbe.cs](../../../src/WinBridge.Runtime.Windows.UIA/Win32UiAutomationWaitProbe.cs)
 - [UiaSnapshotDefaults.cs](../../../src/WinBridge.Runtime.Contracts/UiaSnapshotDefaults.cs)
 - [UiaSnapshotToolResult.cs](../../../src/WinBridge.Runtime.Contracts/UiaSnapshotToolResult.cs)
+- [WaitElementSelector.cs](../../../src/WinBridge.Runtime.Contracts/WaitElementSelector.cs)
+- [WaitRequestValidator.cs](../../../src/WinBridge.Runtime.Contracts/WaitRequestValidator.cs)
 
 Current tests:
 
@@ -137,6 +147,22 @@ Current tests:
 - [ComputerUseWinActionAndProjectionTests.cs](../../../tests/WinBridge.Server.IntegrationTests/ComputerUseWinActionAndProjectionTests.cs)
 - [UiaSnapshotTreeBuilderTests.cs](../../../tests/WinBridge.Runtime.Tests/UiaSnapshotTreeBuilderTests.cs)
 - [WindowUiaSnapshotToolTests.cs](../../../tests/WinBridge.Server.IntegrationTests/WindowUiaSnapshotToolTests.cs)
+- [WindowWaitToolTests.cs](../../../tests/WinBridge.Server.IntegrationTests/WindowWaitToolTests.cs)
+- [Program.cs](../../../tests/WinBridge.SmokeWindowHost/Program.cs)
+
+Current proof and publication harness:
+
+- [computer-use-win-physical-policy-proof-smoke.ps1](../../../scripts/computer-use-win-physical-policy-proof-smoke.ps1)
+- [prove-computer-use-win-cache-install.ps1](../../../scripts/codex/prove-computer-use-win-cache-install.ps1)
+- [SKILL.md](../../../plugins/computer-use-win/skills/computer-use-win/SKILL.md)
+- [plugin.json](../../../plugins/computer-use-win/.codex-plugin/plugin.json)
+
+Local reference repos actually used in this planning pass:
+
+- [INDEX.md](../../../references/INDEX.md)
+- [SnapshotBuilder.cs](../../../references/repos/FlaUI-MCP/src/FlaUI.Mcp/Core/SnapshotBuilder.cs)
+- [ElementRegistry.cs](../../../references/repos/FlaUI-MCP/src/FlaUI.Mcp/Core/ElementRegistry.cs)
+- [SnapshotTool.cs](../../../references/repos/FlaUI-MCP/src/FlaUI.Mcp/Tools/SnapshotTool.cs)
 
 Official docs used:
 
@@ -249,21 +275,18 @@ Symptoms:
   for poor-UIA/deep-tree targets; they pin current behavior and miss this
   defect family.
 
-## 8. Design forks to close
+## 8. Target model and engineering approach
 
-Closed recommendations for the implementation plan:
+Closed design decisions for the implementation wave:
 
-1. `get_app_state` should be allowed to return successful visual observation
-   when screenshot capture succeeds and UIA preview is incomplete or unavailable,
-   provided target/window identity remains product-valid.
-
-2. Do not introduce `status=partial` as a top-level state status in the first
-   implementation wave. Keep top-level `status=ok` for visual observation
-   success and publish semantic readiness/completeness as explicit nested
-   metadata plus warnings.
-
-3. Add a product-owned semantic/completeness envelope to public state, not raw
-   provider text. Recommended shape:
+1. `get_app_state` must become a successful visual observation path whenever
+   screenshot capture succeeds and target/window identity is still product-valid,
+   even if semantic preview is incomplete or unavailable.
+2. Top-level state status should stay `ok`; semantic readiness belongs in an
+   explicit nested product-owned envelope, not in a new top-level `partial`
+   status.
+3. Product-owned semantic completeness must be additive and explicit. The target
+   public shape is:
 
    ```text
    semanticPreview.status = complete | incomplete | unavailable | failed
@@ -278,255 +301,849 @@ Closed recommendations for the implementation plan:
    semanticPreview.failureCode
    ```
 
-   `failureCode` is product-owned. Raw reason stays in diagnostics/audit only.
+4. Raw provider/UIA reasons stay audit-only. Public state and public
+   successor-state failures go through the same owner-layer materializer that
+   already protects action failures.
+5. The first implementation should not widen public `get_app_state` with an
+   arbitrary `depth` control. The target model is a compact preview tree plus a
+   bounded semantic lookup lane, not a deeper preview-by-default tree.
+6. The selector model should not be invented ad hoc. The repo already has a
+   bounded selector shape in [WaitElementSelector.cs](../../../src/WinBridge.Runtime.Contracts/WaitElementSelector.cs)
+   and matching logic in
+   [Win32UiAutomationWaitProbe.cs](../../../src/WinBridge.Runtime.Windows.UIA/Win32UiAutomationWaitProbe.cs).
+   The implementation wave should either reuse that shape directly or extract a
+   shared generic selector concept from it once, then migrate both wait and
+   `computer-use-win` to the shared owner.
+7. The first target actions for selector-driven reachability should be
+   `set_value`, `perform_secondary_action`, and semantic `scroll`, because they
+   have the clearest semantic success criteria; but the plan must include an
+   explicit closure pass for `click`, `drag`, and ordinary `type_text`, because
+   they reuse the same target-proof class and cannot be ignored silently.
+8. `observeAfter` must inherit the same visual/semantic split and completeness
+   envelope; a committed action may yield a valid visual successor state even
+   when semantic preview remains incomplete.
+9. Focused fallback and coordinate-confirmed fallback are not separate root
+   causes. They are downstream consumers of the same observation model and must
+   be checked in the same closure pass.
+10. The slice must not become a raw-tree dump, an OCR workaround, a browser
+    detour, or a second UI runtime.
 
-4. Do not expose public `depth` control in the first wave unless tests prove
-   that selector lookup cannot be solved without it. The preferred first design
-   is a bounded semantic lookup lane, not a larger preview tree.
+Where DDD is justified:
 
-5. Deep semantic lookup should start as an internal lane behind current public
-   action tools and additive selector shapes, not as a new public tool.
+- Shared public failure materialization is a real domain seam because the same
+  product invariant spans state, action, successor state, audit, and MCP
+  payload wording.
+- The semantic completeness envelope is a domain model, not a transport detail,
+  because it defines action-readiness truth for the whole `computer-use-win`
+  loop.
+- The selector concept is a domain contract because the same identity semantics
+  are already relevant to `windows.wait` and now become relevant to
+  `computer-use-win`.
+- A bounded semantic lookup service is a domain-owned runtime seam because it
+  defines what "element truly not found" means for this product.
 
-6. Stable targeting beyond `elementIndex` should use a bounded selector object:
-   `automationId + controlType + optional name`, with optional `frameworkId`
-   only if characterization proves it reduces ambiguity for Qt/PySide6 without
-   overfitting.
+Where DDD is not justified:
 
-7. State and action failure materialization should share one public failure
-   materializer/redactor owner. State failures should not bypass it.
+- WinForms smoke fixture code in [Program.cs](../../../tests/WinBridge.SmokeWindowHost/Program.cs)
+  should stay a deterministic test harness, not a new domain layer.
+- Proof scripts and generated docs should reuse the runtime truth surface and
+  not grow their own model objects.
+- Low-level traversal loops should remain small runtime services; no aggregate or
+  repository pattern is needed there.
 
-8. `observeAfter` must inherit visual-vs-semantic split and completeness metadata.
-   A committed action can have successful visual successor state even if semantic
-   preview is incomplete.
+Where TDD is justified:
 
-9. `allowFocusedFallback` should treat preview-incomplete state as low-confidence
-   visual state, not as a reason to invent hidden focus trust. It may still
-   require explicit confirm/focus proof depending on action path.
+- Public failure sanitization.
+- Semantic completeness payload/state-token carry-through.
+- Shared selector contract and bounded lookup rules.
+- Action integration on selector-driven semantic targets.
+- `observeAfter` successor-state propagation of the new model.
 
-10. The slice must not become a raw-tree dump, broad OCR workaround or new
-    browser/Electron lane.
+Where TDD is not mandatory:
 
-Unresolved forks for implementation owner:
+- Pure docs/generated refresh.
+- Helper proof scripts after the runtime behavior is already green.
+- Small smoke-fixture layout changes that are only there to support already-red
+  integration tests.
 
-- Exact public field names for semantic completeness envelope.
-- Whether to include `semanticPreview.reason` at all; default recommendation is
-  no public free-form provider reason, only product-owned code + warning.
-- Whether `semanticPreview.status=failed` should still publish an empty
-  `accessibilityTree` or omit it; default recommendation is empty array for
-  model simplicity, with explicit status.
-- Whether optional `frameworkId` belongs in first selector shape.
-- Whether selector lane should search control view first, then bounded raw view,
-  or run one explicit raw scoped lookup for selector-only paths.
-- Exact budget knobs: max descendant count, max depth, timeout, max matches.
-- Whether `set_value` should be the first action to receive selector targeting,
-  or whether all semantic actions should receive the additive selector branch in
-  one package.
+Open decisions that the implementation branch still must close explicitly:
+
+- Final public field names for the semantic completeness envelope.
+- Whether the selector type is direct reuse of `WaitElementSelector` or
+  extraction of a new shared generic selector record.
+- Whether the bounded lookup lane should traverse control view only, or should
+  use a separately bounded raw-view search for selector-only lookups.
+- Exact lookup budgets: max depth, max nodes, max matches, timeout.
+- Whether ordinary `type_text` receives the selector branch in the same slice or
+  in the immediately following closure step.
 
 ## 9. File-level integration map
 
-| Area | Files | Expected future responsibility |
+| Area | Files | Required future responsibility |
 | --- | --- | --- |
-| Public state contract | `ComputerUseWinContracts.cs` | Add additive semantic/completeness envelope to `ComputerUseWinGetAppStateResult`; keep backward-compatible existing fields. |
-| State observation owner | `ComputerUseWinAppStateObserver.cs` | Split visual capture success from semantic preview readiness; build partial state when capture succeeds; collect sanitized semantic status. |
-| State finalization | `ComputerUseWinGetAppStateFinalizer.cs` | Commit state only after successful visual materialization; include image block; preserve `isError=false` for visual success. |
-| Failure materialization | `ComputerUseWinToolResultFactory.cs`, `ComputerUseWinFailureCodeMapper.cs`, `ComputerUseWinObservationFailureTranslator.cs`, `ComputerUseWinFailureDetails.cs` | Introduce shared public failure materializer for state/action/successor paths; raw reasons audit-only. |
-| State storage | `ComputerUseWinStateStore.cs` | Carry realized semantic completeness through `stateToken`, not only requested params. |
-| Public schema | `ComputerUseWinToolRegistration.cs` | Keep `get_app_state` schema narrow; add selector schema to semantic actions only if chosen. |
-| Preview projection | `ComputerUseWinAccessibilityProjector.cs` | Continue compact preview tree; surface completeness separately; do not dump raw tree. |
-| Fresh revalidation | `ComputerUseWinFreshElementResolver.cs` | Keep preview-element revalidation; use selector lane when no preview element exists or when selector branch is used. |
-| Deep lookup runtime | `Win32UiAutomationBackend.cs`, `AutomationSnapshotNode.cs`, `UiaSnapshotTreeBuilder.cs`, possible new `UiAutomationSemanticLookupService` | Add bounded selector lookup over current window with explicit view/budget policy. |
-| UIA contracts | `UiaSnapshotRequest.cs`, `UiaSnapshotToolResult.cs`, `UiaSnapshotDefaults.cs` | Preserve low-level snapshot contract; reuse completeness metadata; avoid global default-depth bump. |
-| Action coordinators | `ComputerUseWinSetValueExecutionCoordinator.cs`, `ComputerUseWinScrollExecutionCoordinator.cs`, `ComputerUseWinPerformSecondaryActionExecutionCoordinator.cs`, `ComputerUseWinTypeTextExecutionCoordinator.cs`, `ComputerUseWinClickExecutionCoordinator.cs` | Consume semantic completeness and optional selector lane; fail closed for semantic-only actions when selector is absent/ambiguous/unreachable. |
-| Successor observation | `ComputerUseWinActionRequestExecutor.cs`, `ComputerUseWinActionSuccessorObservation.cs` | Reuse visual-vs-semantic split and publish successor completeness. |
-| Observability | `ComputerUseWinActionObservability.cs`, `ComputerUseWinAuditDataBuilder.cs`, `observability.md` | Add safe completeness/failure markers without raw provider text. |
-| Generated docs | `ToolDescriptions.cs`, `ToolContractManifest.cs`, `scripts/refresh-generated-docs.ps1`, `docs/generated/*` | Sync changed public contract and test matrix after implementation. |
-| Tests | listed test files plus new helper fixtures | Add missing owner-layer tests and characterization cases. |
+| Public state contract | `ComputerUseWinContracts.cs` | Add the semantic completeness envelope to `ComputerUseWinGetAppStateResult`; expand stored observation contract to carry realized completeness and public failure code. |
+| State observation owner | `ComputerUseWinAppStateObserver.cs` | Split capture success from semantic preview readiness, produce visual-success outcomes with semanticPreview metadata, and stop leaking `snapshot.Reason` directly. |
+| State finalization | `ComputerUseWinGetAppStateFinalizer.cs`, `ComputerUseWinGetAppStateHandler.cs` | Commit `stateToken` only after successful visual materialization, keep image-bearing success payloads, and preserve current approval/activation/selector semantics. |
+| Shared failure owner | `ComputerUseWinToolResultFactory.cs`, `ComputerUseWinFailureCodeMapper.cs`, `ComputerUseWinObservationFailureTranslator.cs`, `ComputerUseWinFailureDetails.cs` | Materialize the same product-owned failure wording for state, action, and successor-state paths. |
+| Shared selector seam | `WaitElementSelector.cs`, `WaitRequestValidator.cs`, `Win32UiAutomationWaitProbe.cs` | Reuse or extract the generic selector shape and selector-match policy instead of creating a second ad hoc selector contract. |
+| State storage | `ComputerUseWinStateStore.cs` | Replace requested-only observation envelope with a richer stored semanticPreview/completeness envelope that downstream actions can trust. |
+| Preview projection | `ComputerUseWinAccessibilityProjector.cs`, `ComputerUseWinAffordanceResolver.cs`, `ComputerUseWinActionability.cs` | Keep compact preview tree/operator readability, but stop treating preview omission as proof that the element does not exist. |
+| Preview revalidation | `ComputerUseWinFreshElementResolver.cs` | Narrow its role to preview-element continuity; do not let it remain the only semantic reachability mechanism after selector lookup exists. |
+| Deep lookup runtime | `Win32UiAutomationBackend.cs`, `AutomationSnapshotNode.cs`, `UiaSnapshotTreeBuilder.cs`, possible new `IUiAutomationSemanticLookupService` + `Win32UiAutomationSemanticLookupService` | Introduce bounded descendant lookup rooted at the current window, with explicit ambiguity and budget policy. |
+| Semantic target resolution | `ComputerUseWinSetValueExecutionCoordinator.cs`, `ComputerUseWinScrollTargetResolver.cs`, `ComputerUseWinPerformSecondaryActionExecutionCoordinator.cs`, possible new `ComputerUseWinSemanticTargetResolver` | Share one target-resolution path that can choose preview element or selector-driven lookup and return typed failures. |
+| Additional action closure | `ComputerUseWinScrollExecutionCoordinator.cs`, `ComputerUseWinTypeTextExecutionCoordinator.cs`, `ComputerUseWinClickExecutionCoordinator.cs`, `ComputerUseWinDragExecutionCoordinator.cs` | Reuse the same target-proof model where the action still depends on semantic target reachability before physical dispatch. |
+| Successor observation | `ComputerUseWinActionRequestExecutor.cs`, `ComputerUseWinActionSuccessorObservation.cs` | Carry the new semantic completeness envelope and public failure mapping through `observeAfter`. |
+| Proof and publication | `computer-use-win-physical-policy-proof-smoke.ps1`, `prove-computer-use-win-cache-install.ps1`, `Program.cs` in `WinBridge.SmokeWindowHost` | Add deterministic characterization and cache-install proof without falsely widening what the physical-policy proof-smoke claims. |
+| Public docs and operator surface | `computer-use-win-surface.md`, `observability.md`, `okno-roadmap.md`, `computer-use-win-interfaces.md`, `project-interfaces.md`, `test-matrix.md`, plugin `SKILL.md`, `plugin.json` | Sync only after runtime/test/smoke truth is green and the final public contract is known. |
 
-## 10. Delivery packages
+## 10. Sequential implementation plan
 
-### Package A: defect-family confirmation
+### Step 0. Freeze the baseline and add red characterization
 
-Scope:
+Target level:
 
-- Validate supplied Karing/R130SH findings against current code, tests and docs.
-- Add characterization tests that prove current defect family before changing
-  behavior.
-- Separate root causes from downstream symptoms.
-- Confirm roadmap placement and update this plan if implementation evidence
-  changes the placement.
+- General invariant. This is not a local fix; it defines the defect family and
+  prevents the rest of the implementation from drifting into isolated patches.
 
-Acceptance:
+Preconditions:
 
-- Red characterization exists for state failure sanitization.
-- Red characterization exists for screenshot-success/UIA-incomplete public state.
-- Red characterization exists for preview-incomplete vs semantic lookup.
-- No production behavior changed yet.
+- Current branch for implementation is created after the planning branch.
+- Working tree is clean enough to separate this slice from unrelated edits.
+- The sequential verification rule from `AGENTS.md` remains in force: no
+  parallel `dotnet build` / `dotnet test` / `smoke` runs in one worktree.
 
-### Package B: state failure sanitization
+Dependencies:
 
-Scope:
+- None.
 
-- Introduce one public failure materializer/redactor owner for state and action
-  paths.
-- Route `ComputerUseWinAppStateObserver` snapshot/capture/UIA failures through
-  product-owned mapping.
-- Keep raw provider/UIA text in audit/diagnostics only.
-- Preserve current `failureCode` taxonomy unless a new code is required by
+Implementation focus:
+
+- Re-run the targeted existing tests that already pin the current baseline:
+  `ComputerUseWinObservationTests`, `ComputerUseWinActionAndProjectionTests`,
+  `UiaSnapshotTreeBuilderTests`, `WindowUiaSnapshotToolTests`.
+- Add future-behavior tests first so they fail before production code changes:
+  - state failure sanitization for initial `get_app_state`;
+  - visual-success/UIA-incomplete `get_app_state`;
+  - semantic selector reaching a deep target outside compact preview;
+  - `observeAfter` carrying visual successor state with semantic completeness.
+- Add the smallest synthetic fixtures needed for these tests, but do not change
+  production behavior yet.
+
+Concrete integration points:
+
+- [ComputerUseWinObservationTests.cs](../../../tests/WinBridge.Server.IntegrationTests/ComputerUseWinObservationTests.cs)
+- [ComputerUseWinActionAndProjectionTests.cs](../../../tests/WinBridge.Server.IntegrationTests/ComputerUseWinActionAndProjectionTests.cs)
+- [WindowUiaSnapshotToolTests.cs](../../../tests/WinBridge.Server.IntegrationTests/WindowUiaSnapshotToolTests.cs)
+- [Program.cs](../../../tests/WinBridge.SmokeWindowHost/Program.cs), only if a new deterministic fixture is required for later smoke proof
+
+TDD:
+
+- Required.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+
+Expected red signals:
+
+- Public initial state still leaks raw/semi-raw UIA reason text.
+- Successful capture + failed/incomplete UIA still does not return `status=ok`.
+- Deep target outside preview cannot be reached through any bounded selector.
+- `observeAfter` still fails the whole observation lane instead of returning a
+  visual successor state with semantic completeness metadata.
+
+Expected result:
+
+- The defect family is pinned by executable tests before the model changes.
+
+Closure pass:
+
+- Confirm that the red suite covers initial state, successor state, semantic
+  action reachability, and publication proof seams.
+- If any scenario is left untested, justify explicitly why it belongs to a later
+  step and not to the same class.
+
+### Step 1. Unify public failure materialization for state, action, and successor state
+
+Target level:
+
+- General invariant. The problem is repeated across state and successor paths and
+  should be closed once, not patched per caller.
+
+Preconditions:
+
+- Step 0 red tests exist for state failure sanitization.
+
+Dependencies:
+
+- Step 0.
+
+Implementation focus:
+
+- Introduce one shared owner for product-owned public failure wording.
+- Route `get_app_state` state failures through the same owner-layer mapping
+  discipline that action failures already use.
+- Keep raw provider/UIA/capture text in diagnostics and audit only.
+- Preserve current `failureCode` taxonomy unless a red test proves it is
+  insufficient.
+
+Concrete integration points:
+
+- [ComputerUseWinToolResultFactory.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinToolResultFactory.cs)
+- [ComputerUseWinFailureCodeMapper.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinFailureCodeMapper.cs)
+- [ComputerUseWinObservationFailureTranslator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinObservationFailureTranslator.cs)
+- [ComputerUseWinFailureDetails.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinFailureDetails.cs)
+- [ComputerUseWinAppStateObserver.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinAppStateObserver.cs)
+
+Constraints:
+
+- Do not weaken existing action-path sanitization.
+- Do not change MCP `isError` behavior just to hide failure text.
+
+TDD:
+
+- Required.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+
+Expected result:
+
+- Initial `get_app_state` failure no longer leaks raw/semi-raw provider reason.
+- `successorStateFailure` keeps its current safe behavior.
+- The public failure wording becomes one consistent product surface.
+
+Closure pass:
+
+- Recheck capture failure, UIA traversal failure, state-target resolution
+  failure, successor observe failure, and unexpected exception paths.
+- Confirm there is no symmetric leak left in state, action, or successor-state
+  materialization.
+
+### Step 2. Introduce a product-owned semantic completeness model
+
+Target level:
+
+- General model. This is a new domain truth layer for the whole
+  `computer-use-win` loop.
+
+Preconditions:
+
+- Shared public failure materializer from Step 1 exists.
+
+Dependencies:
+
+- Step 1.
+
+Implementation focus:
+
+- Add a product-owned semantic completeness envelope to the public state payload.
+- Replace the current requested-only observation storage with a stored envelope
+  that also carries realized depth/node/truncation status and a product-owned
+  semantic failure code.
+- Keep `capture`, `accessibilityTree`, and `stateToken` as separate existing
+  concepts.
+
+Concrete integration points:
+
+- [ComputerUseWinContracts.cs](../../../src/WinBridge.Runtime.Contracts/ComputerUseWinContracts.cs)
+- [ComputerUseWinStateStore.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinStateStore.cs)
+- [ComputerUseWinGetAppStateFinalizer.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateFinalizer.cs)
+- [UiaSnapshotToolResult.cs](../../../src/WinBridge.Runtime.Contracts/UiaSnapshotToolResult.cs), as the low-level source of factual completeness fields
+
+Constraints:
+
+- No public raw `reason` field inside `semanticPreview`.
+- No top-level `status=partial`.
+- No global `Depth` bump as a substitute for a real model.
+
+TDD:
+
+- Required.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+
+Expected result:
+
+- Public payload and stored state can distinguish `complete`, `incomplete`,
+  `unavailable`, and `failed` semantic preview.
+- Downstream actions can tell the difference between "not in preview" and "no
+  semantic data available at all."
+
+Closure pass:
+
+- Confirm the model is present on initial state and successor state.
+- Confirm approval-required, blocked, and hard observation-failure paths do not
+  create ghost state tokens.
+- Confirm the model uses only product-owned failure codes.
+
+### Step 3. Split visual observation success from semantic preview readiness
+
+Target level:
+
+- General invariant. The problem affects all poor-UIA state acquisition, not one
+  specific app.
+
+Preconditions:
+
+- Step 2 semantic completeness model exists.
+
+Dependencies:
+
+- Step 2.
+
+Implementation focus:
+
+- Refactor `ComputerUseWinAppStateObserver` so capture is the critical
+  observation boundary and UIA is a semantic preview sub-stage.
+- On screenshot success + UIA incomplete/unavailable/failure, return a successful
+  prepared state with:
+  - image content;
+  - `stateToken`;
+  - warnings;
+  - `semanticPreview`;
+  - empty or partial `accessibilityTree` by explicit policy.
+- Keep capture failure as hard `observation_failed`.
+
+Concrete integration points:
+
+- [ComputerUseWinAppStateObserver.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinAppStateObserver.cs)
+- [ComputerUseWinGetAppStateHandler.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateHandler.cs)
+- [ComputerUseWinGetAppStateFinalizer.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateFinalizer.cs)
+- [ComputerUseWinAccessibilityProjector.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinAccessibilityProjector.cs)
+
+Constraints:
+
+- Keep image-bearing MCP content blocks on success.
+- Preserve current approval, activation, and `windowId` continuity policy.
+- Do not silently promote semantic-only actions to ready just because visual
+  observation succeeded.
+
+TDD:
+
+- Required.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+
+Expected result:
+
+- Poor-UIA windows can continue through an honest visual loop.
+- Public payload makes semantic incompleteness explicit instead of pretending the
+  observe step failed completely.
+
+Closure pass:
+
+- Recheck initial state, activation warning path, advisory instruction failure,
+  unexpected instruction-provider bug, and hard capture failure.
+- Confirm `observeAfter` is still pending and has not silently diverged from the
+  new model.
+
+### Step 4. Extract the shared bounded selector domain
+
+Target level:
+
+- General model/refactor. The repo already has the same selector concept in
+  `windows.wait`; duplicating it would create a new local path instead of a
+  shared model.
+
+Preconditions:
+
+- Step 3 is green.
+
+Dependencies:
+
+- Step 3.
+
+Implementation focus:
+
+- Reuse or extract the generic selector contract currently represented by
+  [WaitElementSelector.cs](../../../src/WinBridge.Runtime.Contracts/WaitElementSelector.cs).
+- Move selector-match semantics out of
+  [Win32UiAutomationWaitProbe.cs](../../../src/WinBridge.Runtime.Windows.UIA/Win32UiAutomationWaitProbe.cs)
+  into a shared owner that both wait and `computer-use-win` can rely on.
+- Keep the selector bounded to `name`, `automationId`, and `controlType` unless
+  characterization later proves `frameworkId` is necessary.
+- Introduce one typed ambiguity policy rather than multiple ad hoc coordinator
+  branches.
+
+Concrete integration points:
+
+- [WaitElementSelector.cs](../../../src/WinBridge.Runtime.Contracts/WaitElementSelector.cs)
+- [WaitRequestValidator.cs](../../../src/WinBridge.Runtime.Contracts/WaitRequestValidator.cs)
+- [Win32UiAutomationWaitProbe.cs](../../../src/WinBridge.Runtime.Windows.UIA/Win32UiAutomationWaitProbe.cs)
+- [ComputerUseWinToolRegistration.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs), later when additive selector shapes are exposed
+
+Constraints:
+
+- Do not break `windows.wait` public JSON shape.
+- Do not create a second selector DTO purely for inertia.
+
+TDD:
+
+- Required.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+
+Expected result:
+
+- One canonical selector shape and one canonical selector-match policy exist in
+  the repo.
+
+Closure pass:
+
+- Re-run `WindowWaitToolTests` and selector validation tests.
+- Confirm exact-match semantics stay consistent across `name`, `automationId`,
+  and `controlType`.
+
+### Step 5. Implement bounded deep semantic lookup in the UIA runtime
+
+Target level:
+
+- General runtime seam. This closes the class "preview tree omitted the target"
+  without widening the preview surface itself.
+
+Preconditions:
+
+- Step 4 shared selector seam is green.
+
+Dependencies:
+
+- Step 4.
+
+Implementation focus:
+
+- Add a bounded semantic lookup service rooted at the current window.
+- Use the same cache strategy as the current UIA snapshot where possible.
+- Make lookup outcomes typed:
+  - unique match;
+  - zero matches;
+  - ambiguous matches;
+  - lookup failed due to provider/runtime issue;
+  - lookup aborted due to budget or timeout.
+- Keep diagnostics factual, but keep raw provider text out of public payloads.
+
+Concrete integration points:
+
+- [Win32UiAutomationBackend.cs](../../../src/WinBridge.Runtime.Windows.UIA/Win32UiAutomationBackend.cs)
+- [AutomationSnapshotNode.cs](../../../src/WinBridge.Runtime.Windows.UIA/AutomationSnapshotNode.cs)
+- [UiaSnapshotTreeBuilder.cs](../../../src/WinBridge.Runtime.Windows.UIA/UiaSnapshotTreeBuilder.cs)
+- possible new `IUiAutomationSemanticLookupService` and
+  `Win32UiAutomationSemanticLookupService`
+- [reference-research-policy.md](../../architecture/reference-research-policy.md), because any reference-driven choice must remain secondary to repo state and official docs
+
+Constraints:
+
+- No desktop-root traversal.
+- No unbounded `FindAll(TreeScope.Descendants, TrueCondition)` over arbitrary
+  surfaces.
+- No preview tree expansion disguised as lookup.
+
+TDD:
+
+- Required.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+
+Expected result:
+
+- The runtime can prove that a selector-resolved target exists even when the
+  compact preview tree did not include it.
+
+Closure pass:
+
+- Recheck cancellation, timeout, node-budget exhaustion, ambiguous matches,
+  element-not-available, and invalid operation paths.
+- Confirm the new service does not introduce a parallel public result surface.
+
+### Step 6. Integrate the selector lane into semantic actions first
+
+Target level:
+
+- General repeated class across semantic executors.
+
+Preconditions:
+
+- Step 5 bounded lookup service is green.
+
+Dependencies:
+
+- Step 5.
+
+Implementation focus:
+
+- Extend public request schemas additively so semantic actions can accept either
+  `elementIndex` or a selector branch.
+- Start with:
+  - `set_value`;
+  - `perform_secondary_action`;
+  - semantic `scroll`.
+- Replace coordinator-local "elementIndex only" assumptions with one shared
+  semantic target resolver that can:
+  - resolve from preview element when present;
+  - resolve from selector when preview omitted the target;
+  - return typed stale/ambiguous/unsupported failures.
+
+Concrete integration points:
+
+- [ComputerUseWinSetValueExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinSetValueExecutionCoordinator.cs)
+- [ComputerUseWinPerformSecondaryActionExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinPerformSecondaryActionExecutionCoordinator.cs)
+- [ComputerUseWinScrollTargetResolver.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinScrollTargetResolver.cs)
+- [ComputerUseWinScrollExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinScrollExecutionCoordinator.cs)
+- [ComputerUseWinFreshElementResolver.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinFreshElementResolver.cs)
+- [ComputerUseWinToolRegistration.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinToolRegistration.cs)
+
+Constraints:
+
+- Preserve existing `elementIndex` success behavior.
+- Keep semantic action success semantics unchanged: `set_value` and
+  `perform_secondary_action` remain semantic, and semantic `scroll` remains
+  semantic.
+
+TDD:
+
+- Required.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+
+Expected red signals:
+
+- Schema rejects the new selector branch.
+- Deep semantic target outside preview cannot be reached by `set_value`.
+- Ambiguous selector does not fail closed.
+
+Expected result:
+
+- Strong-semantic deep targets can be acted on without widening the preview tree.
+
+Closure pass:
+
+- Recheck `set_value`, `perform_secondary_action`, and semantic `scroll` across
+  happy path, stale-state, unsupported-action, ambiguous selector, and
+  post-activation revalidation failure.
+- Confirm the shared resolver did not leave local duplicate branches behind.
+
+### Step 7. Close the same reachability class across proof-backed physical actions
+
+Target level:
+
+- General class closure. This step exists so the slice does not stop at the
+  easiest semantic-only path and leave symmetric holes elsewhere.
+
+Preconditions:
+
+- Step 6 is green.
+
+Dependencies:
+
+- Step 6.
+
+Implementation focus:
+
+- Evaluate target-bearing physical/public actions that still depend on semantic
+  proof before dispatch:
+  - `click(elementIndex)` and future `click(selector)` branch;
+  - `drag` endpoints where source/destination semantic proof matters;
+  - ordinary `type_text` when it still depends on semantic/focus proof.
+- Extend the shared target-resolution model to these paths unless tests prove a
+  path is materially outside the same class.
+- Keep `press_key` out of selector scope unless new evidence appears, because it
+  does not resolve descendants.
+
+Concrete integration points:
+
+- [ComputerUseWinClickExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinClickExecutionCoordinator.cs)
+- [ComputerUseWinDragExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinDragExecutionCoordinator.cs)
+- [ComputerUseWinTypeTextExecutionCoordinator.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinTypeTextExecutionCoordinator.cs)
+- [ComputerUseWinActionability.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinActionability.cs)
+- [ComputerUseWinAffordanceResolver.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinAffordanceResolver.cs)
+
+Constraints:
+
+- Do not add selector semantics to coordinate-only paths that do not need them.
+- Do not create a separate per-tool target model.
+
+TDD:
+
+- Required for any path whose behavior changes.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+- Not required for `press_key` if it remains unchanged; a regression run is
+  enough because no new behavior is being introduced there.
+
+Expected result:
+
+- The reachability class is closed for all target-bearing paths that share the
+  same proof problem.
+
+Closure pass:
+
+- Explicitly check `click`, `drag`, ordinary `type_text`, semantic `scroll`,
+  `set_value`, and `perform_secondary_action`.
+- If any one of them is deliberately left out, document why it is not part of
+  the same class.
+
+### Step 8. Carry the new observation model through `observeAfter` and stored successor state
+
+Target level:
+
+- General invariant across the action loop.
+
+Preconditions:
+
+- Steps 3, 6, and any Step 7 behavioral changes are green.
+
+Dependencies:
+
+- Steps 3, 6, and 7.
+
+Implementation focus:
+
+- Update the successor observation path so it uses the same semantic completeness
+  model and the same public failure materializer.
+- Allow `observeAfter` to return a visually successful successor state even when
+  semantic preview is incomplete.
+- Store the new completeness envelope in the successor `stateToken`.
+
+Concrete integration points:
+
+- [ComputerUseWinActionRequestExecutor.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinActionRequestExecutor.cs)
+- [ComputerUseWinActionSuccessorObservation.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinActionSuccessorObservation.cs)
+- [ComputerUseWinGetAppStateFinalizer.cs](../../../src/WinBridge.Server/ComputerUse/ComputerUseWinGetAppStateFinalizer.cs)
+
+Constraints:
+
+- Top-level action outcome stays factual.
+- `refreshStateRecommended` semantics must remain honest.
+
+TDD:
+
+- Required.
+- Cycle:
+  `test -> red -> implementation -> green -> refactoring -> green`
+
+Expected result:
+
+- `observeAfter` no longer inherits the old "screenshot + full UIA or fail"
+  coupling.
+
+Closure pass:
+
+- Recheck `click`, `type_text`, `scroll`, and `drag` `observeAfter` branches.
+- Confirm successor state, successor failure, audit, and artifact paths all use
+  the same new model.
+
+### Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
+
+Target level:
+
+- General proof closure for the same slice.
+
+Preconditions:
+
+- Runtime and integration changes are green through Step 8.
+
+Dependencies:
+
+- Steps 0 through 8.
+
+Implementation focus:
+
+- Extend the smoke host with deterministic surfaces for:
+  - screenshot success + poor semantic preview;
+  - deep semantic target outside compact preview.
+- Keep the physical-policy proof-smoke honest. If it remains a phase-1 physical
+  policy proof, do not let it implicitly claim deep semantic usability.
+- Extend cache-installed proof only with scenarios that reflect the final shipped
+  public contract.
+
+Concrete integration points:
+
+- [Program.cs](../../../tests/WinBridge.SmokeWindowHost/Program.cs)
+- [computer-use-win-physical-policy-proof-smoke.ps1](../../../scripts/computer-use-win-physical-policy-proof-smoke.ps1)
+- [prove-computer-use-win-cache-install.ps1](../../../scripts/codex/prove-computer-use-win-cache-install.ps1)
+- [test-matrix.md](../../generated/test-matrix.md), only after behavior is green
+
+Constraints:
+
+- Do not make Karing/R130SH the only acceptance floor.
+- Do not widen the physical-policy proof-smoke narrative beyond what it actually
+  proves.
+
+TDD:
+
+- Required for new integration assertions and helper-backed characterization
   tests.
+- Not required for the final generated-doc refresh or for script text edits that
+  merely mirror already-green runtime behavior.
 
-Acceptance:
+Expected result:
 
-- Initial `get_app_state` failure with raw UIA/provider reason does not leak the
-  raw reason.
-- `successorStateFailure` keeps current sanitization behavior.
-- Action failure tests continue to pass.
+- The repo has deterministic local proof for the new observation model and the
+  new selector reachability lane.
 
-### Package C: visual observation vs semantic readiness split
+Closure pass:
 
-Scope:
+- Recheck runtime/tests/smoke symmetry, fresh-thread cache-install proof,
+  install-surface materialization, and artifact wording.
 
-- Make screenshot-backed visual observation success first-class.
-- Publish semantic preview readiness/completeness metadata.
-- Store completeness envelope in state token.
-- Keep semantic-only actions fail-closed when semantic proof is unavailable.
+### Step 10. Final closure pass, cleanup, and roadmap handoff
 
-Acceptance:
+Target level:
 
-- `get_app_state` returns `status=ok`, image content and stateToken when capture
-  succeeds but UIA preview is incomplete/unavailable.
-- Payload explicitly tells the agent semantic preview is incomplete/unavailable.
-- `accessibilityTree` is empty or partial by design, not silently authoritative.
-- Failed capture remains `isError=true` observation failure.
-- State commit still happens only after successful visual materialization.
+- Class-wide closure, not a local patch.
 
-### Package D: deep semantic lookup / selector lane
+Preconditions:
 
-Scope:
+- All previous steps are green.
 
-- Add bounded selector model beyond preview `elementIndex`.
-- Implement lookup scoped to current target window.
-- Prefer `automationId + controlType + optional name`; fail on zero or multiple
-  matches.
-- Keep lookup bounded by depth/node/time/match budgets and diagnostics.
-- Integrate first with semantic-only actions, with `set_value` as the likely
-  first proof path.
+Dependencies:
 
-Acceptance:
+- Steps 0 through 9.
 
-- A target absent from compact preview but present in bounded lookup can be
-  resolved by selector.
-- Ambiguous selector fails closed with product-owned reason.
-- Lookup does not publish raw tree dumps.
-- Existing `elementIndex` paths remain backward compatible.
+Implementation focus:
 
-### Package E: carry-through and proof
+- Remove obsolete narrow paths and duplicate owners once the target model is
+  green:
+  - direct state-path publication of `snapshot.Reason`;
+  - any duplicate selector DTO or selector-match helper that became redundant;
+  - coordinator-local stale/selector branches superseded by the shared resolver;
+  - temporary completeness shims left after the final model lands.
+- Run the full sequential verification ladder and only then update roadmap/docs.
 
-Scope:
+Concrete integration points:
 
-- Apply new observation model to `observeAfter`.
-- Re-evaluate focused fallback consistency under preview-incomplete state.
-- Add helper/synthetic characterization for poor-UIA and deep-tree behavior.
-- Refresh docs/generated surfaces and install/publication proof.
+- All files touched in Steps 1 through 9
+- [computer-use-win-surface.md](../../architecture/computer-use-win-surface.md)
+- [observability.md](../../architecture/observability.md)
+- [okno-roadmap.md](../../product/okno-roadmap.md)
+- [computer-use-win-interfaces.md](../../generated/computer-use-win-interfaces.md)
+- [project-interfaces.md](../../generated/project-interfaces.md)
+- [test-matrix.md](../../generated/test-matrix.md)
 
-Acceptance:
+Constraints:
 
-- `observeAfter=true` can return visual successor state with semantic
-  completeness metadata.
-- Focused fallback does not become blind focus trust.
-- Cache-installed proof includes a poor-UIA or deep-tree characterization case.
-- Roadmap and generated docs match actual shipped behavior.
+- No legacy compatibility layer should survive only because the old code existed.
+- Do not keep both the old narrow model and the new target model active at once.
 
-## 11. Test ladder
+TDD:
 
-L1 unit / contract:
+- No new TDD cycle is required here; this is the cleanup and proof step on top
+  of already-green behavior.
 
-- `ComputerUseWinFailureCodeMapper` / new failure materializer tests for state,
-  action and successor failure sanitization.
-- `ComputerUseWinObservationEnvelope` tests for completeness carry-through.
-- Selector validation tests for allowed fields, missing required fields,
-  oversized strings and ambiguous shape.
-- `UiaSnapshotTreeBuilderTests` remain the low-level proof that completeness
-  flags are factual.
+Expected result:
 
-L2 integration:
+- The slice lands as one coherent model with no symmetric holes left in state,
+  action, successor-state, docs, tests, smoke, or cache-install proof.
 
-- `ComputerUseWinObservationTests`:
-  - capture success + UIA failed/incomplete -> public visual success with
-    semantic completeness metadata;
-  - capture failure -> public `observation_failed`;
-  - raw snapshot reason does not leak;
-  - state token stores realized completeness.
-- `ComputerUseWinActionAndProjectionTests`:
-  - semantic action by `elementIndex` unchanged;
-  - semantic action by selector resolves deep target;
-  - selector zero-match/ambiguous-match fail closed;
-  - `observeAfter` carries completeness and sanitized failure.
-- `ComputerUseWinArchitectureTests`:
-  - schema exposes additive selector branches only where intended;
-  - `get_app_state` schema does not accidentally publish broad raw-tree/depth
-    knobs unless explicitly chosen.
+Closure pass:
 
-L3 smoke / live harness:
+- Explicitly check happy-path/failure-path, dry-run/live where relevant,
+  runtime/docs/tests/smoke, proof/cleanup, marker/fallback symmetry, and
+  state/action/successor-state consistency.
+- If any remaining gap is intentionally deferred, record it as a new slice with
+  exact boundaries instead of leaving an implicit TODO.
 
-- Real STDIO helper window with synthetic poor-UIA mode:
-  screenshot succeeds, UIA preview fails or returns root-only tree.
-- Real STDIO helper window with synthetic deep-tree mode:
-  compact preview omits the target, bounded selector lookup reaches it.
-- Existing `scripts/smoke.ps1` remains sequential and green.
-- Existing `scripts/computer-use-win-physical-policy-proof-smoke.ps1` remains
-  green and does not claim deep semantic usability.
+## 11. Verification strategy by step
 
-Release/install proof:
+Step-to-test mapping:
 
-- `scripts/codex/prove-computer-use-win-cache-install.ps1` must prove the
-  cache-installed plugin exposes the additive public surface and can run the
-  characterization path from fresh materialization.
-- If plugin install surface changes, acceptance must include cache-installed
-  copy, restart/new-thread materialization and at least one real read-only or
-  state-first tool call.
+- Step 0:
+  tests required.
+  Reason: the implementation wave needs executable red proof for the defect
+  family before runtime changes start.
+- Step 1:
+  tests required.
+  Reason: public failure wording is a stable product contract and easy to pin
+  with focused integration tests.
+- Step 2:
+  tests required.
+  Reason: the semantic completeness envelope is a shared state contract and must
+  be pinned before refactoring downstream consumers.
+- Step 3:
+  tests required.
+  Reason: this is the central behavioral shift of the slice.
+- Step 4:
+  tests required.
+  Reason: selector semantics are shared and easy to regress silently if not
+  pinned first.
+- Step 5:
+  tests required.
+  Reason: bounded lookup is the highest-risk runtime seam in the slice.
+- Step 6:
+  tests required.
+  Reason: semantic action integration changes user-visible behavior and schema.
+- Step 7:
+  tests required for changed actions, regression-only for unchanged actions.
+  Reason: the class closure must be explicit, but no new cycle is needed where
+  behavior stays identical.
+- Step 8:
+  tests required.
+  Reason: successor-state truth and `refreshStateRecommended` are public result
+  semantics.
+- Step 9:
+  tests required for characterization/integration changes, not for generated
+  docs/script wording that only mirrors already-green behavior.
+- Step 10:
+  no new tests required beyond the final full verification ladder.
+  Reason: this step validates and cleans up the already-proven model.
 
-## 12. Smoke / characterization strategy
+Recommended verification ladder:
 
-Do not use live Karing/R130SH as the only acceptance floor. They are useful
-real-world characterization targets, but deterministic proof should be local:
+1. Targeted unit/contract tests for the step currently in progress.
+2. Targeted integration tests in `WinBridge.Server.IntegrationTests`.
+3. If the step changes runtime/public behavior, run the affected helper-backed
+   smoke or cache-install proof path.
+4. After all steps are green, run the sequential contour:
+   `build -> test -> smoke -> physical-policy-proof-smoke -> refresh-generated-docs -> verify`.
 
-- Add a smoke helper mode that can deliberately return poor semantic preview
-  while still allowing screenshot capture.
-- Add a deep-tree helper mode where a semantic target is outside compact depth
-  but reachable through bounded selector lookup.
-- Keep optional live Karing/R130SH repro notes in artifacts only, because these
-  apps can drift independently of the repo.
-- Record evidence under `artifacts/smoke/...` and `artifacts/diagnostics/...`.
-- Summary must explicitly say whether the run proves:
-  - visual state success under UIA incomplete;
-  - semantic selector reachability beyond preview;
-  - sanitized state/successor failures;
-  - unchanged existing physical-policy `executionFacts`.
+## 12. Characterization and smoke strategy
 
-## 13. Docs/generated sync
+Primary acceptance floor:
 
-Planning wave:
+- Deterministic local fixtures in
+  [Program.cs](../../../tests/WinBridge.SmokeWindowHost/Program.cs).
 
-- This planned exec-plan is the only required tracked planning artifact.
-- `docs/CHANGELOG.md` records that the new planned slice exists.
-- No generated docs should be refreshed in this branch because no runtime
-  contract has changed yet.
+Secondary acceptance floor:
 
-Implementation wave:
+- Optional live repro notes for Karing/Flutter and R130SH/PySide6, stored only
+  as artifacts or investigation notes, not as the sole proof of the slice.
 
-- Update [computer-use-win-surface.md](../../architecture/computer-use-win-surface.md)
-  for visual-vs-semantic observation split.
-- Update [observability.md](../../architecture/observability.md) for
-  completeness/failure sanitization markers.
-- Update [okno-roadmap.md](../../product/okno-roadmap.md) with exact placement
-  after owner accepts this plan.
-- Refresh generated docs:
-  - [computer-use-win-interfaces.md](../../generated/computer-use-win-interfaces.md)
-  - [project-interfaces.md](../../generated/project-interfaces.md)
-  - [commands.md](../../generated/commands.md), if new smoke/proof commands are added.
-  - [test-matrix.md](../../generated/test-matrix.md)
-- Update plugin skill/manifest wording only if public operator instructions
-  change.
+Required deterministic characterization:
+
+- A poor-UIA surface where screenshot capture succeeds but semantic preview is
+  unavailable or deliberately incomplete.
+- A deep-tree surface where the preview omits the target but a bounded selector
+  lookup can still resolve it uniquely.
+- At least one successor-state path that proves `observeAfter` now carries the
+  new model.
+
+Why this strategy is required:
+
+- It closes the same defect family without tying proof to third-party app drift.
+- It lets the cache-installed proof and the repo-local proof speak the same
+  language.
+
+## 13. Docs and generated sync policy
+
+Planning branch:
+
+- Only this planned exec-plan changes.
+
+Implementation branch:
+
+- Update tracked product/architecture docs only after the runtime truth is green.
+- Refresh generated surfaces only after:
+  - contracts compile;
+  - tests are green;
+  - smoke and cache-install proof are green.
+
+Tracked docs that must be checked together:
+
+- [computer-use-win-surface.md](../../architecture/computer-use-win-surface.md)
+- [observability.md](../../architecture/observability.md)
+- [okno-roadmap.md](../../product/okno-roadmap.md)
+- [computer-use-win-interfaces.md](../../generated/computer-use-win-interfaces.md)
+- [project-interfaces.md](../../generated/project-interfaces.md)
+- [test-matrix.md](../../generated/test-matrix.md)
+- [SKILL.md](../../../plugins/computer-use-win/skills/computer-use-win/SKILL.md), only if public operator guidance changes
+- [plugin.json](../../../plugins/computer-use-win/.codex-plugin/plugin.json), only if public interface wording changes
 
 ## 14. Roadmap placement proposal
 
@@ -538,60 +1155,57 @@ Current practical order starts with:
 4. `windows.clipboard_get` / `windows.clipboard_set`
 5. `windows.uia_action`
 
-Recommended insertion:
+Recommended insertion after implementation proof is green:
 
-1. Keep current item `1` unchanged and finish slice `13` closure first.
-2. Insert new explicit R2 item immediately after current item `1`:
+1. Finish the current slice `13` closure first.
+2. Insert a new explicit R2 slice immediately after it:
    `computer-use-win observation completeness / deep semantic lookup`.
-3. Shift app playbooks, region capture, clipboard and `windows.uia_action`
-   after that new item.
+3. Move app playbooks, `windows.region_capture`, clipboard, and
+   `windows.uia_action` after that new slice.
 
 Suggested capability-map wording:
 
 ```text
-| 13b | `plugins/computer-use-win` + observation completeness / deep semantic lookup | public `get_app_state` separates screenshot-backed visual observation from semantic preview readiness, publishes product-owned semantic completeness metadata, sanitizes state/successor failure materialization through the shared public failure owner, and gives semantic actions a bounded lookup lane beyond compact preview `elementIndex` without raw-tree dumps or broad OCR/browser fallback. | `запланировано` | `0%` | `R2` |
+| 13b | `plugins/computer-use-win` + observation completeness / deep semantic lookup | public `get_app_state` separates screenshot-backed visual observation from semantic preview readiness, publishes product-owned semantic completeness metadata, sanitizes state/successor failure materialization through the shared public failure owner, and gives target-bearing actions a bounded lookup lane beyond compact preview `elementIndex` without raw-tree dumps or broad OCR/browser fallback. | `запланировано` | `0%` | `R2` |
 ```
 
-Rationale:
+Why this ordering is still correct:
 
-- This is closer to shipped public slice `09` than to future `windows.uia_action`,
-  but it should not be implemented as a retroactive private patch to slice `09`.
-- It should land before app playbooks because capability hints cannot honestly
-  classify strong-semantic vs poor-UIA targets while observation completeness is
-  hidden.
-- It should land before `region_capture`, clipboard and `windows.uia_action`
-  because all of them will consume the same visual/semantic readiness boundary.
+- The slice strengthens the already shipped public operator surface, not a later
+  private runtime.
+- App playbooks cannot classify targets honestly while semantic completeness is
+  still hidden.
+- `region_capture`, clipboard, and `windows.uia_action` all depend on the same
+  observation/readiness boundary and should not outrun it.
 
-Do not edit roadmap automatically in the planning branch beyond this proposal.
-Roadmap update belongs to the implementation or architecture-approval wave.
+## 15. Risks, rollback, and explicit out-of-scope
 
-## 15. Risks / rollback / out-of-scope
+Main risks:
 
-Risks:
+- Too much semantic metadata can make the public state noisy.
+- A raw/deep lookup lane can become expensive or provider-hostile if budgets are
+  weak.
+- Selector ambiguity can create false confidence if it is not fail-closed.
+- A visual-success state can accidentally look action-ready if semantic-only
+  actions are not hardened at their own boundary.
 
-- Publishing too much UIA metadata can make the public state noisy and unstable.
-- Raw/deep lookup can become slow or provider-hostile if not strictly bounded.
-- Selector targeting can create false confidence if ambiguity policy is weak.
-- Partial visual success can accidentally make semantic-only actions look
-  action-ready unless readiness is checked at action boundary.
-- Adding selector branches to every action at once can make schema/testing too
-  broad for one slice.
+Rollback policy:
 
-Rollback strategy:
+- Public additions remain additive where possible.
+- `elementIndex` remains supported.
+- Capture failure remains a hard observation failure.
+- The deep lookup lane stays behind selector-based target resolution and must
+  never become a raw-tree public tool.
+- If the deep lookup runtime proves unstable, do not keep half-integrated local
+  selector hacks alive; keep the red characterization, ship only the completed
+  earlier steps, and reopen the lookup work as a bounded follow-up slice.
 
-- Keep all public additions additive.
-- Keep existing `elementIndex` paths unchanged.
-- Preserve capture-failure behavior as hard observation failure.
-- Keep deep lookup behind semantic action resolution, not preview tree expansion.
-- If deep lookup proves unstable, ship Package B/C first and leave Package D
-  planned with red characterization retained.
-
-Out of scope:
+Explicitly out of scope for this slice:
 
 - Broad OCR provider.
 - Browser/Electron substrate.
 - `windows.region_capture`.
 - Clipboard integration.
-- `windows.uia_action` implementation.
+- `windows.uia_action`.
 - Stable target lease substrate.
-- New public "raw UI tree" or "inspect all descendants" tool.
+- New public raw-tree inspection tool.
