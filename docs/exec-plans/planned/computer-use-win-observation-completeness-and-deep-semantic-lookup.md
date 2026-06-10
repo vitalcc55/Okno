@@ -416,7 +416,7 @@ Master progress checklist:
 - [x] Step 5. Implement bounded deep semantic lookup in the UIA runtime
 - [x] Step 6. Integrate the selector lane into semantic actions first
 - [x] Step 7. Close the same reachability class across proof-backed physical actions
-- [ ] Step 8. Carry the new observation model through `observeAfter` and stored successor state
+- [x] Step 8. Carry the new observation model through `observeAfter` and stored successor state
 - [ ] Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
 - [ ] Step 10. Final closure pass, cleanup, and roadmap handoff
 
@@ -1129,10 +1129,34 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] `observeAfter` now returns the new semantic completeness model.
-- [ ] Successor-state storage carries the completeness envelope.
-- [ ] Top-level action outcome and `refreshStateRecommended` semantics remain honest.
-- [ ] Closure pass completed for `click`, `type_text`, `scroll`, and `drag` successor branches.
+- [x] `observeAfter` now returns the new semantic completeness model.
+- [x] Successor-state storage carries the completeness envelope.
+- [x] Top-level action outcome and `refreshStateRecommended` semantics remain honest.
+- [x] Closure pass completed for `click`, `type_text`, `scroll`, and `drag` successor branches.
+
+Step 8 execution notes:
+
+- No production change was required after Steps 3, 6, and 7: successor observation
+  already flowed through `ComputerUseWinAppStateObserver.ObserveAsync(...)` and
+  `ComputerUseWinGetAppStateFinalizer.CommitPreparedState(...)`, so the same
+  semantic completeness envelope is stored in the successor `stateToken`.
+- Added selector-based characterization coverage for `type_text`, semantic
+  `scroll`, and semantic `drag` where the action target is found by bounded deep
+  semantic lookup, the committed action succeeds, and the successor UIA preview
+  fails after screenshot capture. Each test asserts visual successor state,
+  `semanticPreview.status=failed`, sanitized public text, stored
+  `Observation.Status=failed`, `FailureCode=observation_failed`,
+  `observeAfterRequested=true`, `successorStateAvailable=true`, and
+  `refreshStateRecommended=false`.
+- The existing `click` successor tests already covered successful successor
+  state, successor failure, sanitized preview failure, post-action live-window
+  continuity, and hard successor materialization failure. The new tests close the
+  same class for the remaining target-bearing action families without introducing
+  separate action-local successor logic.
+- Verification evidence: the new Step 8 tests passed `3/3` immediately against
+  the existing implementation, confirming the invariant rather than requiring a
+  production patch. The broader action/projection filter passed `136/136`, and
+  `git diff --check` reported no whitespace issues.
 
 ### Step 9. Update deterministic characterization, smoke proof, and cache-installed proof
 

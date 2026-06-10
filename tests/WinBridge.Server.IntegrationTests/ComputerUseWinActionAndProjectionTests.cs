@@ -1949,6 +1949,81 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task TypeTextHandlerEmbedsVisualSuccessorStateWhenSelectorObserveAfterPreviewFails()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector selector = new(AutomationId: "DeepFocusedInputTextBox", ControlType: "edit");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-type-text-selector-observe-after-preview-failure-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinTypeText,
+            new
+            {
+                stateToken = token,
+                selector = new { automationId = "DeepFocusedInputTextBox", controlType = "edit" },
+                text = "deep typed text",
+                observeAfter = true,
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(CreateFailedUiaSnapshot(window, request, "raw type_text successor preview failure")));
+        FakeUiAutomationSemanticLookupService semanticLookupService = CreateSuccessfulSemanticLookupService(
+            () => CreateDeepFocusedTypeTextLookupElement());
+        FakeInputService inputService = new((request, _, _) =>
+            Task.FromResult(
+                new InputResult(
+                    Status: InputStatusValues.VerifyNeeded,
+                    Decision: InputStatusValues.VerifyNeeded,
+                    ResultMode: InputResultModeValues.DispatchOnly,
+                    TargetHwnd: request.Hwnd,
+                    CompletedActionCount: 1)));
+        ComputerUseWinTypeTextHandler handler = CreateTypeTextHandler(
+            CreateObservingActionRequestExecutor(stateStore, sessionManager, uiAutomationService),
+            activationService,
+            uiAutomationService,
+            inputService,
+            semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinTypeTextRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Selector: selector,
+                Text: "deep typed text",
+                Confirm: false,
+                ObserveAfter: true),
+            CancellationToken.None);
+
+        Assert.False(result.IsError, result.StructuredContent!.Value.GetRawText());
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.False(payload.TryGetProperty("successorStateFailure", out _));
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(executionFacts.GetProperty("successorStateAvailable").GetBoolean());
+        JsonElement successorState = payload.GetProperty("successorState");
+        AssertJsonStatus(successorState, ComputerUseWinStatusValues.Ok);
+        JsonElement semanticPreview = successorState.GetProperty("semanticPreview");
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Failed, semanticPreview.GetProperty("status").GetString());
+        Assert.DoesNotContain("raw type_text successor preview failure", successorState.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        string successorToken = successorState.GetProperty("stateToken").GetString()!;
+        Assert.True(stateStore.TryGet(successorToken, out ComputerUseWinStoredState? successorStoredState));
+        Assert.NotNull(successorStoredState);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Failed, successorStoredState!.Observation.Status);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, successorStoredState.Observation.FailureCode);
+        Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.IsType<ImageContentBlock>(result.Content[1]);
+        Assert.Equal(1, semanticLookupService.Calls);
+        Assert.Equal(1, uiAutomationService.Calls);
+        Assert.Equal(1, inputService.Calls);
+    }
+
+    [Fact]
     public async Task TypeTextHandlerUsesFocusedEditableFallbackWhenElementIndexIsOmitted()
     {
         ComputerUseWinStateStore stateStore = new();
@@ -2936,6 +3011,81 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ScrollHandlerEmbedsVisualSuccessorStateWhenSelectorObserveAfterPreviewFails()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector selector = new(AutomationId: "DeepScrollListBox", ControlType: "list");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-scroll-selector-observe-after-preview-failure-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinScroll,
+            new
+            {
+                stateToken = token,
+                selector = new { automationId = "DeepScrollListBox", controlType = "list" },
+                direction = "down",
+                pages = 2,
+                observeAfter = true,
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(CreateFailedUiaSnapshot(window, request, "raw scroll successor preview failure")));
+        FakeUiAutomationSemanticLookupService semanticLookupService = CreateSuccessfulSemanticLookupService(
+            () => CreateDeepScrollableLookupElement());
+        FakeUiAutomationScrollService scrollService = new((window, request, _) =>
+            Task.FromResult(UiaScrollResult.SuccessResult("scroll_pattern", movementObserved: true)));
+        FakeInputService inputService = new();
+        ComputerUseWinScrollHandler handler = CreateScrollHandler(
+            CreateObservingActionRequestExecutor(stateStore, sessionManager, uiAutomationService),
+            activationService,
+            uiAutomationService,
+            scrollService,
+            inputService,
+            semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinScrollRequest(
+                StateToken: token,
+                ElementIndex: null,
+                Selector: selector,
+                Direction: "down",
+                Pages: 2,
+                Confirm: false,
+                ObserveAfter: true),
+            CancellationToken.None);
+
+        Assert.False(result.IsError, result.StructuredContent!.Value.GetRawText());
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.Done);
+        Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.False(payload.TryGetProperty("successorStateFailure", out _));
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("semantic", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(executionFacts.GetProperty("successorStateAvailable").GetBoolean());
+        JsonElement successorState = payload.GetProperty("successorState");
+        AssertJsonStatus(successorState, ComputerUseWinStatusValues.Ok);
+        JsonElement semanticPreview = successorState.GetProperty("semanticPreview");
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Failed, semanticPreview.GetProperty("status").GetString());
+        Assert.DoesNotContain("raw scroll successor preview failure", successorState.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        string successorToken = successorState.GetProperty("stateToken").GetString()!;
+        Assert.True(stateStore.TryGet(successorToken, out ComputerUseWinStoredState? successorStoredState));
+        Assert.NotNull(successorStoredState);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Failed, successorStoredState!.Observation.Status);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, successorStoredState.Observation.FailureCode);
+        Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.IsType<ImageContentBlock>(result.Content[1]);
+        Assert.Equal(1, semanticLookupService.Calls);
+        Assert.Equal(1, uiAutomationService.Calls);
+        Assert.NotNull(scrollService.LastRequest);
+        Assert.Equal("raw:0/7", scrollService.LastRequest!.ElementId);
+        AssertNoInputDispatched(inputService);
+    }
+
+    [Fact]
     public async Task ScrollHandlerReturnsFailedWhenSemanticScrollReportsNoMovement()
     {
         ComputerUseWinStateStore stateStore = new();
@@ -3399,6 +3549,99 @@ public sealed class ComputerUseWinActionAndProjectionTests
         Assert.Equal("expected_physical", executionFacts.GetProperty("dispatchClass").GetString());
         Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
         Assert.True(executionFacts.GetProperty("physicalPointerUsed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DragHandlerEmbedsVisualSuccessorStateWhenSelectorObserveAfterPreviewFails()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateStoredStateWithoutCaptureReference());
+        WaitElementSelector sourceSelector = new(AutomationId: "DeepDragSourceToken", ControlType: "button");
+        WaitElementSelector destinationSelector = new(AutomationId: "DeepDragDestinationPanel", ControlType: "panel");
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-drag-selector-observe-after-preview-failure-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinDrag,
+            new
+            {
+                stateToken = token,
+                fromSelector = new { automationId = "DeepDragSourceToken", controlType = "button" },
+                toSelector = new { automationId = "DeepDragDestinationPanel", controlType = "panel" },
+                confirm = true,
+                observeAfter = true,
+            });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+            Task.FromResult(CreateFailedUiaSnapshot(window, request, "raw drag successor preview failure")));
+        int lookupCall = 0;
+        FakeUiAutomationSemanticLookupService semanticLookupService = new((window, request, _) =>
+        {
+            lookupCall++;
+            UiaElementSnapshot element = lookupCall == 1
+                ? CreateDeepDragSourceLookupElement()
+                : CreateDeepDragDestinationLookupElement();
+            return Task.FromResult(
+                new UiaSemanticLookupResult(
+                    Status: UiaSemanticLookupStatusValues.UniqueMatch,
+                    Window: CreateObservedWindow(window),
+                    Element: element,
+                    VisitedNodeCount: 11,
+                    MatchCount: 1,
+                    MatchCardinality: ElementSelectorMatchCardinalityValues.Unique,
+                    MaxDepth: request.MaxDepth,
+                    MaxNodes: request.MaxNodes));
+        });
+        FakeInputService inputService = new((request, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.VerifyNeeded,
+                Decision: InputStatusValues.VerifyNeeded,
+                ResultMode: InputResultModeValues.DispatchOnly,
+                TargetHwnd: request.Hwnd,
+                CompletedActionCount: 1)));
+        ComputerUseWinDragHandler handler = CreateDragHandler(
+            CreateObservingActionRequestExecutor(stateStore, sessionManager, uiAutomationService),
+            activationService,
+            uiAutomationService,
+            inputService,
+            semanticLookupService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinDragRequest(
+                StateToken: token,
+                FromElementIndex: null,
+                FromSelector: sourceSelector,
+                ToElementIndex: null,
+                ToSelector: destinationSelector,
+                Confirm: true,
+                ObserveAfter: true),
+            CancellationToken.None);
+
+        Assert.False(result.IsError, result.StructuredContent!.Value.GetRawText());
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.False(payload.TryGetProperty("successorStateFailure", out _));
+        JsonElement executionFacts = payload.GetProperty("executionFacts");
+        Assert.Equal("expected_physical", executionFacts.GetProperty("dispatchClass").GetString());
+        Assert.Equal("uia_revalidated", executionFacts.GetProperty("targetProof").GetString());
+        Assert.True(executionFacts.GetProperty("observeAfterRequested").GetBoolean());
+        Assert.True(executionFacts.GetProperty("successorStateAvailable").GetBoolean());
+        JsonElement successorState = payload.GetProperty("successorState");
+        AssertJsonStatus(successorState, ComputerUseWinStatusValues.Ok);
+        JsonElement semanticPreview = successorState.GetProperty("semanticPreview");
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Failed, semanticPreview.GetProperty("status").GetString());
+        Assert.DoesNotContain("raw drag successor preview failure", successorState.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        string successorToken = successorState.GetProperty("stateToken").GetString()!;
+        Assert.True(stateStore.TryGet(successorToken, out ComputerUseWinStoredState? successorStoredState));
+        Assert.NotNull(successorStoredState);
+        Assert.Equal(ComputerUseWinSemanticPreviewStatusValues.Failed, successorStoredState!.Observation.Status);
+        Assert.Equal(ComputerUseWinFailureCodeValues.ObservationFailed, successorStoredState.Observation.FailureCode);
+        Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.IsType<ImageContentBlock>(result.Content[1]);
+        Assert.Equal(2, semanticLookupService.Calls);
+        Assert.Equal(1, uiAutomationService.Calls);
+        Assert.Equal(1, inputService.Calls);
     }
 
     [Fact]
@@ -4931,8 +5174,23 @@ public sealed class ComputerUseWinActionAndProjectionTests
         FakeInputService inputService,
         IWindowManager? windowManager = null,
         FakeUiAutomationSemanticLookupService? semanticLookupService = null) =>
-        new(
+        CreateScrollHandler(
             CreateActionRequestExecutor(stateStore, windowManager),
+            activationService,
+            uiAutomationService,
+            scrollService,
+            inputService,
+            semanticLookupService);
+
+    private static ComputerUseWinScrollHandler CreateScrollHandler(
+        ComputerUseWinActionRequestExecutor actionRequestExecutor,
+        FakeWindowActivationService activationService,
+        FakeUiAutomationService uiAutomationService,
+        FakeUiAutomationScrollService scrollService,
+        FakeInputService inputService,
+        FakeUiAutomationSemanticLookupService? semanticLookupService = null) =>
+        new(
+            actionRequestExecutor,
             new ComputerUseWinScrollExecutionCoordinator(
                 activationService,
                 uiAutomationService,
@@ -4946,8 +5204,21 @@ public sealed class ComputerUseWinActionAndProjectionTests
         FakeUiAutomationService uiAutomationService,
         FakeInputService inputService,
         FakeUiAutomationSemanticLookupService? semanticLookupService = null) =>
-        new(
+        CreateDragHandler(
             CreateActionRequestExecutor(stateStore),
+            activationService,
+            uiAutomationService,
+            inputService,
+            semanticLookupService);
+
+    private static ComputerUseWinDragHandler CreateDragHandler(
+        ComputerUseWinActionRequestExecutor actionRequestExecutor,
+        FakeWindowActivationService activationService,
+        FakeUiAutomationService uiAutomationService,
+        FakeInputService inputService,
+        FakeUiAutomationSemanticLookupService? semanticLookupService = null) =>
+        new(
+            actionRequestExecutor,
             new ComputerUseWinDragExecutionCoordinator(
                 activationService,
                 new ComputerUseWinDragTargetResolver(uiAutomationService, semanticLookupService),
@@ -5012,6 +5283,18 @@ public sealed class ComputerUseWinActionAndProjectionTests
             RequestedMaxNodes: requestedMaxNodes,
             RealizedDepth: GetRealizedDepth(root),
             NodeCount: CountNodes(root),
+            CapturedAtUtc: DateTimeOffset.UtcNow);
+
+    private static UiaSnapshotResult CreateFailedUiaSnapshot(
+        WindowDescriptor window,
+        UiaSnapshotRequest request,
+        string reason) =>
+        new(
+            Status: UiaSnapshotStatusValues.Failed,
+            Window: CreateObservedWindow(window),
+            Reason: reason,
+            RequestedDepth: request.Depth,
+            RequestedMaxNodes: request.MaxNodes,
             CapturedAtUtc: DateTimeOffset.UtcNow);
 
     private static int CountNodes(UiaElementSnapshot? node) =>
