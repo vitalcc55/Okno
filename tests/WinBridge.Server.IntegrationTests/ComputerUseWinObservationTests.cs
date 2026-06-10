@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025–2026 Власов Виталий Андреевич <vital.cc55@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using System.Text.Json;
 using WinBridge.Runtime.Contracts;
 using WinBridge.Runtime.Windows.Capture;
 using WinBridge.Server.ComputerUse;
@@ -35,6 +36,45 @@ public sealed class ComputerUseWinObservationTests
 
         AssertObservationFailed(outcome);
         Assert.Contains("maxNodes", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AppStateObserverSanitizesInitialSnapshotFailureReason()
+    {
+        ComputerUseWinAppStateObservationOutcome outcome = await ObserveAsync(
+            uiAutomationService: SnapshotService(
+                status: UiaSnapshotStatusValues.Failed,
+                reason: "secret raw provider invalid operation from UIA"));
+
+        AssertObservationFailed(outcome);
+        Assert.DoesNotContain("secret raw provider", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("get_app_state", outcome.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AppStateObserverReturnsVisualSuccessWhenSnapshotFailsAfterCapture()
+    {
+        ComputerUseWinAppStateObservationOutcome outcome = await ObserveAsync(
+            uiAutomationService: SnapshotService(
+                status: UiaSnapshotStatusValues.Failed,
+                reason: "raw provider traversal failure"));
+
+        Assert.True(outcome.IsSuccess, outcome.Reason);
+        Assert.NotNull(outcome.PreparedState);
+
+        ComputerUseWinGetAppStateResult payload = outcome.PreparedState!.CreatePayload("visual-state-token");
+        Assert.Equal(ComputerUseWinStatusValues.Ok, payload.Status);
+        Assert.Equal("visual-state-token", payload.StateToken);
+        Assert.Empty(payload.AccessibilityTree!);
+
+        JsonElement json = JsonSerializer.SerializeToElement(
+            payload,
+            ComputerUseWinToolResultFactory.PayloadJsonOptions);
+        Assert.True(json.TryGetProperty("semanticPreview", out JsonElement semanticPreview));
+        Assert.Equal("failed", semanticPreview.GetProperty("status").GetString());
+        Assert.Equal(UiaSnapshotDefaults.Depth, semanticPreview.GetProperty("requestedDepth").GetInt32());
+        Assert.Equal(DefaultMaxNodes, semanticPreview.GetProperty("requestedMaxNodes").GetInt32());
+        Assert.DoesNotContain("raw provider traversal failure", json.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

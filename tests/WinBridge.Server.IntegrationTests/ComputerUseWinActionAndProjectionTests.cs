@@ -958,6 +958,79 @@ public sealed class ComputerUseWinActionAndProjectionTests
     }
 
     [Fact]
+    public async Task ClickHandlerEmbedsVisualSuccessorStateWhenObserveAfterSnapshotFailsAfterCapture()
+    {
+        ComputerUseWinStateStore stateStore = new();
+        string token = stateStore.Create(CreateSafeStoredState());
+        InMemorySessionManager sessionManager = CreateSessionManager("computer-use-win-click-observe-after-visual-only-successor-tests");
+        using AuditInvocationScope invocation = BeginInvocation(
+            sessionManager,
+            ToolNames.ComputerUseWinClick,
+            new { stateToken = token, elementIndex = 1, observeAfter = true });
+        FakeWindowActivationService activationService = CreateSuccessfulActivationService();
+        FakeInputService inputService = new((request, _, _) => Task.FromResult(
+            new InputResult(
+                Status: InputStatusValues.VerifyNeeded,
+                Decision: InputStatusValues.VerifyNeeded,
+                ResultMode: InputResultModeValues.DispatchOnly,
+                Reason: "Проверь результат клика по приложению вручную.",
+                TargetHwnd: request.Hwnd,
+                CompletedActionCount: 1)));
+        int snapshotCalls = 0;
+        FakeUiAutomationService uiAutomationService = new((window, request, _) =>
+        {
+            snapshotCalls++;
+            if (snapshotCalls == 1)
+            {
+                return Task.FromResult(
+                    new UiaSnapshotResult(
+                        Status: UiaSnapshotStatusValues.Done,
+                        Window: CreateObservedWindow(window),
+                        Root: CreateClickSnapshotRoot(),
+                        RequestedDepth: request.Depth,
+                        RequestedMaxNodes: request.MaxNodes,
+                        CapturedAtUtc: DateTimeOffset.UtcNow));
+            }
+
+            return Task.FromResult(
+                new UiaSnapshotResult(
+                    Status: UiaSnapshotStatusValues.Failed,
+                    Window: CreateObservedWindow(window),
+                    Reason: "raw successor semantic preview failure",
+                    RequestedDepth: request.Depth,
+                    RequestedMaxNodes: request.MaxNodes,
+                    CapturedAtUtc: DateTimeOffset.UtcNow));
+        });
+        ComputerUseWinClickHandler handler = CreateClickHandler(
+            CreateObservingActionRequestExecutor(stateStore, sessionManager, uiAutomationService),
+            activationService,
+            inputService,
+            uiAutomationService);
+
+        CallToolResult result = await handler.ExecuteAsync(
+            invocation,
+            new ComputerUseWinClickRequest(StateToken: token, ElementIndex: 1, Confirm: false, ObserveAfter: true),
+            CancellationToken.None);
+
+        Assert.False(result.IsError, result.StructuredContent!.Value.GetRawText());
+        JsonElement payload = GetPayload(result);
+        AssertJsonStatus(payload, ComputerUseWinStatusValues.VerifyNeeded);
+        Assert.False(payload.GetProperty("refreshStateRecommended").GetBoolean());
+        Assert.False(payload.TryGetProperty("successorStateFailure", out _));
+        JsonElement successorState = payload.GetProperty("successorState");
+        AssertJsonStatus(successorState, ComputerUseWinStatusValues.Ok);
+        Assert.True(successorState.TryGetProperty("semanticPreview", out JsonElement semanticPreview));
+        Assert.Equal("failed", semanticPreview.GetProperty("status").GetString());
+        Assert.DoesNotContain("raw successor semantic preview failure", successorState.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        string successorToken = successorState.GetProperty("stateToken").GetString()!;
+        Assert.True(stateStore.TryGet(successorToken, out _));
+        Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.IsType<ImageContentBlock>(result.Content[1]);
+        Assert.Equal(2, snapshotCalls);
+        Assert.Equal(1, inputService.Calls);
+    }
+
+    [Fact]
     public async Task ClickHandlerRecordsObserveAfterRequestWhenActionFailsBeforeDispatch()
     {
         using TempDirectoryScope temp = new();

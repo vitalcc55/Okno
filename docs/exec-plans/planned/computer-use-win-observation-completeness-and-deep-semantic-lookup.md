@@ -408,7 +408,7 @@ Execution discipline for the implementation branch:
 
 Master progress checklist:
 
-- [ ] Step 0. Freeze the baseline and add red characterization
+- [x] Step 0. Freeze the baseline and add red characterization
 - [ ] Step 1. Unify public failure materialization for state, action, and successor state
 - [ ] Step 2. Introduce a product-owned semantic completeness model
 - [ ] Step 3. Split visual observation success from semantic preview readiness
@@ -485,10 +485,29 @@ Closure pass:
 
 Step completion checklist:
 
-- [ ] Current baseline rerun and current shipped behavior captured.
-- [ ] New future-behavior tests added and red.
-- [ ] Any new fixture support added without changing production behavior.
-- [ ] Closure pass completed and uncovered scenarios either covered or explicitly deferred.
+- [x] Current baseline rerun and current shipped behavior captured.
+- [x] New future-behavior tests added and red.
+- [x] Any new fixture support added without changing production behavior.
+- [x] Closure pass completed and uncovered scenarios either covered or explicitly deferred.
+
+Step 0 execution notes:
+
+- Baseline evidence before production changes: `UiaSnapshotTreeBuilderTests`
+  passed `6/6`; the targeted server integration baseline for
+  `ComputerUseWinObservationTests`, `ComputerUseWinActionAndProjectionTests` and
+  `WindowUiaSnapshotToolTests` passed `141/141`.
+- Red characterization evidence: the new targeted server integration filter
+  compiled and failed `6/6` on the current contract. The failures cover initial
+  state UIA reason leak, screenshot-success/UIA-failed visual observation,
+  `observeAfter` visual successor state, and the missing bounded semantic
+  selector branch for `set_value`, `perform_secondary_action`, and `scroll`.
+- No production behavior or smoke fixture was changed in Step 0; existing fake
+  capture/UIA/input services were sufficient for this characterization.
+- Full runtime proof for selector-driven deep target resolution is intentionally
+  deferred to Step 6 because Step 4 must first introduce the shared selector
+  domain and Step 5 must introduce the bounded lookup runtime. Step 0 pins the
+  public selector contract gap so that later runtime tests have a stable request
+  shape to target.
 
 ### Step 1. Unify public failure materialization for state, action, and successor state
 

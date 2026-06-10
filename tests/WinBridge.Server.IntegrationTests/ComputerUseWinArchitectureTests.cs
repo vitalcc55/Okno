@@ -1053,6 +1053,22 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.False(properties.TryGetProperty("point", out _));
     }
 
+    [Theory]
+    [InlineData(ToolNames.ComputerUseWinSetValue)]
+    [InlineData(ToolNames.ComputerUseWinPerformSecondaryAction)]
+    [InlineData(ToolNames.ComputerUseWinScroll)]
+    public void ComputerUseWinSemanticActionSchemasExposeBoundedSemanticSelector(string toolName)
+    {
+        JsonElement properties = GetComputerUseWinInputSchemaProperties(toolName);
+
+        Assert.True(properties.TryGetProperty("selector", out JsonElement selector), $"{toolName} должен публиковать bounded semantic selector.");
+        Assert.Equal("object", selector.GetProperty("type").GetString());
+        JsonElement selectorProperties = selector.GetProperty("properties");
+        Assert.True(selectorProperties.TryGetProperty("automationId", out _), "selector должен поддерживать AutomationId.");
+        Assert.True(selectorProperties.TryGetProperty("controlType", out _), "selector должен поддерживать ControlType.");
+        Assert.True(selectorProperties.TryGetProperty("name", out _), "selector должен поддерживать optional Name.");
+    }
+
     [Fact]
     public void SecondaryActionKindDerivationAcceptsPrePatternAndResolvedPatternDispatchPaths()
     {
