@@ -1193,6 +1193,17 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private static string GetSetupCliAssemblyPath(string repoRoot)
     {
+        List<string> candidates = [];
+        string? artifactsRoot = Environment.GetEnvironmentVariable("WINBRIDGE_ARTIFACTS_ROOT");
+        if (!string.IsNullOrWhiteSpace(artifactsRoot))
+        {
+            string resolvedArtifactsRoot = Path.IsPathRooted(artifactsRoot)
+                ? Path.GetFullPath(artifactsRoot)
+                : Path.GetFullPath(Path.Combine(repoRoot, artifactsRoot));
+            candidates.Add(Path.Combine(resolvedArtifactsRoot, "bin", "WinBridge.Setup.Cli", "debug", "WinBridge.Setup.Cli.dll"));
+            candidates.Add(Path.Combine(resolvedArtifactsRoot, "bin", "WinBridge.Setup.Cli", "release", "WinBridge.Setup.Cli.dll"));
+        }
+
         XDocument document = XDocument.Load(Path.Combine(repoRoot, "Directory.Build.props"));
         string targetFramework = document.Root?
             .Elements("PropertyGroup")
@@ -1201,7 +1212,17 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             .Value
             .Trim()
             ?? throw new InvalidOperationException("Directory.Build.props does not define TargetFramework.");
-        return Path.Combine(repoRoot, "src", "WinBridge.Setup.Cli", "bin", "Debug", targetFramework, "WinBridge.Setup.Cli.dll");
+        candidates.Add(Path.Combine(repoRoot, "src", "WinBridge.Setup.Cli", "bin", "Debug", targetFramework, "WinBridge.Setup.Cli.dll"));
+
+        string? assemblyPath = candidates.FirstOrDefault(File.Exists);
+        if (!string.IsNullOrWhiteSpace(assemblyPath))
+        {
+            return assemblyPath;
+        }
+
+        throw new FileNotFoundException(
+            "WinBridge.Setup.Cli.dll was not found in staged artifacts or the legacy project output. Checked: "
+            + string.Join(", ", candidates));
     }
 
     private static string GetExpectedSharedRuntimeStoreRoot(string codexHome)
