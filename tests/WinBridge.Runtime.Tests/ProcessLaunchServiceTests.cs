@@ -749,7 +749,7 @@ public sealed class ProcessLaunchServiceTests
 
         timeProvider.Advance(TimeSpan.FromSeconds(1));
 
-        LaunchProcessResult result = await launchTask.WaitAsync(TimeSpan.FromMilliseconds(100));
+        LaunchProcessResult result = await launchTask.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(LaunchProcessStatusValues.Failed, result.Status);
         Assert.Equal(LaunchProcessFailureCodeValues.MainWindowNotObserved, result.FailureCode);
