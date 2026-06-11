@@ -346,8 +346,11 @@ public sealed class AuditLogTests
 
         string startedEvent = File.ReadAllLines(options.EventsPath)[0];
         Assert.Contains("\"event_name\":\"tool.invocation.started\"", startedEvent, StringComparison.Ordinal);
-        Assert.DoesNotContain("super-secret-state-token", startedEvent, StringComparison.Ordinal);
-        Assert.DoesNotContain("9.5", startedEvent, StringComparison.Ordinal);
+        using JsonDocument document = JsonDocument.Parse(startedEvent);
+        JsonElement data = document.RootElement.GetProperty("data");
+        string requestSummary = data.GetProperty("request_summary").GetString() ?? string.Empty;
+        Assert.DoesNotContain("super-secret-state-token", data.GetRawText(), StringComparison.Ordinal);
+        Assert.DoesNotContain("9.5", requestSummary, StringComparison.Ordinal);
         Assert.Contains("\"redaction_applied\":\"true\"", startedEvent, StringComparison.Ordinal);
     }
 

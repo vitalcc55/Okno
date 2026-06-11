@@ -324,11 +324,19 @@ public sealed class RuntimeBundleResolverTests
     [Fact]
     public void ResolveOknoServerLaunchTargetPrefersAppHostWhenBundleContainsExecutable()
     {
+        TestRunContext context = CreateRunContext("resolver-launch-target-apphost");
+        using TemporaryDirectories cleanup = new(context.RunRoot, context.ArtifactsRoot);
+
+        string serverOutputDirectory = ArtifactOutputDirectory(context.ArtifactsRoot, ServerProjectName, DebugConfiguration);
+        CreateServerArtifact(context.ArtifactsRoot, DebugConfiguration);
+        CreateMarkerFile(Path.Combine(serverOutputDirectory, ServerExeFileName));
+        CreateHelperArtifact(context.ArtifactsRoot, DebugConfiguration);
+
         using JsonDocument payload = InvokeLaunchTargetResolver(
             startInfo => AddArguments(
                 startInfo,
                 "-ArtifactsRoot",
-                ArtifactsRootFor("local"),
+                context.ArtifactsRoot,
                 "-PreferredSourceContextName",
                 ArtifactsSourceContextName,
                 "-ForcePrepare"));
