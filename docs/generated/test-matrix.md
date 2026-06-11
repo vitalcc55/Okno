@@ -16,7 +16,7 @@
 | Minimal proof-smoke | `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-physical-policy-proof-smoke.ps1` | helper-backed real STDIO phase-1 policy proof for semantic `set_value`, expected_physical `click` + explicit-focus `type_text`, and fallback_physical focused + coordinate-confirmed `type_text`, each with public `executionFacts` assertions |
 | Observation proof-smoke | `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-observation-completeness-proof-smoke.ps1` | helper-backed real STDIO proof for screenshot-backed `get_app_state` with incomplete semantic preview metadata and bounded selector lookup beyond the compact preview with `observeAfter` successor state |
 | Local CI | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | restore + PowerShell static analysis + build + fast tests + smoke + physical-policy proof-smoke + observation-completeness proof-smoke |
-| Release verify | `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | local fast CI contour + install/release acceptance + cache-installed publication proof; hosted packaging runners may use `-SkipInteractiveDesktopProof` only after local proof is green |
+| Release verify | `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | local fast CI contour + install/release acceptance + cache-installed publication proof; hosted packaging runners may use `-SkipInteractiveDesktopProof` only after local proof is green, excluding interactive desktop/action proof and the visible setup-app launch check |
 
 ## Чего пока не хватает
 

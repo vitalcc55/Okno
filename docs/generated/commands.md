@@ -16,7 +16,7 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-observation-completeness-proof-smoke.ps1` | narrow helper-backed real-STDIO proof-smoke for `computer-use-win` observation completeness, covering screenshot-backed visual state with incomplete semantic preview metadata and selector lookup beyond the compact preview |
 | `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |
 | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |
-| `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | full local release gate: fast CI + install/release acceptance + cache-install publication proof; `-SkipInteractiveDesktopProof` is reserved for hosted release packaging runners after local proof is already green |
+| `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | full local release gate: fast CI + install/release acceptance + cache-install publication proof; `-SkipInteractiveDesktopProof` is reserved for hosted release packaging runners after local proof is already green and excludes interactive desktop/action proof plus visible setup-app launch |
 | `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/bootstrap.ps1` | Codex bootstrap handshake |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/prepare-okno-test-bundle.ps1` | stage immutable server/helper run bundle for integration and smoke |
