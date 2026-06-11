@@ -1,6 +1,6 @@
 {
   "name": "computer-use-win",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Okno Computer Use for Windows: Windows desktop automation for AI agents over MCP/STDIO.",
   "author": {
     "name": "Vlasov Vitaly"
@@ -24,4 +24,3 @@
     ]
   }
 }
-

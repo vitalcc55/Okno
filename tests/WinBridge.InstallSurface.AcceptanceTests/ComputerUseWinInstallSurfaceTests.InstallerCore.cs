@@ -8,7 +8,7 @@ namespace WinBridge.InstallSurface.AcceptanceTests;
 
 public sealed partial class ComputerUseWinInstallSurfaceTests
 {
-    private const string SetupCliReleaseVersion = "0.2.3";
+    private const string SetupCliReleaseVersion = "0.3.0";
     private const string WindowsRuntimeIdentifier = "win-x64";
 
     private static readonly object ReleasePackagingGate = new();
@@ -193,7 +193,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             GetRuntimePackageScriptPath(repoRoot),
             SharedPublishedRuntimeBundle.Value.RuntimeRoot,
             outputRoot,
-            "0.2.3-test");
+            "0.3.0-test");
 
         try
         {
@@ -212,14 +212,14 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             string expectedLauncherPath = GetExpectedSharedRuntimeLauncherScriptPath(test.CodexHome);
             string[] args = server.GetProperty("args").EnumerateArray().Select(static value => value.GetString() ?? string.Empty).ToArray();
             Assert.Contains(expectedLauncherPath, args, StringComparer.Ordinal);
-            Assert.DoesNotContain("0.2.3", updateSnippet, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.2.3-test", updateSnippet, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.3.0", updateSnippet, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.3.0-test", updateSnippet, StringComparison.Ordinal);
             Assert.True(File.Exists(expectedLauncherPath));
 
             string launcherScript = File.ReadAllText(expectedLauncherPath);
             Assert.Contains("current-runtime.json", launcherScript, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.2.3", launcherScript, StringComparison.Ordinal);
-            Assert.DoesNotContain("0.2.3-test", launcherScript, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.3.0", launcherScript, StringComparison.Ordinal);
+            Assert.DoesNotContain("0.3.0-test", launcherScript, StringComparison.Ordinal);
         }
         finally
         {
@@ -554,4 +554,3 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
             InvokeSetupCli(_release.RepoRoot, args, CodexHome, UserProfile);
     }
 }
-

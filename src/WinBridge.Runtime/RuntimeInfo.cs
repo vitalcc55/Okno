@@ -10,7 +10,7 @@ public sealed class RuntimeInfo(AuditLogOptions auditOptions)
     public string ServiceName { get; } = AuditConstants.ServiceName;
 
     public string Version { get; } =
-        typeof(RuntimeInfo).Assembly.GetName().Version?.ToString() ?? "0.2.3.0";
+        typeof(RuntimeInfo).Assembly.GetName().Version?.ToString() ?? "0.3.0.0";
 
     public string Transport { get; } = "stdio";
 

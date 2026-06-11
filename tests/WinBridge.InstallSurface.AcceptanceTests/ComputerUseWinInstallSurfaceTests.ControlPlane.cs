@@ -112,7 +112,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string repoRoot = GetRepositoryRoot();
         string sourcePluginRoot = GetInstallSurfaceComputerUseWinPluginRoot(repoRoot);
         string cacheBaseRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "plugins", "cache");
-        string differentPluginCacheLeaf = Path.Combine(cacheBaseRoot, "other-plugin-local", "other-plugin", "0.2.3");
+        string differentPluginCacheLeaf = Path.Combine(cacheBaseRoot, "other-plugin-local", "other-plugin", "0.3.0");
 
         ScriptInvocationResult result = InvokePowerShellScript(
             GetInstallSurfaceCodexScriptPath(repoRoot, "materialize-computer-use-win-cache-copy.ps1"),
@@ -128,7 +128,7 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         return Path.Combine(GetRepositoryRoot(), ".tmp", ".codex", "tests", "control-plane", scenarioName, Guid.NewGuid().ToString("N"));
     }
 
-    private static void WriteMinimalVersionStateRepo(string tempRepoRoot, string buildVersion = "0.2.3", string pluginVersion = "0.2.3", string runtimeReleaseVersion = "0.2.3")
+    private static void WriteMinimalVersionStateRepo(string tempRepoRoot, string buildVersion = "0.3.0", string pluginVersion = "0.3.0", string runtimeReleaseVersion = "0.3.0")
     {
         Directory.CreateDirectory(tempRepoRoot);
         File.WriteAllText(
