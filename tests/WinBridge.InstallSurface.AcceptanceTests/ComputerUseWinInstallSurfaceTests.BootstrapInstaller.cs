@@ -371,8 +371,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
 
     private static JsonDocument ReadBootstrapArchiveJsonEntry(ZipArchive archive, string entryPath)
     {
-        ZipArchiveEntry entry = Assert.Single(archive.Entries.Where(
-            archiveEntry => string.Equals(NormalizeArchiveEntryPath(archiveEntry.FullName), entryPath, StringComparison.Ordinal)));
+        ZipArchiveEntry entry = Assert.Single(
+            archive.Entries,
+            archiveEntry => string.Equals(NormalizeArchiveEntryPath(archiveEntry.FullName), entryPath, StringComparison.Ordinal));
         using Stream stream = entry.Open();
         return JsonDocument.Parse(stream);
     }
@@ -494,4 +495,3 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string SetupCliPayloadArchivePath,
         string SetupAppReleaseArchivePath);
 }
-

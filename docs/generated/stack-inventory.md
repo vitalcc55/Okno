@@ -25,7 +25,7 @@
 | Windows UIA slice | `src/WinBridge.Runtime.Windows.UIA, src/WinBridge.Runtime.Windows.UIA.Hosting, src/WinBridge.Runtime.Windows.UIA.Worker` | `net8.0-windows10.0.19041.0` | Работает |
 | Public wait slice | `src/WinBridge.Runtime.Waiting` | `net8.0-windows10.0.19041.0` | Работает |
 | Input and clipboard capability seams | `src/WinBridge.Runtime.Windows.Input, src/WinBridge.Runtime.Windows.Clipboard` | `net8.0-windows10.0.19041.0` | Input click-first работает; clipboard deferred |
-| MCP host | `src/WinBridge.Server` | `net8.0-windows10.0.19041.0, ModelContextProtocol 1.1.0` | Работает |
+| MCP host | `src/WinBridge.Server` | `net8.0-windows10.0.19041.0, ModelContextProtocol 1.4.0` | Работает |
 | Unit tests | `tests/WinBridge.Runtime.Tests` | `xUnit` | Работает |
 | Integration smoke | `tests/WinBridge.Server.IntegrationTests` | `xUnit + raw stdio JSON-RPC` | Работает |
 | Dev control plane | `scripts/*.ps1` | `PowerShell` | Работает |

@@ -720,8 +720,9 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
     }
 
     private static ZipArchiveEntry GetRequiredReleasePackagingArchiveEntry(ZipArchive archive, string entryPath) =>
-        Assert.Single(archive.Entries.Where(
-            entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), entryPath, StringComparison.Ordinal)));
+        Assert.Single(
+            archive.Entries,
+            entry => string.Equals(NormalizeArchiveEntryPath(entry.FullName), entryPath, StringComparison.Ordinal));
 
     private static HashSet<string> GetNormalizedReleasePackagingArchiveEntryPaths(ZipArchive archive) =>
         archive.Entries.Select(entry => NormalizeArchiveEntryPath(entry.FullName)).ToHashSet(StringComparer.Ordinal);
@@ -841,4 +842,3 @@ public sealed partial class ComputerUseWinInstallSurfaceTests
         string SourceDigestBefore,
         string SourceDigestAfter);
 }
-

@@ -8,7 +8,7 @@
 | Build defaults | `Directory.Build.props` | `/Directory.Build.props` |
 | Package versions | Central Package Management | `/Directory.Packages.props` |
 | Build/test CLI | `dotnet` | solution-wide |
-| MCP SDK | `ModelContextProtocol 1.1.0` | `src/WinBridge.Server`, `tests/WinBridge.Server.IntegrationTests` |
+| MCP SDK | `ModelContextProtocol 1.4.0` | `src/WinBridge.Server`, `tests/WinBridge.Server.IntegrationTests` |
 | Tool contract source | `ToolNames` + `ToolContractManifest` | `src/WinBridge.Runtime.Tooling` |
 | Test framework | `xUnit` | `tests/*` |
 | Runtime diagnostics | JSONL + summary files | `src/WinBridge.Runtime.Diagnostics/*` |

@@ -1899,7 +1899,8 @@ public sealed class McpProtocolSmokeTests
         JsonElement activateRoot = activateResult
             .GetProperty("structuredContent");
         string activateStatus = activateRoot.GetProperty("status").GetString()!;
-        Assert.Contains(activateStatus, ["done", "ambiguous"]);
+        string[] acceptedActivateStatuses = ["done", "ambiguous"];
+        Assert.Contains(activateStatus, acceptedActivateStatuses);
         Assert.Equal(activateStatus == "ambiguous", activateResult.GetProperty("isError").GetBoolean());
         Assert.True(activateRoot.GetProperty("wasMinimized").GetBoolean());
         Assert.Equal(helperHwnd, activateRoot.GetProperty("window").GetProperty("hwnd").GetInt64());

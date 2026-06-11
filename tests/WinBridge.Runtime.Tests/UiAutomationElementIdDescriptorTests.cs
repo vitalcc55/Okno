@@ -13,7 +13,8 @@ public sealed class UiAutomationElementIdDescriptorTests
         Assert.True(UiaElementIdDescriptor.TryParse("rid:1.2;path:0/3/4", out UiaElementIdDescriptor descriptor));
 
         Assert.Equal(UiaElementIdPathKind.Control, descriptor.PathKind);
-        Assert.Equal([1, 2], descriptor.ExpectedRuntimeId);
+        Assert.NotNull(descriptor.ExpectedRuntimeId);
+        Assert.Equal([1, 2], descriptor.ExpectedRuntimeId!);
         Assert.Equal([3, 4], descriptor.Ordinals);
     }
 
@@ -23,7 +24,8 @@ public sealed class UiAutomationElementIdDescriptorTests
         Assert.True(UiaElementIdDescriptor.TryParse("rid:9.8;raw:0/5", out UiaElementIdDescriptor descriptor));
 
         Assert.Equal(UiaElementIdPathKind.Raw, descriptor.PathKind);
-        Assert.Equal([9, 8], descriptor.ExpectedRuntimeId);
+        Assert.NotNull(descriptor.ExpectedRuntimeId);
+        Assert.Equal([9, 8], descriptor.ExpectedRuntimeId!);
         Assert.Equal([5], descriptor.Ordinals);
     }
 

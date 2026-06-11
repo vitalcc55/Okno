@@ -32,7 +32,7 @@
 
 ### Что уже используется
 
-- `ModelContextProtocol 1.1.0`
+- `ModelContextProtocol 1.4.0`
 - `STDIO` transport
 - tool registration через `McpServerToolType` + `McpServerTool`
 

@@ -618,13 +618,15 @@ public sealed class InputRuntimePolicyTests
 
         InputAsyncStateReadabilityProbeResult result = InputAsyncStateReadabilityProbe.ProbeForCurrentThread(
             InputAsyncStateReadabilityMode.CrossProcessForeground);
+        InputAsyncStateReadabilityStatus[] expectedStatuses =
+        [
+            InputAsyncStateReadabilityStatus.Readable,
+            InputAsyncStateReadabilityStatus.Unreadable,
+            InputAsyncStateReadabilityStatus.Unknown,
+        ];
         Assert.Contains(
             result.Status,
-            [
-                InputAsyncStateReadabilityStatus.Readable,
-                InputAsyncStateReadabilityStatus.Unreadable,
-                InputAsyncStateReadabilityStatus.Unknown,
-            ]);
+            expectedStatuses);
     }
 
     [Fact]
