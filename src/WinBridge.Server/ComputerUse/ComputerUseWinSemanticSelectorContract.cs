@@ -71,9 +71,9 @@ internal static class ComputerUseWinSemanticSelectorContract
             },
             ["properties"] = new JsonObject
             {
-                ["name"] = CreateNonBlankNullableStringSchema(),
-                ["automationId"] = CreateNonBlankNullableStringSchema(),
-                ["controlType"] = CreateNonBlankNullableStringSchema(),
+                ["name"] = CreateNonBlankStringSchema(),
+                ["automationId"] = CreateNonBlankStringSchema(),
+                ["controlType"] = CreateNonBlankStringSchema(),
             },
         };
 
@@ -101,10 +101,10 @@ internal static class ComputerUseWinSemanticSelectorContract
             },
         };
 
-    private static JsonObject CreateNonBlankNullableStringSchema() =>
+    private static JsonObject CreateNonBlankStringSchema() =>
         new()
         {
-            ["type"] = new JsonArray("string", "null"),
+            ["type"] = "string",
             ["pattern"] = NonBlankJsonStringPattern,
         };
 

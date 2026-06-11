@@ -9,10 +9,18 @@ internal static class UiAutomationWorkerOperationValues
 {
     public const string Snapshot = "snapshot";
     public const string WaitProbe = "wait_probe";
+    public const string SemanticLookup = "semantic_lookup";
+    public const string SetValue = "set_value";
+    public const string Scroll = "scroll";
+    public const string SecondaryAction = "secondary_action";
 }
 
 internal sealed record UiAutomationWorkerInvocation(
     string Operation,
     WindowDescriptor TargetWindow,
     UiaSnapshotRequest? SnapshotRequest = null,
-    WaitRequest? WaitProbeRequest = null);
+    WaitRequest? WaitProbeRequest = null,
+    UiaSemanticLookupRequest? SemanticLookupRequest = null,
+    UiaSetValueRequest? SetValueRequest = null,
+    UiaScrollRequest? ScrollRequest = null,
+    UiaSecondaryActionRequest? SecondaryActionRequest = null);

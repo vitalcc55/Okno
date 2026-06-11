@@ -402,6 +402,9 @@ function Assert-SelectorSchema {
     Assert-Condition -Condition ([string]$selectorSchema.type -eq 'object') -Message "$toolName $PropertyName schema must be an object."
     foreach ($selectorField in @('automationId', 'controlType', 'name')) {
         Assert-Condition -Condition (Test-Property -Object $selectorSchema.properties -Name $selectorField) -Message "$toolName $PropertyName schema is missing $selectorField."
+        $selectorFieldSchema = Get-PropertyValue -Object $selectorSchema.properties -Name $selectorField
+        Assert-Condition -Condition ([string]$selectorFieldSchema.type -eq 'string') -Message "$toolName $PropertyName.$selectorField schema must be a non-null string."
+        Assert-Condition -Condition ([string]$selectorFieldSchema.pattern -eq '.*\S.*') -Message "$toolName $PropertyName.$selectorField schema must reject blank criteria."
     }
 }
 

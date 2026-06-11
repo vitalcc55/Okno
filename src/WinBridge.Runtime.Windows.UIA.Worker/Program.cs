@@ -34,6 +34,34 @@ object result = invocation.Operation switch
                 Timeout.InfiniteTimeSpan,
                 CancellationToken.None)
             .ConfigureAwait(false),
+    UiAutomationWorkerOperationValues.SemanticLookup when invocation.SemanticLookupRequest is not null =>
+        await new Win32UiAutomationSemanticLookupService(TimeProvider.System)
+            .LookupAsync(
+                invocation.TargetWindow,
+                invocation.SemanticLookupRequest,
+                CancellationToken.None)
+            .ConfigureAwait(false),
+    UiAutomationWorkerOperationValues.SetValue when invocation.SetValueRequest is not null =>
+        await new Win32UiAutomationSetValueService()
+            .SetValueAsync(
+                invocation.TargetWindow,
+                invocation.SetValueRequest,
+                CancellationToken.None)
+            .ConfigureAwait(false),
+    UiAutomationWorkerOperationValues.Scroll when invocation.ScrollRequest is not null =>
+        await new Win32UiAutomationScrollService()
+            .ScrollAsync(
+                invocation.TargetWindow,
+                invocation.ScrollRequest,
+                CancellationToken.None)
+            .ConfigureAwait(false),
+    UiAutomationWorkerOperationValues.SecondaryAction when invocation.SecondaryActionRequest is not null =>
+        await new Win32UiAutomationSecondaryActionService()
+            .ExecuteAsync(
+                invocation.TargetWindow,
+                invocation.SecondaryActionRequest,
+                CancellationToken.None)
+            .ConfigureAwait(false),
     _ => throw new InvalidOperationException("UIA worker получил unsupported operation payload."),
 };
 

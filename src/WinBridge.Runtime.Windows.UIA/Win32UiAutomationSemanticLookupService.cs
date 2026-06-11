@@ -7,7 +7,7 @@ using WinBridge.Runtime.Contracts;
 
 namespace WinBridge.Runtime.Windows.UIA;
 
-public sealed class Win32UiAutomationSemanticLookupService(TimeProvider timeProvider) : IUiAutomationSemanticLookupService
+internal sealed class Win32UiAutomationSemanticLookupService(TimeProvider timeProvider) : IUiAutomationSemanticLookupService
 {
     public Task<UiaSemanticLookupResult> LookupAsync(
         WindowDescriptor targetWindow,

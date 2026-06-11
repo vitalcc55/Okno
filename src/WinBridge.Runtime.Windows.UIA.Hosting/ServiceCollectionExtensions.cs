@@ -20,10 +20,10 @@ public static class ServiceCollectionExtensions
 
         services.AddWinBridgeRuntimeDiagnostics(contentRootPath, environmentName);
         services.AddSingleton<IUiAutomationService, Win32UiAutomationService>();
-        services.AddSingleton<IUiAutomationSetValueService, Win32UiAutomationSetValueService>();
-        services.AddSingleton<IUiAutomationScrollService, Win32UiAutomationScrollService>();
-        services.AddSingleton<IUiAutomationSecondaryActionService, Win32UiAutomationSecondaryActionService>();
-        services.AddSingleton<IUiAutomationSemanticLookupService, Win32UiAutomationSemanticLookupService>();
+        services.AddSingleton<IUiAutomationSetValueService, ProcessIsolatedUiAutomationSetValueService>();
+        services.AddSingleton<IUiAutomationScrollService, ProcessIsolatedUiAutomationScrollService>();
+        services.AddSingleton<IUiAutomationSecondaryActionService, ProcessIsolatedUiAutomationSecondaryActionService>();
+        services.AddSingleton<IUiAutomationSemanticLookupService, ProcessIsolatedUiAutomationSemanticLookupService>();
         services.AddSingleton<IUiAutomationWaitProbe, ProcessIsolatedUiAutomationWaitProbe>();
         services.AddSingleton<IUiaGuardFactSource, UiaWorkerGuardFactSource>();
         return services;

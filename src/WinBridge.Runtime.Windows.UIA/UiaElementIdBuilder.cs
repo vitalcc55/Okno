@@ -9,7 +9,7 @@ internal static class UiaElementIdBuilder
     {
         if (runtimeId is { Length: > 0 })
         {
-            return "rid:" + string.Join(".", runtimeId);
+            return "rid:" + string.Join(".", runtimeId) + ";path:" + path;
         }
 
         return "path:" + path;

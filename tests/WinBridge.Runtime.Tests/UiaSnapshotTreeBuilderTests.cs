@@ -84,7 +84,7 @@ public sealed class UiaSnapshotTreeBuilderTests
         Assert.Equal(2, result.RealizedDepth);
         Assert.False(result.Truncated);
         Assert.False(result.NodeBudgetBoundaryReached);
-        Assert.Equal("rid:1.2", result.Root.ElementId);
+        Assert.Equal("rid:1.2;path:0", result.Root.ElementId);
         Assert.Null(result.Root.ParentElementId);
         Assert.Equal("window", result.Root.ControlType);
         Assert.Equal(50032, result.Root.ControlTypeId);
@@ -94,8 +94,8 @@ public sealed class UiaSnapshotTreeBuilderTests
         Assert.Single(result.Root.Children);
 
         UiaElementSnapshot childSnapshot = result.Root.Children[0];
-        Assert.Equal("rid:3.4", childSnapshot.ElementId);
-        Assert.Equal("rid:1.2", childSnapshot.ParentElementId);
+        Assert.Equal("rid:3.4;path:0/0", childSnapshot.ElementId);
+        Assert.Equal("rid:1.2;path:0", childSnapshot.ParentElementId);
         Assert.Equal(1, childSnapshot.Depth);
         Assert.Equal(0, childSnapshot.Ordinal);
         Assert.Equal(["expand_collapse", "invoke"], childSnapshot.Patterns);
@@ -103,7 +103,7 @@ public sealed class UiaSnapshotTreeBuilderTests
 
         UiaElementSnapshot grandchildSnapshot = childSnapshot.Children[0];
         Assert.Equal("path:0/0/0", grandchildSnapshot.ElementId);
-        Assert.Equal("rid:3.4", grandchildSnapshot.ParentElementId);
+        Assert.Equal("rid:3.4;path:0/0", grandchildSnapshot.ParentElementId);
         Assert.Equal(2, grandchildSnapshot.Depth);
         Assert.Equal(0, grandchildSnapshot.Ordinal);
         Assert.Equal("button", grandchildSnapshot.ControlType);
@@ -151,7 +151,7 @@ public sealed class UiaSnapshotTreeBuilderTests
         Assert.False(result.DepthBoundaryReached);
         Assert.True(result.NodeBudgetBoundaryReached);
         Assert.Single(result.Root.Children);
-        Assert.Equal("rid:2", result.Root.Children[0].ElementId);
+        Assert.Equal("rid:2;path:0/0", result.Root.Children[0].ElementId);
     }
 
     [Fact]

@@ -40,7 +40,7 @@ public sealed class Win32UiAutomationServiceTests
         Assert.Equal(backendResult.NodeCount, rootPayload.GetProperty("node_count").GetInt32());
         Assert.False(rootPayload.GetProperty("depth_boundary_reached").GetBoolean());
         Assert.False(rootPayload.GetProperty("node_budget_boundary_reached").GetBoolean());
-        Assert.Equal("rid:1.2", rootPayload.GetProperty("root").GetProperty("element_id").GetString());
+        Assert.Equal("rid:1.2;path:0", rootPayload.GetProperty("root").GetProperty("element_id").GetString());
         Assert.False(rootPayload.TryGetProperty("session", out _));
 
         string[] eventLines = await File.ReadAllLinesAsync(options.EventsPath);
@@ -277,7 +277,7 @@ public sealed class Win32UiAutomationServiceTests
             IsForeground: true,
             IsVisible: true);
 
-    private static UiaSnapshotResult CreateSuccessResult(ObservedWindowDescriptor? window = null, string rootElementId = "rid:1.2") =>
+    private static UiaSnapshotResult CreateSuccessResult(ObservedWindowDescriptor? window = null, string rootElementId = "rid:1.2;path:0") =>
         new(
             Status: UiaSnapshotStatusValues.Done,
             Reason: null,

@@ -10,16 +10,19 @@ internal sealed class AutomationSemanticLookupNode(AutomationElement element, Ca
     public UiaSnapshotNodeData GetData() =>
         new AutomationSnapshotNode(element, cacheRequest).GetData();
 
-    public IReadOnlyList<IUiaSemanticLookupNode> GetChildren()
+    public IUiaSemanticLookupNode? GetFirstChild()
     {
-        List<IUiaSemanticLookupNode> children = [];
-        for (AutomationElement? child = TreeWalker.RawViewWalker.GetFirstChild(element, cacheRequest);
-            child is not null;
-            child = TreeWalker.RawViewWalker.GetNextSibling(child, cacheRequest))
-        {
-            children.Add(new AutomationSemanticLookupNode(child, cacheRequest));
-        }
+        AutomationElement? child = TreeWalker.RawViewWalker.GetFirstChild(element, cacheRequest);
+        return child is null
+            ? null
+            : new AutomationSemanticLookupNode(child, cacheRequest);
+    }
 
-        return children;
+    public IUiaSemanticLookupNode? GetNextSibling()
+    {
+        AutomationElement? sibling = TreeWalker.RawViewWalker.GetNextSibling(element, cacheRequest);
+        return sibling is null
+            ? null
+            : new AutomationSemanticLookupNode(sibling, cacheRequest);
     }
 }

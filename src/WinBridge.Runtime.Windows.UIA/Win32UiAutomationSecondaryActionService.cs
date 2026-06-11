@@ -7,7 +7,7 @@ using WinBridge.Runtime.Contracts;
 
 namespace WinBridge.Runtime.Windows.UIA;
 
-public sealed class Win32UiAutomationSecondaryActionService : IUiAutomationSecondaryActionService
+internal sealed class Win32UiAutomationSecondaryActionService : IUiAutomationSecondaryActionService
 {
     public Task<UiaSecondaryActionResult> ExecuteAsync(
         WindowDescriptor targetWindow,

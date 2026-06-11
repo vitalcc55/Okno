@@ -7,7 +7,7 @@ using WinBridge.Runtime.Contracts;
 
 namespace WinBridge.Runtime.Windows.UIA;
 
-public sealed class Win32UiAutomationScrollService : IUiAutomationScrollService
+internal sealed class Win32UiAutomationScrollService : IUiAutomationScrollService
 {
     public Task<UiaScrollResult> ScrollAsync(
         WindowDescriptor targetWindow,

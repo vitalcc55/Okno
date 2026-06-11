@@ -1084,6 +1084,27 @@ public sealed class ComputerUseWinArchitectureTests
         Assert.True(selectorProperties.TryGetProperty("name", out _), "selector должен поддерживать optional Name.");
     }
 
+    [Theory]
+    [InlineData(ToolNames.ComputerUseWinClick, "selector")]
+    [InlineData(ToolNames.ComputerUseWinSetValue, "selector")]
+    [InlineData(ToolNames.ComputerUseWinTypeText, "selector")]
+    [InlineData(ToolNames.ComputerUseWinScroll, "selector")]
+    [InlineData(ToolNames.ComputerUseWinPerformSecondaryAction, "selector")]
+    [InlineData(ToolNames.ComputerUseWinDrag, "fromSelector")]
+    [InlineData(ToolNames.ComputerUseWinDrag, "toSelector")]
+    public void ComputerUseWinSelectorSchemasDoNotAdvertiseNullCriteria(string toolName, string selectorPropertyName)
+    {
+        JsonElement selector = GetComputerUseWinInputSchemaProperties(toolName).GetProperty(selectorPropertyName);
+        JsonElement selectorProperties = selector.GetProperty("properties");
+
+        foreach (string criterionName in new[] { "name", "automationId", "controlType" })
+        {
+            JsonElement criterion = selectorProperties.GetProperty(criterionName);
+            Assert.Equal("string", criterion.GetProperty("type").GetString());
+            Assert.Equal(NonBlankJsonStringPattern, criterion.GetProperty("pattern").GetString());
+        }
+    }
+
     [Fact]
     public void SecondaryActionKindDerivationAcceptsPrePatternAndResolvedPatternDispatchPaths()
     {

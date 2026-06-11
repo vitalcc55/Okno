@@ -12,7 +12,9 @@ internal interface IUiaSemanticLookupNode
 {
     UiaSnapshotNodeData GetData();
 
-    IReadOnlyList<IUiaSemanticLookupNode> GetChildren();
+    IUiaSemanticLookupNode? GetFirstChild();
+
+    IUiaSemanticLookupNode? GetNextSibling();
 }
 
 internal sealed class UiaSemanticLookupEngine(TimeProvider timeProvider)
@@ -37,110 +39,20 @@ internal sealed class UiaSemanticLookupEngine(TimeProvider timeProvider)
 
         WaitElementSelector selector = request.Selector!;
         long startTimestamp = timeProvider.GetTimestamp();
-        Stack<TraversalNode> pending = [];
-        pending.Push(new(root, ParentElementId: null, Depth: 0, Ordinal: 0, RawPath: "0"));
-        int visitedNodeCount = 0;
-        int matchCount = 0;
-        UiaElementSnapshot? uniqueMatch = null;
+        SearchContext context = new(observedWindow, request, selector, startTimestamp, cancellationToken);
 
         try
         {
-            while (pending.Count > 0)
+            UiaSemanticLookupResult? terminal = SearchNode(
+                root,
+                parentElementId: null,
+                depth: 0,
+                ordinal: 0,
+                rawPath: "0",
+                context);
+            if (terminal is not null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (IsTimedOut(startTimestamp, request.TimeoutMs))
-                {
-                    return Terminal(
-                        UiaSemanticLookupStatusValues.Timeout,
-                        observedWindow,
-                        request,
-                        visitedNodeCount,
-                        matchCount,
-                        reason: "Semantic lookup превысил timeout budget.");
-                }
-
-                if (visitedNodeCount >= request.MaxNodes)
-                {
-                    return Terminal(
-                        UiaSemanticLookupStatusValues.BudgetExceeded,
-                        observedWindow,
-                        request,
-                        visitedNodeCount,
-                        matchCount,
-                        nodeBudgetExceeded: true,
-                        reason: "Semantic lookup достиг maxNodes budget до доказательства уникальности target.");
-                }
-
-                TraversalNode current = pending.Pop();
-                visitedNodeCount++;
-                UiaSnapshotNodeData data;
-                try
-                {
-                    data = current.Node.GetData();
-                }
-                catch (Exception exception) when (IsProviderFailure(exception) && current.Depth > 0)
-                {
-                    continue;
-                }
-
-                string elementId = CreateElementId(data.RuntimeId, current.RawPath);
-
-                if (ElementSelectorPolicy.Matches(selector, data.Name, data.AutomationId, data.ControlType))
-                {
-                    matchCount++;
-                    if (ElementSelectorPolicy.IsAmbiguous(matchCount))
-                    {
-                        return Terminal(
-                            UiaSemanticLookupStatusValues.AmbiguousMatches,
-                            observedWindow,
-                            request,
-                            visitedNodeCount,
-                            matchCount,
-                            reason: "Semantic lookup нашёл больше одного UIA target для selector.");
-                    }
-
-                    uniqueMatch = CreateLeafSnapshot(
-                        data,
-                        elementId,
-                        current.ParentElementId,
-                        current.Depth,
-                        current.Ordinal);
-                }
-
-                IReadOnlyList<IUiaSemanticLookupNode> children;
-                try
-                {
-                    children = current.Node.GetChildren();
-                }
-                catch (Exception exception) when (IsProviderFailure(exception) && current.Depth > 0)
-                {
-                    continue;
-                }
-
-                if (children.Count == 0)
-                {
-                    continue;
-                }
-
-                if (current.Depth >= request.MaxDepth)
-                {
-                    return Terminal(
-                        UiaSemanticLookupStatusValues.BudgetExceeded,
-                        observedWindow,
-                        request,
-                        visitedNodeCount,
-                        matchCount,
-                        depthBudgetExceeded: true,
-                        reason: "Semantic lookup достиг maxDepth boundary до доказательства отсутствия или уникальности target.");
-                }
-
-                for (int index = children.Count - 1; index >= 0; index--)
-                {
-                    string childPath = current.RawPath + "/" + index.ToString(CultureInfo.InvariantCulture);
-                    string childParentId = elementId;
-                    pending.Push(new(children[index], childParentId, current.Depth + 1, index, childPath));
-                }
+                return terminal;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -152,32 +64,175 @@ internal sealed class UiaSemanticLookupEngine(TimeProvider timeProvider)
             return new UiaSemanticLookupResult(
                 Status: UiaSemanticLookupStatusValues.Failed,
                 Window: observedWindow,
-                VisitedNodeCount: visitedNodeCount,
-                MatchCount: matchCount,
-                MatchCardinality: ElementSelectorPolicy.ClassifyMatchCount(matchCount),
+                VisitedNodeCount: context.VisitedNodeCount,
+                MatchCount: context.MatchCount,
+                MatchCardinality: ElementSelectorPolicy.ClassifyMatchCount(context.MatchCount),
                 MaxDepth: request.MaxDepth,
                 MaxNodes: request.MaxNodes,
                 FailureKind: UiaSemanticLookupFailureKindValues.ProviderFailure,
                 Reason: "UI Automation не смогла выполнить bounded semantic lookup traversal.");
         }
 
-        return uniqueMatch is null
+        return context.UniqueMatch is null
             ? Terminal(
                 UiaSemanticLookupStatusValues.ZeroMatches,
                 observedWindow,
                 request,
-                visitedNodeCount,
-                matchCount,
+                context.VisitedNodeCount,
+                context.MatchCount,
                 reason: "Semantic lookup не нашёл UIA target для selector.")
             : new UiaSemanticLookupResult(
                 Status: UiaSemanticLookupStatusValues.UniqueMatch,
                 Window: observedWindow,
-                Element: uniqueMatch,
-                VisitedNodeCount: visitedNodeCount,
-                MatchCount: matchCount,
-                MatchCardinality: ElementSelectorPolicy.ClassifyMatchCount(matchCount),
+                Element: context.UniqueMatch,
+                VisitedNodeCount: context.VisitedNodeCount,
+                MatchCount: context.MatchCount,
+                MatchCardinality: ElementSelectorPolicy.ClassifyMatchCount(context.MatchCount),
                 MaxDepth: request.MaxDepth,
                 MaxNodes: request.MaxNodes);
+    }
+
+    private UiaSemanticLookupResult? SearchNode(
+        IUiaSemanticLookupNode node,
+        string? parentElementId,
+        int depth,
+        int ordinal,
+        string rawPath,
+        SearchContext context)
+    {
+        if (TryCreateTraversalBoundaryResult(context, out UiaSemanticLookupResult? terminal))
+        {
+            return terminal;
+        }
+
+        context.VisitedNodeCount++;
+        UiaSnapshotNodeData data;
+        try
+        {
+            data = node.GetData();
+        }
+        catch (Exception exception) when (IsProviderFailure(exception) && depth > 0)
+        {
+            return null;
+        }
+
+        string elementId = CreateElementId(data.RuntimeId, rawPath);
+
+        if (ElementSelectorPolicy.Matches(context.Selector, data.Name, data.AutomationId, data.ControlType))
+        {
+            context.MatchCount++;
+            if (ElementSelectorPolicy.IsAmbiguous(context.MatchCount))
+            {
+                return Terminal(
+                    UiaSemanticLookupStatusValues.AmbiguousMatches,
+                    context.ObservedWindow,
+                    context.Request,
+                    context.VisitedNodeCount,
+                    context.MatchCount,
+                    reason: "Semantic lookup нашёл больше одного UIA target для selector.");
+            }
+
+            context.UniqueMatch = CreateLeafSnapshot(
+                data,
+                elementId,
+                parentElementId,
+                depth,
+                ordinal);
+        }
+
+        if (TryCreateTraversalBoundaryResult(context, out terminal))
+        {
+            return terminal;
+        }
+
+        IUiaSemanticLookupNode? child;
+        try
+        {
+            child = node.GetFirstChild();
+        }
+        catch (Exception exception) when (IsProviderFailure(exception) && depth > 0)
+        {
+            return null;
+        }
+
+        if (child is null)
+        {
+            return null;
+        }
+
+        if (depth >= context.Request.MaxDepth)
+        {
+            return Terminal(
+                UiaSemanticLookupStatusValues.BudgetExceeded,
+                context.ObservedWindow,
+                context.Request,
+                context.VisitedNodeCount,
+                context.MatchCount,
+                depthBudgetExceeded: true,
+                reason: "Semantic lookup достиг maxDepth boundary до доказательства отсутствия или уникальности target.");
+        }
+
+        int childOrdinal = 0;
+        while (child is not null)
+        {
+            string childPath = rawPath + "/" + childOrdinal.ToString(CultureInfo.InvariantCulture);
+            terminal = SearchNode(child, elementId, depth + 1, childOrdinal, childPath, context);
+            if (terminal is not null)
+            {
+                return terminal;
+            }
+
+            if (TryCreateTraversalBoundaryResult(context, out terminal))
+            {
+                return terminal;
+            }
+
+            try
+            {
+                child = child.GetNextSibling();
+            }
+            catch (Exception exception) when (IsProviderFailure(exception) && depth > 0)
+            {
+                return null;
+            }
+
+            childOrdinal++;
+        }
+
+        return null;
+    }
+
+    private bool TryCreateTraversalBoundaryResult(SearchContext context, out UiaSemanticLookupResult? result)
+    {
+        context.CancellationToken.ThrowIfCancellationRequested();
+
+        if (IsTimedOut(context.StartTimestamp, context.Request.TimeoutMs))
+        {
+            result = Terminal(
+                UiaSemanticLookupStatusValues.Timeout,
+                context.ObservedWindow,
+                context.Request,
+                context.VisitedNodeCount,
+                context.MatchCount,
+                reason: "Semantic lookup превысил timeout budget.");
+            return true;
+        }
+
+        if (context.VisitedNodeCount >= context.Request.MaxNodes)
+        {
+            result = Terminal(
+                UiaSemanticLookupStatusValues.BudgetExceeded,
+                context.ObservedWindow,
+                context.Request,
+                context.VisitedNodeCount,
+                context.MatchCount,
+                nodeBudgetExceeded: true,
+                reason: "Semantic lookup достиг maxNodes budget до доказательства уникальности target.");
+            return true;
+        }
+
+        result = null;
+        return false;
     }
 
     private bool IsTimedOut(long startTimestamp, int timeoutMs) =>
@@ -258,10 +313,27 @@ internal sealed class UiaSemanticLookupEngine(TimeProvider timeProvider)
             Children = [],
         };
 
-    private sealed record TraversalNode(
-        IUiaSemanticLookupNode Node,
-        string? ParentElementId,
-        int Depth,
-        int Ordinal,
-        string RawPath);
+    private sealed class SearchContext(
+        ObservedWindowDescriptor observedWindow,
+        UiaSemanticLookupRequest request,
+        WaitElementSelector selector,
+        long startTimestamp,
+        CancellationToken cancellationToken)
+    {
+        public ObservedWindowDescriptor ObservedWindow { get; } = observedWindow;
+
+        public UiaSemanticLookupRequest Request { get; } = request;
+
+        public WaitElementSelector Selector { get; } = selector;
+
+        public long StartTimestamp { get; } = startTimestamp;
+
+        public CancellationToken CancellationToken { get; } = cancellationToken;
+
+        public int VisitedNodeCount { get; set; }
+
+        public int MatchCount { get; set; }
+
+        public UiaElementSnapshot? UniqueMatch { get; set; }
+    }
 }

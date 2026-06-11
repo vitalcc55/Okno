@@ -111,6 +111,25 @@ public sealed class UiaSemanticLookupEngineTests
     }
 
     [Fact]
+    public void SearchDoesNotEnumerateChildrenAfterNodeBudgetIsExhausted()
+    {
+        ThrowingChildrenSemanticLookupNode root = new(CreateNodeData("root"));
+
+        UiaSemanticLookupResult result = Search(
+            root,
+            new UiaSemanticLookupRequest
+            {
+                Selector = new WaitElementSelector(AutomationId: "Missing"),
+                MaxDepth = 2,
+                MaxNodes = 1,
+            });
+
+        Assert.Equal(UiaSemanticLookupStatusValues.BudgetExceeded, result.Status);
+        Assert.True(result.NodeBudgetExceeded);
+        Assert.Equal(1, result.VisitedNodeCount);
+    }
+
+    [Fact]
     public void SearchAbortsWhenDepthBudgetCannotProveAbsence()
     {
         FakeSemanticLookupNode root = Node(
@@ -247,47 +266,91 @@ public sealed class UiaSemanticLookupEngineTests
         string? automationId = null,
         string controlType = "pane",
         int[]? runtimeId = null,
-        IUiaSemanticLookupNode[]? children = null) =>
-        new(
-            new UiaSnapshotNodeData(
-                RuntimeId: runtimeId,
-                Name: name,
-                AutomationId: automationId,
-                ClassName: null,
-                FrameworkId: null,
-                ControlType: controlType,
-                ControlTypeId: 0,
-                LocalizedControlType: null,
-                IsControlElement: true,
-                IsContentElement: true,
-                IsEnabled: true,
-                IsOffscreen: false,
-                HasKeyboardFocus: false,
-                IsPassword: false,
-                IsReadOnly: null,
-                Patterns: [],
-                BoundingRectangle: null,
-                NativeWindowHandle: null),
+        IUiaSemanticLookupNode[]? children = null)
+    {
+        LinkSiblings(children ?? []);
+        return new(
+            CreateNodeData(name, automationId, controlType, runtimeId),
             children ?? []);
+    }
+
+    private static void LinkSiblings(IUiaSemanticLookupNode[] children)
+    {
+        for (int index = 0; index < children.Length; index++)
+        {
+            IUiaSemanticLookupNode? nextSibling = index + 1 < children.Length
+                ? children[index + 1]
+                : null;
+            if (children[index] is LinkedTestSemanticLookupNode linked)
+            {
+                linked.NextSibling = nextSibling;
+            }
+        }
+    }
+
+    private static UiaSnapshotNodeData CreateNodeData(
+        string name,
+        string? automationId = null,
+        string controlType = "pane",
+        int[]? runtimeId = null) =>
+        new(
+            RuntimeId: runtimeId,
+            Name: name,
+            AutomationId: automationId,
+            ClassName: null,
+            FrameworkId: null,
+            ControlType: controlType,
+            ControlTypeId: 0,
+            LocalizedControlType: null,
+            IsControlElement: true,
+            IsContentElement: true,
+            IsEnabled: true,
+            IsOffscreen: false,
+            HasKeyboardFocus: false,
+            IsPassword: false,
+            IsReadOnly: null,
+            Patterns: [],
+            BoundingRectangle: null,
+            NativeWindowHandle: null);
 
     private static ObservedWindowDescriptor CreateObservedWindow() =>
         new(101, Title: "Lookup test window");
 
-    private sealed class FakeSemanticLookupNode(
-        UiaSnapshotNodeData data,
-        IReadOnlyList<IUiaSemanticLookupNode> children) : IUiaSemanticLookupNode
+    private abstract class LinkedTestSemanticLookupNode : IUiaSemanticLookupNode
     {
-        public UiaSnapshotNodeData GetData() => data;
+        public IUiaSemanticLookupNode? NextSibling { get; set; }
 
-        public IReadOnlyList<IUiaSemanticLookupNode> GetChildren() => children;
+        public abstract UiaSnapshotNodeData GetData();
+
+        public abstract IUiaSemanticLookupNode? GetFirstChild();
+
+        public IUiaSemanticLookupNode? GetNextSibling() => NextSibling;
     }
 
-    private sealed class ThrowingSemanticLookupNode : IUiaSemanticLookupNode
+    private sealed class FakeSemanticLookupNode(
+        UiaSnapshotNodeData data,
+        IReadOnlyList<IUiaSemanticLookupNode> children) : LinkedTestSemanticLookupNode
     {
-        public UiaSnapshotNodeData GetData() =>
+        public override UiaSnapshotNodeData GetData() => data;
+
+        public override IUiaSemanticLookupNode? GetFirstChild() =>
+            children.Count == 0 ? null : children[0];
+    }
+
+    private sealed class ThrowingSemanticLookupNode : LinkedTestSemanticLookupNode
+    {
+        public override UiaSnapshotNodeData GetData() =>
             throw new InvalidOperationException("secret provider failure");
 
-        public IReadOnlyList<IUiaSemanticLookupNode> GetChildren() => [];
+        public override IUiaSemanticLookupNode? GetFirstChild() => null;
+    }
+
+    private sealed class ThrowingChildrenSemanticLookupNode(UiaSnapshotNodeData data) : LinkedTestSemanticLookupNode
+    {
+        public override UiaSnapshotNodeData GetData() => data;
+
+        public override IUiaSemanticLookupNode? GetFirstChild() =>
+            throw new InvalidOperationException("semantic lookup enumerated children after node budget exhaustion");
     }
 
     private sealed class AdvancingTimeProvider : TimeProvider

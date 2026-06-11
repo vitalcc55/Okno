@@ -8,7 +8,7 @@ using WinBridge.Runtime.Contracts;
 
 namespace WinBridge.Runtime.Windows.UIA;
 
-public sealed class Win32UiAutomationSetValueService : IUiAutomationSetValueService
+internal sealed class Win32UiAutomationSetValueService : IUiAutomationSetValueService
 {
     public Task<UiaSetValueResult> SetValueAsync(
         WindowDescriptor targetWindow,
