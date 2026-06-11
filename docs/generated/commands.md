@@ -16,7 +16,7 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/computer-use-win-observation-completeness-proof-smoke.ps1` | narrow helper-backed real-STDIO proof-smoke for `computer-use-win` observation completeness, covering screenshot-backed visual state with incomplete semantic preview metadata and selector lookup beyond the compact preview |
 | `powershell -ExecutionPolicy Bypass -File scripts/refresh-generated-docs.ps1` | regenerate deterministic generated docs and bootstrap status |
 | `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1` | local CI equivalent |
-| `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | full release gate: fast CI + install/release acceptance + cache-install publication proof |
+| `powershell -ExecutionPolicy Bypass -File scripts/release-verify.ps1` | full local release gate: fast CI + install/release acceptance + cache-install publication proof; `-SkipInteractiveDesktopProof` is reserved for hosted release packaging runners after local proof is already green |
 | `powershell -ExecutionPolicy Bypass -File scripts/investigate.ps1` | open latest local audit/smoke summaries |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/bootstrap.ps1` | Codex bootstrap handshake |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/prepare-okno-test-bundle.ps1` | stage immutable server/helper run bundle for integration and smoke |
@@ -41,10 +41,10 @@
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/install-computer-use-win.ps1 -Mode codex|runtime-only -PayloadArchivePath <zip> [-PayloadChecksumPath <path>] [-DescriptorPath <path>]` | thin PowerShell bootstrap installer that runs the packaged setup CLI without repo checkout and verifies local payload archives by checksum unless an explicit unsafe dev-only bypass is used |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/publish-computer-use-win-plugin.ps1` | publish self-contained `computer-use-win` runtime bundle into `plugins/computer-use-win/runtime/win-x64/` |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/materialize-computer-use-win-cache-copy.ps1` | mirror the repo `computer-use-win` plugin into the local cache-install proof root before cache-surface verification |
-| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema surface matches the repo plugin copy, fresh-thread `get_app_state -> set_value` materializes `executionFacts`, selector schemas are published, selector-backed `click` reaches a deep target outside the compact preview, `type_text.coordinateSpace` is capture_pixels-only, runtime bundle is fresh for current publication inputs, and runtime release descriptor metadata is present |
+| `powershell -ExecutionPolicy Bypass -File scripts/codex/prove-computer-use-win-cache-install.ps1` | prove cache-installed `computer-use-win` tools/list/schema surface matches the repo plugin copy, fresh-thread `get_app_state -> set_value` materializes `executionFacts`, selector schemas are published, selector-backed `click` reaches a deep target outside the compact preview, `type_text.coordinateSpace` is capture_pixels-only, runtime bundle is fresh for current publication inputs, and runtime release descriptor metadata is present; `-SkipInteractiveDesktopProof` keeps only cache/schema/static proof for hosted packaging runners |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/test-install-surface-acceptance.ps1` | Codex wrapper for the install/release acceptance suite |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/verify.ps1` | Codex verify handshake |
-| `powershell -ExecutionPolicy Bypass -File scripts/codex/release-verify.ps1` | Codex wrapper for the full release gate |
+| `powershell -ExecutionPolicy Bypass -File scripts/codex/release-verify.ps1` | Codex wrapper for the full local release gate; accepts `-SkipInteractiveDesktopProof` only for hosted release packaging runners |
 | `powershell -ExecutionPolicy Bypass -File scripts/codex/write-okno-plugin-repo-root-hint.ps1` | stamp repo-root hint into internal okno plugin install surface before reinstall or refresh |
 | `dotnet run --project src/WinBridge.Server/WinBridge.Server.csproj --no-build` | run MCP server manually |
 

@@ -6,6 +6,7 @@ Set-Location $repoRoot
 
 $runtimeTestContext = Resolve-WinBridgeTestProjectContext -RepoRoot $repoRoot -TestProjectName 'WinBridge.Runtime.Tests'
 $integrationTestContext = Resolve-WinBridgeVerificationContext -RepoRoot $repoRoot -TestProjectName 'WinBridge.Server.IntegrationTests'
+$skipInteractiveDesktopProof = [string]::Equals($env:WINBRIDGE_SKIP_INTERACTIVE_DESKTOP_PROOF, '1', [System.StringComparison]::Ordinal)
 
 Invoke-NativeCommand -Description 'dotnet test runtime' -Command {
     dotnet @($runtimeTestContext.DotnetTestArguments)
@@ -33,6 +34,27 @@ if (-not [string]::IsNullOrWhiteSpace([string]$integrationTestContext.EffectiveA
 
 ${null} = Use-OknoTestBundle @bundleArgs
 
+$integrationArguments = @($integrationTestContext.DotnetTestArguments)
+if ($skipInteractiveDesktopProof) {
+    $interactiveDesktopScenarios = @(
+        'ComputerUseWinClickUsesStateTokenAndElementIndexAfterApprovedAppState',
+        'ComputerUseWinPressKeyMovesKeyboardFocusThroughApprovedAppState',
+        'ComputerUseWinSetValueUpdatesSemanticMirrorThroughApprovedAppState',
+        'ComputerUseWinSetValueUpdatesRangeMirrorThroughApprovedAppState',
+        'ComputerUseWinClickUpdatesDeepSemanticMirrorThroughSelectorOutsidePreview',
+        'ComputerUseWinTypeTextUpdatesQueryMirrorAfterExplicitFocusProof',
+        'ComputerUseWinTypeTextFocusedFallbackUpdatesPoorUiaMirror',
+        'ComputerUseWinTypeTextCoordinateConfirmedFallbackUpdatesMirror',
+        'ComputerUseWinScrollUpdatesScrollMirrorThroughApprovedAppState',
+        'ComputerUseWinPerformSecondaryActionTogglesCheckboxStateThroughApprovedAppState',
+        'ComputerUseWinDragUpdatesDragMirrorThroughApprovedAppState'
+    )
+    $integrationFilter = [string]::Join('&', @($interactiveDesktopScenarios | ForEach-Object { "FullyQualifiedName!~$_" }))
+    Write-Host "Skipping interactive desktop integration scenarios for hosted proof mode: $($interactiveDesktopScenarios -join ', ')"
+    $integrationArguments += '--filter'
+    $integrationArguments += $integrationFilter
+}
+
 Invoke-NativeCommand -Description 'dotnet test integration' -Command {
-    dotnet @($integrationTestContext.DotnetTestArguments)
+    dotnet @integrationArguments
 }

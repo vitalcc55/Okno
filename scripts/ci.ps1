@@ -3,6 +3,7 @@
 $repoRoot = Get-RepoRoot -ScriptRoot $PSScriptRoot
 ${null} = Initialize-WinBridgeExecutionContext -RepoRoot $repoRoot -DefaultRunId ("ci-" + (Get-Date -Format 'yyyyMMddTHHmmssfff')) -UseArtifactsRoot
 Set-Location $repoRoot
+$skipInteractiveDesktopProof = [string]::Equals($env:WINBRIDGE_SKIP_INTERACTIVE_DESKTOP_PROOF, '1', [System.StringComparison]::Ordinal)
 
 $ciStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $stepDurations = [ordered]@{}
@@ -28,9 +29,17 @@ Invoke-CiTimedStep -Key 'bootstrap' -Description 'bootstrap step' -ScriptPath (J
 Invoke-CiTimedStep -Key 'lint_powershell' -Description 'PowerShell static analysis step' -ScriptPath (Join-Path $PSScriptRoot 'lint-powershell.ps1') -PowerShellExecutable 'pwsh'
 Invoke-CiTimedStep -Key 'build' -Description 'build step' -ScriptPath (Join-Path $PSScriptRoot 'build.ps1')
 Invoke-CiTimedStep -Key 'test' -Description 'test step' -ScriptPath (Join-Path $PSScriptRoot 'test.ps1')
-Invoke-CiTimedStep -Key 'smoke' -Description 'smoke step' -ScriptPath (Join-Path $PSScriptRoot 'smoke.ps1')
-Invoke-CiTimedStep -Key 'computer_use_win_physical_policy_proof_smoke' -Description 'computer-use-win physical policy proof smoke step' -ScriptPath (Join-Path $PSScriptRoot 'computer-use-win-physical-policy-proof-smoke.ps1')
-Invoke-CiTimedStep -Key 'computer_use_win_observation_completeness_proof_smoke' -Description 'computer-use-win observation completeness proof smoke step' -ScriptPath (Join-Path $PSScriptRoot 'computer-use-win-observation-completeness-proof-smoke.ps1')
+if ($skipInteractiveDesktopProof) {
+    Write-Host 'Skipping smoke and computer-use-win proof-smoke steps because WINBRIDGE_SKIP_INTERACTIVE_DESKTOP_PROOF=1.'
+    $stepDurations['smoke'] = [System.TimeSpan]::Zero
+    $stepDurations['computer_use_win_physical_policy_proof_smoke'] = [System.TimeSpan]::Zero
+    $stepDurations['computer_use_win_observation_completeness_proof_smoke'] = [System.TimeSpan]::Zero
+}
+else {
+    Invoke-CiTimedStep -Key 'smoke' -Description 'smoke step' -ScriptPath (Join-Path $PSScriptRoot 'smoke.ps1')
+    Invoke-CiTimedStep -Key 'computer_use_win_physical_policy_proof_smoke' -Description 'computer-use-win physical policy proof smoke step' -ScriptPath (Join-Path $PSScriptRoot 'computer-use-win-physical-policy-proof-smoke.ps1')
+    Invoke-CiTimedStep -Key 'computer_use_win_observation_completeness_proof_smoke' -Description 'computer-use-win observation completeness proof smoke step' -ScriptPath (Join-Path $PSScriptRoot 'computer-use-win-observation-completeness-proof-smoke.ps1')
+}
 Invoke-CiTimedStep -Key 'refresh_generated_docs' -Description 'refresh generated docs step' -ScriptPath (Join-Path $PSScriptRoot 'refresh-generated-docs.ps1')
 
 $ciStopwatch.Stop()

@@ -1,7 +1,8 @@
 ﻿param(
     [string] $CachePluginRoot = '',
     [string] $OutputPath,
-    [int] $TimeoutMs = 10000
+    [int] $TimeoutMs = 10000,
+    [switch] $SkipInteractiveDesktopProof
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +16,7 @@ if (Get-Variable -Name PSStyle -ErrorAction Ignore) {
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $versionState = Assert-WinBridgeComputerUseWinVersionState -RepoRoot $repoRoot
+$shouldSkipInteractiveDesktopProof = $SkipInteractiveDesktopProof.IsPresent -or [string]::Equals($env:WINBRIDGE_SKIP_INTERACTIVE_DESKTOP_PROOF, '1', [System.StringComparison]::Ordinal)
 if ([string]::IsNullOrWhiteSpace($CachePluginRoot)) {
     $CachePluginRoot = Get-WinBridgeComputerUseWinCachePluginRoot -RepoRoot $repoRoot
 }
@@ -617,6 +619,26 @@ $copyProof = Assert-PluginCopiesMatch -RepoPluginRoot $repoPluginRoot -CacheRoot
 $runtimeFreshness = Assert-RuntimeBundleFreshForPublicationInputs -RepoRoot $repoRoot -RepoPluginRoot $repoPluginRoot
 $runtimeReleaseDescriptor = Read-RuntimeReleaseDescriptor -PluginRoot $repoPluginRoot
 $helper = $null
+$getAppStateSemanticPreviewStatus = 'skipped_interactive_desktop_proof'
+$mirrorUpdated = $false
+$deepSelectorPreviewVisible = $false
+$selectorMirrorUpdated = $false
+$setValuePayload = [PSCustomObject]@{ status = 'skipped_interactive_desktop_proof' }
+$executionFacts = [PSCustomObject]@{
+    dispatchClass = 'skipped_interactive_desktop_proof'
+    executor = 'skipped_interactive_desktop_proof'
+    targetProof = 'skipped_interactive_desktop_proof'
+    stateTokenPresent = $false
+    captureReferencePresent = $false
+}
+$selectorClickPayload = [PSCustomObject]@{ status = 'skipped_interactive_desktop_proof' }
+$selectorExecutionFacts = [PSCustomObject]@{
+    dispatchClass = 'skipped_interactive_desktop_proof'
+    executor = 'skipped_interactive_desktop_proof'
+    targetProof = 'skipped_interactive_desktop_proof'
+    observeAfterRequested = $false
+    successorStateAvailable = $false
+}
 
 $process = Start-CacheMcpHost -CacheRoot $cacheRoot
 try {
@@ -690,8 +712,12 @@ try {
     $listAppsStatus = [string]$listAppsCall.Json.result.structuredContent.status
     Assert-Condition -Condition ($listAppsStatus -eq 'ok') -Message "list_apps returned status '$listAppsStatus'."
 
-    $helper = Start-HelperWindowForActionProof -RepoRoot $repoRoot
-    try {
+    if ($shouldSkipInteractiveDesktopProof) {
+        Write-Host 'Skipping cache-installed interactive desktop proof because WINBRIDGE_SKIP_INTERACTIVE_DESKTOP_PROOF=1 or -SkipInteractiveDesktopProof was provided.'
+    }
+    else {
+        $helper = Start-HelperWindowForActionProof -RepoRoot $repoRoot
+        try {
         $getAppStateCall = Invoke-McpRequest -Process $process -Method 'tools/call' -Id 4 -TimeoutMs $TimeoutMs -Params @{
             name = 'get_app_state'
             arguments = @{
@@ -779,11 +805,12 @@ try {
         Assert-Condition -Condition ([string]$finalStatePayload.status -eq 'ok') -Message "cache-installed final get_app_state returned status '$($finalStatePayload.status)'."
         $selectorMirrorUpdated = @($finalStatePayload.accessibilityTree | Where-Object { [string]$_.name -eq 'Deep selector mirror: clicked' }).Count -gt 0
         Assert-Condition -Condition $selectorMirrorUpdated -Message 'cache-installed final get_app_state did not expose the updated deep selector mirror.'
-    }
-    finally {
-        if ($null -ne $helper) {
-            Stop-HelperWindowForActionProof -Helper $helper
-            $helper = $null
+        }
+        finally {
+            if ($null -ne $helper) {
+                Stop-HelperWindowForActionProof -Helper $helper
+                $helper = $null
+            }
         }
     }
 
@@ -843,6 +870,7 @@ try {
         selectorSchemaTools = @($selectorSchemaToolNames + @('drag.fromSelector', 'drag.toSelector'))
         listAppsStatus = $listAppsStatus
         appCount = @($listAppsCall.Json.result.structuredContent.apps).Count
+        interactiveDesktopProofSkipped = $shouldSkipInteractiveDesktopProof
         getAppStateSemanticPreviewStatus = $getAppStateSemanticPreviewStatus
         freshThreadActionTool = 'set_value'
         freshThreadActionStatus = [string]$setValuePayload.status

@@ -56,7 +56,7 @@ jobs:
       - name: Run full release verify gate
         shell: pwsh
         run: |
-          powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/release-verify.ps1 -Version "${{ steps.version.outputs.version }}"
+          powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/release-verify.ps1 -Version "${{ steps.version.outputs.version }}" -SkipInteractiveDesktopProof
 
       - name: Package runtime release asset
         id: package_runtime
